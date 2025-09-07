@@ -35,7 +35,7 @@
 ## User Scenarios & Testing
 
 ### Primary User Story
-As an SRE engineer, I need to eliminate repetitive manual work in operations by defining procedures once in YAML format that can be executed across multiple environments (preprod/production) while automatically generating documentation and ensuring safety through approval gates and rollback mechanisms.
+As an SRE engineer, I need an interactive AI-powered tool that eliminates repetitive manual work in operations by defining procedures once in YAML format that can be executed across multiple environments (preprod/production) while automatically collecting evidence (screenshots, logs) and generating comprehensive documentation with safety through approval gates and rollback mechanisms.
 
 ### Acceptance Scenarios
 1. **Given** a complex deployment operation, **When** I define it once in YAML with environment variables, **Then** I can execute it in both preprod and production with different values
@@ -45,6 +45,9 @@ As an SRE engineer, I need to eliminate repetitive manual work in operations by 
 5. **Given** a completed operation execution, **When** I request documentation, **Then** the system generates a formatted operation manual with environment comparison tables
 6. **Given** an operation with approval gates, **When** I reach an approval step, **Then** the system blocks execution until proper authorization is received
 7. **Given** a failed operation step, **When** rollback is configured, **Then** the system can automatically or manually trigger the rollback procedure
+8. **Given** a manual step requiring evidence, **When** I complete the action, **Then** I can attach screenshots or the system automatically captures relevant evidence
+9. **Given** an interactive chat session, **When** I ask questions about the operation, **Then** the AI assistant provides contextual help and guidance
+10. **Given** evidence collection during execution, **When** the operation completes, **Then** all evidence is automatically organized and included in documentation
 
 ### Edge Cases
 - What happens when automated commands fail or timeout?
@@ -52,6 +55,9 @@ As an SRE engineer, I need to eliminate repetitive manual work in operations by 
 - What occurs if approval is denied or times out?
 - How are environment variables handled when they're missing or invalid?
 - What happens when rollback procedures themselves fail?
+- How does the system handle corrupted or missing evidence files?
+- What happens when automatic screenshot capture fails?
+- How does the AI assistant handle ambiguous or unclear user questions?
 
 ## Requirements
 
@@ -76,6 +82,15 @@ As an SRE engineer, I need to eliminate repetitive manual work in operations by 
 - **FR-018**: System MUST resolve module dependencies and variable inheritance automatically
 - **FR-019**: System MUST validate preflight checklist items and block execution if any fail
 - **FR-020**: Users MUST be able to define custom preflight checks for their operations
+- **FR-021**: System MUST provide interactive AI chat interface for real-time assistance during operations
+- **FR-022**: System MUST support automatic screenshot capture for web-based manual steps
+- **FR-023**: System MUST allow users to manually upload photos/screenshots as evidence
+- **FR-024**: System MUST automatically capture command outputs and logs as evidence
+- **FR-025**: System MUST organize and timestamp all evidence with step correlation
+- **FR-026**: System MUST validate evidence completeness before allowing step completion
+- **FR-027**: AI assistant MUST provide contextual help based on current operation step
+- **FR-028**: System MUST support evidence correction and re-upload capabilities
+- **FR-029**: System MUST include all collected evidence in generated documentation
 
 ### Key Entities
 - **Operation**: Represents a complete procedure with name, environments, variables, and ordered steps
@@ -87,6 +102,9 @@ As an SRE engineer, I need to eliminate repetitive manual work in operations by 
 - **Preflight Checklist**: Set of validation checks that must pass before operation execution begins
 - **Operation Module**: Reusable component containing steps, variables, and checklists that can be imported
 - **Module Registry**: Collection of available operation modules for sharing and reuse
+- **Evidence Item**: Digital proof of step completion (screenshot, log file, command output, photo)
+- **AI Assistant**: Interactive chat interface providing contextual guidance during operations
+- **Evidence Validator**: Component that checks evidence completeness and quality automatically
 
 ---
 
