@@ -55,6 +55,11 @@ As an SRE engineer, I need an interactive AI-powered Operations as Code platform
 15. **Given** a PagerDuty alert, **When** I search the QRH, **Then** I get relevant runbooks and quick response procedures
 16. **Given** an operation requiring manager approval, **When** I reach an approval gate, **Then** the system creates a Jira ticket with operation details and waits for manager approval
 17. **Given** Operations as Code in Git, **When** I modify operation definitions, **Then** the system tracks versions, enables peer review, and maintains change history
+18. **Given** a marketplace of reusable operations, **When** I search for common tasks, **Then** I can discover and use community-contributed operation components
+19. **Given** composite operations with dependencies, **When** I define an operation that needs other operations, **Then** the system automatically executes dependencies in correct order
+20. **Given** conditional operation steps, **When** execution reaches a conditional step, **Then** the system evaluates conditions and skips or executes accordingly
+21. **Given** operation templates, **When** I create a new operation, **Then** I can scaffold from common patterns (deployment, backup, maintenance)
+22. **Given** operation artifacts from previous steps, **When** subsequent steps need the data, **Then** the system passes evidence and outputs seamlessly
 
 ### Edge Cases
 - What happens when automated commands fail or timeout?
@@ -116,6 +121,15 @@ As an SRE engineer, I need an interactive AI-powered Operations as Code platform
 - **FR-041**: System MUST support Git-based peer review process for operation changes
 - **FR-042**: System MUST maintain operation definition history and enable rollback to previous versions
 - **FR-043**: System MUST store approval decisions and rationale in both Jira and internal audit logs
+- **FR-044**: System MUST provide an operation marketplace for discovering and sharing reusable operation components
+- **FR-045**: System MUST support composite operations that combine multiple reusable components
+- **FR-046**: System MUST handle operation dependencies and execute prerequisite operations automatically
+- **FR-047**: System MUST support conditional step execution based on environment, previous results, or custom logic
+- **FR-048**: System MUST provide operation templates for common SRE patterns (deploy, backup, incident response)
+- **FR-049**: System MUST support operation inputs/outputs for parameterization and data passing
+- **FR-050**: System MUST handle operation artifacts (evidence, logs, reports) as inputs to subsequent operations
+- **FR-051**: System MUST support secure parameter handling for sensitive operation data
+- **FR-052**: System MUST enable operation matrix execution across multiple environments simultaneously
 
 ### Key Entities
 - **Operation**: Represents a complete procedure with name, environments, variables, and ordered steps
@@ -140,6 +154,14 @@ As an SRE engineer, I need an interactive AI-powered Operations as Code platform
 - **Retry History**: Complete audit trail of failure reasons, retry decisions, and operator rationale
 - **Approval Workflow**: Jira-integrated process for manager authorization with decision tracking
 - **Operation Version**: Git-managed revision of operation definitions with peer review capabilities
+- **Operation Marketplace**: GitHub Actions-style repository for discovering and sharing reusable operation components
+- **Composite Operation**: Multi-step reusable operation component that can be referenced by other operations
+- **Operation Dependencies**: Relationships between operations that determine execution order and prerequisites
+- **Operation Template**: Scaffolding pattern for creating new operations based on common SRE scenarios
+- **Operation Artifact**: Data, evidence, or output from one operation that can be consumed by subsequent operations
+- **Operation Matrix**: Configuration for executing same operation across multiple environments or parameter sets
+- **Conditional Step**: Operation step that executes only when specific conditions are met
+- **Operation Input/Output**: Parameterized interface for operation reusability and data flow
 
 ---
 
