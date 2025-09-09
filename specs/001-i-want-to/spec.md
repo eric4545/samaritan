@@ -60,6 +60,10 @@ As an SRE engineer, I need an interactive AI-powered Operations as Code platform
 20. **Given** conditional operation steps, **When** execution reaches a conditional step, **Then** the system evaluates conditions and skips or executes accordingly
 21. **Given** operation templates, **When** I create a new operation, **Then** I can scaffold from common patterns (deployment, backup, maintenance)
 22. **Given** operation artifacts from previous steps, **When** subsequent steps need the data, **Then** the system passes evidence and outputs seamlessly
+23. **Given** an automated operation, **When** I request a manual mode playbook, **Then** the system generates manual instructions for every automated step
+24. **Given** an operation running in automatic mode, **When** I choose to switch to manual mode mid-execution, **Then** the system pauses and provides manual instructions for remaining steps
+25. **Given** a failed automated step, **When** the system offers manual override, **Then** I can execute the equivalent manual procedure and continue
+26. **Given** an emergency situation, **When** I activate manual override mode, **Then** all subsequent steps execute as manual instructions with detailed commands
 
 ### Edge Cases
 - What happens when automated commands fail or timeout?
@@ -74,6 +78,9 @@ As an SRE engineer, I need an interactive AI-powered Operations as Code platform
 - How does the system handle concurrent sessions for the same operation?
 - What occurs when Confluence page history reaches limits?
 - How are emergency QRH procedures prioritized and organized?
+- What happens when switching from auto to manual mode mid-operation?
+- How does the system handle partial manual execution of automated steps?
+- What occurs when manual override steps produce different outputs than automated versions?
 
 ## Requirements
 
@@ -130,6 +137,13 @@ As an SRE engineer, I need an interactive AI-powered Operations as Code platform
 - **FR-050**: System MUST handle operation artifacts (evidence, logs, reports) as inputs to subsequent operations
 - **FR-051**: System MUST support secure parameter handling for sensitive operation data
 - **FR-052**: System MUST enable operation matrix execution across multiple environments simultaneously
+- **FR-053**: System MUST generate manual mode playbooks where all automated steps become detailed manual instructions
+- **FR-054**: System MUST support execution mode switching from automatic to manual during operation runtime
+- **FR-055**: System MUST provide manual override for any automated step with equivalent manual procedures
+- **FR-056**: System MUST convert automated commands to step-by-step manual instructions with explanations
+- **FR-057**: System MUST maintain operation continuity when switching between automatic and manual execution modes
+- **FR-058**: System MUST capture the same evidence whether steps are executed automatically or manually
+- **FR-059**: System MUST support hybrid execution where some steps are automated and others are manual by choice
 
 ### Key Entities
 - **Operation**: Represents a complete procedure with name, environments, variables, and ordered steps
@@ -162,6 +176,11 @@ As an SRE engineer, I need an interactive AI-powered Operations as Code platform
 - **Operation Matrix**: Configuration for executing same operation across multiple environments or parameter sets
 - **Conditional Step**: Operation step that executes only when specific conditions are met
 - **Operation Input/Output**: Parameterized interface for operation reusability and data flow
+- **Execution Mode**: Operation runtime mode determining automatic vs manual step execution
+- **Manual Mode Playbook**: Generated documentation with all automated steps converted to manual instructions
+- **Execution Mode Switch**: Capability to transition from automatic to manual execution during operation runtime
+- **Manual Override**: Emergency capability to execute automated steps manually with detailed procedures
+- **Hybrid Execution**: Mixed mode where operators can choose automatic or manual execution per step
 
 ---
 
