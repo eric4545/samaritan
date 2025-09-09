@@ -1,0 +1,553 @@
+openapi: 3.0.3
+info:
+  title: SAMARITAN Integrations API
+  description: External service integration contracts (Jira, Confluence, Git, PagerDuty)
+  version: 1.0.0
+
+paths:
+  /api/jira/approval:
+    post:
+      summary: Create approval request in Jira
+      description: Generate Jira ticket for manager approval with operation details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - operation_name
+                - environment
+                - approver
+                - session_id
+              properties:
+                operation_name:
+                  type: string
+                  example: "deploy-service-x"
+                environment:
+                  type: string
+                  example: "production"
+                approver:
+                  type: string
+                  description: Manager's Jira username
+                  example: "manager.smith"
+                session_id:
+                  type: string
+                  format: uuid
+                operation_details:
+                  type: string
+                  description: Markdown-formatted operation summary
+                estimated_duration:
+                  type: string
+                  example: "30 minutes"
+                risk_level:
+                  type: string
+                  enum: [low, medium, high, critical]
+      responses:
+        '201':
+          description: Approval ticket created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraTicket'
+        '400':
+          description: Invalid request parameters
+        '401':
+          description: Jira authentication failed
+
+  /api/jira/approval/{ticket_id}/status:
+    get:
+      summary: Check approval status
+      description: Poll Jira ticket for approval decision
+      parameters:
+        - name: ticket_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "PROJ-1234"
+      responses:
+        '200':
+          description: Approval status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalStatus'
+
+  /api/confluence/documentation:
+    post:
+      summary: Publish operation documentation
+      description: Create or update Confluence page with operation manual
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - space_key
+                - title
+                - content
+              properties:
+                space_key:
+                  type: string
+                  description: Confluence space identifier
+                  example: "SRE"
+                title:
+                  type: string
+                  description: Page title
+                  example: "Deploy Service X - Operation Manual"
+                content:
+                  type: string
+                  description: HTML/Confluence markup content
+                parent_page_id:
+                  type: string
+                  description: Parent page for organization
+                labels:
+                  type: array
+                  items:
+                    type: string
+                  example: ["samaritan", "deployment", "service-x"]
+                attachments:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/AttachmentData'
+      responses:
+        '201':
+          description: Page published successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfluencePage'
+
+  /api/confluence/checkpoint:
+    post:
+      summary: Create session checkpoint
+      description: Save operation session state as Confluence page version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - page_id
+                - session_data
+                - step_index
+              properties:
+                page_id:
+                  type: string
+                  description: Confluence page ID for checkpoints
+                session_data:
+                  type: object
+                  description: Serialized session state
+                step_index:
+                  type: integer
+                  description: Current operation step
+                checkpoint_name:
+                  type: string
+                  example: "Step 5 - Database Migration"
+      responses:
+        '201':
+          description: Checkpoint saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checkpoint'
+
+  /api/git/operations:
+    get:
+      summary: List available operations
+      description: Fetch operation definitions from Git repository
+      parameters:
+        - name: repository_url
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Git repository URL
+        - name: branch
+          in: query
+          schema:
+            type: string
+            default: main
+          description: Git branch to read from
+        - name: path
+          in: query
+          schema:
+            type: string
+            default: operations/
+          description: Directory path containing operations
+      responses:
+        '200':
+          description: Operations list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  operations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OperationSummary'
+                  repository_info:
+                    $ref: '#/components/schemas/RepositoryInfo'
+
+  /api/git/operation/{operation_name}:
+    get:
+      summary: Fetch operation definition
+      description: Get specific operation YAML from Git repository
+      parameters:
+        - name: operation_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: repository_url
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: branch
+          in: query
+          schema:
+            type: string
+            default: main
+      responses:
+        '200':
+          description: Operation definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationDefinition'
+        '404':
+          description: Operation not found
+
+  /api/pagerduty/alerts:
+    get:
+      summary: Query PagerDuty alerts
+      description: Search for alerts matching QRH procedures
+      parameters:
+        - name: service_id
+          in: query
+          schema:
+            type: string
+          description: PagerDuty service identifier
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [triggered, acknowledged, resolved]
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Alert time range start
+        - name: until
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Alert time range end
+      responses:
+        '200':
+          description: Alert data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PagerDutyAlert'
+                  suggested_qrh:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QRHSuggestion'
+
+  /api/marketplace/search:
+    get:
+      summary: Search operation marketplace
+      description: Find reusable operations by keyword, category, or author
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+          description: Search query
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Operation category filter
+        - name: author
+          in: query
+          schema:
+            type: string
+          description: Author filter
+        - name: min_rating
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 5
+          description: Minimum community rating
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MarketplaceOperation'
+                  total_results:
+                    type: integer
+                  search_time_ms:
+                    type: integer
+
+components:
+  schemas:
+    JiraTicket:
+      type: object
+      required:
+        - ticket_id
+        - url
+        - status
+      properties:
+        ticket_id:
+          type: string
+          example: "PROJ-1234"
+        url:
+          type: string
+          format: uri
+          example: "https://company.atlassian.net/browse/PROJ-1234"
+        status:
+          type: string
+          example: "Open"
+        created_at:
+          type: string
+          format: date-time
+        assignee:
+          type: string
+
+    ApprovalStatus:
+      type: object
+      required:
+        - approved
+        - status
+      properties:
+        approved:
+          type: boolean
+        status:
+          type: string
+          enum: [pending, approved, rejected, expired]
+        approver:
+          type: string
+        approved_at:
+          type: string
+          format: date-time
+        rationale:
+          type: string
+          description: Approval or rejection reason
+        expiry_time:
+          type: string
+          format: date-time
+
+    ConfluencePage:
+      type: object
+      required:
+        - page_id
+        - url
+        - version
+      properties:
+        page_id:
+          type: string
+        url:
+          type: string
+          format: uri
+        title:
+          type: string
+        version:
+          type: integer
+        space_key:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AttachmentData:
+      type: object
+      required:
+        - filename
+        - content_type
+        - data
+      properties:
+        filename:
+          type: string
+        content_type:
+          type: string
+          example: "image/png"
+        data:
+          type: string
+          format: base64
+          description: Base64 encoded file content
+        size_bytes:
+          type: integer
+
+    Checkpoint:
+      type: object
+      required:
+        - checkpoint_id
+        - page_version
+        - created_at
+      properties:
+        checkpoint_id:
+          type: string
+          format: uuid
+        page_version:
+          type: integer
+        page_id:
+          type: string
+        step_index:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    OperationSummary:
+      type: object
+      required:
+        - name
+        - version
+        - description
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        author:
+          type: string
+        last_modified:
+          type: string
+          format: date-time
+        environments:
+          type: array
+          items:
+            type: string
+        step_count:
+          type: integer
+
+    RepositoryInfo:
+      type: object
+      properties:
+        url:
+          type: string
+        branch:
+          type: string
+        commit_hash:
+          type: string
+        last_commit_date:
+          type: string
+          format: date-time
+
+    OperationDefinition:
+      type: object
+      required:
+        - name
+        - version
+        - steps
+        - environments
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        environments:
+          type: array
+          items:
+            type: object
+        variables:
+          type: object
+        steps:
+          type: array
+          items:
+            type: object
+        preflight:
+          type: array
+          items:
+            type: object
+
+    PagerDutyAlert:
+      type: object
+      properties:
+        id:
+          type: string
+        summary:
+          type: string
+        status:
+          type: string
+        service:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        created_at:
+          type: string
+          format: date-time
+
+    QRHSuggestion:
+      type: object
+      properties:
+        qrh_id:
+          type: string
+        title:
+          type: string
+        match_score:
+          type: number
+          minimum: 0
+          maximum: 1
+        match_reason:
+          type: string
+
+    MarketplaceOperation:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        author:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        rating:
+          type: number
+        download_count:
+          type: integer
+        repository_url:
+          type: string
+        documentation_url:
+          type: string

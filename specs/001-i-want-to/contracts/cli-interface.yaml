@@ -1,0 +1,331 @@
+openapi: 3.0.3
+info:
+  title: SAMARITAN CLI Interface
+  description: Command-line interface contracts for Operations as Code platform
+  version: 1.0.0
+  
+paths:
+  /cli/operations/run:
+    post:
+      summary: Execute an operation
+      description: Run operation in specified environment with interactive prompts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - operation_name
+                - environment
+              properties:
+                operation_name:
+                  type: string
+                  description: Name of operation to execute
+                  example: "deploy-service-x"
+                environment:
+                  type: string
+                  description: Target environment
+                  example: "preprod"
+                mode:
+                  type: string
+                  enum: [automatic, manual, hybrid]
+                  default: automatic
+                  description: Execution mode
+                variables:
+                  type: object
+                  description: Override environment variables
+                  additionalProperties: true
+                resume_session:
+                  type: string
+                  description: Session ID to resume from checkpoint
+      responses:
+        '200':
+          description: Operation executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResult'
+        '400':
+          description: Invalid operation or environment
+        '409':
+          description: Operation already running
+        '422':
+          description: Validation failed
+
+  /cli/operations/validate:
+    post:
+      summary: Validate operation definition
+      description: Check operation YAML for syntax and logic errors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - operation_path
+              properties:
+                operation_path:
+                  type: string
+                  description: Path to operation YAML file
+                  example: "./operations/deploy.yaml"
+                strict:
+                  type: boolean
+                  default: false
+                  description: Enable strict validation mode
+      responses:
+        '200':
+          description: Validation passed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResult'
+        '422':
+          description: Validation failed
+
+  /cli/documentation/generate:
+    post:
+      summary: Generate operation documentation
+      description: Create Confluence-compatible operation manual
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - operation_name
+              properties:
+                operation_name:
+                  type: string
+                  description: Operation to document
+                format:
+                  type: string
+                  enum: [confluence, markdown, html]
+                  default: confluence
+                include_evidence:
+                  type: boolean
+                  default: true
+                  description: Include execution evidence
+                template:
+                  type: string
+                  description: Documentation template to use
+      responses:
+        '200':
+          description: Documentation generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentationResult'
+
+  /cli/chat/start:
+    post:
+      summary: Start interactive AI chat session
+      description: Begin AI-assisted operation guidance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                context:
+                  type: string
+                  description: Operation context for AI assistance
+                operation_id:
+                  type: string
+                  description: Current operation being executed
+                step_index:
+                  type: integer
+                  description: Current step number for contextual help
+      responses:
+        '200':
+          description: Chat session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatSession'
+
+  /cli/qrh/search:
+    get:
+      summary: Search Quick Reference Handbook
+      description: Find emergency procedures by keyword or alert pattern
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search term (error code, service name, alert)
+          example: "database connection failed"
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [P0, P1, P2, P3]
+          description: Filter by incident priority
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [incident, alert, maintenance, emergency]
+          description: Filter by procedure category
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QRHEntry'
+                  total:
+                    type: integer
+                  query_time_ms:
+                    type: integer
+
+components:
+  schemas:
+    ExecutionResult:
+      type: object
+      required:
+        - session_id
+        - status
+        - started_at
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: Unique session identifier
+        status:
+          type: string
+          enum: [running, completed, failed, paused]
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        current_step:
+          type: integer
+          description: Current step index
+        total_steps:
+          type: integer
+        evidence_items:
+          type: integer
+          description: Number of evidence items collected
+        retry_count:
+          type: integer
+        error_message:
+          type: string
+          description: Error details if status is failed
+
+    ValidationResult:
+      type: object
+      required:
+        - valid
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+              severity:
+                type: string
+                enum: [error, warning, info]
+        warnings:
+          type: array
+          items:
+            type: string
+        suggestions:
+          type: array
+          items:
+            type: string
+            description: Improvement recommendations
+
+    DocumentationResult:
+      type: object
+      required:
+        - generated
+        - format
+      properties:
+        generated:
+          type: boolean
+        format:
+          type: string
+        output_path:
+          type: string
+          description: Local file path to generated documentation
+        confluence_url:
+          type: string
+          description: Published Confluence page URL
+        size_bytes:
+          type: integer
+        includes_evidence:
+          type: boolean
+
+    ChatSession:
+      type: object
+      required:
+        - session_id
+        - status
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, ended]
+        context:
+          type: string
+        welcome_message:
+          type: string
+        available_commands:
+          type: array
+          items:
+            type: string
+
+    QRHEntry:
+      type: object
+      required:
+        - id
+        - title
+        - category
+        - priority
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        category:
+          type: string
+          enum: [incident, alert, maintenance, emergency]
+        priority:
+          type: string
+          enum: [P0, P1, P2, P3]
+        keywords:
+          type: array
+          items:
+            type: string
+        procedure_steps:
+          type: integer
+          description: Number of steps in procedure
+        last_updated:
+          type: string
+          format: date-time
+        author:
+          type: string
+        estimated_duration:
+          type: string
+          description: Expected completion time
+          example: "5-10 minutes"
