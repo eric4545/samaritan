@@ -35,7 +35,7 @@
 ## User Scenarios & Testing
 
 ### Primary User Story
-As an SRE engineer, I need an interactive AI-powered tool that eliminates repetitive manual work in operations by defining procedures once in YAML format that can be executed across multiple environments (preprod/production) while automatically collecting evidence (screenshots, logs) and generating comprehensive documentation with safety through approval gates and rollback mechanisms.
+As an SRE engineer, I need an interactive AI-powered Operations as Code platform that eliminates repetitive manual work by defining procedures once in Git-versioned YAML format, executing them across multiple environments with complete audit trails, automatic evidence collection, and integrated approval workflows that work with existing tools like Jira for manager approvals.
 
 ### Acceptance Scenarios
 1. **Given** a complex deployment operation, **When** I define it once in YAML with environment variables, **Then** I can execute it in both preprod and production with different values
@@ -48,6 +48,13 @@ As an SRE engineer, I need an interactive AI-powered tool that eliminates repeti
 8. **Given** a manual step requiring evidence, **When** I complete the action, **Then** I can attach screenshots or the system automatically captures relevant evidence
 9. **Given** an interactive chat session, **When** I ask questions about the operation, **Then** the AI assistant provides contextual help and guidance
 10. **Given** evidence collection during execution, **When** the operation completes, **Then** all evidence is automatically organized and included in documentation
+11. **Given** an interrupted operation session, **When** I restart SAMARITAN, **Then** I can resume from the exact step where I left off
+12. **Given** a failed step with retry capability, **When** I choose to retry, **Then** the system captures the failure reason, my retry decision rationale, and maintains complete retry history for audit purposes
+13. **Given** a completed operation, **When** I request a release report, **Then** the system generates a comprehensive summary with timeline, evidence, and approvals
+14. **Given** an on-call emergency situation, **When** I access the QRH mode, **Then** I can quickly find and execute pre-defined emergency procedures
+15. **Given** a PagerDuty alert, **When** I search the QRH, **Then** I get relevant runbooks and quick response procedures
+16. **Given** an operation requiring manager approval, **When** I reach an approval gate, **Then** the system creates a Jira ticket with operation details and waits for manager approval
+17. **Given** Operations as Code in Git, **When** I modify operation definitions, **Then** the system tracks versions, enables peer review, and maintains change history
 
 ### Edge Cases
 - What happens when automated commands fail or timeout?
@@ -58,6 +65,10 @@ As an SRE engineer, I need an interactive AI-powered tool that eliminates repeti
 - How does the system handle corrupted or missing evidence files?
 - What happens when automatic screenshot capture fails?
 - How does the AI assistant handle ambiguous or unclear user questions?
+- What happens when session data becomes corrupted or lost?
+- How does the system handle concurrent sessions for the same operation?
+- What occurs when Confluence page history reaches limits?
+- How are emergency QRH procedures prioritized and organized?
 
 ## Requirements
 
@@ -91,6 +102,20 @@ As an SRE engineer, I need an interactive AI-powered tool that eliminates repeti
 - **FR-027**: AI assistant MUST provide contextual help based on current operation step
 - **FR-028**: System MUST support evidence correction and re-upload capabilities
 - **FR-029**: System MUST include all collected evidence in generated documentation
+- **FR-030**: System MUST maintain persistent session state with resume capability from any step
+- **FR-031**: System MUST capture retry history including failure reasons, retry rationale, and complete audit trail
+- **FR-032**: System MUST generate comprehensive release reports post-execution
+- **FR-033**: System MUST provide Quick Reference Handbook (QRH) mode for emergency procedures
+- **FR-034**: System MUST integrate with PagerDuty alerts for automatic runbook suggestions
+- **FR-035**: System MUST support hybrid session storage (local + Confluence page history)
+- **FR-036**: System MUST create Confluence page versions as session checkpoints
+- **FR-037**: QRH MUST support rapid lookup by error codes, service names, or alert types
+- **FR-038**: System MUST track session metadata (start time, current step, retry counts, participants)
+- **FR-039**: System MUST implement Operations as Code with Git-based version control for all operation definitions
+- **FR-040**: System MUST integrate with Jira for approval workflow creation and tracking
+- **FR-041**: System MUST support Git-based peer review process for operation changes
+- **FR-042**: System MUST maintain operation definition history and enable rollback to previous versions
+- **FR-043**: System MUST store approval decisions and rationale in both Jira and internal audit logs
 
 ### Key Entities
 - **Operation**: Represents a complete procedure with name, environments, variables, and ordered steps
@@ -105,6 +130,16 @@ As an SRE engineer, I need an interactive AI-powered tool that eliminates repeti
 - **Evidence Item**: Digital proof of step completion (screenshot, log file, command output, photo)
 - **AI Assistant**: Interactive chat interface providing contextual guidance during operations
 - **Evidence Validator**: Component that checks evidence completeness and quality automatically
+- **Operation Session**: Persistent state of operation execution including current step, retries, and evidence
+- **Release Report**: Comprehensive post-execution summary with timeline, evidence, approvals, and metrics
+- **Quick Reference Handbook (QRH)**: Emergency procedure lookup system for on-call scenarios
+- **Session Checkpoint**: Confluence page version representing a saved state of operation progress
+- **Emergency Runbook**: Pre-defined QRH procedure for handling specific alerts or incidents
+- **Session Metadata**: Tracking data including timestamps, participants, retry counts, and execution context
+- **Operations as Code Repository**: Git-based storage for versioned operation definitions with change tracking
+- **Retry History**: Complete audit trail of failure reasons, retry decisions, and operator rationale
+- **Approval Workflow**: Jira-integrated process for manager authorization with decision tracking
+- **Operation Version**: Git-managed revision of operation definitions with peer review capabilities
 
 ---
 
