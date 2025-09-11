@@ -32,7 +32,7 @@
 SAMARITAN is an interactive AI-powered Operations as Code platform for SRE teams that eliminates repetitive manual work by defining procedures once in Git-versioned YAML format. It executes operations across multiple environments with complete audit trails, automatic evidence collection, integrated approval workflows (Jira), and supports both automated and manual execution modes with real-time AI assistance.
 
 ## Technical Context
-**Language/Version**: Node.js 18+ (for npx and npm -g compatibility)  
+**Language/Version**: Node.js 24+ (latest LTS with enhanced performance and native TypeScript support)  
 **Primary Dependencies**: Commander.js (CLI), yaml (parsing), inquirer (interactive prompts), chalk (terminal colors)  
 **Storage**: Hybrid approach - local files + Git repos + Confluence API integration  
 **Testing**: Jest for unit tests, integration tests with real Git/Confluence APIs  
@@ -179,6 +179,84 @@ ios/ or android/
    - Output to repository root
 
 **Output**: data-model.md, /contracts/*, failing tests, quickstart.md, agent-specific file
+
+## SAMARITAN Architecture Flow
+
+```mermaid
+flowchart TD
+    A[User] --> B[CLI Entry Point]
+    B --> C{Command Type}
+    
+    C -->|run| D[Operation Parser]
+    C -->|validate| E[YAML Validator]
+    C -->|generate| F[Documentation Generator]
+    C -->|chat| G[AI Assistant]
+    C -->|qrh| H[Quick Reference Handler]
+    
+    D --> I[Environment Matrix]
+    I --> J[Step Executor]
+    J --> K{Step Type}
+    
+    K -->|automatic| L[Command Runner]
+    K -->|manual| M[Interactive Prompt]
+    K -->|approval| N[Jira Integration]
+    
+    L --> O[Evidence Collector]
+    M --> O
+    N --> P{Approved?}
+    P -->|yes| O
+    P -->|no| Q[Operation Cancelled]
+    
+    O --> R[Session Storage]
+    R --> S{More Steps?}
+    S -->|yes| J
+    S -->|no| T[Generate Report]
+    
+    T --> U[Confluence Publisher]
+    
+    V[Git Repository] --> D
+    W[Marketplace] --> D
+    X[QRH Database] --> H
+    Y[AI APIs] --> G
+```
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant Parser
+    participant Executor
+    participant Evidence
+    participant Jira
+    participant Confluence
+    
+    User->>CLI: samaritan run deploy-webapp --env prod
+    CLI->>Parser: Load operation definition
+    Parser->>Executor: Parsed operation + environment
+    
+    loop For each step
+        Executor->>Executor: Check step type
+        
+        alt Automatic Step
+            Executor->>Executor: Execute command
+            Executor->>Evidence: Capture output/logs
+        else Manual Step
+            Executor->>User: Display instructions
+            User->>Evidence: Upload screenshot/files
+        else Approval Step
+            Executor->>Jira: Create approval ticket
+            Jira->>User: Notify manager
+            User->>Jira: Approve/Reject
+            Jira->>Executor: Approval result
+        end
+        
+        Executor->>Executor: Update session state
+    end
+    
+    Executor->>Confluence: Generate operation manual
+    Confluence->>User: Documentation URL
+    CLI->>User: Operation completed successfully
+```
 
 ## Phase 2: Task Planning Approach
 *This section describes what the /tasks command will do - DO NOT execute during /plan*

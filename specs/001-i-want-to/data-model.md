@@ -14,15 +14,21 @@ interface Operation {
   name: string;                  // Human-readable identifier
   version: string;               // Semantic version (MAJOR.MINOR.BUILD)
   description: string;           // Brief description of operation purpose
+  author?: string;               // Operation creator
+  category?: string;             // Operation category (deploy, backup, incident, maintenance)
+  tags?: string[];               // Searchable tags
+  emergency?: boolean;           // Emergency operation flag (skips normal approvals)
   environments: Environment[];   // Supported environments (preprod, prod, etc.)
   variables: VariableMatrix;     // Environment-specific variable definitions
   steps: Step[];                 // Ordered execution steps
   preflight: PreflightCheck[];   // Prerequisites validation
-  rollback: RollbackPlan;        // Failure recovery procedures
+  rollback?: RollbackPlan;       // Failure recovery procedures
   metadata: OperationMetadata;   // Git history, author, timestamps
-  dependencies: string[];        // Required operation IDs or modules
+  needs?: string[];              // Required operation IDs (dependencies)
   uses?: string;                 // Reference to marketplace operation
+  with?: Record<string, any>;    // Parameters for marketplace operation
   matrix?: MatrixConfig;         // Multi-environment execution config
+  reporting?: ReportingConfig;   // Post-execution reporting configuration
 }
 ```
 
@@ -42,19 +48,26 @@ interface Operation {
 
 ```typescript
 interface Step {
-  id: string;                    // Step identifier within operation
+  id?: string;                   // Optional step identifier within operation
   name: string;                  // Human-readable step name  
   type: 'automatic' | 'manual' | 'approval' | 'conditional';
-  description: string;           // Detailed step description
+  description?: string;          // Detailed step description
+  if?: string;                   // Conditional execution expression (GitHub Actions style)
   command?: string;              // Automated command (for automatic steps)
   instruction?: string;          // Human instructions (for manual steps)
-  condition?: string;            // Execution condition (for conditional steps)
   timeout?: number;              // Step timeout in seconds
-  retryable: boolean;           // Whether step can be retried
-  evidence_required: boolean;    // Whether evidence collection is mandatory
+  env?: Record<string, any>;     // Step-specific environment variables
+  with?: Record<string, any>;    // Step parameters
+  evidence_required?: boolean;   // Whether evidence collection is mandatory
+  evidence_types?: EvidenceType[]; // Types of evidence to collect
+  validation?: StepValidation;   // Expected outcomes validation
+  continue_on_error?: boolean;   // Don't fail operation on step failure
+  retry?: RetryConfig;           // Retry configuration
   rollback?: RollbackStep;       // Step-specific rollback procedure
-  depends_on?: string[];         // Prerequisite step IDs
+  needs?: string[];              // Prerequisite step IDs (within same operation)
   manual_override?: boolean;     // Can be executed manually if automation fails
+  manual_instructions?: string;  // Instructions for manual execution
+  approval?: ApprovalConfig;     // Approval workflow configuration
 }
 ```
 
@@ -171,6 +184,95 @@ interface MarketplaceOperation {
 ```typescript
 interface VariableMatrix {
   [environment: string]: Record<string, any>;
+}
+```
+
+### Matrix Configuration
+```typescript
+interface MatrixConfig {
+  [key: string]: any[];        // Matrix variables and their values
+  include?: Array<Record<string, any>>; // Specific combinations to include
+  exclude?: Array<Record<string, any>>; // Specific combinations to exclude
+}
+```
+
+### Step Validation
+```typescript
+interface StepValidation {
+  expect?: string;             // Expected output/result
+  contains?: string;           // Output should contain this text
+  exit_code?: number;          // Expected exit code
+  not_contains?: string;       // Output should not contain this text
+}
+```
+
+### Retry Configuration
+```typescript
+interface RetryConfig {
+  attempts: number;            // Maximum retry attempts
+  delay?: number;              // Delay between retries in seconds
+  backoff?: 'linear' | 'exponential'; // Backoff strategy
+  on_failure_only?: boolean;   // Only retry on failure (not timeout)
+}
+```
+
+### Approval Configuration
+```typescript
+interface ApprovalConfig {
+  required: boolean;
+  approvers?: string[];        // User/group identifiers
+  jira?: {
+    project: string;
+    issue_type: string;
+    priority: 'Low' | 'Medium' | 'High' | 'Critical';
+  };
+  timeout?: string;            // Approval timeout (e.g., "24h", "2d")
+  auto_approve_on_success?: boolean; // Auto-approve if previous steps succeeded
+}
+```
+
+### Reporting Configuration
+```typescript
+interface ReportingConfig {
+  confluence?: {
+    space: string;
+    parent_page?: string;
+    template?: string;
+  };
+  notifications?: {
+    slack?: {
+      channel: string;
+      on_success?: string;
+      on_failure?: string;
+    };
+    email?: {
+      recipients: string[];
+      template?: string;
+    };
+  };
+  evidence?: {
+    retention_days?: number;
+    auto_archive?: boolean;
+    include_sensitive?: boolean;
+  };
+}
+```
+
+### Evidence Type Enum
+```typescript
+type EvidenceType = 'screenshot' | 'log' | 'command_output' | 'file' | 'photo' | 'video';
+```
+
+### Preflight Check
+```typescript
+interface PreflightCheck {
+  name: string;
+  type: 'command' | 'check' | 'manual';
+  command?: string;            // Command to execute
+  condition?: string;          // Expected result/condition
+  description: string;         // Human-readable description
+  timeout?: number;            // Check timeout in seconds
+  evidence_required?: boolean; // Require evidence for manual checks
 }
 ```
 
