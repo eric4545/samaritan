@@ -4,26 +4,22 @@
 
 ---
 
-## Phase 1: Proof of Concept (MVP)
-*Goal: A simple CLI tool to convert a GitHub Actions YAML file into a Markdown manual.*
+## Phase 1: PoC & Project Foundation
+*Goal: A simple CLI tool to convert a GitHub Actions YAML file into a Markdown manual, built on the final project structure.*
 
-- [ ] **T001** Create a sample GitHub Actions YAML file in `specs/001-i-want-to/poc/example-deployment.yaml` that defines a simple deployment process.
-- [ ] **T002** [P] Create a basic Node.js script in `src/poc/generate-manual.ts` that reads the YAML file. Use the `js-yaml` library.
-- [ ] **T003** [P] Implement the logic in `src/poc/generate-manual.ts` to parse the YAML and convert it into a structured Markdown string.
-- [ ] **T004** Implement a new CLI command `samaritan poc:generate-manual` in `src/cli/commands/poc.ts` that calls the generation script.
-- [ ] **T005** Write a simple test in `tests/poc/generation.test.ts` that runs the command and verifies the output Markdown is created and contains expected content.
+- [ ] **T001** Initialize Node.js project and install core dependencies (`commander`, `js-yaml`, `typescript`, `@types/node`) into `package.json`.
+- [ ] **T002** Configure TypeScript (`tsconfig.json`) for a modern Node.js project (ESM, strict mode).
+- [ ] **T003** [P] Configure BiomeJS for code quality and consistent formatting.
+- [ ] **T004** [P] Set up the Node.js native test runner.
+- [ ] **T005** Create a sample GitHub Actions YAML file in `specs/001-i-want-to/poc/example-deployment.yaml` that defines a simple deployment process.
+- [ ] **T006** [P] Create a basic Node.js script in `src/poc/generate-manual.ts` that reads the YAML file. Use the `js-yaml` library.
+- [ ] **T007** [P] Implement the logic in `src/poc/generate-manual.ts` to parse the YAML and convert it into a structured Markdown string.
+- [ ] **T008** Implement a new CLI command `samaritan poc:generate-manual` in `src/cli/commands/poc.ts` that calls the generation script.
+- [ ] **T009** Write a simple test in `tests/poc/generation.test.ts` that runs the command and verifies the output Markdown is created and contains expected content.
 
 ---
 
-## Phase 2: Full Product Foundation
-*These tasks establish the project structure and dependencies for the complete SAMARITAN tool.*
-
-- [ ] **T006** Initialize Node.js project and install dependencies from `research.md` into `package.json`.
-- [ ] **T007** Configure TypeScript (`tsconfig.json`) for a modern Node.js project (ESM, strict mode).
-- [ ] **T008** [P] Configure BiomeJS for code quality and consistent formatting.
-- [ ] **T009** [P] Set up the Node.js native test runner in `tests/`.
-
-## Phase 3: Full Product Tests (TDD)
+## Phase 2: Full Product Tests (TDD)
 *CRITICAL: These tests MUST be written and MUST FAIL before ANY implementation for the full product.*
 
 - [ ] **T010** [P] Write failing contract tests for the CLI interface in `tests/contract/cli-interface.test.ts` based on `contracts/cli-interface.yaml`.
@@ -32,7 +28,7 @@
 - [ ] **T013** [P] Write failing integration test for the `validate` and `run` operation flow in `tests/integration/validate-run.test.ts` based on `quickstart.md`.
 - [ ] **T014** [P] Write failing integration test for the `generate docs` and `qrh search` flows in `tests/integration/generate-qrh.test.ts` based on `quickstart.md`.
 
-## Phase 4: Full Product Core Implementation
+## Phase 3: Full Product Core Implementation
 *Based on `data-model.md`. These can be developed in parallel.*
 
 - [ ] **T015** [P] Implement `Operation`, `Step`, and `Environment` models in `src/models/operation.ts`.
@@ -56,7 +52,7 @@
 - [ ] **T033** [P] Implement the `qrh` command in `src/cli/commands/qrh.ts`.
 - [ ] **T034** Implement the `run` and `resume` commands in `src/cli/commands/run.ts`, integrating the `executor` library.
 
-## Phase 5: Polish & Finalization
+## Phase 4: Polish & Finalization
 
 - [ ] **T035** [P] Write comprehensive unit tests for all libraries and services in `tests/unit/`.
 - [ ] **T036** [P] Add JSDoc/TSDoc documentation to all public functions, classes, and models.
