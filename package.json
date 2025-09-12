@@ -1,0 +1,34 @@
+{
+  "name": "samaritan",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "samaritan": "./node_modules/tsx/dist/cli.mjs src/cli/index.ts"
+  },
+  "scripts": {
+    "test": "tsx --test tests/**/*.test.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eric4545/samaritan.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/eric4545/samaritan/issues"
+  },
+  "homepage": "https://github.com/eric4545/samaritan#readme",
+  "description": "",
+  "dependencies": {
+    "commander": "^14.0.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.4",
+    "@types/node": "^24.3.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

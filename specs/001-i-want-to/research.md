@@ -361,41 +361,51 @@ Every automated step must be convertible to detailed manual instructions:
   evidence: screenshot
 ```
 
-#### Generated Manual Instructions
+#### Generated Manual Example
 ```markdown
-### Manual Step: Scale Deployment
+# Manual for: Deploy Web Server (v1.1.0)
 
-**Automated Command**: `kubectl scale deployment webapp --replicas=5`
+_Deploys the main web server application._
 
-**Manual Procedure**:
+## Environments Overview
 
-1. **Check current deployment status**:
-   ```bash
-   kubectl get deployment webapp -o wide
-   ```
-   Note current replica count and ready status.
+| Environment | Variables | Approval Required |
+|-------------|-----------|-------------------|
+| staging     | REPLICAS: 2 | No |
+| production  | REPLICAS: 5 | Yes |
 
-2. **Scale the deployment**:
-   ```bash
-   kubectl scale deployment webapp --replicas=5
-   ```
+## Pre-flight Checklist
 
-3. **Monitor scaling progress**:
-   ```bash
-   kubectl rollout status deployment/webapp --timeout=300s
-   ```
-   Wait for "deployment 'webapp' successfully rolled out".
+- **Check Git status:** Ensure no uncommitted changes exist.
+  ```bash
+  git status --porcelain
+  ```
 
-4. **Verify final state**:
-   ```bash
-   kubectl get pods -l app=webapp
-   ```
-   Confirm 5 pods are in "Running" state.
+## Operation Steps
 
-**Evidence Required**: Screenshot of step 4 showing all pods running
-**Estimated Time**: 2-5 minutes
-**Rollback**: `kubectl scale deployment webapp --replicas=[ORIGINAL_COUNT]`
+### Step 1: Build Docker Image (automatic)
+Build the application's Docker image.
+
+**Command:** `docker build -t web-server:latest .`
+
+### Step 4: Scale Deployment (automatic)  
+Scale the Kubernetes deployment to the specified replica count.
+
+**Commands by environment:**
+- **staging**: `kubectl scale deployment web-server --replicas=2`
+- **production**: `kubectl scale deployment web-server --replicas=5`
+
+### Step 5: Manual Verification (manual)
+Manually verify deployment health.
+
+**Command:** `curl https://web-server.example.com/health`
 ```
+
+**Key Design Principles:**
+- **Single Document**: One manual covers all environments
+- **KISS Format**: Simple bullet lists instead of complex tables  
+- **Environment Differences**: Only shown when variables exist
+- **Clear Command Visibility**: Shows exactly what automation executes
 
 ### Five Core Conversion Examples
 
