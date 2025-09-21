@@ -21,8 +21,14 @@ export function generateManual(operation: Operation): string {
     markdown += '| Environment | Description | Variables | Targets | Approval Required |\n';
     markdown += '| ----------- | ----------- | --------- | ------- | ----------------- |\n';
     operation.environments.forEach(env => {
-      const vars = env.variables ? Object.keys(env.variables).map(key => `${key}: ${JSON.stringify(env.variables[key])}`).join(', ') : '';
-      const targets = env.targets ? env.targets.join(', ') : '';
+      // Format variables with line breaks for better readability
+      const vars = env.variables ? Object.keys(env.variables)
+        .map(key => `${key}: ${JSON.stringify(env.variables[key])}`)
+        .join('<br>') : '';
+      
+      // Format targets with line breaks
+      const targets = env.targets ? env.targets.join('<br>') : '';
+      
       const approval = env.approval_required === true ? 'Yes' : 'No';
       markdown += `| ${env.name} | ${env.description || ''} | ${vars} | ${targets} | ${approval} |\n`;
     });
@@ -40,33 +46,46 @@ export function generateManual(operation: Operation): string {
     });
   }
 
-  // Operation Steps
+  // Operation Steps Table
   if (operation.steps && operation.steps.length > 0) {
     markdown += '## Operation Steps\n\n';
+    
+    // Build table header
+    markdown += '| Step |';
+    operation.environments.forEach(env => {
+      markdown += ` ${env.name} |`;
+    });
+    markdown += '\n';
+    
+    // Build table separator
+    markdown += '|------|';
+    operation.environments.forEach(() => {
+      markdown += '---------|';
+    });
+    markdown += '\n';
+    
+    // Build table rows
     operation.steps.forEach((step, index) => {
       const typeIcon = step.type === 'automatic' ? '⚙️' : 
                        step.type === 'manual' ? '👤' : '✋';
-      markdown += `### Step ${index + 1}: ${step.name} ${typeIcon}\n`;
+      
+      // First column: Step name, icon, and description
+      let stepCell = `Step ${index + 1}: ${step.name} ${typeIcon}`;
       if (step.description) {
-        markdown += `${step.description}\n\n`;
+        stepCell += `<br>${step.description}`;
       }
-
-      // Check if this step has variables that differ across environments
-      const hasVariables = step.command.includes('${');
-      if (hasVariables && operation.environments && operation.environments.length > 1) {
-        markdown += '**Commands by environment:**\n';
-        operation.environments.forEach(env => {
-          const substitutedCommand = substituteVariables(step.command, env.variables || {});
-          markdown += `- **${env.name}**: \`${substitutedCommand}\`\n`;
-        });
-        markdown += '\n';
-      } else {
-        // Single command (no environment differences)
-        const sampleEnv = operation.environments?.[0] || { variables: {} };
-        const substitutedCommand = substituteVariables(step.command, sampleEnv.variables || {});
-        markdown += `**Command:** \`${substitutedCommand}\`\n\n`;
-      }
+      
+      markdown += `| ${stepCell} |`;
+      
+      // Subsequent columns: Commands for each environment
+      operation.environments.forEach(env => {
+        const substitutedCommand = substituteVariables(step.command || '', env.variables || {});
+        markdown += ` \`${substitutedCommand}\` |`;
+      });
+      
+      markdown += '\n';
     });
+    markdown += '\n';
   }
 
   return markdown;

@@ -21,6 +21,7 @@
 - [x] **T006** Define the basic data models for `Operation`, `Step`, and `PreflightCheck` in `src/models/operation.ts`.
 - [x] **T007** Implement an `operation-parser` service in `src/operations/parser.ts` that reads and validates the SAMARITAN Operation YAML against the data models.
 - [x] **T008** Implement a `manual-generator` service in `src/manuals/generator.ts`. This service will take a parsed `Operation` object and convert it into a detailed Markdown string, correctly formatting the preflight checklist and steps.
+- [ ] **T008.1** (Bug Fix) Fix a bug in the manual generator where a `null` or empty `step.description` results in `undefined` being rendered in the output.
 - [x] **T009** Update the `generate:manual` CLI command in `src/cli/commands/manuals.ts` to use the new parser and generator services.
 - [x] **T010** Update the test in `tests/manuals/generator.test.ts` to use the new `examples/deployment.yaml` input and verify that the generated Markdown correctly includes the preflight checklist and formatted steps.
 
@@ -66,3 +67,4 @@
 - [ ] **T038** Run all contract and integration tests and ensure they pass.
 - [ ] **T039** Create the project `README.md` with setup and usage instructions based on `quickstart.md`.
 - [ ] **T040** Manually execute all scenarios from `quickstart.md` to ensure the final product is working as expected.
+tentially implement alternative documentation output formats like mkdocs or AsciiDoc.

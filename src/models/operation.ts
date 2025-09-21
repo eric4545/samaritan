@@ -1,34 +1,158 @@
+// Supporting Types and Enums
+export type EvidenceType = 'screenshot' | 'log' | 'command_output' | 'file' | 'photo' | 'video';
+export type SessionStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type ExecutionMode = 'automatic' | 'manual' | 'hybrid';
+export type StepType = 'automatic' | 'manual' | 'approval' | 'conditional';
+export type Priority = 'P0' | 'P1' | 'P2' | 'P3';
+export type QRHCategory = 'incident' | 'alert' | 'maintenance' | 'emergency';
+
+// Configuration Interfaces
+export interface RetryConfig {
+  attempts: number;
+  delay?: number;
+  backoff?: 'linear' | 'exponential';
+  on_failure_only?: boolean;
+}
+
+export interface ApprovalConfig {
+  required: boolean;
+  approvers?: string[];
+  jira?: {
+    project: string;
+    issue_type: string;
+    priority: 'Low' | 'Medium' | 'High' | 'Critical';
+  };
+  timeout?: string;
+  auto_approve_on_success?: boolean;
+}
+
+export interface StepValidation {
+  expect?: string;
+  contains?: string;
+  exit_code?: number;
+  not_contains?: string;
+}
+
+export interface MatrixConfig {
+  [key: string]: any[];
+  include?: Array<Record<string, any>>;
+  exclude?: Array<Record<string, any>>;
+}
+
+export interface ReportingConfig {
+  confluence?: {
+    space: string;
+    parent_page?: string;
+    template?: string;
+  };
+  notifications?: {
+    slack?: {
+      channel: string;
+      on_success?: string;
+      on_failure?: string;
+    };
+    email?: {
+      recipients: string[];
+      template?: string;
+    };
+  };
+  evidence?: {
+    retention_days?: number;
+    auto_archive?: boolean;
+    include_sensitive?: boolean;
+  };
+}
+
+// Core Entity Interfaces
 export interface PreflightCheck {
   name: string;
-  description?: string;
-  command: string;
+  type: 'command' | 'check' | 'manual';
+  command?: string;
+  condition?: string;
+  description: string;
+  timeout?: number;
+  evidence_required?: boolean;
+  // Legacy fields for backward compatibility
   expect_empty?: boolean;
 }
 
+export interface RollbackStep {
+  command?: string;
+  instruction?: string;
+  timeout?: number;
+  evidence_required?: boolean;
+}
+
+export interface RollbackPlan {
+  steps: RollbackStep[];
+  automatic?: boolean;
+  conditions?: string[];
+}
+
 export interface Step {
+  id?: string;
   name: string;
-  type: 'automatic' | 'manual' | 'approval';
+  type: StepType;
   description?: string;
-  command: string;
+  if?: string;
+  command?: string;
+  instruction?: string;
+  timeout?: number;
+  env?: Record<string, any>;
+  with?: Record<string, any>;
+  evidence_required?: boolean;
+  evidence_types?: EvidenceType[];
+  validation?: StepValidation;
+  continue_on_error?: boolean;
+  retry?: RetryConfig;
+  rollback?: RollbackStep;
+  needs?: string[];
+  manual_override?: boolean;
+  manual_instructions?: string;
+  approval?: ApprovalConfig;
 }
 
 export interface Environment {
   name: string;
-  description?: string;
-  variables?: Record<string, any>;
-  approval_required?: boolean;
-  validation_required?: boolean;
-  targets?: string[]; // Moved targets here
+  description: string;
+  variables: Record<string, any>;
+  restrictions: string[];
+  approval_required: boolean;
+  validation_required: boolean;
+  targets?: string[];
 }
 
-// MatrixConfig removed
+export interface VariableMatrix {
+  [environment: string]: Record<string, any>;
+}
+
+export interface OperationMetadata {
+  git_hash?: string;
+  git_branch?: string;
+  created_at: Date;
+  updated_at: Date;
+  last_executed?: Date;
+  execution_count?: number;
+}
 
 export interface Operation {
+  id: string;
   name: string;
   version: string;
   description: string;
-  environments?: Environment[];
-  // targets removed from here
-  preflight: PreflightCheck[];
+  author?: string;
+  category?: string;
+  tags?: string[];
+  emergency?: boolean;
+  environments: Environment[];
+  variables: VariableMatrix;
   steps: Step[];
+  preflight: PreflightCheck[];
+  rollback?: RollbackPlan;
+  metadata: OperationMetadata;
+  needs?: string[];
+  uses?: string;
+  with?: Record<string, any>;
+  matrix?: MatrixConfig;
+  reporting?: ReportingConfig;
 }

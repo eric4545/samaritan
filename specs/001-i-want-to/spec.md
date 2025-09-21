@@ -144,6 +144,10 @@ As an SRE engineer, I need an Operations as Code platform that eliminates repeti
 - **FR-057**: System MUST maintain operation continuity when switching between automatic and manual execution modes
 - **FR-058**: System MUST capture the same evidence whether steps are executed automatically or manually
 - **FR-059**: System MUST support hybrid execution where some steps are automated and others are manual by choice
+- **FR-060**: System MUST generate concise and readable operation manuals. This includes techniques like compressing repeated commands and clearly marking environment variables (e.g., using backticks).
+- **FR-061**: System SHOULD collect SLO/SLI/SLA metrics during operation execution, if configured.
+- **FR-062**: Generated operation manuals MUST include the generation date. The system SHOULD warn if the operation definition has been updated since the manual was last generated.
+- **FR-063**: System SHOULD be able to generate a Gantt chart schedule from the operation's steps to visualize the timeline.
 
 ### Key Entities
 - **Operation**: Represents a complete procedure with name, environments, variables, and ordered steps

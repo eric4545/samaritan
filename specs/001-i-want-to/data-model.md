@@ -56,15 +56,18 @@ interface Step {
   command?: string;              // Automated command (for automatic steps)
   instruction?: string;          // Human instructions (for manual steps)
   timeout?: number;              // Step timeout in seconds
+  estimated_duration?: number;   // Estimated duration for the step in seconds
   env?: Record<string, any>;     // Step-specific environment variables
   with?: Record<string, any>;    // Step parameters
   evidence_required?: boolean;   // Whether evidence collection is mandatory
   evidence_types?: EvidenceType[]; // Types of evidence to collect
   validation?: StepValidation;   // Expected outcomes validation
+  verify?: { command: string; }; // An explicit command to verify the step's outcome
   continue_on_error?: boolean;   // Don't fail operation on step failure
   retry?: RetryConfig;           // Retry configuration
   rollback?: RollbackStep;       // Step-specific rollback procedure
   needs?: string[];              // Prerequisite step IDs (within same operation)
+  sub_steps?: Step[];            // A list of sub-steps to group related actions
   manual_override?: boolean;     // Can be executed manually if automation fails
   manual_instructions?: string;  // Instructions for manual execution
   approval?: ApprovalConfig;     // Approval workflow configuration
