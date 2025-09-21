@@ -98,15 +98,18 @@ export interface Step {
   command?: string;
   instruction?: string;
   timeout?: number;
+  estimated_duration?: number;
   env?: Record<string, any>;
   with?: Record<string, any>;
   evidence_required?: boolean;
   evidence_types?: EvidenceType[];
   validation?: StepValidation;
+  verify?: { command: string; };
   continue_on_error?: boolean;
   retry?: RetryConfig;
   rollback?: RollbackStep;
   needs?: string[];
+  sub_steps?: Step[];
   manual_override?: boolean;
   manual_instructions?: string;
   approval?: ApprovalConfig;

@@ -21,7 +21,7 @@
 - [x] **T006** Define the basic data models for `Operation`, `Step`, and `PreflightCheck` in `src/models/operation.ts`.
 - [x] **T007** Implement an `operation-parser` service in `src/operations/parser.ts` that reads and validates the SAMARITAN Operation YAML against the data models.
 - [x] **T008** Implement a `manual-generator` service in `src/manuals/generator.ts`. This service will take a parsed `Operation` object and convert it into a detailed Markdown string, correctly formatting the preflight checklist and steps.
-- [ ] **T008.1** (Bug Fix) Fix a bug in the manual generator where a `null` or empty `step.description` results in `undefined` being rendered in the output.
+- [x] **T008.1** (Bug Fix) Fix a bug in the manual generator where a `null` or empty `step.description` results in `undefined` being rendered in the output.
 - [x] **T009** Update the `generate:manual` CLI command in `src/cli/commands/manuals.ts` to use the new parser and generator services.
 - [x] **T010** Update the test in `tests/manuals/generator.test.ts` to use the new `examples/deployment.yaml` input and verify that the generated Markdown correctly includes the preflight checklist and formatted steps.
 
@@ -39,15 +39,15 @@
 ## Phase 4: Full Product Core Implementation
 *Based on `data-model.md`. These can be developed in parallel.*
 
-- [ ] **T016** [P] Implement `Operation`, `Step`, and `Environment` models in `src/models/operation.ts` (expand on existing).
-- [ ] **T017** [P] Implement `EvidenceItem` and `EvidenceType` models in `src/models/evidence.ts`.
+- [x] **T016** [P] Implement `Operation`, `Step`, and `Environment` models in `src/models/operation.ts` (expand on existing).
+- [x] **T017** [P] Implement `EvidenceItem` and `EvidenceType` models in `src/models/evidence.ts`.
 - [ ] **T018** [P] Implement `OperationSession` and related state models (e.g., `SessionCheckpoint`) in `src/models/session.ts`.
 - [ ] **T019** [P] Implement `QRHEntry` model in `src/models/qrh.ts`.
 - [ ] **T020** [P] Implement supporting configuration models (`ApprovalConfig`, `RetryConfig`, etc.) in `src/models/configs.ts`.
-- [ ] **T021** [P] Implement the `operation-parser` library in `src/lib/operation-parser.ts` (expand on existing).
-- [ ] **T022** [P] Implement the `evidence-collector` library in `src/lib/evidence-collector.ts`.
-- [ ] **T023** [P] Implement the `ai-assistant` library in `src/lib/ai-assistant.ts`.
-- [ ] **T024** Create the skeleton for the `executor` library in `src/lib/executor.ts`.
+- [x] **T021** [P] Implement the `operation-parser` library in `src/operations/parser.ts` (enhanced existing implementation).
+- [x] **T022** [P] Implement the `evidence-collector` library in `src/evidence/collector.ts` and `src/evidence/validator.ts`.
+- [ ] **T023** [P] ~~Implement the `ai-assistant` library~~ (SKIPPED - per user request).
+- [x] **T024** Create the skeleton for the `executor` library in `src/lib/executor.ts`.
 - [ ] **T025** [P] Implement the Jira API client in `src/integrations/jira.ts`.
 - [ ] **T026** [P] Implement the Confluence API client in `src/integrations/confluence.ts`.
 - [ ] **T027** [P] Implement the Git API client in `src/integrations/git.ts`.

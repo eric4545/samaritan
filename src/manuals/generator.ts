@@ -71,7 +71,7 @@ export function generateManual(operation: Operation): string {
       
       // First column: Step name, icon, and description
       let stepCell = `Step ${index + 1}: ${step.name} ${typeIcon}`;
-      if (step.description) {
+      if (step.description && typeof step.description === 'string' && step.description.trim().length > 0) {
         stepCell += `<br>${step.description}`;
       }
       

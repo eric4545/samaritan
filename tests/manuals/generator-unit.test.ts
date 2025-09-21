@@ -187,4 +187,77 @@ describe('Manual Generator Unit Tests', () => {
     assert(!markdown.includes('## Pre-flight Checklist'), 'Should not include empty preflight section');
     assert(markdown.includes('## Operation Steps'), 'Should still include steps section');
   });
+
+  it('should handle null/empty step descriptions without rendering undefined (T008.1)', () => {
+    const operationWithEmptyDescriptions: Operation = {
+      id: 'test-empty-desc',
+      name: 'Empty Description Test',
+      version: '1.0.0',
+      description: 'Test for T008.1 bug fix',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production environment',
+          variables: { REPLICAS: 3 },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        }
+      ],
+      variables: { production: { REPLICAS: 3 } },
+      steps: [
+        {
+          name: 'Step with null description',
+          type: 'automatic',
+          description: null as any, // Explicitly null
+          command: 'echo "null description"'
+        },
+        {
+          name: 'Step with missing description',
+          type: 'manual',
+          // description is undefined (not provided)
+          command: 'echo "missing description"'
+        },
+        {
+          name: 'Step with empty string description',
+          type: 'automatic',
+          description: '', // Empty string
+          command: 'echo "empty description"'
+        },
+        {
+          name: 'Step with whitespace description',
+          type: 'manual', 
+          description: '   ', // Only whitespace
+          command: 'echo "whitespace description"'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(operationWithEmptyDescriptions);
+    
+    // Should not contain JavaScript literal "undefined" values
+    assert(!markdown.includes('<br>undefined'), 'Generated markdown should not contain "<br>undefined"');
+    assert(!markdown.includes('<br>null'), 'Generated markdown should not contain "<br>null"');
+    
+    // Should not render description when it's empty/null/undefined
+    assert(!markdown.includes('Step 1: Step with null description ⚙️<br>'), 'Should not add <br> for null description');
+    assert(!markdown.includes('Step 2: Step with missing description 👤<br>'), 'Should not add <br> for undefined description');
+    assert(!markdown.includes('Step 3: Step with empty string description ⚙️<br>'), 'Should not add <br> for empty description');
+    
+    // Should still include step names
+    assert(markdown.includes('Step with null description'), 'Should include step name');
+    assert(markdown.includes('Step with missing description'), 'Should include step name');
+    assert(markdown.includes('Step with empty string description'), 'Should include step name');
+    assert(markdown.includes('Step with whitespace description'), 'Should include step name');
+    
+    // Should have proper table structure
+    assert(markdown.includes('| Step | production |'), 'Should have table header');
+    assert(markdown.includes('Step 1: Step with null description ⚙️ |'), 'Should format step without description');
+  });
 });

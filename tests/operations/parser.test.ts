@@ -111,7 +111,7 @@ name: Invalid Operation
     try {
       assert.throws(() => {
         parseOperation(tempFile);
-      }, /missing required fields/);
+      }, /Operation validation failed/);
     } finally {
       fs.unlinkSync(tempFile);
     }
