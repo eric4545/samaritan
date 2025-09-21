@@ -41,22 +41,22 @@
 
 - [x] **T016** [P] Implement `Operation`, `Step`, and `Environment` models in `src/models/operation.ts` (expand on existing).
 - [x] **T017** [P] Implement `EvidenceItem` and `EvidenceType` models in `src/models/evidence.ts`.
-- [ ] **T018** [P] Implement `OperationSession` and related state models (e.g., `SessionCheckpoint`) in `src/models/session.ts`.
-- [ ] **T019** [P] Implement `QRHEntry` model in `src/models/qrh.ts`.
-- [ ] **T020** [P] Implement supporting configuration models (`ApprovalConfig`, `RetryConfig`, etc.) in `src/models/configs.ts`.
+- [x] **T018** [P] Implement `OperationSession` and related state models (e.g., `SessionCheckpoint`) in `src/models/session.ts`.
+- [x] **T019** [P] Implement `QRHEntry` model in `src/models/qrh.ts`.
+- [x] **T020** [P] Implement supporting configuration models (`ApprovalConfig`, `RetryConfig`, etc.) in `src/models/operation.ts`.
 - [x] **T021** [P] Implement the `operation-parser` library in `src/operations/parser.ts` (enhanced existing implementation).
 - [x] **T022** [P] Implement the `evidence-collector` library in `src/evidence/collector.ts` and `src/evidence/validator.ts`.
-- [ ] **T023** [P] ~~Implement the `ai-assistant` library~~ (SKIPPED - per user request).
+- [ ] **T023** [P][SKIP] Implement the `ai-assistant` library.
 - [x] **T024** Create the skeleton for the `executor` library in `src/lib/executor.ts`.
-- [ ] **T025** [P] Implement the Jira API client in `src/integrations/jira.ts`.
-- [ ] **T026** [P] Implement the Confluence API client in `src/integrations/confluence.ts`.
-- [ ] **T027** [P] Implement the Git API client in `src/integrations/git.ts`.
-- [ ] **T028** [P] Implement the PagerDuty API client in `src/integrations/pagerduty.ts`.
+- [ ] **T025** [P][SKIP] Implement the Jira API client in `src/integrations/jira.ts`.
+- [ ] **T026** [P][SKIP] Implement the Confluence API client in `src/integrations/confluence.ts`.
+- [ ] **T027** [P][SKIP] Implement the Git API client in `src/integrations/git.ts`.
+- [ ] **T028** [P][SKIP] Implement the PagerDuty API client in `src/integrations/pagerduty.ts`.
 - [ ] **T029** Implement the main CLI entrypoint and command router using Commander.js in `src/cli/index.ts` (expand on existing).
 - [ ] **T030** [P] Implement the `init` and `create` commands in `src/cli/commands/project.ts`.
 - [ ] **T031** [P] Implement the `validate` command in `src/cli/commands/validate.ts`.
 - [ ] **T032** [P] Implement the `generate` command in `src/cli/commands/generate.ts`.
-- [ ] **T033** [P] Implement the `chat` command in `src/cli/commands/chat.ts`.
+- [ ] **T033** [P][SKIP] Implement the `chat` command in `src/cli/commands/chat.ts`.
 - [ ] **T034** [P] Implement the `qrh` command in `src/cli/commands/qrh.ts`.
 - [ ] **T035** Implement the `run` and `resume` commands in `src/cli/commands/run.ts`, integrating the `executor` library.
 
