@@ -1,0 +1,275 @@
+name: Complex Multi-Service Deployment
+version: 2.1.0
+description: Deploy multiple services with dependencies, approvals, and rollback capabilities
+author: SRE Team
+category: deployment
+
+# This operation depends on other operations
+needs:
+  - "database-migration"
+  - "infrastructure-setup"
+
+# This operation extends a marketplace template
+uses: "microservice-deployment@3.1.0"
+with:
+  service_count: 3
+  health_check_timeout: 300
+  rollback_enabled: true
+
+environments:
+  - name: staging
+    description: Pre-production staging environment
+    variables:
+      CLUSTER: staging-k8s-cluster
+      NAMESPACE: staging
+      REPLICAS: 2
+      DB_HOST: staging-postgres.example.com
+      REDIS_HOST: staging-redis.example.com
+      API_ENDPOINT: https://api-staging.example.com
+      LOG_LEVEL: debug
+    targets:
+      - us-east-1-staging
+      - eu-west-1-staging
+    approval_required: false
+    validation_required: true
+    
+  - name: production
+    description: Live production environment - handle with care
+    variables:
+      CLUSTER: prod-k8s-cluster
+      NAMESPACE: production
+      REPLICAS: 10
+      DB_HOST: prod-postgres.example.com
+      REDIS_HOST: prod-redis.example.com
+      API_ENDPOINT: https://api.example.com
+      LOG_LEVEL: info
+    targets:
+      - us-east-1-prod
+      - eu-west-1-prod
+      - ap-southeast-1-prod
+    approval_required: true
+    validation_required: true
+    restrictions:
+      - "production-deployment-access"
+      - "senior-engineer-approval"
+
+preflight:
+  - name: Check Git Branch
+    type: command
+    command: git branch --show-current
+    description: Ensure we're on the main branch for production deployments
+    timeout: 10
+    
+  - name: Verify Docker Registry Access
+    type: command
+    command: docker pull hello-world
+    description: Test Docker registry connectivity
+    timeout: 30
+    
+  - name: Check Kubernetes Cluster Access
+    type: command
+    command: kubectl get nodes --context ${CLUSTER}
+    description: Verify cluster connectivity and permissions
+    timeout: 15
+
+steps:
+  - name: Build and Test Services
+    type: manual
+    description: Build Docker images for all microservices and run tests
+    instruction: |
+      Build all three services and run comprehensive tests:
+      1. Backend API service
+      2. Frontend web service  
+      3. Background worker service
+    estimated_duration: 900
+    evidence_required: true
+    evidence_types: ["command_output", "screenshot"]
+    
+    # Sub-steps for detailed breakdown
+    sub_steps:
+      - name: Build Backend API
+        type: automatic
+        command: docker build -t backend-api:${VERSION} ./backend
+        timeout: 300
+        evidence_required: true
+        
+      - name: Test Backend API
+        type: automatic
+        command: docker run --rm backend-api:${VERSION} npm test
+        timeout: 180
+        needs: ["Build Backend API"]
+        
+      - name: Build Frontend Web
+        type: automatic
+        command: docker build -t frontend-web:${VERSION} ./frontend
+        timeout: 300
+        evidence_required: true
+        
+      - name: Test Frontend Web
+        type: automatic
+        command: docker run --rm frontend-web:${VERSION} npm test
+        timeout: 120
+        needs: ["Build Frontend Web"]
+        
+      - name: Build Background Worker
+        type: automatic
+        command: docker build -t worker:${VERSION} ./worker
+        timeout: 180
+        evidence_required: true
+        
+      - name: Test Background Worker
+        type: automatic
+        command: docker run --rm worker:${VERSION} python -m pytest
+        timeout: 240
+        needs: ["Build Background Worker"]
+
+  - name: Push Images to Registry
+    type: automatic
+    description: Push all built images to the container registry
+    command: |
+      docker push backend-api:${VERSION}
+      docker push frontend-web:${VERSION}
+      docker push worker:${VERSION}
+    timeout: 600
+    estimated_duration: 300
+    evidence_required: true
+    evidence_types: ["command_output"]
+    needs: ["Build and Test Services"]
+    retry:
+      attempts: 3
+      delay: 30
+      backoff: exponential
+
+  - name: Database Migration Check
+    type: conditional
+    description: Check if database migrations are needed
+    if: "${ENVIRONMENT} == 'production'"
+    command: kubectl exec -n ${NAMESPACE} deployment/backend-api -- npm run db:check-migrations
+    timeout: 60
+    needs: ["Push Images to Registry"]
+
+  - name: Request Deployment Approval
+    type: approval
+    description: Get manager approval for production deployment
+    instruction: Create Jira ticket and get approval from engineering manager
+    estimated_duration: 1800
+    evidence_required: true
+    evidence_types: ["screenshot"]
+    approval:
+      required: true
+      approvers: ["engineering-manager", "sre-lead"]
+      jira:
+        project: "DEPLOY"
+        issue_type: "Deployment Request"
+        priority: "High"
+      timeout: "4h"
+    needs: ["Database Migration Check"]
+
+  - name: Deploy Services to Cluster
+    type: automatic
+    description: Deploy all services to the Kubernetes cluster
+    command: |
+      kubectl apply -f k8s/backend-api.yaml --context ${CLUSTER} -n ${NAMESPACE}
+      kubectl apply -f k8s/frontend-web.yaml --context ${CLUSTER} -n ${NAMESPACE}
+      kubectl apply -f k8s/worker.yaml --context ${CLUSTER} -n ${NAMESPACE}
+    timeout: 300
+    estimated_duration: 180
+    evidence_required: true
+    evidence_types: ["command_output"]
+    needs: ["Request Deployment Approval"]
+    rollback:
+      command: |
+        kubectl rollout undo deployment/backend-api --context ${CLUSTER} -n ${NAMESPACE}
+        kubectl rollout undo deployment/frontend-web --context ${CLUSTER} -n ${NAMESPACE}
+        kubectl rollout undo deployment/worker --context ${CLUSTER} -n ${NAMESPACE}
+      timeout: 180
+
+  - name: Wait for Rollout Completion
+    type: automatic
+    description: Wait for all deployments to complete successfully
+    command: |
+      kubectl rollout status deployment/backend-api --context ${CLUSTER} -n ${NAMESPACE} --timeout=300s
+      kubectl rollout status deployment/frontend-web --context ${CLUSTER} -n ${NAMESPACE} --timeout=300s
+      kubectl rollout status deployment/worker --context ${CLUSTER} -n ${NAMESPACE} --timeout=300s
+    timeout: 400
+    needs: ["Deploy Services to Cluster"]
+
+  - name: Smoke Test Deployment
+    type: manual
+    description: Perform comprehensive smoke tests on the deployed services
+    instruction: |
+      Test all critical functionality:
+      1. API health check: curl ${API_ENDPOINT}/health
+      2. Frontend accessibility: Visit https://${FRONTEND_URL}
+      3. Database connectivity: Check API can read/write data
+      4. Background job processing: Verify worker is processing queue
+      5. Integration between services works correctly
+    estimated_duration: 600
+    evidence_required: true
+    evidence_types: ["screenshot", "command_output"]
+    needs: ["Wait for Rollout Completion"]
+
+  - name: Update Monitoring and Alerts
+    type: automatic
+    description: Update monitoring dashboards and alert thresholds
+    command: |
+      curl -X POST ${MONITORING_API}/update-deployment \
+        -H "Content-Type: application/json" \
+        -d '{"version": "${VERSION}", "environment": "${ENVIRONMENT}"}'
+    timeout: 60
+    needs: ["Smoke Test Deployment"]
+    continue_on_error: true
+
+# Global rollback plan
+rollback:
+  automatic: false
+  conditions:
+    - "health_check_failure"
+    - "error_rate_spike"
+    - "manual_trigger"
+  steps:
+    - command: |
+        kubectl rollout undo deployment/backend-api --context ${CLUSTER} -n ${NAMESPACE}
+        kubectl rollout undo deployment/frontend-web --context ${CLUSTER} -n ${NAMESPACE}
+        kubectl rollout undo deployment/worker --context ${CLUSTER} -n ${NAMESPACE}
+      timeout: 300
+    - instruction: |
+        Verify rollback completed:
+        1. Check all pods are running previous version
+        2. Verify API endpoints are responding
+        3. Check error logs for any issues
+        4. Notify team in #deployments Slack channel
+
+# Matrix configuration for multi-region deployment
+matrix:
+  region: ["us-east-1", "eu-west-1", "ap-southeast-1"]
+  include:
+    - environment: "staging"
+      region: "us-east-1"
+    - environment: "staging"  
+      region: "eu-west-1"
+  exclude:
+    - environment: "staging"
+      region: "ap-southeast-1"
+
+# Reporting configuration
+reporting:
+  confluence:
+    space: "SRE"
+    parent_page: "Deployment Reports"
+    template: "deployment-report-template"
+  notifications:
+    slack:
+      channel: "#deployments"
+      on_success: "✅ Deployment completed successfully!"
+      on_failure: "❌ Deployment failed - investigating"
+    email:
+      recipients: ["sre-team@example.com", "engineering-manager@example.com"]
+  evidence:
+    retention_days: 90
+    auto_archive: true
+    include_sensitive: false
+
+metadata:
+  created_at: 2024-01-15T10:00:00Z
+  updated_at: 2024-01-20T15:30:00Z

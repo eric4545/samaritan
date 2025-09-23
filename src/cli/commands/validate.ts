@@ -135,16 +135,27 @@ class OperationValidator {
       return;
     }
 
+    const stepNames = new Set<string>();
     const stepIds = new Set<string>();
+    
+    // First pass: collect all step names and IDs
+    for (let i = 0; i < operation.steps.length; i++) {
+      const step = operation.steps[i];
+      stepNames.add(step.name);
+      if (step.id) {
+        stepIds.add(step.id);
+      }
+    }
+    
     for (let i = 0; i < operation.steps.length; i++) {
       const step = operation.steps[i];
       
       // Check step ID uniqueness
       if (step.id) {
-        if (stepIds.has(step.id)) {
+        const duplicateId = Array.from(stepIds).filter(id => id === step.id).length > 1;
+        if (duplicateId) {
           result.errors.push(`Duplicate step ID: ${step.id}`);
         }
-        stepIds.add(step.id);
       }
 
       // Validate step types
@@ -164,11 +175,11 @@ class OperationValidator {
         result.errors.push(`Step ${i + 1} (${step.name}): conditional steps must have an 'if' condition`);
       }
 
-      // Validate dependencies
+      // Validate dependencies (check both step names and IDs)
       if (step.needs) {
-        for (const depId of step.needs) {
-          if (!stepIds.has(depId)) {
-            result.errors.push(`Step ${i + 1} (${step.name}): dependency '${depId}' not found`);
+        for (const dep of step.needs) {
+          if (!stepNames.has(dep) && !stepIds.has(dep)) {
+            result.warnings.push(`Step ${i + 1} (${step.name}): dependency '${dep}' not found among step names or IDs`);
           }
         }
       }

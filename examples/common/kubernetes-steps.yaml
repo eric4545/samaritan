@@ -1,0 +1,98 @@
+# Reusable Kubernetes deployment steps
+steps:
+  - name: docker-build-and-push
+    type: automatic
+    description: Build Docker image and push to registry
+    command: |
+      echo "Building Docker image..."
+      docker build -t ${IMAGE_NAME}:${VERSION} ${BUILD_CONTEXT}
+      
+      echo "Pushing to registry..."
+      docker push ${IMAGE_NAME}:${VERSION}
+      
+      echo "Tagging as latest..."
+      docker tag ${IMAGE_NAME}:${VERSION} ${IMAGE_NAME}:latest
+      docker push ${IMAGE_NAME}:latest
+    timeout: 600
+    evidence_required: true
+    evidence_types: ["command_output"]
+    
+  - name: k8s-deploy
+    type: automatic
+    description: Deploy application to Kubernetes
+    command: |
+      # Apply configurations
+      kubectl apply -f ${K8S_MANIFESTS_DIR} --context ${CLUSTER} -n ${NAMESPACE}
+      
+      # Update image in deployment
+      kubectl set image deployment/${DEPLOYMENT_NAME} \
+        ${CONTAINER_NAME}=${IMAGE_NAME}:${VERSION} \
+        --context ${CLUSTER} -n ${NAMESPACE}
+    timeout: 180
+    evidence_required: true
+    evidence_types: ["command_output"]
+    rollback:
+      command: |
+        kubectl rollout undo deployment/${DEPLOYMENT_NAME} \
+          --context ${CLUSTER} -n ${NAMESPACE}
+      timeout: 120
+      
+  - name: k8s-wait-for-rollout
+    type: automatic
+    description: Wait for Kubernetes deployment to complete
+    command: |
+      kubectl rollout status deployment/${DEPLOYMENT_NAME} \
+        --context ${CLUSTER} -n ${NAMESPACE} \
+        --timeout=300s
+    timeout: 320
+    evidence_required: true
+    evidence_types: ["command_output"]
+    
+  - name: k8s-scale-deployment
+    type: automatic
+    description: Scale deployment to specified replica count
+    command: |
+      kubectl scale deployment/${DEPLOYMENT_NAME} \
+        --replicas=${REPLICAS} \
+        --context ${CLUSTER} -n ${NAMESPACE}
+      
+      # Wait for scaling to complete
+      kubectl rollout status deployment/${DEPLOYMENT_NAME} \
+        --context ${CLUSTER} -n ${NAMESPACE} \
+        --timeout=180s
+    timeout: 200
+    evidence_required: true
+    evidence_types: ["command_output"]
+    
+  - name: k8s-create-namespace
+    type: automatic
+    description: Create namespace if it doesn't exist
+    command: |
+      kubectl create namespace ${NAMESPACE} \
+        --context ${CLUSTER} \
+        --dry-run=client -o yaml | kubectl apply -f -
+    timeout: 30
+    evidence_required: true
+    evidence_types: ["command_output"]
+    
+  - name: k8s-apply-secrets
+    type: automatic
+    description: Apply Kubernetes secrets
+    command: |
+      # Apply secrets from files
+      if [ -d "${SECRETS_DIR}" ]; then
+        kubectl apply -f ${SECRETS_DIR} --context ${CLUSTER} -n ${NAMESPACE}
+      fi
+      
+      # Create image pull secret if specified
+      if [ -n "${DOCKER_REGISTRY_SECRET}" ]; then
+        kubectl create secret docker-registry ${DOCKER_REGISTRY_SECRET} \
+          --docker-server=${DOCKER_REGISTRY} \
+          --docker-username=${DOCKER_USERNAME} \
+          --docker-password=${DOCKER_PASSWORD} \
+          --context ${CLUSTER} -n ${NAMESPACE} \
+          --dry-run=client -o yaml | kubectl apply -f -
+      fi
+    timeout: 60
+    evidence_required: true
+    evidence_types: ["command_output"]

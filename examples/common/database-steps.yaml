@@ -1,0 +1,56 @@
+# Reusable database operation steps
+steps:
+  - name: database-backup
+    type: automatic
+    description: Create a backup of the database
+    command: |
+      mkdir -p ./backups
+      pg_dump -h ${DB_HOST} -U ${DB_USER} -d ${DB_NAME} \
+        --no-password --verbose \
+        > ./backups/backup_$(date +%Y%m%d_%H%M%S).sql
+    timeout: 600
+    evidence_required: true
+    evidence_types: ["command_output"]
+    env:
+      PGPASSWORD: "${DB_PASSWORD}"
+    
+  - name: database-restore
+    type: automatic  
+    description: Restore database from backup file
+    command: |
+      if [ -f "${BACKUP_FILE}" ]; then
+        psql -h ${DB_HOST} -U ${DB_USER} -d ${DB_NAME} \
+          --no-password --verbose \
+          < ${BACKUP_FILE}
+      else
+        echo "Error: Backup file ${BACKUP_FILE} not found"
+        exit 1
+      fi
+    timeout: 1200
+    evidence_required: true
+    evidence_types: ["command_output"]
+    env:
+      PGPASSWORD: "${DB_PASSWORD}"
+      
+  - name: database-migrate
+    type: automatic
+    description: Run database migrations
+    command: |
+      cd ${APP_DIR}
+      npm run db:migrate
+    timeout: 300
+    evidence_required: true
+    evidence_types: ["command_output"]
+    
+  - name: database-health-check
+    type: automatic
+    description: Verify database connectivity and basic functionality
+    command: |
+      psql -h ${DB_HOST} -U ${DB_USER} -d ${DB_NAME} \
+        --no-password \
+        -c "SELECT version(); SELECT NOW(); SELECT COUNT(*) FROM pg_tables;"
+    timeout: 30
+    evidence_required: true
+    evidence_types: ["command_output"]
+    env:
+      PGPASSWORD: "${DB_PASSWORD}"

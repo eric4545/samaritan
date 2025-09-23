@@ -1,0 +1,119 @@
+name: Web Application Deployment with Imports
+version: 1.0.0
+description: Deploy web application using reusable step libraries
+author: SRE Team
+category: deployment
+
+# Import reusable step libraries
+imports:
+  - "./common/database-steps.yaml"
+  - "./common/health-checks.yaml"
+  - "./common/kubernetes-steps.yaml"
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      CLUSTER: staging-k8s
+      NAMESPACE: staging
+      REPLICAS: 2
+      DB_HOST: staging-db.example.com
+      DB_USER: app_user
+      DB_NAME: app_database
+      DB_PASSWORD: staging_password
+      REDIS_HOST: staging-redis.example.com
+      API_ENDPOINT: https://api-staging.example.com
+      FRONTEND_URL: https://staging.example.com
+      IMAGE_NAME: myregistry/webapp
+      VERSION: "1.2.3"
+      DEPLOYMENT_NAME: webapp
+      CONTAINER_NAME: webapp
+      K8S_MANIFESTS_DIR: ./k8s/staging
+      BUILD_CONTEXT: .
+      APP_DIR: ./app
+    approval_required: false
+    
+  - name: production
+    description: Production environment
+    variables:
+      CLUSTER: prod-k8s
+      NAMESPACE: production
+      REPLICAS: 5
+      DB_HOST: prod-db.example.com
+      DB_USER: app_user
+      DB_NAME: app_database
+      DB_PASSWORD: prod_password
+      REDIS_HOST: prod-redis.example.com
+      API_ENDPOINT: https://api.example.com
+      FRONTEND_URL: https://example.com
+      IMAGE_NAME: myregistry/webapp
+      VERSION: "1.2.3"
+      DEPLOYMENT_NAME: webapp
+      CONTAINER_NAME: webapp
+      K8S_MANIFESTS_DIR: ./k8s/production
+      BUILD_CONTEXT: .
+      APP_DIR: ./app
+    approval_required: true
+
+preflight:
+  - name: Check Git Status
+    type: command
+    command: git status --porcelain
+    description: Ensure working directory is clean
+    
+  - name: Check Docker
+    type: command
+    command: docker version
+    description: Verify Docker is available
+
+steps:
+  # Step 1: Database backup (imported)
+  - use: database-backup
+  
+  # Step 2: Build and push Docker image (imported)
+  - use: docker-build-and-push
+  
+  # Step 3: Create namespace (imported)
+  - use: k8s-create-namespace
+  
+  # Step 4: Apply secrets (imported)
+  - use: k8s-apply-secrets
+  
+  # Step 5: Custom step - specific to this operation
+  - name: update-config-map
+    type: automatic
+    description: Update application configuration
+    command: |
+      kubectl create configmap app-config \
+        --from-literal=api_endpoint=${API_ENDPOINT} \
+        --from-literal=db_host=${DB_HOST} \
+        --from-literal=redis_host=${REDIS_HOST} \
+        --context ${CLUSTER} -n ${NAMESPACE} \
+        --dry-run=client -o yaml | kubectl apply -f -
+    timeout: 30
+    evidence_required: true
+    evidence_types: ["command_output"]
+  
+  # Step 6: Deploy to Kubernetes (imported)
+  - use: k8s-deploy
+  
+  # Step 7: Wait for rollout (imported)
+  - use: k8s-wait-for-rollout
+  
+  # Step 8: Scale deployment (imported) 
+  - use: k8s-scale-deployment
+  
+  # Step 9: Run database migrations (imported)
+  - use: database-migrate
+  
+  # Step 10: Health checks (imported)
+  - use: database-connectivity-check
+  - use: redis-connectivity-check
+  - use: api-health-check
+  
+  # Step 11: Comprehensive smoke test (imported)
+  - use: comprehensive-smoke-test
+
+metadata:
+  created_at: 2024-01-20T10:00:00Z
+  updated_at: 2024-01-20T15:30:00Z

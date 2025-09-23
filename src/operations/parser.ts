@@ -1,5 +1,6 @@
 import fs from 'fs';
 import yaml from 'js-yaml';
+import { join, dirname, resolve } from 'path';
 import { 
   Operation, 
   Environment, 
@@ -18,6 +19,17 @@ interface ValidationError {
   value?: any;
 }
 
+interface StepLibrary {
+  steps: Step[];
+  source: string;
+}
+
+interface ImportContext {
+  stepLibraries: Map<string, Step>; // step name -> step definition
+  loadedFiles: Set<string>; // Prevent circular imports
+  baseDirectory: string; // Directory of the main operation file
+}
+
 export class OperationParseError extends Error {
   public errors: ValidationError[];
   
@@ -26,6 +38,162 @@ export class OperationParseError extends Error {
     this.name = 'OperationParseError';
     this.errors = errors;
   }
+}
+
+/**
+ * Load and parse a step library file
+ */
+function loadStepLibrary(filePath: string, importContext: ImportContext): StepLibrary {
+  const resolvedPath = resolve(importContext.baseDirectory, filePath);
+  
+  // Check for circular imports
+  if (importContext.loadedFiles.has(resolvedPath)) {
+    throw new OperationParseError(`Circular import detected: ${filePath}`, [
+      { field: 'imports', message: `File ${filePath} creates a circular dependency` }
+    ]);
+  }
+  
+  // Check if file exists
+  if (!fs.existsSync(resolvedPath)) {
+    throw new OperationParseError(`Import file not found: ${filePath}`, [
+      { field: 'imports', message: `File ${filePath} does not exist` }
+    ]);
+  }
+  
+  // Mark file as being loaded
+  importContext.loadedFiles.add(resolvedPath);
+  
+  try {
+    // Read and parse YAML
+    const content = fs.readFileSync(resolvedPath, 'utf8');
+    const data = yaml.load(content) as any;
+    
+    if (!data || !data.steps || !Array.isArray(data.steps)) {
+      throw new OperationParseError(`Invalid step library format: ${filePath}`, [
+        { field: 'imports', message: `File ${filePath} must contain a 'steps' array` }
+      ]);
+    }
+    
+    // Parse steps
+    const steps: Step[] = [];
+    data.steps.forEach((stepData: any, index: number) => {
+      try {
+        const step = parseStep(stepData, index);
+        steps.push(step);
+        
+        // Add to step library registry
+        if (importContext.stepLibraries.has(step.name)) {
+          throw new OperationParseError(`Duplicate step name in imports: ${step.name}`, [
+            { field: 'imports', message: `Step name '${step.name}' is defined in multiple imported files` }
+          ]);
+        }
+        importContext.stepLibraries.set(step.name, step);
+        
+      } catch (error) {
+        if (error instanceof OperationParseError) {
+          throw error;
+        }
+        throw new OperationParseError(`Error parsing step ${index} in ${filePath}`, [
+          { field: `imports.${filePath}.steps[${index}]`, message: (error as Error).message }
+        ]);
+      }
+    });
+    
+    return {
+      steps,
+      source: resolvedPath
+    };
+    
+  } catch (error) {
+    if (error instanceof OperationParseError) {
+      throw error;
+    }
+    throw new OperationParseError(`Failed to load step library: ${filePath}`, [
+      { field: 'imports', message: (error as Error).message }
+    ]);
+  } finally {
+    // Remove from loading set
+    importContext.loadedFiles.delete(resolvedPath);
+  }
+}
+
+/**
+ * Process all imports and build step library
+ */
+function processImports(imports: string[], baseDirectory: string): ImportContext {
+  const importContext: ImportContext = {
+    stepLibraries: new Map(),
+    loadedFiles: new Set(),
+    baseDirectory
+  };
+  
+  if (!imports || imports.length === 0) {
+    return importContext;
+  }
+  
+  // Load all step libraries
+  for (const importPath of imports) {
+    if (typeof importPath !== 'string') {
+      throw new OperationParseError('Invalid import format', [
+        { field: 'imports', message: 'Import paths must be strings', value: importPath }
+      ]);
+    }
+    
+    loadStepLibrary(importPath, importContext);
+  }
+  
+  return importContext;
+}
+
+/**
+ * Resolve step references (use: step-name) to actual step definitions
+ */
+function resolveStepReferences(steps: any[], importContext: ImportContext): Step[] {
+  const resolvedSteps: Step[] = [];
+  
+  for (let i = 0; i < steps.length; i++) {
+    const stepData = steps[i];
+    
+    if (stepData.use) {
+      // This is a step reference
+      const stepName = stepData.use;
+      const referencedStep = importContext.stepLibraries.get(stepName);
+      
+      if (!referencedStep) {
+        throw new OperationParseError(`Step reference not found: ${stepName}`, [
+          { field: `steps[${i}].use`, message: `Step '${stepName}' is not defined in any imported library` }
+        ]);
+      }
+      
+      // Clone the referenced step and apply any overrides
+      const clonedStep: Step = { ...referencedStep };
+      
+      // Allow overriding certain properties
+      if (stepData.timeout !== undefined) clonedStep.timeout = stepData.timeout;
+      if (stepData.env !== undefined) clonedStep.env = { ...clonedStep.env, ...stepData.env };
+      if (stepData.with !== undefined) clonedStep.with = { ...clonedStep.with, ...stepData.with };
+      if (stepData.evidence_required !== undefined) clonedStep.evidence_required = stepData.evidence_required;
+      if (stepData.continue_on_error !== undefined) clonedStep.continue_on_error = stepData.continue_on_error;
+      
+      resolvedSteps.push(clonedStep);
+      
+    } else {
+      // This is a regular step definition
+      try {
+        const step = parseStep(stepData, i);
+        resolvedSteps.push(step);
+      } catch (error) {
+        if (error instanceof OperationParseError) {
+          throw error;
+        }
+        throw new OperationParseError(`Error parsing step ${i}`, [
+          { field: `steps[${i}]`, message: (error as Error).message }
+        ]);
+      }
+    }
+  }
+  
+  return resolvedSteps;
 }
 
 function validateStepType(type: string): StepType {
@@ -267,20 +435,56 @@ export function parseOperation(filePath: string): Operation {
     }];
   }
 
-  // Parse steps and collect errors
+  // Process imports first
+  const baseDirectory = dirname(filePath);
+  let importContext: ImportContext;
+  try {
+    importContext = processImports(rawOperation.imports, baseDirectory);
+  } catch (error) {
+    if (error instanceof OperationParseError) {
+      errors.push(...error.errors);
+    } else {
+      errors.push({ field: 'imports', message: (error as Error).message });
+    }
+    // Create empty import context to continue parsing
+    importContext = {
+      stepLibraries: new Map(),
+      loadedFiles: new Set(),
+      baseDirectory
+    };
+  }
+
+  // Parse steps with import resolution
   let steps: Step[] = [];
   if (rawOperation.steps && Array.isArray(rawOperation.steps)) {
-    rawOperation.steps.forEach((step: any, index: number) => {
-      try {
-        steps.push(parseStep(step, index));
-      } catch (error) {
-        if (error instanceof OperationParseError) {
-          errors.push(...error.errors);
-        } else {
-          errors.push({ field: `steps[${index}]`, message: (error as Error).message });
-        }
+    try {
+      steps = resolveStepReferences(rawOperation.steps, importContext);
+    } catch (error) {
+      if (error instanceof OperationParseError) {
+        errors.push(...error.errors);
+      } else {
+        errors.push({ field: 'steps', message: (error as Error).message });
+      }
+    }
+  }
+
+  // Process operation dependencies if present
+  if (rawOperation.needs && Array.isArray(rawOperation.needs)) {
+    // For now, just validate that dependencies are strings
+    // In a full implementation, you'd resolve and include the dependent operations
+    rawOperation.needs.forEach((dep: any, index: number) => {
+      if (typeof dep !== 'string') {
+        errors.push({ field: `needs[${index}]`, message: 'Dependency must be a string operation ID' });
       }
     });
+  }
+
+  // Process marketplace operation usage if present
+  if (rawOperation.uses) {
+    if (typeof rawOperation.uses !== 'string') {
+      errors.push({ field: 'uses', message: 'Marketplace operation reference must be a string' });
+    }
+    // In a full implementation, you'd resolve and merge the marketplace operation
   }
 
   // Parse preflight checks and collect errors

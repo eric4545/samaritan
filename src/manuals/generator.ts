@@ -9,10 +9,91 @@ function substituteVariables(command: string, variables: Record<string, any>): s
   return substitutedCommand;
 }
 
+function generateStepRow(step: Step, stepNumber: number, environments: Environment[], prefix: string = ''): string {
+  let rows = '';
+  
+  const typeIcon = step.type === 'automatic' ? '⚙️' : 
+                   step.type === 'manual' ? '👤' : 
+                   step.type === 'conditional' ? '🔀' : '✋';
+  
+  // First column: Step name, icon, and description
+  let stepCell = `${prefix}Step ${stepNumber}: ${step.name} ${typeIcon}`;
+  if (step.description && typeof step.description === 'string' && step.description.trim().length > 0) {
+    stepCell += `<br>${step.description}`;
+  }
+  
+  // Add dependency information
+  if (step.needs && step.needs.length > 0) {
+    stepCell += `<br>📋 <em>Depends on: ${step.needs.join(', ')}</em>`;
+  }
+  
+  rows += `| ${stepCell} |`;
+  
+  // Subsequent columns: Commands for each environment
+  environments.forEach(env => {
+    const substitutedCommand = substituteVariables(step.command || step.instruction || '', env.variables || {});
+    // Clean up command for table format - replace newlines with <br> and escape backticks
+    const cleanCommand = substitutedCommand
+      .replace(/\n/g, '<br>')
+      .replace(/`/g, '\\`')
+      .trim();
+    
+    if (cleanCommand) {
+      rows += ` \`${cleanCommand}\` |`;
+    } else {
+      rows += ` _(${step.type} step)_ |`;
+    }
+  });
+  
+  rows += '\n';
+  
+  // Add sub-steps if present
+  if (step.sub_steps && step.sub_steps.length > 0) {
+    step.sub_steps.forEach((subStep, subIndex) => {
+      rows += generateStepRow(subStep, subIndex + 1, environments, `${prefix}${stepNumber}.`);
+    });
+  }
+  
+  return rows;
+}
+
 export function generateManual(operation: Operation): string {
   let markdown = `# Manual for: ${operation.name} (v${operation.version})\n\n`;
   if (operation.description) {
     markdown += `_${operation.description}_\n\n`;
+  }
+
+  // Operation Dependencies
+  if (operation.needs && operation.needs.length > 0) {
+    markdown += '## Dependencies\n\n';
+    markdown += 'This operation depends on the following operations being completed first:\n\n';
+    operation.needs.forEach(dep => {
+      markdown += `- **${dep}**\n`;
+    });
+    markdown += '\n';
+  }
+
+  // Marketplace Operation Usage
+  if (operation.uses) {
+    markdown += '## Based On\n\n';
+    markdown += `This operation extends: **${operation.uses}**\n`;
+    if (operation.with && Object.keys(operation.with).length > 0) {
+      markdown += '\nWith parameters:\n';
+      Object.entries(operation.with).forEach(([key, value]) => {
+        markdown += `- ${key}: ${JSON.stringify(value)}\n`;
+      });
+    }
+    markdown += '\n';
+  }
+
+  // Show imported step libraries
+  if ((operation as any).imports && Array.isArray((operation as any).imports)) {
+    markdown += '## Imported Step Libraries\n\n';
+    markdown += 'This operation uses reusable steps from the following libraries:\n\n';
+    (operation as any).imports.forEach((importPath: string) => {
+      markdown += `- \`${importPath}\`\n`;
+    });
+    markdown += '\n';
   }
 
   // Environments Overview Table
@@ -66,24 +147,7 @@ export function generateManual(operation: Operation): string {
     
     // Build table rows
     operation.steps.forEach((step, index) => {
-      const typeIcon = step.type === 'automatic' ? '⚙️' : 
-                       step.type === 'manual' ? '👤' : '✋';
-      
-      // First column: Step name, icon, and description
-      let stepCell = `Step ${index + 1}: ${step.name} ${typeIcon}`;
-      if (step.description && typeof step.description === 'string' && step.description.trim().length > 0) {
-        stepCell += `<br>${step.description}`;
-      }
-      
-      markdown += `| ${stepCell} |`;
-      
-      // Subsequent columns: Commands for each environment
-      operation.environments.forEach(env => {
-        const substitutedCommand = substituteVariables(step.command || '', env.variables || {});
-        markdown += ` \`${substitutedCommand}\` |`;
-      });
-      
-      markdown += '\n';
+      markdown += generateStepRow(step, index + 1, operation.environments);
     });
     markdown += '\n';
   }

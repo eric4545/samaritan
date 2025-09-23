@@ -1,0 +1,88 @@
+# Reusable health check steps
+steps:
+  - name: api-health-check
+    type: automatic
+    description: Check API endpoint health
+    command: |
+      response=$(curl -s -o /dev/null -w "%{http_code}" ${API_ENDPOINT}/health)
+      if [ "$response" -eq 200 ]; then
+        echo "✅ API health check passed (HTTP $response)"
+      else
+        echo "❌ API health check failed (HTTP $response)"
+        exit 1
+      fi
+    timeout: 30
+    evidence_required: true
+    evidence_types: ["command_output"]
+    
+  - name: database-connectivity-check
+    type: automatic
+    description: Test database connection
+    command: |
+      timeout 10 bash -c 'cat < /dev/null > /dev/tcp/${DB_HOST}/5432'
+      if [ $? -eq 0 ]; then
+        echo "✅ Database connection check passed"
+      else
+        echo "❌ Database connection check failed"
+        exit 1
+      fi
+    timeout: 15
+    evidence_required: true
+    evidence_types: ["command_output"]
+    
+  - name: redis-connectivity-check
+    type: automatic
+    description: Test Redis connection
+    command: |
+      redis-cli -h ${REDIS_HOST} -p 6379 ping
+      if [ $? -eq 0 ]; then
+        echo "✅ Redis connection check passed"
+      else
+        echo "❌ Redis connection check failed"
+        exit 1
+      fi
+    timeout: 10
+    evidence_required: true
+    evidence_types: ["command_output"]
+    
+  - name: kubernetes-cluster-check
+    type: automatic
+    description: Verify Kubernetes cluster accessibility
+    command: |
+      kubectl cluster-info --context ${CLUSTER}
+      kubectl get nodes --context ${CLUSTER}
+    timeout: 30
+    evidence_required: true
+    evidence_types: ["command_output"]
+    
+  - name: comprehensive-smoke-test
+    type: manual
+    description: Perform comprehensive smoke testing
+    instruction: |
+      Complete the following smoke tests:
+      
+      1. **API Functionality**:
+         - Visit ${API_ENDPOINT}/health
+         - Test login functionality
+         - Create a test record
+         - Retrieve the test record
+         - Delete the test record
+      
+      2. **Frontend Functionality**:
+         - Visit ${FRONTEND_URL}
+         - Navigate through main pages
+         - Test user interactions
+         - Verify responsive design
+      
+      3. **Data Flow**:
+         - Submit a form on frontend
+         - Verify data appears in database
+         - Check background processing works
+      
+      4. **Performance**:
+         - Page load times < 3 seconds
+         - API response times < 500ms
+         - No console errors in browser
+    estimated_duration: 900
+    evidence_required: true
+    evidence_types: ["screenshot", "command_output"]

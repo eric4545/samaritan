@@ -1,0 +1,66 @@
+name: Deploy Web Server
+version: 1.1.0
+# TODO: Add Date
+# TODO: Add operator?
+description: Deploys the main web server application to the staging environment.
+
+environments:
+  - name: preprod
+    description: preprod
+    variables:
+      REPLICAS: 2
+      DB_HOST: preprod-db.example.com
+    targets:
+      - cluster-dev-us-east-1
+      - cluster-dev-eu-west-1
+  - name: production
+    description: Live production environment.
+    variables:
+      REPLICAS: 5
+      DB_HOST: prod-db.example.com
+    approval_required: true
+    targets:
+      - cluster-prod-us-east-1
+      - cluster-prod-eu-west-1
+      - cluster-prod-asia-south-1
+
+preflight:
+  - name: Check Git status
+    description: Ensure no uncommitted changes exist in the current branch.
+    command: git status --porcelain
+    expect_empty: true
+
+  - name: Check Docker daemon
+    description: Verify that the Docker daemon is running and accessible.
+    command: docker info
+
+steps:
+  - name: Build Docker Image
+    type: automatic
+    description: Build the application's Docker image.
+    command: docker build -t web-server:latest .
+
+  - name: Push Docker Image
+    type: automatic
+    description: Push the image to the container registry.
+    command: docker push my-registry/web-server:latest
+
+  - name: Request Approval
+    type: approval
+    description: Request manager approval for deployment.
+    command: jira create-ticket --type approval --summary "Deploy Web Server"
+
+  - name: Scale Deployment
+    type: automatic
+    description: Scale the Kubernetes deployment to the specified replica count.
+    command: kubectl scale deployment web-server --replicas=${REPLICAS}
+
+  - name: Manual Verification
+    type: manual
+    description: Manually verify deployment health.
+    command: curl https://web-server.example.com/health
+
+  - name: Deploy to Kubernetes
+    type: automatic
+    description: Apply the Kubernetes deployment manifest.
+    command: kubectl apply -f k8s/deployment.yaml
