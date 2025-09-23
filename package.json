@@ -4,33 +4,35 @@
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
-    "samaritan": "./node_modules/tsx/dist/cli.mjs src/cli/index.ts"
+    "samaritan": "bin/samaritan.js"
   },
   "scripts": {
-    "test": "tsx --test tests/**/*.test.ts"
+    "test": "tsx --test tests/**/*.test.ts",
+    "build": "tsc",
+    "start": "tsx src/cli/index.ts"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/eric4545/samaritan.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["operations", "sre", "automation", "yaml", "cli", "ops-as-code"],
+  "author": "SAMARITAN Team",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/eric4545/samaritan/issues"
   },
   "homepage": "https://github.com/eric4545/samaritan#readme",
-  "description": "",
+  "description": "SAMARITAN - Operations as Code CLI for SRE teams. Define operations once, execute anywhere with complete audit trails.",
   "dependencies": {
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "commander": "^14.0.0",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "tsx": "^4.20.5"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
     "@types/node": "^24.3.1",
-    "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }
 }
