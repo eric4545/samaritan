@@ -62,6 +62,8 @@ describe('Enhanced Operation Parser', () => {
     const minimalYaml = `
 name: Minimal Test
 version: 1.0.0
+environments:
+  - name: default
 steps:
   - name: Test Step
     type: automatic
@@ -80,10 +82,10 @@ steps:
       assert.strictEqual(operation.version, '1.0.0');
       assert.strictEqual(operation.description, ''); // Default empty
 
-      // Verify default environment is created
+      // Verify environment from YAML is used
       assert.strictEqual(operation.environments.length, 1);
       assert.strictEqual(operation.environments[0].name, 'default');
-      assert.strictEqual(operation.environments[0].description, 'Default environment');
+      assert.strictEqual(operation.environments[0].description, ''); // Empty because not specified in YAML
 
       // Verify other defaults
       assert.strictEqual(operation.emergency, false);
@@ -111,7 +113,7 @@ name: Invalid Operation
     try {
       assert.throws(() => {
         parseOperation(tempFile);
-      }, /Operation validation failed/);
+      }, /Schema validation failed/);
     } finally {
       fs.unlinkSync(tempFile);
     }

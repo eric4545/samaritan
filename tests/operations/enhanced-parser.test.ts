@@ -220,6 +220,8 @@ steps:
     const invalidYaml = `
 name: Error Test
 version: invalid-version
+environments:
+  - name: default
 steps:
   - name: ""
     type: unknown
@@ -234,9 +236,10 @@ steps:
     } catch (error) {
       assert(error instanceof OperationParseError);
       assert(error.errors.length > 0);
-      assert(error.errors.some(e => e.field === 'version'));
-      assert(error.errors.some(e => e.field.includes('name')));
-      assert(error.errors.some(e => e.field.includes('type')));
+      // Schema validation produces different field paths
+      assert(error.errors.some(e => e.field.includes('version') || e.field === '/version'));
+      assert(error.errors.some(e => e.field.includes('name') || e.field.includes('/steps')));
+      assert(error.errors.some(e => e.field.includes('type') || e.field.includes('/steps')));
     } finally {
       fs.unlinkSync(tempFile);
     }
@@ -246,6 +249,8 @@ steps:
     const conditionalYaml = `
 name: Conditional Test
 version: 1.0.0
+environments:
+  - name: default
 steps:
   - name: Conditional Step
     type: conditional
@@ -273,9 +278,11 @@ steps:
     const preflightYaml = `
 name: Preflight Test
 version: 1.0.0
+environments:
+  - name: default
 preflight:
   - name: Enhanced Preflight
-    type: check
+    type: command
     command: systemctl is-active docker
     condition: active
     description: Verify Docker service is running
@@ -294,7 +301,7 @@ steps:
       const operation = parseOperation(tempFile);
       const preflight = operation.preflight[0];
       
-      assert.strictEqual(preflight.type, 'check');
+      assert.strictEqual(preflight.type, 'command');
       assert.strictEqual(preflight.condition, 'active');
       assert.strictEqual(preflight.timeout, 10);
       assert.strictEqual(preflight.evidence_required, true);

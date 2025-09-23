@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { parseOperation } from '../../operations/parser.js';
 import { Operation } from '../../models/operation.js';
+import { ValidationError } from '../../validation/schema-validator.js';
 
 interface ValidationResult {
   valid: boolean;
@@ -158,22 +159,7 @@ class OperationValidator {
         }
       }
 
-      // Validate step types
-      if (step.type === 'automatic' && !step.command) {
-        result.errors.push(`Step ${i + 1} (${step.name}): automatic steps must have a command`);
-      }
-      
-      if (step.type === 'manual' && !step.instruction) {
-        result.errors.push(`Step ${i + 1} (${step.name}): manual steps must have an instruction`);
-      }
-
-      if (step.type === 'approval' && !step.approval?.required) {
-        result.errors.push(`Step ${i + 1} (${step.name}): approval steps must have approval configuration`);
-      }
-
-      if (step.type === 'conditional' && !step.if) {
-        result.errors.push(`Step ${i + 1} (${step.name}): conditional steps must have an 'if' condition`);
-      }
+      // Note: Basic step type validation (command/instruction requirements) is now handled by JSON schema
 
       // Validate dependencies (check both step names and IDs)
       if (step.needs) {

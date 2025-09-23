@@ -1,23 +1,18 @@
 import fs from 'fs';
 import yaml from 'js-yaml';
 import { join, dirname, resolve } from 'path';
-import { 
-  Operation, 
-  Environment, 
-  VariableMatrix, 
-  OperationMetadata, 
-  Step, 
+import {
+  Operation,
+  Environment,
+  VariableMatrix,
+  OperationMetadata,
+  Step,
   PreflightCheck,
   StepType,
-  EvidenceType 
+  EvidenceType
 } from '../models/operation';
 import { randomUUID } from 'crypto';
-
-interface ValidationError {
-  field: string;
-  message: string;
-  value?: any;
-}
+import { validateOperationSchemaStrict, SchemaValidationError, ValidationError } from '../validation/schema-validator.js';
 
 interface StepLibrary {
   steps: Step[];
@@ -196,96 +191,20 @@ function resolveStepReferences(steps: any[], importContext: ImportContext): Step
   return resolvedSteps;
 }
 
-function validateStepType(type: string): StepType {
-  const validTypes: StepType[] = ['automatic', 'manual', 'approval', 'conditional'];
-  if (!validTypes.includes(type as StepType)) {
-    throw new ValidationError(`Invalid step type: ${type}. Must be one of: ${validTypes.join(', ')}`);
-  }
-  return type as StepType;
-}
-
-function validateEvidenceTypes(types: string[]): EvidenceType[] {
-  const validTypes: EvidenceType[] = ['screenshot', 'log', 'command_output', 'file', 'photo', 'video'];
-  const invalidTypes = types.filter(type => !validTypes.includes(type as EvidenceType));
-  if (invalidTypes.length > 0) {
-    throw new ValidationError(`Invalid evidence types: ${invalidTypes.join(', ')}. Must be one of: ${validTypes.join(', ')}`);
-  }
-  return types as EvidenceType[];
-}
 
 function parseStep(stepData: any, stepIndex: number): Step {
-  const errors: ValidationError[] = [];
-  
-  // Validate required fields
-  if (!stepData.name || stepData.name.trim() === '') {
-    errors.push({ field: `steps[${stepIndex}].name`, message: 'Step name is required' });
-  }
-  if (!stepData.type) {
-    errors.push({ field: `steps[${stepIndex}].type`, message: 'Step type is required' });
-  }
-
-  // Validate step type
-  let stepType: StepType = 'automatic';
-  try {
-    stepType = validateStepType(stepData.type);
-  } catch (error) {
-    errors.push({ field: `steps[${stepIndex}].type`, message: (error as Error).message, value: stepData.type });
-  }
-
-  // Validate type-specific requirements
-  if (stepType === 'automatic' && !stepData.command) {
-    errors.push({ field: `steps[${stepIndex}].command`, message: 'Automatic steps must have a command' });
-  }
-  if (stepType === 'manual' && !stepData.instruction && !stepData.command) {
-    errors.push({ field: `steps[${stepIndex}].instruction`, message: 'Manual steps must have instruction or command' });
-  }
-
-  // Validate evidence types if provided
-  let evidenceTypes: EvidenceType[] | undefined;
-  if (stepData.evidence_types) {
-    try {
-      evidenceTypes = validateEvidenceTypes(stepData.evidence_types);
-    } catch (error) {
-      errors.push({ field: `steps[${stepIndex}].evidence_types`, message: (error as Error).message, value: stepData.evidence_types });
-    }
-  }
-
   // Parse sub-steps recursively
   let subSteps: Step[] | undefined;
   if (stepData.sub_steps && Array.isArray(stepData.sub_steps)) {
-    subSteps = stepData.sub_steps.map((subStep: any, index: number) => 
+    subSteps = stepData.sub_steps.map((subStep: any, index: number) =>
       parseStep(subStep, index)
     );
-  }
-
-  // Validate estimated_duration if provided
-  if (stepData.estimated_duration !== undefined && 
-      (typeof stepData.estimated_duration !== 'number' || stepData.estimated_duration < 0)) {
-    errors.push({ 
-      field: `steps[${stepIndex}].estimated_duration`, 
-      message: 'Estimated duration must be a positive number (seconds)',
-      value: stepData.estimated_duration 
-    });
-  }
-
-  // Validate timeout if provided
-  if (stepData.timeout !== undefined && 
-      (typeof stepData.timeout !== 'number' || stepData.timeout < 0)) {
-    errors.push({ 
-      field: `steps[${stepIndex}].timeout`, 
-      message: 'Timeout must be a positive number (seconds)',
-      value: stepData.timeout 
-    });
-  }
-
-  if (errors.length > 0) {
-    throw new OperationParseError(`Validation errors in step ${stepIndex}`, errors);
   }
 
   return {
     id: stepData.id,
     name: stepData.name,
-    type: stepType,
+    type: stepData.type as StepType,
     description: stepData.description,
     if: stepData.if,
     command: stepData.command,
@@ -295,7 +214,7 @@ function parseStep(stepData: any, stepIndex: number): Step {
     env: stepData.env,
     with: stepData.with,
     evidence_required: Boolean(stepData.evidence_required),
-    evidence_types: evidenceTypes,
+    evidence_types: stepData.evidence_types as EvidenceType[],
     validation: stepData.validation,
     verify: stepData.verify,
     continue_on_error: Boolean(stepData.continue_on_error),
@@ -310,19 +229,6 @@ function parseStep(stepData: any, stepIndex: number): Step {
 }
 
 function parsePreflightCheck(checkData: any, checkIndex: number): PreflightCheck {
-  const errors: ValidationError[] = [];
-  
-  if (!checkData.name || checkData.name.trim() === '') {
-    errors.push({ field: `preflight[${checkIndex}].name`, message: 'Preflight check name is required' });
-  }
-  if (!checkData.command) {
-    errors.push({ field: `preflight[${checkIndex}].command`, message: 'Preflight check command is required' });
-  }
-
-  if (errors.length > 0) {
-    throw new OperationParseError(`Validation errors in preflight check ${checkIndex}`, errors);
-  }
-
   return {
     name: checkData.name,
     type: checkData.type || 'command',
@@ -337,16 +243,6 @@ function parsePreflightCheck(checkData: any, checkIndex: number): PreflightCheck
 }
 
 function parseEnvironment(envData: any, envIndex: number): Environment {
-  const errors: ValidationError[] = [];
-  
-  if (!envData.name || envData.name.trim() === '') {
-    errors.push({ field: `environments[${envIndex}].name`, message: 'Environment name is required' });
-  }
-
-  if (errors.length > 0) {
-    throw new OperationParseError(`Validation errors in environment ${envIndex}`, errors);
-  }
-
   return {
     name: envData.name,
     description: envData.description || '',
@@ -383,29 +279,20 @@ export function parseOperation(filePath: string): Operation {
   }
 
   const rawOperation = data as any;
+
+  // Schema validation (replaces all custom validation)
+  try {
+    validateOperationSchemaStrict(rawOperation);
+  } catch (error) {
+    if (error instanceof SchemaValidationError) {
+      throw new OperationParseError('Schema validation failed', error.errors);
+    }
+    throw new OperationParseError('Validation failed', [
+      { field: 'schema', message: (error as Error).message }
+    ]);
+  }
+
   const errors: ValidationError[] = [];
-  
-  // Validate required top-level fields
-  if (!rawOperation.name || rawOperation.name.trim() === '') {
-    errors.push({ field: 'name', message: 'Operation name is required' });
-  }
-  if (!rawOperation.version) {
-    errors.push({ field: 'version', message: 'Operation version is required' });
-  }
-  if (!rawOperation.steps || !Array.isArray(rawOperation.steps)) {
-    errors.push({ field: 'steps', message: 'Operation steps array is required' });
-  }
-
-  // Validate version format (basic semantic versioning)
-  if (rawOperation.version && !/^\d+\.\d+\.\d+/.test(rawOperation.version)) {
-    errors.push({ 
-      field: 'version', 
-      message: 'Version must follow semantic versioning (e.g., 1.0.0)',
-      value: rawOperation.version 
-    });
-  }
-
-  // Don't throw yet - collect step errors too
 
   // Parse environments
   let environments: Environment[] = [];
@@ -552,4 +439,4 @@ export function parseOperation(filePath: string): Operation {
 }
 
 // Export for testing
-export { ValidationError, parseStep, parsePreflightCheck, parseEnvironment };
+export { parseStep, parsePreflightCheck, parseEnvironment };
