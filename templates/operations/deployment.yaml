@@ -6,21 +6,16 @@ category: deployment
 
 environments:
   - name: staging
-    description: Staging environment
+    from: k8s-cluster
     variables:
-      REPLICAS: 1
-      NAMESPACE: staging
       IMAGE_TAG: latest
-    approval_required: false
+      DEBUG_ENABLED: true
 
   - name: production
-    description: Production environment
+    from: k8s-cluster
     variables:
-      REPLICAS: 3
-      NAMESPACE: production
       IMAGE_TAG: __IMAGE_TAG__
-    approval_required: true
-    validation_required: true
+      DEBUG_ENABLED: false
 
 preflight:
   - name: Check Git Status

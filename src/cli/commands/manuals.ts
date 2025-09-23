@@ -8,13 +8,13 @@ export const generateManualCommand = new Command('generate:manual')
   .description('Generate a Markdown manual from a SAMARITAN Operation YAML file.')
   .argument('<inputFile>', 'Path to the input YAML file')
   .argument('<outputFile>', 'Path to the output Markdown file')
-  .action((inputFile: string, outputFile: string) => {
+  .action(async (inputFile: string, outputFile: string) => {
     try {
       console.log(`Parsing operation from: ${inputFile}`);
       const absoluteInputPath = path.resolve(inputFile);
-      
+
       // 1. Parse the operation
-      const operation = parseOperation(absoluteInputPath);
+      const operation = await parseOperation(absoluteInputPath);
       
       console.log(`Generating manual for: ${operation.name}`);
       

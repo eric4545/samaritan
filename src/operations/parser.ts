@@ -13,6 +13,7 @@ import {
 } from '../models/operation';
 import { randomUUID } from 'crypto';
 import { validateOperationSchemaStrict, SchemaValidationError, ValidationError } from '../validation/schema-validator.js';
+import { EnvironmentLoader } from './environment-loader.js';
 
 interface StepLibrary {
   steps: Step[];
@@ -245,6 +246,7 @@ function parsePreflightCheck(checkData: any, checkIndex: number): PreflightCheck
 function parseEnvironment(envData: any, envIndex: number): Environment {
   return {
     name: envData.name,
+    from: envData.from,
     description: envData.description || '',
     variables: envData.variables || {},
     restrictions: envData.restrictions || [],
@@ -254,7 +256,7 @@ function parseEnvironment(envData: any, envIndex: number): Environment {
   };
 }
 
-export function parseOperation(filePath: string): Operation {
+export async function parseOperation(filePath: string): Promise<Operation> {
   let fileContents: string;
   
   try {
@@ -294,23 +296,64 @@ export function parseOperation(filePath: string): Operation {
 
   const errors: ValidationError[] = [];
 
-  // Parse environments
+  // Get base directory for resolving imports and environments
+  const baseDirectory = dirname(filePath);
+
+  // Parse environments (supports both inline and manifest inheritance)
   let environments: Environment[] = [];
-  if (rawOperation.environments && Array.isArray(rawOperation.environments)) {
-    try {
-      environments = rawOperation.environments.map((env: any, index: number) => 
-        parseEnvironment(env, index)
-      );
-    } catch (error) {
-      if (error instanceof OperationParseError) {
-        throw error;
+  try {
+    if (rawOperation.environments && Array.isArray(rawOperation.environments)) {
+      const environmentLoader = new EnvironmentLoader(baseDirectory);
+
+      for (const envData of rawOperation.environments) {
+        if (envData.from) {
+          // Inherit from manifest and merge with local overrides
+          const manifest = await environmentLoader.loadEnvironmentManifest(envData.from);
+          const manifestEnv = manifest.environments.find(e => e.name === envData.name);
+
+          if (!manifestEnv) {
+            throw new OperationParseError(`Environment '${envData.name}' not found in manifest '${envData.from}'`, [
+              { field: `environments[${envData.name}].from`, message: `Environment '${envData.name}' not found in manifest '${envData.from}'` }
+            ]);
+          }
+
+          // Merge manifest environment with overrides
+          const environment: Environment = {
+            name: envData.name,
+            from: envData.from,
+            description: envData.description || manifestEnv.description,
+            variables: { ...manifestEnv.variables, ...(envData.variables || {}) },
+            restrictions: [...(manifestEnv.restrictions || []), ...(envData.restrictions || [])],
+            approval_required: envData.approval_required !== undefined ? envData.approval_required : manifestEnv.approval_required,
+            validation_required: envData.validation_required !== undefined ? envData.validation_required : manifestEnv.validation_required,
+            targets: [...(manifestEnv.targets || []), ...(envData.targets || [])]
+          };
+
+          environments.push(environment);
+        } else {
+          // Regular inline environment
+          environments.push(parseEnvironment(envData, environments.length));
+        }
       }
-      throw new OperationParseError('Failed to parse environments', [
-        { field: 'environments', message: (error as Error).message }
-      ]);
+    } else {
+      // Create default environment if none specified
+      environments = [{
+        name: 'default',
+        description: 'Default environment',
+        variables: {},
+        restrictions: [],
+        approval_required: false,
+        validation_required: false,
+        targets: []
+      }];
     }
-  } else {
-    // Create default environment if none specified
+  } catch (error) {
+    if (error instanceof OperationParseError) {
+      errors.push(...error.errors);
+    } else {
+      errors.push({ field: 'environments', message: (error as Error).message });
+    }
+    // Fallback to default environment
     environments = [{
       name: 'default',
       description: 'Default environment',
@@ -323,7 +366,6 @@ export function parseOperation(filePath: string): Operation {
   }
 
   // Process imports first
-  const baseDirectory = dirname(filePath);
   let importContext: ImportContext;
   try {
     importContext = processImports(rawOperation.imports, baseDirectory);

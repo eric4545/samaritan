@@ -36,7 +36,7 @@ class OperationValidator {
       }
 
       // Parse operation
-      const operation = parseOperation(filePath);
+      const operation = await parseOperation(filePath);
       result.operation = operation;
 
       // Basic validation (already done by parser)
@@ -60,6 +60,11 @@ class OperationValidator {
 
     } catch (error: any) {
       result.errors.push(`Parsing error: ${error.message}`);
+      if (error.errors && Array.isArray(error.errors)) {
+        error.errors.forEach((validationError: any) => {
+          result.errors.push(`  ${validationError.field}: ${validationError.message}`);
+        });
+      }
       result.valid = false;
     }
 

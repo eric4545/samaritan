@@ -4,7 +4,7 @@
   "title": "SAMARITAN Operation",
   "description": "Schema for SAMARITAN operation definitions",
   "type": "object",
-  "required": ["name", "version", "environments", "steps"],
+  "required": ["name", "version", "steps"],
   "additionalProperties": true,
   "properties": {
     "name": {
@@ -61,6 +61,10 @@
           "name": {
             "type": "string",
             "minLength": 1
+          },
+          "from": {
+            "type": "string",
+            "description": "Inherit environment definition from manifest"
           },
           "description": {
             "type": "string"

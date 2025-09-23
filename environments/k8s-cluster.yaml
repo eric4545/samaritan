@@ -1,0 +1,52 @@
+# K8s Cluster Environment Manifest
+apiVersion: samaritan/v1
+kind: EnvironmentManifest
+metadata:
+  name: k8s-cluster
+  description: Standard Kubernetes cluster environments
+  version: 1.0.0
+
+environments:
+  - name: development
+    description: Development environment
+    variables:
+      NAMESPACE: dev
+      REPLICAS: 1
+      DB_HOST: dev-db.company.com
+      DOMAIN: dev.company.com
+      LOG_LEVEL: debug
+    targets:
+      - cluster-dev-us-east-1
+    approval_required: false
+    validation_required: false
+
+  - name: staging
+    description: Staging environment for testing
+    variables:
+      NAMESPACE: staging
+      REPLICAS: 2
+      DB_HOST: staging-db.company.com
+      DOMAIN: staging.company.com
+      LOG_LEVEL: info
+    targets:
+      - cluster-staging-us-east-1
+    approval_required: false
+    validation_required: true
+
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: prod
+      REPLICAS: 5
+      DB_HOST: prod-db.company.com
+      DOMAIN: company.com
+      LOG_LEVEL: warn
+    targets:
+      - cluster-prod-us-east-1
+      - cluster-prod-eu-west-1
+      - cluster-prod-asia-south-1
+    approval_required: true
+    validation_required: true
+    restrictions:
+      - business-hours-only
+      - requires-change-approval

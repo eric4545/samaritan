@@ -6,17 +6,16 @@ category: maintenance
 
 environments:
   - name: staging
-    description: Staging maintenance
+    from: k8s-cluster
     variables:
       SERVICE_NAME: __SERVICE_NAME__
       MAINTENANCE_WINDOW: __STAGING_WINDOW__
 
   - name: production
-    description: Production maintenance
+    from: k8s-cluster
     variables:
       SERVICE_NAME: __SERVICE_NAME__
       MAINTENANCE_WINDOW: __PRODUCTION_WINDOW__
-    approval_required: true
 
 preflight:
   - name: Check Maintenance Window

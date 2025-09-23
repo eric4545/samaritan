@@ -117,6 +117,7 @@ export interface Step {
 
 export interface Environment {
   name: string;
+  from?: string; // Inherit from environment manifest
   description: string;
   variables: Record<string, any>;
   restrictions: string[];

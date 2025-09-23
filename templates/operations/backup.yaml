@@ -6,7 +6,7 @@ category: backup
 
 environments:
   - name: production
-    description: Production backup
+    from: k8s-cluster
     variables:
       SERVICE_NAME: __SERVICE_NAME__
       BACKUP_LOCATION: __BACKUP_LOCATION__

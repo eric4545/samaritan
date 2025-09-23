@@ -7,10 +7,9 @@ emergency: true
 
 environments:
   - name: production
-    description: Production incident response
+    from: k8s-cluster
     variables:
       SERVICE_NAME: __SERVICE_NAME__
-      NAMESPACE: __NAMESPACE__
       SLACK_CHANNEL: __SLACK_CHANNEL__
 
 preflight:

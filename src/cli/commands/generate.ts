@@ -15,10 +15,10 @@ interface GenerateOptions {
 class DocumentationGenerator {
   async generateManual(operationFile: string, options: GenerateOptions): Promise<void> {
     console.log(`📄 Generating manual for: ${operationFile}`);
-    
+
     // Parse operation
-    const operation = parseOperation(operationFile);
-    
+    const operation = await parseOperation(operationFile);
+
     // Generate manual
     const manual = generateManual(operation);
     
@@ -36,8 +36,8 @@ class DocumentationGenerator {
 
   async generateDocs(operationFile: string, options: GenerateOptions): Promise<void> {
     console.log(`📚 Generating documentation for: ${operationFile}`);
-    
-    const operation = parseOperation(operationFile);
+
+    const operation = await parseOperation(operationFile);
     const operationName = basename(operationFile, '.yaml');
     
     switch (options.format) {

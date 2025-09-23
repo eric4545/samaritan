@@ -1,0 +1,43 @@
+# Database Environment Manifest
+apiVersion: samaritan/v1
+kind: EnvironmentManifest
+metadata:
+  name: database
+  description: Database-specific environments
+  version: 1.0.0
+
+environments:
+  - name: development
+    description: Development database
+    variables:
+      DB_HOST: dev-postgres.company.com
+      DB_NAME: myapp_dev
+      DB_PORT: 5432
+      BACKUP_RETENTION_DAYS: 7
+      CONNECTION_POOL_SIZE: 10
+    approval_required: false
+
+  - name: staging
+    description: Staging database
+    variables:
+      DB_HOST: staging-postgres.company.com
+      DB_NAME: myapp_staging
+      DB_PORT: 5432
+      BACKUP_RETENTION_DAYS: 14
+      CONNECTION_POOL_SIZE: 20
+    approval_required: false
+    validation_required: true
+
+  - name: production
+    description: Production database
+    variables:
+      DB_HOST: prod-postgres.company.com
+      DB_NAME: myapp_prod
+      DB_PORT: 5432
+      BACKUP_RETENTION_DAYS: 90
+      CONNECTION_POOL_SIZE: 50
+    approval_required: true
+    validation_required: true
+    restrictions:
+      - maintenance-window-only
+      - dba-approval-required

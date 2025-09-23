@@ -1,0 +1,48 @@
+# Example: Operation using environment references
+name: Deploy Web Application
+version: 1.0.0
+description: Deploy web application using reusable environments
+author: sre-team@company.com
+category: deployment
+
+# Use simplified environment syntax with manifest inheritance
+environments:
+  - name: staging
+    from: k8s-cluster
+    variables:
+      IMAGE_TAG: staging-latest
+      DEBUG_ENABLED: true
+
+  - name: production
+    from: k8s-cluster
+    variables:
+      IMAGE_TAG: v${VERSION}
+      DEBUG_ENABLED: false
+
+preflight:
+  - name: Check Image Exists
+    type: command
+    command: docker manifest inspect ${REGISTRY}/${IMAGE_TAG}
+    description: Verify container image exists
+
+steps:
+  - name: Deploy Application
+    type: automatic
+    command: kubectl apply -f k8s/ --namespace ${NAMESPACE}
+    timeout: 300
+    evidence_required: true
+
+  - name: Scale Deployment
+    type: automatic
+    command: kubectl scale deployment webapp --replicas=${REPLICAS} --namespace ${NAMESPACE}
+    timeout: 120
+
+  - name: Verify Health
+    type: manual
+    instruction: |
+      Check application health:
+      1. Visit: https://${DOMAIN}/health
+      2. Verify all ${REPLICAS} pods are running
+      3. Test key functionality
+    evidence_required: true
+    evidence_types: [screenshot]
