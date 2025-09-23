@@ -26,6 +26,11 @@ export interface ApprovalConfig {
   auto_approve_on_success?: boolean;
 }
 
+export interface EvidenceConfig {
+  required?: boolean;
+  types?: EvidenceType[];
+}
+
 export interface StepValidation {
   expect?: string;
   contains?: string;
@@ -71,7 +76,8 @@ export interface PreflightCheck {
   condition?: string;
   description: string;
   timeout?: number;
-  evidence_required?: boolean;
+  evidence?: EvidenceConfig;
+  evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
   // Legacy fields for backward compatibility
   expect_empty?: boolean;
 }
@@ -80,7 +86,8 @@ export interface RollbackStep {
   command?: string;
   instruction?: string;
   timeout?: number;
-  evidence_required?: boolean;
+  evidence?: EvidenceConfig;
+  evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
 }
 
 export interface RollbackPlan {
@@ -101,8 +108,9 @@ export interface Step {
   estimated_duration?: number;
   env?: Record<string, any>;
   with?: Record<string, any>;
-  evidence_required?: boolean;
-  evidence_types?: EvidenceType[];
+  evidence?: EvidenceConfig;
+  evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
+  evidence_types?: EvidenceType[]; // DEPRECATED: Use evidence.types instead
   validation?: StepValidation;
   verify?: { command: string; };
   continue_on_error?: boolean;

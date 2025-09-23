@@ -28,24 +28,27 @@ steps:
       2. Post to Slack channel: ${SLACK_CHANNEL}
       3. Update status page if applicable
       4. Notify on-call team
-    evidence_required: true
-    evidence_types: [screenshot]
+    evidence:
+      required: true
+      types: [screenshot]
 
   - name: Gather Initial Information
     type: automatic
     description: Collect diagnostic information
     command: __DIAGNOSTIC_COMMAND__
     timeout: 60
-    evidence_required: true
-    evidence_types: [log, command_output]
+    evidence:
+      required: true
+      types: [log, command_output]
 
   - name: Check Recent Changes
     type: automatic
     description: Check for recent deployments or changes
     command: __RECENT_CHANGES_COMMAND__
     timeout: 30
-    evidence_required: true
-    evidence_types: [command_output]
+    evidence:
+      required: true
+      types: [command_output]
 
   - name: Emergency Restart
     type: manual
@@ -58,8 +61,9 @@ steps:
       3. Restart service: __RESTART_COMMAND__
       4. Monitor restart process
       5. Verify service recovery
-    evidence_required: true
-    evidence_types: [screenshot, log]
+    evidence:
+      required: true
+      types: [screenshot, log]
     manual_override: true
 
   - name: Scale Service
@@ -68,8 +72,9 @@ steps:
     description: Scale service to handle increased load
     command: __SCALE_COMMAND__
     timeout: 300
-    evidence_required: true
-    evidence_types: [command_output]
+    evidence:
+      required: true
+      types: [command_output]
 
   - name: Verify Recovery
     type: manual
@@ -79,8 +84,9 @@ steps:
       2. Verify metrics have returned to normal
       3. Test critical user flows
       4. Monitor for 10-15 minutes
-    evidence_required: true
-    evidence_types: [screenshot]
+    evidence:
+      required: true
+      types: [screenshot]
 
   - name: Post-Incident Communication
     type: manual
@@ -90,8 +96,9 @@ steps:
       2. Update status page with resolution
       3. Close monitoring alerts
       4. Schedule post-incident review
-    evidence_required: true
-    evidence_types: [screenshot]
+    evidence:
+      required: true
+      types: [screenshot]
 
 # Placeholders to replace:
 # __SERVICE_NAME__ - Name of the service

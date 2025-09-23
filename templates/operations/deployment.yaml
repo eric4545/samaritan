@@ -36,16 +36,18 @@ steps:
     description: Build the application artifact
     command: __BUILD_COMMAND__
     timeout: 600
-    evidence_required: true
-    evidence_types: [log, command_output]
+    evidence:
+      required: true
+      types: [log, command_output]
 
   - name: Deploy Application
     type: automatic
     description: Deploy to target environment
     command: __DEPLOY_COMMAND__
     timeout: 300
-    evidence_required: true
-    evidence_types: [log]
+    evidence:
+      required: true
+      types: [log]
     rollback:
       command: __ROLLBACK_COMMAND__
       timeout: 120
@@ -57,8 +59,9 @@ steps:
       1. Check application status: __HEALTH_CHECK_URL__
       2. Verify all services are healthy
       3. Test critical user flows
-    evidence_required: true
-    evidence_types: [screenshot]
+    evidence:
+      required: true
+      types: [screenshot]
 
   - name: Production Approval
     type: approval

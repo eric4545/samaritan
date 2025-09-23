@@ -9,7 +9,8 @@ import {
   Step,
   PreflightCheck,
   StepType,
-  EvidenceType
+  EvidenceType,
+  EvidenceConfig
 } from '../models/operation';
 import { randomUUID } from 'crypto';
 import { validateOperationSchemaStrict, SchemaValidationError, ValidationError } from '../validation/schema-validator.js';
@@ -24,6 +25,26 @@ interface ImportContext {
   stepLibraries: Map<string, Step>; // step name -> step definition
   loadedFiles: Set<string>; // Prevent circular imports
   baseDirectory: string; // Directory of the main operation file
+}
+
+function parseEvidence(data: any): EvidenceConfig | undefined {
+  // New nested format
+  if (data.evidence) {
+    return {
+      required: Boolean(data.evidence.required),
+      types: data.evidence.types as EvidenceType[]
+    };
+  }
+
+  // Legacy format - convert to new format
+  if (data.evidence_required !== undefined || data.evidence_types !== undefined) {
+    return {
+      required: Boolean(data.evidence_required),
+      types: data.evidence_types as EvidenceType[]
+    };
+  }
+
+  return undefined;
 }
 
 export class OperationParseError extends Error {
@@ -214,8 +235,9 @@ function parseStep(stepData: any, stepIndex: number): Step {
     estimated_duration: stepData.estimated_duration,
     env: stepData.env,
     with: stepData.with,
-    evidence_required: Boolean(stepData.evidence_required),
-    evidence_types: stepData.evidence_types as EvidenceType[],
+    evidence: parseEvidence(stepData),
+    evidence_required: Boolean(stepData.evidence_required), // DEPRECATED: Use evidence.required instead
+    evidence_types: stepData.evidence_types as EvidenceType[], // DEPRECATED: Use evidence.types instead
     validation: stepData.validation,
     verify: stepData.verify,
     continue_on_error: Boolean(stepData.continue_on_error),
@@ -237,7 +259,8 @@ function parsePreflightCheck(checkData: any, checkIndex: number): PreflightCheck
     condition: checkData.condition,
     description: checkData.description || '',
     timeout: checkData.timeout,
-    evidence_required: Boolean(checkData.evidence_required),
+    evidence: parseEvidence(checkData),
+    evidence_required: Boolean(checkData.evidence_required), // DEPRECATED: Use evidence.required instead
     // Legacy compatibility
     expect_empty: checkData.expect_empty
   };

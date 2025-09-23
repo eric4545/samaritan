@@ -144,6 +144,6 @@ vite.config.ts.timestamp-*
 # SAMARITAN specific
 session-*.json
 evidence/
-manuals/generated/
+manuals/
 .samaritan/
 operations-cache/

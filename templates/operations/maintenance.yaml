@@ -37,16 +37,18 @@ steps:
       1. Post maintenance start notification
       2. Update status page to "Under Maintenance"
       3. Send notifications to relevant teams
-    evidence_required: true
-    evidence_types: [screenshot]
+    evidence:
+      required: true
+      types: [screenshot]
 
   - name: Create Pre-Maintenance Backup
     type: automatic
     description: Create backup before maintenance
     command: __BACKUP_COMMAND__
     timeout: 1800
-    evidence_required: true
-    evidence_types: [log]
+    evidence:
+      required: true
+      types: [log]
 
   - name: Perform Maintenance Tasks
     type: manual
@@ -57,8 +59,9 @@ steps:
       __MAINTENANCE_TASKS__
 
       Document any issues or unexpected findings.
-    evidence_required: true
-    evidence_types: [screenshot, log]
+    evidence:
+      required: true
+      types: [screenshot, log]
     estimated_duration: __ESTIMATED_DURATION__
 
   - name: Verify Service After Maintenance
@@ -66,8 +69,9 @@ steps:
     description: Verify service is working correctly
     command: __POST_MAINTENANCE_CHECK__
     timeout: 300
-    evidence_required: true
-    evidence_types: [command_output]
+    evidence:
+      required: true
+      types: [command_output]
 
   - name: Announce Maintenance Complete
     type: manual
@@ -76,8 +80,9 @@ steps:
       1. Update status page to "Operational"
       2. Post maintenance completion notification
       3. Send all-clear notifications
-    evidence_required: true
-    evidence_types: [screenshot]
+    evidence:
+      required: true
+      types: [screenshot]
 
 # Placeholders to replace:
 # __SERVICE_NAME__ - Name of the service

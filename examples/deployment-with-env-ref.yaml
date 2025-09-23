@@ -30,7 +30,8 @@ steps:
     type: automatic
     command: kubectl apply -f k8s/ --namespace ${NAMESPACE}
     timeout: 300
-    evidence_required: true
+    evidence:
+      required: true
 
   - name: Scale Deployment
     type: automatic
@@ -44,5 +45,6 @@ steps:
       1. Visit: https://${DOMAIN}/health
       2. Verify all ${REPLICAS} pods are running
       3. Test key functionality
-    evidence_required: true
-    evidence_types: [screenshot]
+    evidence:
+      required: true
+      types: [screenshot]
