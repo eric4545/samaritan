@@ -85,8 +85,8 @@ npx github:eric4545/samaritan generate manual <operation.yaml> [options]
 npx github:eric4545/samaritan init [directory]
 
 # Create operation from template
-npx github:eric4545/samaritan create operation <name> [options]
-  --template <type>     Operation template (deployment, backup, incident)
+npx github:eric4545/samaritan operation [options]
+  --template <type>     Operation template (deployment, backup, incident-response, maintenance)
   --env <environments>  Target environments (comma-separated)
 ```
 
@@ -234,7 +234,21 @@ steps:
 
 ## 🔄 Execution Workflows
 
-### 1. Standard Deployment Workflow
+### 1. Template-Based Operation Creation
+
+```bash
+# 1. Create operation from template with placeholders
+npx github:eric4545/samaritan operation --template deployment
+
+# 2. Edit the generated file and replace __PLACEHOLDER__ values
+# 3. Validate the customized operation
+npx github:eric4545/samaritan validate operations/deployment_*.yaml --strict
+
+# 4. Execute in staging first
+npx github:eric4545/samaritan run operations/deployment_*.yaml --env staging
+```
+
+### 2. Standard Deployment Workflow
 
 ```bash
 # 1. Validate operation
@@ -250,7 +264,7 @@ npx github:eric4545/samaritan generate manual deployment.yaml --env production
 npx github:eric4545/samaritan run deployment.yaml --env production
 ```
 
-### 2. Emergency Response Workflow
+### 3. Emergency Response Workflow
 
 ```bash
 # 1. Find relevant emergency procedure
@@ -263,7 +277,7 @@ npx github:eric4545/samaritan run emergency/restart-service.yaml --env productio
 npx github:eric4545/samaritan generate report --session <session-id>
 ```
 
-### 3. Session Management
+### 4. Session Management
 
 ```bash
 # Start operation

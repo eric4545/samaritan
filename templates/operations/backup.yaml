@@ -1,0 +1,77 @@
+name: __SERVICE_NAME__ Backup
+version: 1.0.0
+description: Backup __SERVICE_NAME__ data with verification
+author: __AUTHOR_EMAIL__
+category: backup
+
+environments:
+  - name: production
+    description: Production backup
+    variables:
+      SERVICE_NAME: __SERVICE_NAME__
+      BACKUP_LOCATION: __BACKUP_LOCATION__
+      RETENTION_DAYS: 30
+
+preflight:
+  - name: Check Disk Space
+    type: command
+    command: df -h __BACKUP_LOCATION__
+    description: Ensure sufficient disk space for backup
+    timeout: 10
+
+  - name: Verify Service Status
+    type: command
+    command: __SERVICE_STATUS_COMMAND__
+    description: Ensure service is running before backup
+    timeout: 30
+
+steps:
+  - name: Create Backup
+    type: automatic
+    description: Create service backup
+    command: __BACKUP_COMMAND__
+    timeout: 3600
+    evidence_required: true
+    evidence_types: [log, command_output]
+
+  - name: Verify Backup Integrity
+    type: automatic
+    description: Verify backup was created successfully
+    command: __VERIFY_COMMAND__
+    timeout: 300
+    evidence_required: true
+    evidence_types: [command_output]
+
+  - name: Upload to Remote Storage
+    type: automatic
+    description: Upload backup to remote storage
+    command: __UPLOAD_COMMAND__
+    timeout: 1800
+    evidence_required: true
+    evidence_types: [log]
+
+  - name: Manual Verification
+    type: manual
+    description: Manual backup verification
+    instruction: |
+      1. Check backup file exists: __BACKUP_LOCATION__
+      2. Verify file size is reasonable
+      3. Check backup metadata/logs for any errors
+      4. Confirm remote storage upload completed
+    evidence_required: true
+    evidence_types: [screenshot, log]
+
+  - name: Cleanup Old Backups
+    type: automatic
+    description: Remove backups older than retention period
+    command: find __BACKUP_LOCATION__ -type f -mtime +${RETENTION_DAYS} -delete
+    timeout: 300
+
+# Placeholders to replace:
+# __SERVICE_NAME__ - Name of the service being backed up
+# __AUTHOR_EMAIL__ - Your email address
+# __BACKUP_LOCATION__ - Directory where backups are stored
+# __SERVICE_STATUS_COMMAND__ - Command to check service status
+# __BACKUP_COMMAND__ - Command to create the backup
+# __VERIFY_COMMAND__ - Command to verify backup integrity
+# __UPLOAD_COMMAND__ - Command to upload backup to remote storage

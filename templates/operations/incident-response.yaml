@@ -1,0 +1,106 @@
+name: __SERVICE_NAME__ Incident Response
+version: 1.0.0
+description: Emergency response procedure for __SERVICE_NAME__
+author: __AUTHOR_EMAIL__
+category: incident
+emergency: true
+
+environments:
+  - name: production
+    description: Production incident response
+    variables:
+      SERVICE_NAME: __SERVICE_NAME__
+      NAMESPACE: __NAMESPACE__
+      SLACK_CHANNEL: __SLACK_CHANNEL__
+
+preflight:
+  - name: Check Service Status
+    type: command
+    command: __STATUS_CHECK_COMMAND__
+    description: Get current service status
+    timeout: 30
+
+steps:
+  - name: Acknowledge Incident
+    type: manual
+    description: Acknowledge and communicate incident
+    instruction: |
+      1. Acknowledge the incident in monitoring system
+      2. Post to Slack channel: ${SLACK_CHANNEL}
+      3. Update status page if applicable
+      4. Notify on-call team
+    evidence_required: true
+    evidence_types: [screenshot]
+
+  - name: Gather Initial Information
+    type: automatic
+    description: Collect diagnostic information
+    command: __DIAGNOSTIC_COMMAND__
+    timeout: 60
+    evidence_required: true
+    evidence_types: [log, command_output]
+
+  - name: Check Recent Changes
+    type: automatic
+    description: Check for recent deployments or changes
+    command: __RECENT_CHANGES_COMMAND__
+    timeout: 30
+    evidence_required: true
+    evidence_types: [command_output]
+
+  - name: Emergency Restart
+    type: manual
+    description: Restart service if necessary
+    instruction: |
+      WARNING: Only proceed if service restart is appropriate for this incident
+
+      1. Check current service status
+      2. Create backup of current logs
+      3. Restart service: __RESTART_COMMAND__
+      4. Monitor restart process
+      5. Verify service recovery
+    evidence_required: true
+    evidence_types: [screenshot, log]
+    manual_override: true
+
+  - name: Scale Service
+    type: conditional
+    if: ${{ incident.type == 'load' }}
+    description: Scale service to handle increased load
+    command: __SCALE_COMMAND__
+    timeout: 300
+    evidence_required: true
+    evidence_types: [command_output]
+
+  - name: Verify Recovery
+    type: manual
+    description: Verify service has recovered
+    instruction: |
+      1. Check service health endpoints
+      2. Verify metrics have returned to normal
+      3. Test critical user flows
+      4. Monitor for 10-15 minutes
+    evidence_required: true
+    evidence_types: [screenshot]
+
+  - name: Post-Incident Communication
+    type: manual
+    description: Communicate resolution
+    instruction: |
+      1. Update Slack channel: ${SLACK_CHANNEL}
+      2. Update status page with resolution
+      3. Close monitoring alerts
+      4. Schedule post-incident review
+    evidence_required: true
+    evidence_types: [screenshot]
+
+# Placeholders to replace:
+# __SERVICE_NAME__ - Name of the service
+# __AUTHOR_EMAIL__ - Your email address
+# __NAMESPACE__ - Kubernetes namespace or service location
+# __SLACK_CHANNEL__ - Incident communication channel
+# __STATUS_CHECK_COMMAND__ - Command to check service status
+# __DIAGNOSTIC_COMMAND__ - Command to gather diagnostic info
+# __RECENT_CHANGES_COMMAND__ - Command to check recent changes
+# __RESTART_COMMAND__ - Command to restart the service
+# __SCALE_COMMAND__ - Command to scale the service

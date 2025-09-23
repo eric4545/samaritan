@@ -1,0 +1,92 @@
+name: __SERVICE_NAME__ Maintenance
+version: 1.0.0
+description: Routine maintenance for __SERVICE_NAME__
+author: __AUTHOR_EMAIL__
+category: maintenance
+
+environments:
+  - name: staging
+    description: Staging maintenance
+    variables:
+      SERVICE_NAME: __SERVICE_NAME__
+      MAINTENANCE_WINDOW: __STAGING_WINDOW__
+
+  - name: production
+    description: Production maintenance
+    variables:
+      SERVICE_NAME: __SERVICE_NAME__
+      MAINTENANCE_WINDOW: __PRODUCTION_WINDOW__
+    approval_required: true
+
+preflight:
+  - name: Check Maintenance Window
+    type: manual
+    description: Verify we are within approved maintenance window
+    timeout: 300
+
+  - name: Verify Service Health
+    type: command
+    command: __HEALTH_CHECK_COMMAND__
+    description: Ensure service is healthy before maintenance
+    timeout: 30
+
+steps:
+  - name: Announce Maintenance Start
+    type: manual
+    description: Notify stakeholders of maintenance start
+    instruction: |
+      1. Post maintenance start notification
+      2. Update status page to "Under Maintenance"
+      3. Send notifications to relevant teams
+    evidence_required: true
+    evidence_types: [screenshot]
+
+  - name: Create Pre-Maintenance Backup
+    type: automatic
+    description: Create backup before maintenance
+    command: __BACKUP_COMMAND__
+    timeout: 1800
+    evidence_required: true
+    evidence_types: [log]
+
+  - name: Perform Maintenance Tasks
+    type: manual
+    description: Execute planned maintenance tasks
+    instruction: |
+      Execute the following maintenance tasks:
+
+      __MAINTENANCE_TASKS__
+
+      Document any issues or unexpected findings.
+    evidence_required: true
+    evidence_types: [screenshot, log]
+    estimated_duration: __ESTIMATED_DURATION__
+
+  - name: Verify Service After Maintenance
+    type: automatic
+    description: Verify service is working correctly
+    command: __POST_MAINTENANCE_CHECK__
+    timeout: 300
+    evidence_required: true
+    evidence_types: [command_output]
+
+  - name: Announce Maintenance Complete
+    type: manual
+    description: Notify stakeholders maintenance is complete
+    instruction: |
+      1. Update status page to "Operational"
+      2. Post maintenance completion notification
+      3. Send all-clear notifications
+    evidence_required: true
+    evidence_types: [screenshot]
+
+# Placeholders to replace:
+# __SERVICE_NAME__ - Name of the service
+# __AUTHOR_EMAIL__ - Your email address
+# __STAGING_WINDOW__ - Staging maintenance window
+# __PRODUCTION_WINDOW__ - Production maintenance window
+# __HEALTH_CHECK_COMMAND__ - Command to check service health
+# __BACKUP_COMMAND__ - Command to create backup
+# __MAINTENANCE_TASKS__ - List of specific maintenance tasks
+# __ESTIMATED_DURATION__ - Expected duration in minutes
+# __POST_MAINTENANCE_CHECK__ - Command to verify service after maintenance

@@ -1,13 +1,9 @@
 import { Command } from 'commander';
-import { mkdir, writeFile, readdir } from 'fs/promises';
+import { mkdir, writeFile, readdir, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-interface ProjectTemplate {
-  name: string;
-  description: string;
-  files: { [path: string]: string };
-}
 
 const DEFAULT_CONFIG = `# SAMARITAN Configuration
 project:
@@ -176,53 +172,37 @@ troubleshooting_tips:
   - "Look for recent schema changes that might have caused issues"
 `;
 
-const OPERATION_TEMPLATES: { [key: string]: ProjectTemplate } = {
-  'deploy-service': {
-    name: 'Service Deployment',
-    description: 'Deploy a microservice to Kubernetes',
-    files: {
-      'operations/deploy-service.yaml': EXAMPLE_OPERATION.replace('example-deployment', 'deploy-service')
-    }
-  },
-  'database-backup': {
-    name: 'Database Backup',
-    description: 'Backup database with verification',
-    files: {
-      'operations/database-backup.yaml': `operation:
-  name: database-backup
-  version: 1.0.0
-  description: Backup database with verification
-  category: backup
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-environments:
-  - name: production
-    variables:
-      db_host: prod-db.example.com
-      backup_bucket: s3://prod-backups
-      retention_days: 30
-
-steps:
-  - name: create-backup
-    type: automatic
-    command: pg_dump -h \${db_host} -U backup_user database_name | gzip > backup_\${DATE}.sql.gz
-    timeout: 1800
-    evidence_required: true
-    
-  - name: upload-backup
-    type: automatic  
-    command: aws s3 cp backup_\${DATE}.sql.gz \${backup_bucket}/\${DATE}/
-    timeout: 600
-    
-  - name: verify-backup
-    type: manual
-    instruction: |
-      1. Check backup file size is reasonable
-      2. Verify backup can be read: gunzip -t backup_\${DATE}.sql.gz
-      3. Confirm S3 upload completed successfully
-`
-    }
-  }
+// Available operation templates
+const TEMPLATE_DESCRIPTIONS: { [key: string]: string } = {
+  'deployment': 'Application deployment with approval gates',
+  'backup': 'Database backup with verification',
+  'incident-response': 'Emergency incident response procedure',
+  'maintenance': 'Routine maintenance operations'
 };
+
+async function loadTemplate(templateName: string): Promise<string> {
+  try {
+    const templatePath = join(__dirname, '../../../templates/operations', `${templateName}.yaml`);
+    const template = await readFile(templatePath, 'utf8');
+    return template;
+  } catch (error) {
+    throw new Error(`Template '${templateName}' not found`);
+  }
+}
+
+async function getAvailableTemplates(): Promise<string[]> {
+  try {
+    const templatesDir = join(__dirname, '../../../templates/operations');
+    const files = await readdir(templatesDir);
+    return files.filter(f => f.endsWith('.yaml')).map(f => f.replace('.yaml', ''));
+  } catch (error) {
+    return Object.keys(TEMPLATE_DESCRIPTIONS);
+  }
+}
+
 
 async function createDirectory(path: string): Promise<void> {
   try {
@@ -311,26 +291,44 @@ node_modules/
 async function createOperation(template?: string): Promise<void> {
   console.log('📝 Creating new operation...\n');
 
-  if (template && !OPERATION_TEMPLATES[template]) {
+  const availableTemplates = await getAvailableTemplates();
+  const templateToUse = template || 'deployment';
+
+  if (template && !availableTemplates.includes(template)) {
     console.error(`❌ Unknown template: ${template}`);
     console.log('Available templates:');
-    Object.entries(OPERATION_TEMPLATES).forEach(([key, tmpl]) => {
-      console.log(`  - ${key}: ${tmpl.description}`);
+    availableTemplates.forEach(tmpl => {
+      const description = TEMPLATE_DESCRIPTIONS[tmpl] || 'Operation template';
+      console.log(`  - ${tmpl}: ${description}`);
     });
     process.exit(1);
   }
 
-  // Simple implementation - just copy template or example
-  const templateData = template ? OPERATION_TEMPLATES[template] : OPERATION_TEMPLATES['deploy-service'];
-  const operationName = template ? template.replace('-', '_') : 'new_operation';
-  const fileName = `operations/${operationName}_${Date.now()}.yaml`;
+  try {
+    // Load template from file
+    const templateContent = await loadTemplate(templateToUse);
+    const operationName = templateToUse.replace('-', '_');
+    const fileName = `${operationName}_${Date.now()}.yaml`;
 
-  await writeFile(fileName, Object.values(templateData.files)[0]);
-  console.log(`✅ Created operation: ${fileName}`);
-  console.log('\nNext steps:');
-  console.log(`  1. Edit ${fileName} with your specific requirements`);
-  console.log(`  2. samaritan validate ${fileName}`);
-  console.log(`  3. samaritan run ${operationName} --env <environment>`);
+    // Create operations directory if it doesn't exist
+    if (!existsSync('operations')) {
+      await mkdir('operations', { recursive: true });
+    }
+
+    const filePath = join('operations', fileName);
+    await writeFile(filePath, templateContent);
+
+    console.log(`✅ Created operation: ${filePath}`);
+    console.log('\n📋 Template placeholders to customize:');
+    console.log('   Replace __PLACEHOLDER__ values with your specific settings');
+    console.log('\nNext steps:');
+    console.log(`  1. Edit ${filePath} and replace all __PLACEHOLDER__ values`);
+    console.log(`  2. npx github:eric4545/samaritan validate ${filePath}`);
+    console.log(`  3. npx github:eric4545/samaritan run ${filePath} --env <environment>`);
+  } catch (error: any) {
+    console.error(`❌ Failed to create operation: ${error.message}`);
+    process.exit(1);
+  }
 }
 
 // Command definitions
@@ -350,7 +348,7 @@ const createCommand = new Command('create')
   .description('Create new SAMARITAN resources')
   .command('operation')
   .description('Create a new operation')
-  .option('--template <name>', 'Use a template (deploy-service, database-backup)')
+  .option('--template <name>', 'Use a template (deployment, backup, incident-response, maintenance)')
   .action(async (options) => {
     try {
       await createOperation(options.template);

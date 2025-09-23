@@ -1,0 +1,85 @@
+name: __OPERATION_NAME__
+version: 1.0.0
+description: __OPERATION_DESCRIPTION__
+author: __AUTHOR_EMAIL__
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      REPLICAS: 1
+      NAMESPACE: staging
+      IMAGE_TAG: latest
+    approval_required: false
+
+  - name: production
+    description: Production environment
+    variables:
+      REPLICAS: 3
+      NAMESPACE: production
+      IMAGE_TAG: __IMAGE_TAG__
+    approval_required: true
+    validation_required: true
+
+preflight:
+  - name: Check Git Status
+    type: command
+    command: git status --porcelain
+    description: Ensure no uncommitted changes
+    timeout: 10
+
+  - name: Verify Container Registry Access
+    type: command
+    command: docker info
+    description: Ensure Docker is running and accessible
+    timeout: 30
+
+steps:
+  - name: Build Application
+    type: automatic
+    description: Build the application artifact
+    command: __BUILD_COMMAND__
+    timeout: 600
+    evidence_required: true
+    evidence_types: [log, command_output]
+
+  - name: Deploy Application
+    type: automatic
+    description: Deploy to target environment
+    command: __DEPLOY_COMMAND__
+    timeout: 300
+    evidence_required: true
+    evidence_types: [log]
+    rollback:
+      command: __ROLLBACK_COMMAND__
+      timeout: 120
+
+  - name: Health Check
+    type: manual
+    description: Verify application is running correctly
+    instruction: |
+      1. Check application status: __HEALTH_CHECK_URL__
+      2. Verify all services are healthy
+      3. Test critical user flows
+    evidence_required: true
+    evidence_types: [screenshot]
+
+  - name: Production Approval
+    type: approval
+    description: Require approval for production deployment
+    approval:
+      required: true
+      approvers: [__APPROVER_EMAIL__]
+      timeout: "24h"
+
+# Placeholders to replace:
+# __OPERATION_NAME__ - Name of your operation
+# __OPERATION_DESCRIPTION__ - Description of what this operation does
+# __AUTHOR_EMAIL__ - Your email address
+# __IMAGE_TAG__ - Production image tag
+# __BUILD_COMMAND__ - Command to build your application
+# __DEPLOY_COMMAND__ - Command to deploy your application
+# __ROLLBACK_COMMAND__ - Command to rollback deployment
+# __HEALTH_CHECK_URL__ - URL for health checking
+# __APPROVER_EMAIL__ - Email of deployment approver
