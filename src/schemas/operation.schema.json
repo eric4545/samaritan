@@ -164,6 +164,11 @@
                 "type": "number",
                 "minimum": 0
               },
+              "phase": {
+                "type": "string",
+                "enum": ["preflight", "flight", "postflight"],
+                "description": "Execution phase of the step"
+              },
               "env": {
                 "type": "object"
               },
@@ -208,6 +213,11 @@
               "type": {
                 "type": "string",
                 "enum": ["automatic", "manual", "approval", "conditional"]
+              },
+              "phase": {
+                "type": "string",
+                "enum": ["preflight", "flight", "postflight"],
+                "description": "Execution phase of the step"
               },
               "description": {
                 "type": "string"

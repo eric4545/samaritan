@@ -115,25 +115,24 @@ steps:
     assert(content.includes('cluster-dev-us-east-1<br>cluster-dev-eu-west-1'), 'Preprod targets should use <br> tags.');
     assert(content.includes('| Yes |'), 'Production approval requirement should be shown.');
 
-    // Check for Pre-flight Checklist section
-    assert(content.includes('## Pre-flight Checklist'), 'Pre-flight Checklist section should exist.');
-    assert(content.includes('- **Check Git status:** Ensure no uncommitted changes exist in the current branch.'), 'Pre-flight check name should be present.');
-    assert(content.includes('  ```bash\n  git status --porcelain\n  ```'), 'Pre-flight command should be present.');
+    // Check for Pre-flight Phase section (unified format)
+    assert(content.includes('## 🛫 Pre-Flight Phase'), 'Pre-flight Phase section should exist.');
 
     // Check for Operation Steps table
-    assert(content.includes('## Operation Steps'), 'Operation Steps section should exist.');
+    assert(content.includes('## ✈️ Flight Phase (Main Operations)'), 'Operation Steps section should exist.');
     assert(content.includes('| Step | preprod | production |'), 'Steps table header should exist.');
-    assert(content.includes('| Step 1: Build Docker Image ⚙️'), 'First step in table should be present.');
+    // Main steps are numbered starting from 1 in their own phase section
+    assert(content.includes('| Step 1: Build Docker Image ✈️⚙️'), 'First step in table should be present.');
     assert(content.includes('`docker build -t web-server:latest .`'), 'Docker build command should be present.');
-    
+
     // Check steps with environment-specific commands in table format
-    assert(content.includes('| Step 4: Scale Deployment ⚙️'), 'Scale Deployment step in table should be present.');
+    assert(content.includes('| Step 4: Scale Deployment ✈️⚙️'), 'Scale Deployment step in table should be present.');
     assert(content.includes('`kubectl scale deployment web-server --replicas=2`'), 'REPLICAS variable should be substituted for preprod.');
     assert(content.includes('`kubectl scale deployment web-server --replicas=5`'), 'REPLICAS variable should be substituted for production.');
-    
-    assert(content.includes('| Step 5: Manual Verification 👤'), 'Manual Verification step in table should be present.');
+
+    assert(content.includes('| Step 5: Manual Verification ✈️👤'), 'Manual Verification step in table should be present.');
     assert(content.includes('`curl https://web-server.example.com/health`'), 'Manual verification command should be present.');
-    assert(content.includes('| Step 6: Deploy to Kubernetes ⚙️'), 'Last step in table should be present.');
+    assert(content.includes('| Step 6: Deploy to Kubernetes ✈️⚙️'), 'Last step in table should be present.');
     assert(content.includes('`kubectl apply -f k8s/deployment.yaml`'), 'kubectl command should be present.');
   });
 });

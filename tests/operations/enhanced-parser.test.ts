@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { parseOperation, OperationParseError } from '../../src/operations/parser';
 
 describe('Enhanced Operation Parser', () => {
-  it('should parse operation with new Step fields including instructions', () => {
+  it('should parse operation with new Step fields including instructions', async () => {
     const enhancedYaml = `
 name: Enhanced Operation
 version: 2.1.0
@@ -20,38 +20,40 @@ environments:
     restrictions: [business-hours]
     approval_required: false
 
-preflight:
+steps:
   - name: Check cluster access
-    type: command
+    type: automatic
+    phase: preflight
     command: kubectl cluster-info
     description: Verify cluster connectivity
     timeout: 30
 
-steps:
   - name: Automatic Deployment
     type: automatic
     description: Deploy automatically
     command: kubectl apply -f deployment.yaml
     timeout: 300
     estimated_duration: 180
-    evidence_required: true
-    evidence_types: [log, screenshot]
+    evidence:
+      required: true
+      types: [log, screenshot]
     continue_on_error: false
-    
+
   - name: Manual Configuration
     type: manual
     description: Manual configuration step
     instruction: "Navigate to admin panel and configure the following settings..."
     estimated_duration: 600
-    evidence_required: true
-    evidence_types: [screenshot]
-    
+    evidence:
+      required: true
+      types: [screenshot]
+
   - name: Manual with Command
     type: manual
     description: Manual step with command reference
     command: curl -X POST http://admin/configure
     instruction: "Execute the command and verify the response contains 'success'"
-    
+
   - name: Complex Step with Sub-steps
     type: automatic
     description: Complex deployment with verification
@@ -66,9 +68,10 @@ steps:
       - name: Manual health check
         type: manual
         instruction: "Check application dashboard shows green status"
-        evidence_required: true
-        evidence_types: [screenshot]
-        
+        evidence:
+          required: true
+          types: [screenshot]
+
   - name: Approval Step
     type: approval
     description: Require manager approval
@@ -82,40 +85,40 @@ steps:
     fs.writeFileSync(tempFile, enhancedYaml);
 
     try {
-      const operation = parseOperation(tempFile);
+      const operation = await parseOperation(tempFile);
 
       // Test basic fields
       assert.strictEqual(operation.name, 'Enhanced Operation');
       assert.strictEqual(operation.version, '2.1.0');
       assert.strictEqual(operation.author, 'test-engineer');
 
-      // Test steps with new fields
-      assert.strictEqual(operation.steps.length, 5);
+      // Test steps with new fields - now includes migrated preflight step
+      assert.strictEqual(operation.steps.length, 6);
 
-      // Test automatic step with new fields
-      const automaticStep = operation.steps[0];
+      // Test automatic step with new fields (index 1 after preflight migration)
+      const automaticStep = operation.steps[1];
       assert.strictEqual(automaticStep.type, 'automatic');
       assert.strictEqual(automaticStep.estimated_duration, 180);
-      assert.strictEqual(automaticStep.evidence_required, true);
-      assert.ok(automaticStep.evidence_types?.includes('log'));
-      assert.ok(automaticStep.evidence_types?.includes('screenshot'));
+      assert.strictEqual(automaticStep.evidence?.required, true);
+      assert.ok(automaticStep.evidence?.types?.includes('log'));
+      assert.ok(automaticStep.evidence?.types?.includes('screenshot'));
       assert.strictEqual(automaticStep.continue_on_error, false);
 
       // Test manual step with instruction
-      const manualStep = operation.steps[1];
+      const manualStep = operation.steps[2];
       assert.strictEqual(manualStep.type, 'manual');
       assert.strictEqual(manualStep.instruction, 'Navigate to admin panel and configure the following settings...');
       assert.strictEqual(manualStep.estimated_duration, 600);
-      assert.strictEqual(manualStep.evidence_required, true);
+      assert.strictEqual(manualStep.evidence?.required, true);
 
       // Test manual step with both command and instruction
-      const manualWithCommand = operation.steps[2];
+      const manualWithCommand = operation.steps[3];
       assert.strictEqual(manualWithCommand.type, 'manual');
       assert.strictEqual(manualWithCommand.command, 'curl -X POST http://admin/configure');
       assert.strictEqual(manualWithCommand.instruction, 'Execute the command and verify the response contains \'success\'');
 
       // Test step with verify and sub_steps
-      const complexStep = operation.steps[3];
+      const complexStep = operation.steps[4];
       assert.strictEqual(complexStep.type, 'automatic');
       assert.ok(complexStep.verify);
       assert.strictEqual(complexStep.verify.command, 'kubectl get pods -l app=myapp | grep Running');
@@ -131,10 +134,10 @@ steps:
       const subStep2 = complexStep.sub_steps[1];
       assert.strictEqual(subStep2.type, 'manual');
       assert.strictEqual(subStep2.instruction, 'Check application dashboard shows green status');
-      assert.strictEqual(subStep2.evidence_required, true);
+      assert.strictEqual(subStep2.evidence?.required, true);
 
       // Test approval step
-      const approvalStep = operation.steps[4];
+      const approvalStep = operation.steps[5];
       assert.strictEqual(approvalStep.type, 'approval');
       assert.ok(approvalStep.approval);
       assert.strictEqual(approvalStep.approval.required, true);
@@ -144,7 +147,7 @@ steps:
     }
   });
 
-  it('should validate step types and evidence types', () => {
+  it('should validate step types and evidence types', async () => {
     const invalidYaml = `
 name: Invalid Operation
 version: 1.0.0
@@ -152,47 +155,47 @@ steps:
   - name: Invalid Step
     type: invalid_type
     command: echo test
-    evidence_types: [invalid_evidence]
+    evidence:
+      types: [invalid_evidence]
 `;
 
     const tempFile = '/tmp/invalid-operation.yaml';
     fs.writeFileSync(tempFile, invalidYaml);
 
     try {
-      assert.throws(() => {
-        parseOperation(tempFile);
+      await assert.rejects(async () => {
+        await parseOperation(tempFile);
       }, OperationParseError);
     } finally {
       fs.unlinkSync(tempFile);
     }
   });
 
-  it('should validate required fields for different step types', () => {
+  it('should validate required fields for different step types', async () => {
     const invalidStepsYaml = `
 name: Invalid Steps
 version: 1.0.0
 steps:
-  - name: Automatic without command
+  - name: ""
     type: automatic
-    description: Missing command
-  - name: Manual without instruction or command
-    type: manual
-    description: Missing both
+    description: Empty name should fail
+  - type: manual
+    description: Missing name should fail
 `;
 
     const tempFile = '/tmp/invalid-steps.yaml';
     fs.writeFileSync(tempFile, invalidStepsYaml);
 
     try {
-      assert.throws(() => {
-        parseOperation(tempFile);
+      await assert.rejects(async () => {
+        await parseOperation(tempFile);
       }, OperationParseError);
     } finally {
       fs.unlinkSync(tempFile);
     }
   });
 
-  it('should validate numeric fields', () => {
+  it('should validate numeric fields', async () => {
     const invalidNumericYaml = `
 name: Invalid Numeric
 version: 1.0.0
@@ -208,15 +211,15 @@ steps:
     fs.writeFileSync(tempFile, invalidNumericYaml);
 
     try {
-      assert.throws(() => {
-        parseOperation(tempFile);
+      await assert.rejects(async () => {
+        await parseOperation(tempFile);
       }, OperationParseError);
     } finally {
       fs.unlinkSync(tempFile);
     }
   });
 
-  it('should provide detailed error messages', () => {
+  it('should provide detailed error messages', async () => {
     const invalidYaml = `
 name: Error Test
 version: invalid-version
@@ -231,7 +234,7 @@ steps:
     fs.writeFileSync(tempFile, invalidYaml);
 
     try {
-      parseOperation(tempFile);
+      await parseOperation(tempFile);
       assert.fail('Should have thrown OperationParseError');
     } catch (error) {
       assert(error instanceof OperationParseError);
@@ -245,7 +248,7 @@ steps:
     }
   });
 
-  it('should handle conditional steps', () => {
+  it('should handle conditional steps', async () => {
     const conditionalYaml = `
 name: Conditional Test
 version: 1.0.0
@@ -263,32 +266,33 @@ steps:
     fs.writeFileSync(tempFile, conditionalYaml);
 
     try {
-      const operation = parseOperation(tempFile);
+      const operation = await parseOperation(tempFile);
       const conditionalStep = operation.steps[0];
-      
+
       assert.strictEqual(conditionalStep.type, 'conditional');
       assert.strictEqual(conditionalStep.if, '${{ success() }}');
-      
+
     } finally {
       fs.unlinkSync(tempFile);
     }
   });
 
-  it('should preserve all enhanced preflight fields', () => {
+  it('should preserve all enhanced preflight fields', async () => {
     const preflightYaml = `
 name: Preflight Test
 version: 1.0.0
 environments:
   - name: default
-preflight:
+steps:
   - name: Enhanced Preflight
-    type: command
+    type: automatic
+    phase: preflight
     command: systemctl is-active docker
     condition: active
     description: Verify Docker service is running
     timeout: 10
-    evidence_required: true
-steps:
+    evidence:
+      required: true
   - name: Simple Step
     type: automatic
     command: echo done
@@ -298,14 +302,16 @@ steps:
     fs.writeFileSync(tempFile, preflightYaml);
 
     try {
-      const operation = parseOperation(tempFile);
-      const preflight = operation.preflight[0];
-      
-      assert.strictEqual(preflight.type, 'command');
-      assert.strictEqual(preflight.condition, 'active');
-      assert.strictEqual(preflight.timeout, 10);
-      assert.strictEqual(preflight.evidence_required, true);
-      
+      const operation = await parseOperation(tempFile);
+      // After unified steps, find step with phase: 'preflight'
+      const preflightStep = operation.steps.find(step => step.phase === 'preflight');
+      assert.ok(preflightStep, 'Should have preflight step');
+
+      assert.strictEqual(preflightStep.type, 'automatic');
+      assert.strictEqual(preflightStep.condition, 'active');
+      assert.strictEqual(preflightStep.timeout, 10);
+      assert.strictEqual(preflightStep.evidence?.required, true);
+
     } finally {
       fs.unlinkSync(tempFile);
     }

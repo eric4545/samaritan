@@ -19,15 +19,16 @@ environments:
       IMAGE_TAG: v${VERSION}
       DEBUG_ENABLED: false
 
-preflight:
+steps:
   - name: Check Image Exists
-    type: command
+    type: automatic
+    phase: preflight
     command: docker manifest inspect ${REGISTRY}/${IMAGE_TAG}
     description: Verify container image exists
 
-steps:
   - name: Deploy Application
     type: automatic
+    phase: flight
     command: kubectl apply -f k8s/ --namespace ${NAMESPACE}
     timeout: 300
     evidence:
@@ -35,11 +36,13 @@ steps:
 
   - name: Scale Deployment
     type: automatic
+    phase: flight
     command: kubectl scale deployment webapp --replicas=${REPLICAS} --namespace ${NAMESPACE}
     timeout: 120
 
   - name: Verify Health
     type: manual
+    phase: postflight
     instruction: |
       Check application health:
       1. Visit: https://${DOMAIN}/health

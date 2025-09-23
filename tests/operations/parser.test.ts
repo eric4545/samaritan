@@ -5,8 +5,8 @@ import { parseOperation } from '../../src/operations/parser';
 import { Operation, Environment, OperationMetadata } from '../../src/models/operation';
 
 describe('Enhanced Operation Parser', () => {
-  it('should parse legacy deployment.yaml with backward compatibility', () => {
-    const operation = parseOperation('examples/deployment.yaml');
+  it('should parse legacy deployment.yaml with backward compatibility', async () => {
+    const operation = await parseOperation('examples/deployment.yaml');
 
     // Verify basic fields work
     assert.strictEqual(operation.name, 'Deploy Web Server');
@@ -45,19 +45,27 @@ describe('Enhanced Operation Parser', () => {
     assert.ok(operation.metadata.updated_at instanceof Date);
     assert.strictEqual(operation.metadata.execution_count, 0);
 
-    // Verify steps are preserved
+    // Verify steps are preserved (preflight migrated to steps with phase)
     assert.ok(operation.steps);
-    assert.strictEqual(operation.steps.length, 6);
-    assert.strictEqual(operation.steps[0].name, 'Build Docker Image');
-    assert.strictEqual(operation.steps[0].type, 'automatic');
+    assert.strictEqual(operation.steps.length, 8); // 2 preflight + 6 original steps
 
-    // Verify preflight checks are preserved
-    assert.ok(operation.preflight);
-    assert.strictEqual(operation.preflight.length, 2);
-    assert.strictEqual(operation.preflight[0].name, 'Check Git status');
+    // Check preflight steps (now in unified steps with phase)
+    const preflightSteps = operation.steps.filter(step => step.phase === 'preflight');
+    assert.strictEqual(preflightSteps.length, 2);
+    assert.strictEqual(preflightSteps[0].name, 'Check Git status');
+    assert.strictEqual(preflightSteps[0].type, 'automatic');
+
+    // Check regular steps (should be the original steps, starting after preflight)
+    const regularSteps = operation.steps.filter(step => step.phase !== 'preflight');
+    assert.strictEqual(regularSteps.length, 6);
+    assert.strictEqual(regularSteps[0].name, 'Build Docker Image');
+    assert.strictEqual(regularSteps[0].type, 'automatic');
+
+    // Verify preflight array no longer exists (everything unified into steps)
+    assert.strictEqual(operation.preflight.length, 0);
   });
 
-  it('should handle minimal YAML with proper defaults', () => {
+  it('should handle minimal YAML with proper defaults', async () => {
     // Create a minimal test operation
     const minimalYaml = `
 name: Minimal Test
@@ -75,7 +83,7 @@ steps:
     fs.writeFileSync(tempFile, minimalYaml);
 
     try {
-      const operation = parseOperation(tempFile);
+      const operation = await parseOperation(tempFile);
 
       // Verify required fields
       assert.strictEqual(operation.name, 'Minimal Test');
@@ -101,7 +109,7 @@ steps:
     }
   });
 
-  it('should validate required fields and throw errors for invalid YAML', () => {
+  it('should validate required fields and throw errors for invalid YAML', async () => {
     const invalidYaml = `
 name: Invalid Operation
 # Missing version and steps
@@ -111,15 +119,15 @@ name: Invalid Operation
     fs.writeFileSync(tempFile, invalidYaml);
 
     try {
-      assert.throws(() => {
-        parseOperation(tempFile);
+      await assert.rejects(async () => {
+        await parseOperation(tempFile);
       }, /Schema validation failed/);
     } finally {
       fs.unlinkSync(tempFile);
     }
   });
 
-  it('should preserve all new enhanced fields when present', () => {
+  it('should preserve all new enhanced fields when present', async () => {
     const enhancedYaml = `
 name: Enhanced Operation
 version: 2.0.0
@@ -147,15 +155,16 @@ steps:
     description: Deploy the application
     command: kubectl apply -f deployment.yaml
     timeout: 300
-    evidence_required: true
-    evidence_types: [screenshot, log]
+    evidence:
+      required: true
+      types: [screenshot, log]
 `;
 
     const tempFile = '/tmp/enhanced-test.yaml';
     fs.writeFileSync(tempFile, enhancedYaml);
 
     try {
-      const operation = parseOperation(tempFile);
+      const operation = await parseOperation(tempFile);
 
       // Verify enhanced fields are preserved
       assert.strictEqual(operation.author, 'test-author');
@@ -169,16 +178,18 @@ steps:
       assert.ok(env.restrictions.includes('business-hours'));
       assert.strictEqual(env.validation_required, true);
 
-      // Verify enhanced step fields
-      const step = operation.steps[0];
-      assert.strictEqual(step.timeout, 300);
-      assert.strictEqual(step.evidence_required, true);
-      assert.ok(step.evidence_types?.includes('screenshot'));
-      assert.ok(step.evidence_types?.includes('log'));
+      // Verify enhanced step fields (Deploy step is now at index 1 after preflight migration)
+      const deployStep = operation.steps.find(step => step.name === 'Deploy');
+      assert.ok(deployStep, 'Deploy step should exist');
+      assert.strictEqual(deployStep.timeout, 300);
+      assert.strictEqual(deployStep.evidence?.required, true);
+      assert.ok(deployStep.evidence?.types?.includes('screenshot'));
+      assert.ok(deployStep.evidence?.types?.includes('log'));
 
-      // Verify enhanced preflight fields
-      const preflight = operation.preflight[0];
-      assert.strictEqual(preflight.type, 'command');
+      // Verify enhanced preflight fields (now in unified steps with phase)
+      const preflightStep = operation.steps.find(step => step.phase === 'preflight');
+      assert.ok(preflightStep, 'Preflight step should exist');
+      assert.strictEqual(preflightStep.type, 'automatic');
 
     } finally {
       fs.unlinkSync(tempFile);

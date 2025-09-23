@@ -9,6 +9,7 @@ import {
   Step,
   PreflightCheck,
   StepType,
+  StepPhase,
   EvidenceType,
   EvidenceConfig
 } from '../models/operation';
@@ -187,10 +188,16 @@ function resolveStepReferences(steps: any[], importContext: ImportContext): Step
       
       // Allow overriding certain properties
       if (stepData.timeout !== undefined) clonedStep.timeout = stepData.timeout;
+      if (stepData.phase !== undefined) clonedStep.phase = stepData.phase as StepPhase;
       if (stepData.env !== undefined) clonedStep.env = { ...clonedStep.env, ...stepData.env };
       if (stepData.with !== undefined) clonedStep.with = { ...clonedStep.with, ...stepData.with };
       if (stepData.evidence_required !== undefined) clonedStep.evidence_required = stepData.evidence_required;
       if (stepData.continue_on_error !== undefined) clonedStep.continue_on_error = stepData.continue_on_error;
+
+      // Set default phase if not specified
+      if (!clonedStep.phase) {
+        clonedStep.phase = 'flight';
+      }
       
       resolvedSteps.push(clonedStep);
       
@@ -198,6 +205,12 @@ function resolveStepReferences(steps: any[], importContext: ImportContext): Step
       // This is a regular step definition
       try {
         const step = parseStep(stepData, i);
+
+        // Set default phase if not specified
+        if (!step.phase) {
+          step.phase = 'flight';
+        }
+
         resolvedSteps.push(step);
       } catch (error) {
         if (error instanceof OperationParseError) {
@@ -227,10 +240,12 @@ function parseStep(stepData: any, stepIndex: number): Step {
     id: stepData.id,
     name: stepData.name,
     type: stepData.type as StepType,
+    phase: stepData.phase as StepPhase,
     description: stepData.description,
     if: stepData.if,
     command: stepData.command,
     instruction: stepData.instruction,
+    condition: stepData.condition,
     timeout: stepData.timeout,
     estimated_duration: stepData.estimated_duration,
     env: stepData.env,
@@ -406,11 +421,37 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     };
   }
 
-  // Parse steps with import resolution
+  // Parse unified steps (includes migrated preflight checks + regular steps)
   let steps: Step[] = [];
+
+  // First, migrate preflight checks to steps with phase: preflight
+  if (rawOperation.preflight && Array.isArray(rawOperation.preflight)) {
+    rawOperation.preflight.forEach((checkData: any, index: number) => {
+      try {
+        const preflightStep: Step = {
+          id: checkData.id || randomUUID(),
+          name: checkData.name,
+          type: 'automatic', // Preflight checks are automatic
+          phase: 'preflight',
+          description: checkData.description || '',
+          command: checkData.command,
+          condition: checkData.condition,
+          timeout: checkData.timeout,
+          evidence: parseEvidence(checkData),
+          evidence_required: Boolean(checkData.evidence_required), // DEPRECATED
+        };
+        steps.push(preflightStep);
+      } catch (error) {
+        errors.push({ field: `preflight[${index}]`, message: `Error converting preflight check: ${(error as Error).message}` });
+      }
+    });
+  }
+
+  // Then process regular steps
   if (rawOperation.steps && Array.isArray(rawOperation.steps)) {
     try {
-      steps = resolveStepReferences(rawOperation.steps, importContext);
+      const regularSteps = resolveStepReferences(rawOperation.steps, importContext);
+      steps.push(...regularSteps);
     } catch (error) {
       if (error instanceof OperationParseError) {
         errors.push(...error.errors);
@@ -439,21 +480,9 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     // In a full implementation, you'd resolve and merge the marketplace operation
   }
 
-  // Parse preflight checks and collect errors
+  // Note: Preflight checks are now migrated to unified steps with phase: 'preflight'
+  // Keep empty array for backward compatibility
   let preflight: PreflightCheck[] = [];
-  if (rawOperation.preflight && Array.isArray(rawOperation.preflight)) {
-    rawOperation.preflight.forEach((check: any, index: number) => {
-      try {
-        preflight.push(parsePreflightCheck(check, index));
-      } catch (error) {
-        if (error instanceof OperationParseError) {
-          errors.push(...error.errors);
-        } else {
-          errors.push({ field: `preflight[${index}]`, message: (error as Error).message });
-        }
-      }
-    });
-  }
 
   // Throw all collected errors if any
   if (errors.length > 0) {

@@ -53,37 +53,41 @@ environments:
       - "production-deployment-access"
       - "senior-engineer-approval"
 
-preflight:
+steps:
   - name: Check Git Branch
-    type: command
+    type: automatic
+    phase: preflight
     command: git branch --show-current
     description: Ensure we're on the main branch for production deployments
     timeout: 10
-    
+
   - name: Verify Docker Registry Access
-    type: command
+    type: automatic
+    phase: preflight
     command: docker pull hello-world
     description: Test Docker registry connectivity
     timeout: 30
-    
+
   - name: Check Kubernetes Cluster Access
-    type: command
+    type: automatic
+    phase: preflight
     command: kubectl get nodes --context ${CLUSTER}
     description: Verify cluster connectivity and permissions
     timeout: 15
 
-steps:
   - name: Build and Test Services
     type: manual
+    phase: flight
     description: Build Docker images for all microservices and run tests
     instruction: |
       Build all three services and run comprehensive tests:
       1. Backend API service
-      2. Frontend web service  
+      2. Frontend web service
       3. Background worker service
     estimated_duration: 900
-    evidence_required: true
-    evidence_types: ["command_output", "screenshot"]
+    evidence:
+      required: true
+      types: ["command_output", "screenshot"]
     
     # Sub-steps for detailed breakdown
     sub_steps:
@@ -91,32 +95,35 @@ steps:
         type: automatic
         command: docker build -t backend-api:${VERSION} ./backend
         timeout: 300
-        evidence_required: true
-        
+        evidence:
+          required: true
+
       - name: Test Backend API
         type: automatic
         command: docker run --rm backend-api:${VERSION} npm test
         timeout: 180
         needs: ["Build Backend API"]
-        
+
       - name: Build Frontend Web
         type: automatic
         command: docker build -t frontend-web:${VERSION} ./frontend
         timeout: 300
-        evidence_required: true
-        
+        evidence:
+          required: true
+
       - name: Test Frontend Web
         type: automatic
         command: docker run --rm frontend-web:${VERSION} npm test
         timeout: 120
         needs: ["Build Frontend Web"]
-        
+
       - name: Build Background Worker
         type: automatic
         command: docker build -t worker:${VERSION} ./worker
         timeout: 180
-        evidence_required: true
-        
+        evidence:
+          required: true
+
       - name: Test Background Worker
         type: automatic
         command: docker run --rm worker:${VERSION} python -m pytest
@@ -125,6 +132,7 @@ steps:
 
   - name: Push Images to Registry
     type: automatic
+    phase: flight
     description: Push all built images to the container registry
     command: |
       docker push backend-api:${VERSION}
@@ -132,8 +140,9 @@ steps:
       docker push worker:${VERSION}
     timeout: 600
     estimated_duration: 300
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     needs: ["Build and Test Services"]
     retry:
       attempts: 3
@@ -196,6 +205,7 @@ steps:
 
   - name: Smoke Test Deployment
     type: manual
+    phase: postflight
     description: Perform comprehensive smoke tests on the deployed services
     instruction: |
       Test all critical functionality:
@@ -205,12 +215,14 @@ steps:
       4. Background job processing: Verify worker is processing queue
       5. Integration between services works correctly
     estimated_duration: 600
-    evidence_required: true
-    evidence_types: ["screenshot", "command_output"]
+    evidence:
+      required: true
+      types: ["screenshot", "command_output"]
     needs: ["Wait for Rollout Completion"]
 
   - name: Update Monitoring and Alerts
     type: automatic
+    phase: postflight
     description: Update monitoring dashboards and alert thresholds
     command: |
       curl -X POST ${MONITORING_API}/update-deployment \
@@ -271,5 +283,5 @@ reporting:
     include_sensitive: false
 
 metadata:
-  created_at: 2024-01-15T10:00:00Z
-  updated_at: 2024-01-20T15:30:00Z
+  created_at: "2024-01-15T10:00:00Z"
+  updated_at: "2024-01-20T15:30:00Z"

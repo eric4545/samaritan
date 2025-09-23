@@ -37,6 +37,13 @@ describe('Manual Generator Unit Tests', () => {
       },
       steps: [
         {
+          name: 'Check Docker',
+          type: 'automatic',
+          phase: 'preflight',
+          description: 'Verify Docker is running',
+          command: 'docker version'
+        },
+        {
           name: 'Build Application',
           type: 'automatic',
           description: 'Build the Docker image',
@@ -44,7 +51,7 @@ describe('Manual Generator Unit Tests', () => {
         },
         {
           name: 'Scale Service',
-          type: 'automatic', 
+          type: 'automatic',
           description: 'Scale to target replicas',
           command: 'kubectl scale deployment app --replicas=${REPLICAS}'
         },
@@ -55,14 +62,7 @@ describe('Manual Generator Unit Tests', () => {
           command: 'curl http://localhost:${PORT}/health'
         }
       ],
-      preflight: [
-        {
-          name: 'Check Docker',
-          description: 'Verify Docker is running',
-          command: 'docker version',
-          type: 'command'
-        }
-      ],
+      preflight: [],
       metadata: {
         created_at: new Date('2023-01-01'),
         updated_at: new Date('2023-01-01'),
@@ -83,16 +83,15 @@ describe('Manual Generator Unit Tests', () => {
     assert(markdown.includes('staging-cluster-1<br>staging-cluster-2'), 'Should use <br> for targets');
     assert(markdown.includes('| Yes |'), 'Should show approval requirement');
 
-    // Test preflight checklist
-    assert(markdown.includes('## Pre-flight Checklist'), 'Should have preflight section');
-    assert(markdown.includes('- **Check Docker:** Verify Docker is running'), 'Should format preflight items');
-    assert(markdown.includes('```bash\n  docker version\n  ```'), 'Should include command blocks');
+    // Test preflight phase (now part of unified steps with phases)
+    assert(markdown.includes('## 🛫 Pre-Flight Phase'), 'Should have preflight section');
 
-    // Test operation steps table
-    assert(markdown.includes('## Operation Steps'), 'Should have steps section');
+    // Test main operation steps table
+    assert(markdown.includes('## ✈️ Flight Phase (Main Operations)'), 'Should have main steps section');
     assert(markdown.includes('| Step | staging | production |'), 'Should have steps table header');
     
     // Test step formatting with icons and descriptions
+    // Note: Preflight steps are in their own phase section, so main steps start from Step 1
     assert(markdown.includes('| Step 1: Build Application ⚙️<br>Build the Docker image |'), 'Should format step with icon and description');
     assert(markdown.includes('| Step 2: Scale Service ⚙️<br>Scale to target replicas |'), 'Should handle automatic steps');
     assert(markdown.includes('| Step 3: Manual Health Check 👤<br>Verify application health |'), 'Should handle manual steps with correct icon');
@@ -104,8 +103,9 @@ describe('Manual Generator Unit Tests', () => {
     assert(markdown.includes('`curl http://localhost:80/health`'), 'Should substitute PORT for production');
 
     // Test that both environments have commands
+    // Should have 4 total step rows: 1 preflight + 3 main steps
     const stepsTableMatch = markdown.match(/\| Step \d+:.*?\|.*?\|.*?\|/g);
-    assert(stepsTableMatch && stepsTableMatch.length === 3, 'Should have 3 step table rows');
+    assert(stepsTableMatch && stepsTableMatch.length === 4, 'Should have 4 step table rows');
   });
 
   it('should handle single environment operations', () => {
@@ -183,9 +183,9 @@ describe('Manual Generator Unit Tests', () => {
 
     const markdown = generateManual(noPreflight);
     
-    // Should not include preflight section when empty
-    assert(!markdown.includes('## Pre-flight Checklist'), 'Should not include empty preflight section');
-    assert(markdown.includes('## Operation Steps'), 'Should still include steps section');
+    // Should not include preflight phase section when empty
+    assert(!markdown.includes('## 🛫 Pre-Flight Phase'), 'Should not include empty preflight section');
+    assert(markdown.includes('## ✈️ Flight Phase (Main Operations)'), 'Should still include steps section');
   });
 
   it('should handle null/empty step descriptions without rendering undefined (T008.1)', () => {

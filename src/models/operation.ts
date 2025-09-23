@@ -3,6 +3,7 @@ export type EvidenceType = 'screenshot' | 'log' | 'command_output' | 'file' | 'p
 export type SessionStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export type ExecutionMode = 'automatic' | 'manual' | 'hybrid';
 export type StepType = 'automatic' | 'manual' | 'approval' | 'conditional';
+export type StepPhase = 'preflight' | 'flight' | 'postflight';
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 export type QRHCategory = 'incident' | 'alert' | 'maintenance' | 'emergency';
 
@@ -100,6 +101,7 @@ export interface Step {
   id?: string;
   name: string;
   type: StepType;
+  phase?: StepPhase;
   description?: string;
   if?: string;
   command?: string;

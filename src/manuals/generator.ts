@@ -11,13 +11,20 @@ function substituteVariables(command: string, variables: Record<string, any>): s
 
 function generateStepRow(step: Step, stepNumber: number, environments: Environment[], prefix: string = ''): string {
   let rows = '';
-  
-  const typeIcon = step.type === 'automatic' ? '⚙️' : 
-                   step.type === 'manual' ? '👤' : 
+
+  const typeIcon = step.type === 'automatic' ? '⚙️' :
+                   step.type === 'manual' ? '👤' :
                    step.type === 'conditional' ? '🔀' : '✋';
-  
-  // First column: Step name, icon, and description
-  let stepCell = `${prefix}Step ${stepNumber}: ${step.name} ${typeIcon}`;
+
+  const phaseIcon = step.phase === 'preflight' ? '🛫' :
+                    step.phase === 'flight' ? '✈️' :
+                    step.phase === 'postflight' ? '🛬' : '';
+
+  // First column: Step name, phase, icon, and description
+  let stepCell = `${prefix}Step ${stepNumber}: ${step.name} ${phaseIcon}${typeIcon}`;
+  if (step.phase) {
+    stepCell += `<br><em>Phase: ${step.phase}</em>`;
+  }
   if (step.description && typeof step.description === 'string' && step.description.trim().length > 0) {
     stepCell += `<br>${step.description}`;
   }
@@ -50,10 +57,53 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
   // Add sub-steps if present
   if (step.sub_steps && step.sub_steps.length > 0) {
     step.sub_steps.forEach((subStep, subIndex) => {
-      rows += generateStepRow(subStep, subIndex + 1, environments, `${prefix}${stepNumber}.`);
+      // Use letters for sub-steps: 1a, 1b, 1c, etc.
+      const subStepLetter = String.fromCharCode(97 + subIndex); // 97 = 'a'
+      const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
+      rows += generateSubStepRow(subStep, subStepPrefix, environments);
     });
   }
   
+  return rows;
+}
+
+function generateSubStepRow(step: Step, stepId: string, environments: Environment[]): string {
+  let rows = '';
+
+  const typeIcon = step.type === 'automatic' ? '⚙️' :
+                   step.type === 'manual' ? '👤' :
+                   step.type === 'conditional' ? '🔀' : '✋';
+
+  // Format as: Step 1a: Build Backend API ⚙️
+  let stepCell = `Step ${stepId}: ${step.name} ${typeIcon}`;
+  if (step.description && typeof step.description === 'string' && step.description.trim().length > 0) {
+    stepCell += `<br>${step.description}`;
+  }
+
+  // Add dependency information
+  if (step.needs && step.needs.length > 0) {
+    stepCell += `<br>📋 <em>Depends on: ${step.needs.join(', ')}</em>`;
+  }
+
+  rows += `| ${stepCell} |`;
+
+  // Subsequent columns: Commands for each environment
+  environments.forEach(env => {
+    const substitutedCommand = substituteVariables(step.command || step.instruction || '', env.variables || {});
+    // Clean up command for table format - replace newlines with <br> and escape backticks
+    const cleanCommand = substitutedCommand
+      .replace(/\n/g, '<br>')
+      .replace(/`/g, '\\`')
+      .trim();
+
+    if (cleanCommand) {
+      rows += ` \`${cleanCommand}\` |`;
+    } else {
+      rows += ` _(${step.type} step)_ |`;
+    }
+  });
+
+  rows += '\n';
   return rows;
 }
 
@@ -116,40 +166,55 @@ export function generateManual(operation: Operation): string {
     markdown += '\n';
   }
 
-  // Pre-flight Checklist
-  if (operation.preflight && operation.preflight.length > 0) {
-    markdown += '## Pre-flight Checklist\n\n';
-    operation.preflight.forEach(check => {
-      markdown += `- **${check.name}:** ${check.description || ''}\n`;
-      markdown += `  \`\`\`bash\n`;
-      markdown += `  ${check.command}\n`;
-      markdown += `  \`\`\`\n\n`;
-    });
-  }
-
-  // Operation Steps Table
+  // Group steps by phase and generate sections
   if (operation.steps && operation.steps.length > 0) {
-    markdown += '## Operation Steps\n\n';
-    
-    // Build table header
-    markdown += '| Step |';
-    operation.environments.forEach(env => {
-      markdown += ` ${env.name} |`;
+    // Group steps by phase
+    const phases: { [key: string]: Step[] } = {
+      preflight: [],
+      flight: [],
+      postflight: []
+    };
+
+    operation.steps.forEach(step => {
+      const phase = step.phase || 'flight';
+      if (phases[phase]) {
+        phases[phase].push(step);
+      }
     });
-    markdown += '\n';
-    
-    // Build table separator
-    markdown += '|------|';
-    operation.environments.forEach(() => {
-      markdown += '---------|';
+
+    // Generate section for each phase that has steps
+    Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
+      if (phaseSteps.length === 0) return;
+
+      // Phase section headers with flight metaphor
+      const phaseHeaders = {
+        preflight: '## 🛫 Pre-Flight Phase',
+        flight: '## ✈️ Flight Phase (Main Operations)',
+        postflight: '## 🛬 Post-Flight Phase'
+      };
+
+      markdown += `${phaseHeaders[phaseName as keyof typeof phaseHeaders]}\n\n`;
+
+      // Build table header
+      markdown += '| Step |';
+      operation.environments.forEach(env => {
+        markdown += ` ${env.name} |`;
+      });
+      markdown += '\n';
+
+      // Build table separator
+      markdown += '|------|';
+      operation.environments.forEach(() => {
+        markdown += '---------|';
+      });
+      markdown += '\n';
+
+      // Build table rows for this phase
+      phaseSteps.forEach((step, index) => {
+        markdown += generateStepRow(step, index + 1, operation.environments);
+      });
+      markdown += '\n';
     });
-    markdown += '\n';
-    
-    // Build table rows
-    operation.steps.forEach((step, index) => {
-      markdown += generateStepRow(step, index + 1, operation.environments);
-    });
-    markdown += '\n';
   }
 
   return markdown;

@@ -129,26 +129,29 @@ environments:
     approval_required: true
     validation_required: true
 
-# Pre-execution checks
-preflight:
+# Operation steps (unified format with phases)
+steps:
+  # Preflight checks (executed first)
   - name: Check Git Status
-    type: command
+    type: automatic
+    phase: preflight
     command: git status --porcelain
     description: Ensure no uncommitted changes
 
   - name: Verify Database Connection
-    type: command
+    type: automatic
+    phase: preflight
     command: pg_isready -h ${DB_HOST}
     timeout: 30
 
-# Operation steps
-steps:
+  # Main operation steps
   - name: Database Migration
     type: automatic
     command: npm run migrate
     timeout: 300
-    evidence_required: true
-    evidence_types: [log, command_output]
+    evidence:
+      required: true
+      types: [log, command_output]
 
   - name: Deploy Application
     type: automatic
@@ -162,8 +165,9 @@ steps:
       1. Open application dashboard: https://dashboard.company.com
       2. Verify all services show green status
       3. Test critical user flows
-    evidence_required: true
-    evidence_types: [screenshot]
+    evidence:
+      required: true
+      types: [screenshot]
 
   - name: Production Approval
     type: approval
@@ -173,6 +177,8 @@ steps:
       approvers: [manager@company.com]
       timeout: "24h"
 ```
+
+> **Note:** The `preflight:` section is deprecated but still supported. The new unified `steps:` format with `phase: preflight` is recommended for better organization and consistency.
 
 ### Advanced Features
 
@@ -403,16 +409,17 @@ environments:
       SERVICE_NAME: webapp
       NAMESPACE: production
 
-preflight:
+steps:
   - name: Check Service Status
-    type: command
+    type: automatic
+    phase: preflight
     command: kubectl get pods -n ${NAMESPACE} -l app=${SERVICE_NAME}
 
-steps:
   - name: Scale Down Service
     type: automatic
     command: kubectl scale deployment ${SERVICE_NAME} --replicas=0 -n ${NAMESPACE}
-    evidence_required: true
+    evidence:
+      required: true
 
   - name: Clear Cache
     type: manual
