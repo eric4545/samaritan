@@ -84,7 +84,7 @@ steps:
     }
   });
 
-  it('should generate a Markdown manual with environment-specific details and substituted variables', () => {
+  it('should generate a Markdown manual with environment-specific details and substituted variables', (t) => {
     // Create self-contained test input file
     fs.writeFileSync(testInputFilePath, testYamlContent);
 
@@ -134,5 +134,8 @@ steps:
     assert(content.includes('`curl https://web-server.example.com/health`'), 'Manual verification command should be present.');
     assert(content.includes('| Step 6: Deploy to Kubernetes ✈️⚙️'), 'Last step in table should be present.');
     assert(content.includes('`kubectl apply -f k8s/deployment.yaml`'), 'kubectl command should be present.');
+
+    // Snapshot the entire manual for regression testing
+    t.assert.snapshot(content);
   });
 });

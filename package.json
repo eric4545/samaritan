@@ -8,6 +8,8 @@
   },
   "scripts": {
     "test": "tsx --test tests/**/*.test.ts",
+    "test:snapshots": "tsx --test tests/manuals/*.test.ts",
+    "test:snapshots:update": "tsx --test --test-update-snapshots tests/manuals/*.test.ts",
     "build": "tsc",
     "start": "tsx src/cli/index.ts"
   },

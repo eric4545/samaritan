@@ -4,7 +4,7 @@ import { generateManual } from '../../src/manuals/generator';
 import { Operation, Environment, Step, PreflightCheck } from '../../src/models/operation';
 
 describe('Manual Generator Unit Tests', () => {
-  it('should generate proper table format for multi-environment operations', () => {
+  it('should generate proper table format for multi-environment operations', (t) => {
     // Create test operation with all necessary fields
     const testOperation: Operation = {
       id: 'test-123',
@@ -106,6 +106,9 @@ describe('Manual Generator Unit Tests', () => {
     // Should have 4 total step rows: 1 preflight + 3 main steps
     const stepsTableMatch = markdown.match(/\| Step \d+:.*?\|.*?\|.*?\|/g);
     assert(stepsTableMatch && stepsTableMatch.length === 4, 'Should have 4 step table rows');
+
+    // Snapshot the complete manual for regression testing
+    t.assert.snapshot(markdown);
   });
 
   it('should handle single environment operations', () => {
