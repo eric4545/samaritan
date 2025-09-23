@@ -140,3 +140,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# SAMARITAN specific
+session-*.json
+evidence/
+manuals/generated/
+.samaritan/
+operations-cache/
