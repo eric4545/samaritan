@@ -176,6 +176,66 @@ steps:
 
 ### Advanced Features
 
+#### DRY Environment Manifests (Recommended)
+
+Eliminate environment duplication across operations by using reusable environment manifests:
+
+```yaml
+# environments/k8s-cluster.yaml - Reusable environment definitions
+apiVersion: samaritan/v1
+kind: EnvironmentManifest
+metadata:
+  name: k8s-cluster
+  description: Standard Kubernetes cluster environments
+  version: 1.0.0
+
+environments:
+  - name: staging
+    description: Staging environment for testing
+    variables:
+      NAMESPACE: staging
+      REPLICAS: 2
+      DB_HOST: staging-db.company.com
+      DOMAIN: staging.company.com
+    approval_required: false
+
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: prod
+      REPLICAS: 5
+      DB_HOST: prod-db.company.com
+      DOMAIN: company.com
+    approval_required: true
+```
+
+```yaml
+# operation.yaml - Inherit from environment manifests with overrides
+name: Deploy Web Application
+version: 1.0.0
+description: Deploy using reusable environments
+
+# Inherit from environment manifests with operation-specific overrides
+environments:
+  - name: staging
+    from: k8s-cluster  # Inherit base configuration
+    variables:         # Override/add variables
+      IMAGE_TAG: latest
+      DEBUG_ENABLED: true
+
+  - name: production
+    from: k8s-cluster  # Inherit base configuration
+    variables:         # Override/add variables
+      IMAGE_TAG: v${VERSION}
+      DEBUG_ENABLED: false
+
+steps:
+  - name: Deploy Application
+    type: automatic
+    command: kubectl apply -f k8s/ --namespace ${NAMESPACE}
+    timeout: 300
+```
+
 #### Reusable Step Libraries
 
 ```yaml
@@ -404,6 +464,9 @@ samaritan/
 │   ├── models/        # Type definitions
 │   ├── schemas/       # JSON Schema validation
 │   └── validation/    # Schema validators
+├── environments/      # Reusable environment manifests
+├── templates/         # Operation templates
+│   └── operations/    # Template operations with placeholders
 ├── examples/          # Example operations
 ├── tests/            # Test suite
 └── bin/              # Executable wrapper
