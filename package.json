@@ -12,8 +12,7 @@
     "test:snapshots:update": "tsx --test --test-update-snapshots tests/manuals/*.test.ts",
     "build": "tsc",
     "start": "tsx src/cli/index.ts",
-    "prepare": "npm install --silent || true",
-    "postinstall": "npm run build --silent || echo 'Build skipped, using TypeScript source'"
+    "prepare": "echo 'Installing dependencies...' && npm install --production --silent || true"
   },
   "repository": {
     "type": "git",
@@ -32,12 +31,12 @@
     "ajv-formats": "^3.0.1",
     "commander": "^14.0.0",
     "js-yaml": "^4.1.0",
-    "tsx": "^4.20.5"
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
     "@types/js-yaml": "^4.0.5",
-    "@types/node": "^24.3.1",
-    "typescript": "^5.9.2"
+    "@types/node": "^24.3.1"
   }
 }

@@ -8,9 +8,10 @@
     "strict": false,
     "skipLibCheck": true,
     "outDir": "dist",
-    "declaration": true,
-    "noEmit": false
+    "declaration": false,
+    "noEmit": false,
+    "noEmitOnError": false
   },
   "include": ["src/**/*"],
-  "exclude": ["tests/**/*", "dist/**/*"]
+  "exclude": ["tests/**/*", "dist/**/*", "node_modules/**/*"]
 }
