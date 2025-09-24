@@ -1,18 +1,18 @@
 {
   "name": "samaritan",
   "version": "1.0.0",
-  "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
-    "samaritan": "bin/samaritan.cjs"
+    "samaritan": "dist/cli/index.js"
   },
+  "files": ["dist/", "README.md"],
   "scripts": {
     "test": "tsx --test tests/**/*.test.ts",
     "test:snapshots": "tsx --test tests/manuals/*.test.ts",
     "test:snapshots:update": "tsx --test --test-update-snapshots tests/manuals/*.test.ts",
-    "build": "tsc",
+    "build": "tsc && cp -r src/schemas dist/",
     "start": "tsx src/cli/index.ts",
-    "prepare": "echo 'Installing dependencies...' && npm install --production --silent || true"
+    "prepare": "npm run build"
   },
   "repository": {
     "type": "git",

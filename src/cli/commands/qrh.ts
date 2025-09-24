@@ -3,9 +3,9 @@ import { readdir, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { load as parseYaml } from 'js-yaml';
-import { QRHEntry, Priority, QRHCategory } from '../../models/qrh.js';
-import { OperationExecutor } from '../../lib/executor.js';
-import { sessionManager } from '../../lib/session-manager.js';
+import { QRHEntry, Priority, QRHCategory } from '../../models/qrh';
+import { OperationExecutor } from '../../lib/executor';
+import { sessionManager } from '../../lib/session-manager';
 
 interface QRHSearchOptions {
   priority?: Priority;
@@ -41,8 +41,8 @@ class QRHManager {
     for (const file of yamlFiles) {
       try {
         const content = await readFile(join(this.qrhDirectory, file), 'utf8');
-        const data = parseYaml(content);
-        
+        const data = parseYaml(content) as any;
+
         if (data.qrh) {
           entries.push(data.qrh as QRHEntry);
         }

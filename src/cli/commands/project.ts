@@ -2,7 +2,6 @@ import { Command } from 'commander';
 import { mkdir, writeFile, readdir, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 
 
 const DEFAULT_CONFIG = `# SAMARITAN Configuration
@@ -172,8 +171,7 @@ troubleshooting_tips:
   - "Look for recent schema changes that might have caused issues"
 `;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// In CommonJS, __dirname is available globally
 
 // Available operation templates
 const TEMPLATE_DESCRIPTIONS: { [key: string]: string } = {

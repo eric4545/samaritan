@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { generateManualCommand } from './commands/manuals.js';
-import { projectCommands } from './commands/project.js';
-import { validateCommand } from './commands/validate.js';
-import { generateCommand } from './commands/generate.js';
-import { qrhCommand } from './commands/qrh.js';
-import { runCommand, resumeCommand } from './commands/run.js';
+import { generateManualCommand } from './commands/manuals';
+import { projectCommands } from './commands/project';
+import { validateCommand } from './commands/validate';
+import { generateCommand } from './commands/generate';
+import { qrhCommand } from './commands/qrh';
+import { runCommand, resumeCommand } from './commands/run';
 
 const program = new Command();
 

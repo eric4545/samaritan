@@ -1,8 +1,8 @@
-import { 
-  EvidenceItem, 
-  EvidenceCollectionState, 
+import {
+  EvidenceItem,
+  EvidenceCollectionState,
   EvidenceRequirement,
-  EvidenceMetadata 
+  EvidenceMetadata
 } from '../models/evidence';
 import { EvidenceType } from '../models/operation';
 import { validateEvidence, validateStepEvidence } from './validator';
@@ -243,7 +243,7 @@ export class EvidenceCollector {
     }
 
     // Default formats by type
-    switch (type) {
+    switch (type as string) {
       case 'screenshot':
       case 'photo':
         return 'image/png';

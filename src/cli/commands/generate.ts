@@ -2,8 +2,8 @@ import { Command } from 'commander';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname, basename } from 'path';
-import { parseOperation } from '../../operations/parser.js';
-import { generateManual } from '../../manuals/generator.js';
+import { parseOperation } from '../../operations/parser';
+import { generateManual } from '../../manuals/generator';
 
 interface GenerateOptions {
   output?: string;

@@ -1,10 +1,10 @@
 import { Command } from 'commander';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { parseOperation } from '../../operations/parser.js';
-import { OperationExecutor } from '../../lib/executor.js';
-import { sessionManager, SessionUtils } from '../../lib/session-manager.js';
-import { Operation, ExecutionMode } from '../../models/operation.js';
+import { parseOperation } from '../../operations/parser';
+import { OperationExecutor } from '../../lib/executor';
+import { sessionManager, SessionUtils } from '../../lib/session-manager';
+import { Operation, ExecutionMode } from '../../models/operation';
 
 interface RunOptions {
   environment: string;
@@ -29,7 +29,7 @@ class OperationRunner {
     console.log(`🎯 Target environment: ${options.environment}`);
     
     // Parse operation
-    const operation = this.parseOperationFile(operationFile);
+    const operation = await this.parseOperationFile(operationFile);
     
     // Validate environment exists
     const environment = operation.environments.find(env => env.name === options.environment);
@@ -179,12 +179,12 @@ class OperationRunner {
     }
   }
 
-  private parseOperationFile(filePath: string): Operation {
+  private async parseOperationFile(filePath: string): Promise<Operation> {
     if (!existsSync(filePath)) {
       throw new Error(`Operation file not found: ${filePath}`);
     }
 
-    return parseOperation(filePath);
+    return await parseOperation(filePath);
   }
 
   private parseVariables(variableStrings: string[]): Record<string, any> {
@@ -303,7 +303,7 @@ const runCommand = new Command('run')
   .option('--auto-approve', 'Auto-approve all manual steps and approvals')
   .option('--dry-run', 'Show what would be executed without running')
   .option('-m, --mode <mode>', 'Execution mode (automatic, manual, hybrid)', 'hybrid')
-  .option('--var <key=value>', 'Override variable values', (value, previous) => [...(previous || []), value])
+  .option('--var <key=value>', 'Override variable values', (value, previous: string[] = []) => [...previous, value])
   .option('-v, --verbose', 'Verbose output')
   .option('--with-ai', 'Enable AI assistance during execution')
   .option('--continue-on-error', 'Continue execution even if steps fail')

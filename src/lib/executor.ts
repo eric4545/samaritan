@@ -23,6 +23,7 @@ export interface StepExecutionResult {
   status: ExecutionStatus;
   startTime: Date;
   endTime?: Date;
+  duration?: number;
   output?: string;
   exitCode?: number;
   error?: string;
@@ -75,7 +76,7 @@ export interface OperationExecutionState {
 /**
  * Execution event types for monitoring
  */
-export type ExecutionEventType = 
+export type ExecutionEventType =
   | 'operation_started'
   | 'operation_completed'
   | 'operation_failed'
@@ -85,6 +86,7 @@ export type ExecutionEventType =
   | 'step_failed'
   | 'step_skipped'
   | 'evidence_required'
+  | 'evidence_collected'
   | 'approval_required'
   | 'user_input_required';
 
@@ -96,6 +98,12 @@ export interface ExecutionEvent {
   timestamp: Date;
   operationId: string;
   stepId?: string;
+  stepIndex?: number;
+  step?: Step;
+  result?: StepExecutionResult;
+  error?: string;
+  reason?: string;
+  evidence?: any;
   data?: any;
   message?: string;
 }
@@ -157,6 +165,13 @@ export class OperationExecutor {
       duration: this.getExecutionDuration(),
       lastError: this.getLastError()
     };
+  }
+
+  /**
+   * Execute operation (alias for start)
+   */
+  async execute(): Promise<void> {
+    return this.start();
   }
 
   /**

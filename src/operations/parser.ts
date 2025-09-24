@@ -14,8 +14,8 @@ import {
   EvidenceConfig
 } from '../models/operation';
 import { randomUUID } from 'crypto';
-import { validateOperationSchemaStrict, SchemaValidationError, ValidationError } from '../validation/schema-validator.js';
-import { EnvironmentLoader } from './environment-loader.js';
+import { validateOperationSchemaStrict, SchemaValidationError, ValidationError } from '../validation/schema-validator';
+import { EnvironmentLoader } from './environment-loader';
 
 interface StepLibrary {
   steps: Step[];

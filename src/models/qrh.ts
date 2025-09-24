@@ -1,6 +1,9 @@
 import { Step } from './operation';
 import { Priority, QRHCategory } from './operation';
 
+// Re-export types used by QRH
+export type { Priority, QRHCategory };
+
 export interface QRHEntry {
   id: string;
   title: string;

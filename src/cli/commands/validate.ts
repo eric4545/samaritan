@@ -2,9 +2,9 @@ import { Command } from 'commander';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { parseOperation } from '../../operations/parser.js';
-import { Operation } from '../../models/operation.js';
-import { ValidationError } from '../../validation/schema-validator.js';
+import { parseOperation } from '../../operations/parser';
+import { Operation } from '../../models/operation';
+import { ValidationError } from '../../validation/schema-validator';
 
 interface ValidationResult {
   valid: boolean;

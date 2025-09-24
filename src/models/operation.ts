@@ -1,5 +1,5 @@
 // Supporting Types and Enums
-export type EvidenceType = 'screenshot' | 'log' | 'command_output' | 'file' | 'photo' | 'video';
+export type EvidenceType = 'screenshot' | 'file' | 'photo' | 'video' | 'log' | 'command_output';
 export type SessionStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export type ExecutionMode = 'automatic' | 'manual' | 'hybrid';
 export type StepType = 'automatic' | 'manual' | 'approval' | 'conditional';
