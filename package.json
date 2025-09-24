@@ -4,7 +4,7 @@
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
-    "samaritan": "bin/samaritan.js"
+    "samaritan": "bin/samaritan.cjs"
   },
   "scripts": {
     "test": "tsx --test tests/**/*.test.ts",
