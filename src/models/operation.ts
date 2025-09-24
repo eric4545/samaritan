@@ -106,6 +106,7 @@ export interface Step {
   if?: string;
   command?: string;
   instruction?: string;
+  condition?: string;
   timeout?: number;
   estimated_duration?: number;
   env?: Record<string, any>;
