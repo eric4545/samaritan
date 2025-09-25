@@ -1,4 +1,5 @@
 import { Operation, Environment, Step } from '../models/operation';
+import { GenerationMetadata, generateYamlFrontmatter } from '../lib/git-metadata';
 
 function substituteVariables(command: string, variables: Record<string, any>): string {
   let substitutedCommand = command;
@@ -107,7 +108,51 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
   return rows;
 }
 
+/**
+ * Enhanced manual generation with metadata and environment filtering
+ */
+export function generateManualWithMetadata(
+  operation: Operation,
+  metadata?: GenerationMetadata,
+  targetEnvironment?: string
+): string {
+  let markdown = '';
+
+  // Add YAML frontmatter if metadata is provided
+  if (metadata) {
+    markdown += generateYamlFrontmatter(metadata);
+  }
+
+  // Filter environments if specified
+  let environments = operation.environments;
+  if (targetEnvironment) {
+    environments = operation.environments.filter(env => env.name === targetEnvironment);
+    if (environments.length === 0) {
+      throw new Error(`Environment '${targetEnvironment}' not found in operation. Available: ${operation.environments.map(e => e.name).join(', ')}`);
+    }
+  }
+
+  // Create filtered operation for generation
+  const filteredOperation = {
+    ...operation,
+    environments
+  };
+
+  markdown += generateManualContent(filteredOperation);
+  return markdown;
+}
+
+/**
+ * Legacy function for backward compatibility
+ */
 export function generateManual(operation: Operation): string {
+  return generateManualContent(operation);
+}
+
+/**
+ * Core manual content generation (without frontmatter)
+ */
+function generateManualContent(operation: Operation): string {
   let markdown = `# Manual for: ${operation.name} (v${operation.version})\n\n`;
   if (operation.description) {
     markdown += `_${operation.description}_\n\n`;

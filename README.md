@@ -20,6 +20,9 @@ npx github:eric4545/samaritan run my-operation.yaml --env production
 
 # Generate operation manual
 npx github:eric4545/samaritan generate manual my-operation.yaml
+
+# Use specific branch (for testing/development)
+npx github:eric4545/samaritan#branch-name validate my-operation.yaml
 ```
 
 ## 📋 Table of Contents
@@ -76,6 +79,7 @@ npx github:eric4545/samaritan resume <session-id>
 npx github:eric4545/samaritan generate manual <operation.yaml> [options]
   --output <file>       Output file (default: stdout)
   --format <md|html>    Output format (default: md)
+  --env <environment>   Generate for specific environment only
 ```
 
 ### Project Management
@@ -181,6 +185,43 @@ steps:
 > **Note:** The `preflight:` section is deprecated but still supported. The new unified `steps:` format with `phase: preflight` is recommended for better organization and consistency.
 
 ### Advanced Features
+
+#### Enhanced Manual Generation with Metadata
+
+Generated manuals now include comprehensive YAML frontmatter with git metadata and traceability:
+
+```bash
+# Generate manual for all environments with metadata
+npx github:eric4545/samaritan generate manual deployment.yaml
+
+# Generate manual for production environment only
+npx github:eric4545/samaritan generate manual deployment.yaml --env production
+```
+
+**Generated YAML frontmatter example:**
+```yaml
+---
+source_file: "examples/deployment.yaml"
+operation_id: "34ba0902-7669-4961-9038-fc17ace22fac"
+operation_version: "1.1.0"
+target_environment: "production"  # Only when --env specified
+generated_at: "2025-09-25T17:03:26.350Z"
+git_sha: "61b7299fecdec972c1bfcf8a02f539f05ae1986a"
+git_branch: "001-i-want-to"
+git_short_sha: "61b7299f"
+git_author: "Eric Ng"
+git_date: "2025-09-24 22:13:50 +0800"
+git_message: "feat: restore TypeScript dependency..."
+git_dirty: true
+generator_version: "1.0.0"
+---
+```
+
+**Benefits:**
+- **Audit Trail**: Know exactly which code version generated each manual
+- **Environment Focus**: Production manuals show only production procedures
+- **Change Tracking**: Generated timestamp and git status for compliance
+- **File Organization**: Environment-specific files get appropriate suffixes (`deployment-production-manual.md`)
 
 #### DRY Environment Manifests (Recommended)
 

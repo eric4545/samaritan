@@ -3,35 +3,52 @@ import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { parseOperation } from '../../operations/parser';
-import { generateManual } from '../../manuals/generator';
+import { generateManualWithMetadata } from '../../manuals/generator';
+import { createGenerationMetadata } from '../../lib/git-metadata';
 
 interface GenerateOptions {
   output?: string;
   format?: 'markdown' | 'confluence' | 'html' | 'pdf';
-  environment?: string;
+  env?: string;
+  environment?: string; // Keep for backward compatibility
   template?: string;
 }
 
 class DocumentationGenerator {
   async generateManual(operationFile: string, options: GenerateOptions): Promise<void> {
-    console.log(`📄 Generating manual for: ${operationFile}`);
+    const targetEnv = options.env || options.environment;
+    const envSuffix = targetEnv ? ` (${targetEnv})` : '';
+    console.log(`📄 Generating manual for: ${operationFile}${envSuffix}`);
 
     // Parse operation
     const operation = await parseOperation(operationFile);
 
-    // Generate manual
-    const manual = generateManual(operation);
-    
-    // Determine output file
+    // Create generation metadata
+    const metadata = await createGenerationMetadata(
+      operationFile,
+      operation.id,
+      operation.version,
+      targetEnv
+    );
+
+    // Generate manual with metadata and environment filtering
+    const manual = generateManualWithMetadata(operation, metadata, targetEnv);
+
+    // Determine output file with environment suffix if specified
     const operationName = basename(operationFile, '.yaml');
-    const outputFile = options.output || `manuals/${operationName}-manual.md`;
-    
+    const envFileSuffix = targetEnv ? `-${targetEnv}` : '';
+    const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.md`;
+
     // Ensure output directory exists
     await mkdir(dirname(outputFile), { recursive: true });
-    
+
     // Write manual
     await writeFile(outputFile, manual);
     console.log(`✅ Manual generated: ${outputFile}`);
+
+    if (targetEnv) {
+      console.log(`🎯 Filtered for environment: ${targetEnv}`);
+    }
   }
 
   async generateDocs(operationFile: string, options: GenerateOptions): Promise<void> {
