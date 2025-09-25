@@ -80,6 +80,7 @@ npx github:eric4545/samaritan generate manual <operation.yaml> [options]
   --output <file>       Output file (default: stdout)
   --format <md|html>    Output format (default: md)
   --env <environment>   Generate for specific environment only
+  --resolve-vars        Resolve variables to actual values (ready-to-execute commands)
 ```
 
 ### Project Management
@@ -196,6 +197,9 @@ npx github:eric4545/samaritan generate manual deployment.yaml
 
 # Generate manual for production environment only
 npx github:eric4545/samaritan generate manual deployment.yaml --env production
+
+# Generate manual with resolved variables (ready-to-execute commands)
+npx github:eric4545/samaritan generate manual deployment.yaml --env production --resolve-vars
 ```
 
 **Generated YAML frontmatter example:**
@@ -217,9 +221,22 @@ generator_version: "1.0.0"
 ---
 ```
 
+**Variable Resolution Example:**
+
+Without `--resolve-vars` (shows templates):
+```bash
+kubectl scale deployment web-server --replicas=${REPLICAS}
+```
+
+With `--resolve-vars` (ready-to-execute):
+```bash
+kubectl scale deployment web-server --replicas=5
+```
+
 **Benefits:**
 - **Audit Trail**: Know exactly which code version generated each manual
 - **Environment Focus**: Production manuals show only production procedures
+- **Ready-to-Execute**: Use `--resolve-vars` for copy-paste commands during emergencies
 - **Change Tracking**: Generated timestamp and git status for compliance
 - **File Organization**: Environment-specific files get appropriate suffixes (`deployment-production-manual.md`)
 
@@ -364,8 +381,8 @@ npx github:eric4545/samaritan validate deployment.yaml --env production --strict
 # 2. Execute in staging first
 npx github:eric4545/samaritan run deployment.yaml --env staging
 
-# 3. Generate deployment manual for production
-npx github:eric4545/samaritan generate manual deployment.yaml --env production
+# 3. Generate deployment manual for production (with resolved variables for operators)
+npx github:eric4545/samaritan generate manual deployment.yaml --env production --resolve-vars
 
 # 4. Execute in production with evidence collection
 npx github:eric4545/samaritan run deployment.yaml --env production

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { generateManual } from '../../src/manuals/generator';
-import { Operation, Environment, Step, PreflightCheck } from '../../src/models/operation';
+import { generateManual, generateManualWithMetadata } from '../../src/manuals/generator';
+import { Operation } from '../../src/models/operation';
 
 describe('Manual Generator Unit Tests', () => {
   it('should generate proper table format for multi-environment operations', (t) => {
@@ -262,5 +262,155 @@ describe('Manual Generator Unit Tests', () => {
     // Should have proper table structure
     assert(markdown.includes('| Step | production |'), 'Should have table header');
     assert(markdown.includes('Step 1: Step with null description ⚙️ |'), 'Should format step without description');
+  });
+
+  it('should resolve variables when resolveVariables flag is enabled', () => {
+    const testOperation: Operation = {
+      id: 'resolve-test-123',
+      name: 'Variable Resolution Test',
+      version: '1.0.0',
+      description: 'Test variable resolution functionality',
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging environment',
+          variables: { REPLICAS: 2, APP_NAME: 'myapp-staging', PORT: 8080 },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        },
+        {
+          name: 'production',
+          description: 'Production environment',
+          variables: { REPLICAS: 5, APP_NAME: 'myapp-prod', PORT: 80 },
+          restrictions: [],
+          approval_required: true,
+          validation_required: true
+        }
+      ],
+      variables: {
+        staging: { REPLICAS: 2, APP_NAME: 'myapp-staging', PORT: 8080 },
+        production: { REPLICAS: 5, APP_NAME: 'myapp-prod', PORT: 80 }
+      },
+      steps: [
+        {
+          name: 'Scale Deployment',
+          type: 'automatic',
+          description: 'Scale the deployment to target replicas',
+          command: 'kubectl scale deployment ${APP_NAME} --replicas=${REPLICAS}'
+        },
+        {
+          name: 'Health Check',
+          type: 'manual',
+          description: 'Check application health',
+          instruction: 'curl http://localhost:${PORT}/health && echo "App: ${APP_NAME}"'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    // Test without variable resolution (should show templates)
+    const manualWithTemplates = generateManualWithMetadata(testOperation, undefined, undefined, false);
+
+    assert(manualWithTemplates.includes('kubectl scale deployment ${APP_NAME} --replicas=${REPLICAS}'),
+      'Should show template variables when resolveVariables is false');
+    assert(manualWithTemplates.includes('curl http://localhost:${PORT}/health && echo "App: ${APP_NAME}"'),
+      'Should show template variables in manual steps');
+
+    // Test with variable resolution enabled
+    const manualWithResolved = generateManualWithMetadata(testOperation, undefined, undefined, true);
+
+    // Should resolve variables for staging environment
+    assert(manualWithResolved.includes('kubectl scale deployment myapp-staging --replicas=2'),
+      'Should resolve variables for staging environment');
+    assert(manualWithResolved.includes('kubectl scale deployment myapp-prod --replicas=5'),
+      'Should resolve variables for production environment');
+    assert(manualWithResolved.includes('curl http://localhost:8080/health && echo "App: myapp-staging"'),
+      'Should resolve variables in manual instructions for staging');
+    assert(manualWithResolved.includes('curl http://localhost:80/health && echo "App: myapp-prod"'),
+      'Should resolve variables in manual instructions for production');
+
+    // Should NOT contain template variables when resolved
+    assert(!manualWithResolved.includes('${REPLICAS}'),
+      'Should not contain template variables when resolved');
+    assert(!manualWithResolved.includes('${APP_NAME}'),
+      'Should not contain template APP_NAME when resolved');
+    assert(!manualWithResolved.includes('${PORT}'),
+      'Should not contain template PORT when resolved');
+  });
+
+  it('should resolve variables for single environment when filtered', () => {
+    const testOperation: Operation = {
+      id: 'single-env-resolve-123',
+      name: 'Single Environment Resolution Test',
+      version: '1.0.0',
+      description: 'Test single environment variable resolution',
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging environment',
+          variables: { REPLICAS: 2, DB_HOST: 'staging-db.example.com' },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        },
+        {
+          name: 'production',
+          description: 'Production environment',
+          variables: { REPLICAS: 5, DB_HOST: 'prod-db.example.com' },
+          restrictions: [],
+          approval_required: true,
+          validation_required: true
+        }
+      ],
+      variables: {
+        staging: { REPLICAS: 2, DB_HOST: 'staging-db.example.com' },
+        production: { REPLICAS: 5, DB_HOST: 'prod-db.example.com' }
+      },
+      steps: [
+        {
+          name: 'Database Migration',
+          type: 'automatic',
+          command: 'migrate --host ${DB_HOST} --confirm'
+        },
+        {
+          name: 'Scale Application',
+          type: 'automatic',
+          command: 'kubectl scale deployment app --replicas=${REPLICAS}'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    // Test production environment filtering with variable resolution
+    const prodManualResolved = generateManualWithMetadata(testOperation, undefined, 'production', true);
+
+    // Should only show production values
+    assert(prodManualResolved.includes('migrate --host prod-db.example.com --confirm'),
+      'Should resolve production DB_HOST variable');
+    assert(prodManualResolved.includes('kubectl scale deployment app --replicas=5'),
+      'Should resolve production REPLICAS variable');
+
+    // Should NOT contain staging values
+    assert(!prodManualResolved.includes('staging-db.example.com'),
+      'Should not contain staging values when filtered to production');
+    assert(!prodManualResolved.includes('--replicas=2'),
+      'Should not contain staging replica count');
+
+    // Should only have production column in table
+    assert(prodManualResolved.includes('| Step | production |'),
+      'Should only show production column when filtered');
+    assert(!prodManualResolved.includes('| staging |'),
+      'Should not show staging column when filtered to production');
   });
 });

@@ -10,7 +10,7 @@ function substituteVariables(command: string, variables: Record<string, any>): s
   return substitutedCommand;
 }
 
-function generateStepRow(step: Step, stepNumber: number, environments: Environment[], prefix: string = ''): string {
+function generateStepRow(step: Step, stepNumber: number, environments: Environment[], resolveVariables: boolean = false, prefix: string = ''): string {
   let rows = '';
 
   const typeIcon = step.type === 'automatic' ? '⚙️' :
@@ -39,13 +39,20 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
   
   // Subsequent columns: Commands for each environment
   environments.forEach(env => {
-    const substitutedCommand = substituteVariables(step.command || step.instruction || '', env.variables || {});
+    const rawCommand = step.command || step.instruction || '';
+    let displayCommand = rawCommand;
+
+    // Resolve variables if flag is enabled
+    if (resolveVariables && rawCommand) {
+      displayCommand = substituteVariables(rawCommand, env.variables || {});
+    }
+
     // Clean up command for table format - replace newlines with <br> and escape backticks
-    const cleanCommand = substitutedCommand
+    const cleanCommand = displayCommand
       .replace(/\n/g, '<br>')
       .replace(/`/g, '\\`')
       .trim();
-    
+
     if (cleanCommand) {
       rows += ` \`${cleanCommand}\` |`;
     } else {
@@ -61,14 +68,14 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
       // Use letters for sub-steps: 1a, 1b, 1c, etc.
       const subStepLetter = String.fromCharCode(97 + subIndex); // 97 = 'a'
       const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
-      rows += generateSubStepRow(subStep, subStepPrefix, environments);
+      rows += generateSubStepRow(subStep, subStepPrefix, environments, resolveVariables);
     });
   }
   
   return rows;
 }
 
-function generateSubStepRow(step: Step, stepId: string, environments: Environment[]): string {
+function generateSubStepRow(step: Step, stepId: string, environments: Environment[], resolveVariables: boolean = false): string {
   let rows = '';
 
   const typeIcon = step.type === 'automatic' ? '⚙️' :
@@ -90,9 +97,16 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
 
   // Subsequent columns: Commands for each environment
   environments.forEach(env => {
-    const substitutedCommand = substituteVariables(step.command || step.instruction || '', env.variables || {});
+    const rawCommand = step.command || step.instruction || '';
+    let displayCommand = rawCommand;
+
+    // Resolve variables if flag is enabled
+    if (resolveVariables && rawCommand) {
+      displayCommand = substituteVariables(rawCommand, env.variables || {});
+    }
+
     // Clean up command for table format - replace newlines with <br> and escape backticks
-    const cleanCommand = substitutedCommand
+    const cleanCommand = displayCommand
       .replace(/\n/g, '<br>')
       .replace(/`/g, '\\`')
       .trim();
@@ -114,7 +128,8 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
 export function generateManualWithMetadata(
   operation: Operation,
   metadata?: GenerationMetadata,
-  targetEnvironment?: string
+  targetEnvironment?: string,
+  resolveVariables?: boolean
 ): string {
   let markdown = '';
 
@@ -138,21 +153,22 @@ export function generateManualWithMetadata(
     environments
   };
 
-  markdown += generateManualContent(filteredOperation);
+  markdown += generateManualContent(filteredOperation, resolveVariables);
   return markdown;
 }
 
 /**
  * Legacy function for backward compatibility
+ * Note: Maintains old behavior of resolving variables for backward compatibility
  */
 export function generateManual(operation: Operation): string {
-  return generateManualContent(operation);
+  return generateManualContent(operation, true);
 }
 
 /**
  * Core manual content generation (without frontmatter)
  */
-function generateManualContent(operation: Operation): string {
+function generateManualContent(operation: Operation, resolveVariables: boolean = false): string {
   let markdown = `# Manual for: ${operation.name} (v${operation.version})\n\n`;
   if (operation.description) {
     markdown += `_${operation.description}_\n\n`;
@@ -256,7 +272,7 @@ function generateManualContent(operation: Operation): string {
 
       // Build table rows for this phase
       phaseSteps.forEach((step, index) => {
-        markdown += generateStepRow(step, index + 1, operation.environments);
+        markdown += generateStepRow(step, index + 1, operation.environments, resolveVariables);
       });
       markdown += '\n';
     });

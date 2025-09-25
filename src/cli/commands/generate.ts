@@ -11,6 +11,7 @@ interface GenerateOptions {
   format?: 'markdown' | 'confluence' | 'html' | 'pdf';
   env?: string;
   environment?: string; // Keep for backward compatibility
+  resolveVars?: boolean;
   template?: string;
 }
 
@@ -32,7 +33,7 @@ class DocumentationGenerator {
     );
 
     // Generate manual with metadata and environment filtering
-    const manual = generateManualWithMetadata(operation, metadata, targetEnv);
+    const manual = generateManualWithMetadata(operation, metadata, targetEnv, options.resolveVars);
 
     // Determine output file with environment suffix if specified
     const operationName = basename(operationFile, '.yaml');
@@ -343,6 +344,7 @@ generateCommand
   .description('Generate operation manual')
   .option('-o, --output <file>', 'Output file path')
   .option('-e, --env <environment>', 'Generate for specific environment')
+  .option('--resolve-vars', 'Resolve variables to actual values instead of showing placeholders')
   .action(async (operation: string, options: GenerateOptions) => {
     try {
       const generator = new DocumentationGenerator();
