@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { generateManualCommand } from './commands/manuals';
 import { projectCommands } from './commands/project';
 import { validateCommand } from './commands/validate';
 import { generateCommand } from './commands/generate';
@@ -16,9 +15,6 @@ program
   .version('1.0.0')
   .option('-v, --verbose', 'verbose output')
   .option('--config <path>', 'path to config file', './samaritan.config.yaml');
-
-// Legacy command for backward compatibility
-program.addCommand(generateManualCommand);
 
 // Core project commands
 program.addCommand(projectCommands.init);
