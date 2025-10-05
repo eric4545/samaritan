@@ -47,14 +47,19 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
       displayCommand = substituteVariables(rawCommand, env.variables || {});
     }
 
-    // Clean up command for table format - replace newlines with <br> and escape backticks
+    // Clean up command for table format - replace newlines with <br>, escape pipes and backticks
     const cleanCommand = displayCommand
+      .trim()
       .replace(/\n/g, '<br>')
+      .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
       .replace(/`/g, '\\`')
-      .trim();
+      .replace(/<br>$/, ''); // Remove trailing <br> tag
 
     if (cleanCommand) {
       rows += ` \`${cleanCommand}\` |`;
+    } else if (step.sub_steps && step.sub_steps.length > 0) {
+      // If step has sub_steps but no command, indicate to see substeps
+      rows += ` _(see substeps below)_ |`;
     } else {
       rows += ` _(${step.type} step)_ |`;
     }
@@ -105,14 +110,19 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
       displayCommand = substituteVariables(rawCommand, env.variables || {});
     }
 
-    // Clean up command for table format - replace newlines with <br> and escape backticks
+    // Clean up command for table format - replace newlines with <br>, escape pipes and backticks
     const cleanCommand = displayCommand
+      .trim()
       .replace(/\n/g, '<br>')
+      .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
       .replace(/`/g, '\\`')
-      .trim();
+      .replace(/<br>$/, ''); // Remove trailing <br> tag
 
     if (cleanCommand) {
       rows += ` \`${cleanCommand}\` |`;
+    } else if (step.sub_steps && step.sub_steps.length > 0) {
+      // If step has sub_steps but no command, indicate to see substeps
+      rows += ` _(see substeps below)_ |`;
     } else {
       rows += ` _(${step.type} step)_ |`;
     }

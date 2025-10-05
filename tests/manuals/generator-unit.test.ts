@@ -89,7 +89,7 @@ describe('Manual Generator Unit Tests', () => {
     // Test main operation steps table
     assert(markdown.includes('## ✈️ Flight Phase (Main Operations)'), 'Should have main steps section');
     assert(markdown.includes('| Step | staging | production |'), 'Should have steps table header');
-    
+
     // Test step formatting with icons and descriptions
     // Note: Preflight steps are in their own phase section, so main steps start from Step 1
     assert(markdown.includes('| Step 1: Build Application ⚙️<br>Build the Docker image |'), 'Should format step with icon and description');
@@ -115,7 +115,7 @@ describe('Manual Generator Unit Tests', () => {
     const singleEnvOperation: Operation = {
       id: 'single-123',
       name: 'Single Env Test',
-      version: '1.0.0', 
+      version: '1.0.0',
       description: 'Single environment test',
       environments: [
         {
@@ -146,7 +146,7 @@ describe('Manual Generator Unit Tests', () => {
     };
 
     const markdown = generateManual(singleEnvOperation);
-    
+
     // Should still create table format even with single environment
     assert(markdown.includes('| Step | production |'), 'Should create table with single environment column');
     assert(markdown.includes('| Step 1: Deploy ⚙️ |'), 'Should format single environment step');
@@ -179,13 +179,13 @@ describe('Manual Generator Unit Tests', () => {
       preflight: [], // Empty preflight
       metadata: {
         created_at: new Date(),
-        updated_at: new Date(), 
+        updated_at: new Date(),
         execution_count: 0
       }
     };
 
     const markdown = generateManual(noPreflight);
-    
+
     // Should not include preflight phase section when empty
     assert(!markdown.includes('## 🛫 Pre-Flight Phase'), 'Should not include empty preflight section');
     assert(markdown.includes('## ✈️ Flight Phase (Main Operations)'), 'Should still include steps section');
@@ -229,7 +229,7 @@ describe('Manual Generator Unit Tests', () => {
         },
         {
           name: 'Step with whitespace description',
-          type: 'manual', 
+          type: 'manual',
           description: '   ', // Only whitespace
           command: 'echo "whitespace description"'
         }
@@ -243,22 +243,22 @@ describe('Manual Generator Unit Tests', () => {
     };
 
     const markdown = generateManual(operationWithEmptyDescriptions);
-    
+
     // Should not contain JavaScript literal "undefined" values
     assert(!markdown.includes('<br>undefined'), 'Generated markdown should not contain "<br>undefined"');
     assert(!markdown.includes('<br>null'), 'Generated markdown should not contain "<br>null"');
-    
+
     // Should not render description when it's empty/null/undefined
     assert(!markdown.includes('Step 1: Step with null description ⚙️<br>'), 'Should not add <br> for null description');
     assert(!markdown.includes('Step 2: Step with missing description 👤<br>'), 'Should not add <br> for undefined description');
     assert(!markdown.includes('Step 3: Step with empty string description ⚙️<br>'), 'Should not add <br> for empty description');
-    
+
     // Should still include step names
     assert(markdown.includes('Step with null description'), 'Should include step name');
     assert(markdown.includes('Step with missing description'), 'Should include step name');
     assert(markdown.includes('Step with empty string description'), 'Should include step name');
     assert(markdown.includes('Step with whitespace description'), 'Should include step name');
-    
+
     // Should have proper table structure
     assert(markdown.includes('| Step | production |'), 'Should have table header');
     assert(markdown.includes('Step 1: Step with null description ⚙️ |'), 'Should format step without description');
@@ -412,5 +412,243 @@ describe('Manual Generator Unit Tests', () => {
       'Should only show production column when filtered');
     assert(!prodManualResolved.includes('| staging |'),
       'Should not show staging column when filtered to production');
+  });
+
+  it('should escape pipe characters in commands to prevent table breakage', () => {
+    const testOperation: Operation = {
+      id: 'pipe-test-123',
+      name: 'Pipe Character Test',
+      version: '1.0.0',
+      description: 'Test pipe character escaping',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: { NAMESPACE: 'prod' },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        }
+      ],
+      variables: { production: { NAMESPACE: 'prod' } },
+      steps: [
+        {
+          name: 'Filter and Count',
+          type: 'automatic',
+          command: 'kubectl get pods -n ${NAMESPACE} | grep Running | wc -l'
+        },
+        {
+          name: 'Chain Commands',
+          type: 'manual',
+          instruction: 'cat file.txt | sort | uniq | grep error'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Pipes should be escaped to prevent table breakage
+    assert(markdown.includes('\\|'), 'Should escape pipe characters');
+
+    // Should have properly formed table with escaped pipes
+    assert(markdown.includes('grep Running \\| wc -l'), 'Should escape pipes in kubectl command');
+    assert(markdown.includes('sort \\| uniq \\| grep error'), 'Should escape all pipes in chain');
+
+    // Table structure should remain intact
+    assert(markdown.includes('| Step | production |'), 'Table header should be intact');
+    const tableRowsCount = (markdown.match(/\| Step \d+:/g) || []).length;
+    assert(tableRowsCount === 2, 'Should have 2 step rows with proper table structure');
+  });
+
+  it('should handle imported steps with sub_steps correctly', () => {
+    const testOperation: Operation = {
+      id: 'substep-test-123',
+      name: 'Sub-step Test',
+      version: '1.0.0',
+      description: 'Test sub-step display',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: { NAMESPACE: 'prod' },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        }
+      ],
+      variables: { production: { NAMESPACE: 'prod' } },
+      steps: [
+        {
+          name: 'Deploy All Services',
+          type: 'manual',
+          description: 'Deploy all microservices',
+          // No parent command - only sub_steps
+          sub_steps: [
+            {
+              name: 'Deploy Backend',
+              type: 'automatic',
+              command: 'kubectl apply -f backend.yaml'
+            },
+            {
+              name: 'Deploy Frontend',
+              type: 'automatic',
+              command: 'kubectl apply -f frontend.yaml'
+            }
+          ]
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Parent step should indicate it has sub-steps, not show "(manual step)"
+    assert(!markdown.includes('_(manual step)_'),
+      'Should not show generic "(manual step)" when step has sub_steps');
+    assert(markdown.includes('_(see substeps below)_') || markdown.includes('Deploy all microservices'),
+      'Should show description or indicate substeps exist');
+
+    // Sub-steps should show their commands
+    assert(markdown.includes('Step 1a: Deploy Backend'), 'Should show first sub-step');
+    assert(markdown.includes('kubectl apply -f backend.yaml'), 'Should show sub-step command');
+    assert(markdown.includes('Step 1b: Deploy Frontend'), 'Should show second sub-step');
+    assert(markdown.includes('kubectl apply -f frontend.yaml'), 'Should show sub-step command');
+  });
+
+  it('should support common variables shared across all environments', () => {
+    const testOperation: Operation = {
+      id: 'common-vars-test-123',
+      name: 'Common Variables Test',
+      version: '1.0.0',
+      description: 'Test common variables functionality',
+      common_variables: {
+        REGISTRY: 'docker.io/mycompany',
+        APP_NAME: 'myapp',
+        LOG_FORMAT: 'json'
+      },
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging environment',
+          // Merged common_variables + env-specific variables
+          variables: { REGISTRY: 'docker.io/mycompany', APP_NAME: 'myapp', LOG_FORMAT: 'json', REPLICAS: 2, LOG_LEVEL: 'debug' },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        },
+        {
+          name: 'production',
+          description: 'Production environment',
+          // Merged common_variables + env-specific variables (LOG_FORMAT overridden)
+          variables: { REGISTRY: 'docker.io/mycompany', APP_NAME: 'myapp', LOG_FORMAT: 'text', REPLICAS: 5, LOG_LEVEL: 'warn' },
+          restrictions: [],
+          approval_required: true,
+          validation_required: true
+        }
+      ],
+      variables: {
+        staging: { REGISTRY: 'docker.io/mycompany', APP_NAME: 'myapp', LOG_FORMAT: 'json', REPLICAS: 2, LOG_LEVEL: 'debug' },
+        production: { REGISTRY: 'docker.io/mycompany', APP_NAME: 'myapp', LOG_FORMAT: 'text', REPLICAS: 5, LOG_LEVEL: 'warn' }
+      },
+      steps: [
+        {
+          name: 'Build and Push',
+          type: 'automatic',
+          command: 'docker build -t ${REGISTRY}/${APP_NAME}:latest . && docker push ${REGISTRY}/${APP_NAME}:latest'
+        },
+        {
+          name: 'Configure Logging',
+          type: 'automatic',
+          command: 'kubectl set env deployment/${APP_NAME} LOG_FORMAT=${LOG_FORMAT} LOG_LEVEL=${LOG_LEVEL}'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Common variables should be used in all environments
+    assert(markdown.includes('docker.io/mycompany/myapp'), 'Should use common REGISTRY and APP_NAME');
+
+    // Staging should use common LOG_FORMAT (json)
+    assert(markdown.includes('LOG_FORMAT=json LOG_LEVEL=debug'),
+      'Staging should use common LOG_FORMAT and env-specific LOG_LEVEL');
+
+    // Production should override LOG_FORMAT (text)
+    assert(markdown.includes('LOG_FORMAT=text LOG_LEVEL=warn'),
+      'Production should override LOG_FORMAT with env-specific value');
+  });
+
+  it('should trim trailing <br> tags from multi-line commands', () => {
+    const testOperation: Operation = {
+      id: 'multiline-test-123',
+      name: 'Multi-line Command Test',
+      version: '1.0.0',
+      description: 'Test multi-line command formatting',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: { NAMESPACE: 'prod' },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        }
+      ],
+      variables: { production: { NAMESPACE: 'prod' } },
+      steps: [
+        {
+          name: 'Deploy Services',
+          type: 'automatic',
+          command: `kubectl apply -f backend.yaml
+kubectl apply -f frontend.yaml
+kubectl apply -f worker.yaml`
+        },
+        {
+          name: 'Smoke Test',
+          type: 'manual',
+          instruction: `Test the following:
+1. Check API health
+2. Verify frontend loads
+3. Confirm worker is running`
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Commands should use <br> for line breaks but NOT have trailing <br>
+    assert(markdown.includes('kubectl apply -f backend.yaml<br>kubectl apply -f frontend.yaml<br>kubectl apply -f worker.yaml'),
+      'Should convert newlines to <br> tags');
+
+    // Should NOT have <br>` (br tag before closing backtick)
+    assert(!markdown.includes('<br>`'), 'Should not have trailing <br> before closing backtick');
+
+    // Instruction should also not have trailing <br>
+    assert(markdown.includes('1. Check API health<br>2. Verify frontend loads<br>3. Confirm worker is running'),
+      'Should convert instruction newlines to <br> tags');
+    assert(!markdown.match(/<br>\s*`\)/), 'Should not have trailing <br> in instructions');
   });
 });

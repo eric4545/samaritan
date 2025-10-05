@@ -97,6 +97,10 @@
       "type": "object",
       "description": "Environment-specific variables"
     },
+    "common_variables": {
+      "type": "object",
+      "description": "Common variables shared across all environments (can be overridden by environment-specific variables)"
+    },
     "preflight": {
       "type": "array",
       "items": {

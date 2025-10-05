@@ -337,6 +337,9 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   // Get base directory for resolving imports and environments
   const baseDirectory = dirname(filePath);
 
+  // Parse common variables (shared across all environments)
+  const commonVariables = rawOperation.common_variables || {};
+
   // Parse environments (supports both inline and manifest inheritance)
   let environments: Environment[] = [];
   try {
@@ -355,12 +358,12 @@ export async function parseOperation(filePath: string): Promise<Operation> {
             ]);
           }
 
-          // Merge manifest environment with overrides
+          // Merge manifest environment with overrides and common variables
           const environment: Environment = {
             name: envData.name,
             from: envData.from,
             description: envData.description || manifestEnv.description,
-            variables: { ...manifestEnv.variables, ...(envData.variables || {}) },
+            variables: { ...commonVariables, ...manifestEnv.variables, ...(envData.variables || {}) },
             restrictions: [...(manifestEnv.restrictions || []), ...(envData.restrictions || [])],
             approval_required: envData.approval_required !== undefined ? envData.approval_required : manifestEnv.approval_required,
             validation_required: envData.validation_required !== undefined ? envData.validation_required : manifestEnv.validation_required,
@@ -369,16 +372,18 @@ export async function parseOperation(filePath: string): Promise<Operation> {
 
           environments.push(environment);
         } else {
-          // Regular inline environment
-          environments.push(parseEnvironment(envData, environments.length));
+          // Regular inline environment - merge with common variables
+          const parsedEnv = parseEnvironment(envData, environments.length);
+          parsedEnv.variables = { ...commonVariables, ...parsedEnv.variables };
+          environments.push(parsedEnv);
         }
       }
     } else {
-      // Create default environment if none specified
+      // Create default environment if none specified - include common variables
       environments = [{
         name: 'default',
         description: 'Default environment',
-        variables: {},
+        variables: { ...commonVariables },
         restrictions: [],
         approval_required: false,
         validation_required: false,
@@ -391,11 +396,11 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     } else {
       errors.push({ field: 'environments', message: (error as Error).message });
     }
-    // Fallback to default environment
+    // Fallback to default environment with common variables
     environments = [{
       name: 'default',
       description: 'Default environment',
-      variables: {},
+      variables: { ...commonVariables },
       restrictions: [],
       approval_required: false,
       validation_required: false,
@@ -518,6 +523,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     emergency: Boolean(rawOperation.emergency),
     environments,
     variables,
+    common_variables: commonVariables,
     steps,
     preflight,
     rollback: rawOperation.rollback,

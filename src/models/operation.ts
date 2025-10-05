@@ -161,6 +161,7 @@ export interface Operation {
   emergency?: boolean;
   environments: Environment[];
   variables: VariableMatrix;
+  common_variables?: Record<string, any>; // Common variables shared across all environments
   steps: Step[];
   preflight: PreflightCheck[];
   rollback?: RollbackPlan;
