@@ -97,6 +97,11 @@ export interface RollbackPlan {
   conditions?: string[];
 }
 
+export interface StepForeach {
+  var: string; // Variable name to use in iteration
+  values: any[]; // Array of values to iterate over
+}
+
 export interface Step {
   id?: string;
   name: string;
@@ -126,6 +131,7 @@ export interface Step {
   manual_instructions?: string;
   approval?: ApprovalConfig;
   ticket?: string | string[]; // Bug/issue ticket references (e.g., "JIRA-123" or ["BUG-456", "TASK-789"])
+  foreach?: StepForeach; // Loop/matrix support for repeatable steps
 }
 
 export interface Environment {
@@ -164,6 +170,7 @@ export interface Operation {
   environments: Environment[];
   variables: VariableMatrix;
   common_variables?: Record<string, any>; // Common variables shared across all environments
+  env_file?: string; // Path to .env file for loading variables
   steps: Step[];
   preflight: PreflightCheck[];
   rollback?: RollbackPlan;

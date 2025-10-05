@@ -101,6 +101,10 @@
       "type": "object",
       "description": "Common variables shared across all environments (can be overridden by environment-specific variables)"
     },
+    "env_file": {
+      "type": "string",
+      "description": "Path to .env file for loading variables (lowest priority in variable lookup)"
+    },
     "preflight": {
       "type": "array",
       "items": {
@@ -321,6 +325,23 @@
                   }
                 ],
                 "description": "Bug/issue ticket references"
+              },
+              "foreach": {
+                "type": "object",
+                "required": ["var", "values"],
+                "properties": {
+                  "var": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Variable name to use in iteration"
+                  },
+                  "values": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "Array of values to iterate over"
+                  }
+                },
+                "description": "Loop/matrix support for repeatable steps"
               },
               "rollback": {
                 "type": "object",

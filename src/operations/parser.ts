@@ -28,6 +28,59 @@ interface ImportContext {
   baseDirectory: string; // Directory of the main operation file
 }
 
+/**
+ * Parse .env file and return key-value pairs
+ * Supports basic .env format: KEY=value
+ * Ignores comments (#) and empty lines
+ */
+function parseEnvFile(filePath: string): Record<string, any> {
+  const envVars: Record<string, any> = {};
+
+  if (!fs.existsSync(filePath)) {
+    return envVars;
+  }
+
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const lines = content.split('\n');
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    // Skip empty lines and comments
+    if (!trimmedLine || trimmedLine.startsWith('#')) {
+      continue;
+    }
+
+    // Parse KEY=value
+    const equalsIndex = trimmedLine.indexOf('=');
+    if (equalsIndex === -1) {
+      continue; // Skip invalid lines
+    }
+
+    const key = trimmedLine.substring(0, equalsIndex).trim();
+    let value = trimmedLine.substring(equalsIndex + 1).trim();
+
+    // Remove quotes if present
+    if ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.substring(1, value.length - 1);
+    }
+
+    // Try to parse as number or boolean
+    if (value === 'true') {
+      envVars[key] = true;
+    } else if (value === 'false') {
+      envVars[key] = false;
+    } else if (!isNaN(Number(value)) && value !== '') {
+      envVars[key] = Number(value);
+    } else {
+      envVars[key] = value;
+    }
+  }
+
+  return envVars;
+}
+
 function parseEvidence(data: any): EvidenceConfig | undefined {
   // New nested format
   if (data.evidence) {
@@ -212,7 +265,31 @@ function resolveStepReferences(steps: any[], importContext: ImportContext): Step
           step.phase = 'flight';
         }
 
-        resolvedSteps.push(step);
+        // Expand foreach loops
+        if (step.foreach) {
+          const foreachVar = step.foreach.var;
+          const foreachValues = step.foreach.values;
+
+          for (let j = 0; j < foreachValues.length; j++) {
+            const value = foreachValues[j];
+
+            // Clone step for this iteration
+            const expandedStep: Step = {
+              ...step,
+              id: step.id ? `${step.id}-${j}` : undefined,
+              name: `${step.name} (${value})`,
+              variables: {
+                ...(step.variables || {}),
+                [foreachVar]: value
+              },
+              foreach: undefined // Remove foreach from expanded step
+            };
+
+            resolvedSteps.push(expandedStep);
+          }
+        } else {
+          resolvedSteps.push(step);
+        }
       } catch (error) {
         if (error instanceof OperationParseError) {
           throw error;
@@ -265,7 +342,8 @@ function parseStep(stepData: any, stepIndex: number): Step {
     manual_override: Boolean(stepData.manual_override),
     manual_instructions: stepData.manual_instructions,
     approval: stepData.approval,
-    ticket: stepData.ticket
+    ticket: stepData.ticket,
+    foreach: stepData.foreach
   };
 }
 
@@ -340,8 +418,16 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   // Get base directory for resolving imports and environments
   const baseDirectory = dirname(filePath);
 
+  // Load variables from .env file if specified (lowest priority)
+  let envFileVariables: Record<string, any> = {};
+  if (rawOperation.env_file) {
+    const envFilePath = resolve(baseDirectory, rawOperation.env_file);
+    envFileVariables = parseEnvFile(envFilePath);
+  }
+
   // Parse common variables (shared across all environments)
-  const commonVariables = rawOperation.common_variables || {};
+  // Priority: common_variables > env_file
+  const commonVariables = { ...envFileVariables, ...(rawOperation.common_variables || {}) };
 
   // Parse environments (supports both inline and manifest inheritance)
   let environments: Environment[] = [];
@@ -527,6 +613,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     environments,
     variables,
     common_variables: commonVariables,
+    env_file: rawOperation.env_file,
     steps,
     preflight,
     rollback: rawOperation.rollback,

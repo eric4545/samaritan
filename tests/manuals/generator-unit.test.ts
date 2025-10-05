@@ -786,6 +786,62 @@ describe('Manual Generator Unit Tests', () => {
       'Should show multiple ticket references');
   });
 
+  it('should load variables from .env file (FIXME #3)', () => {
+    const testOperation: Operation = {
+      id: 'env-file-test-123',
+      name: 'Env File Test',
+      version: '1.0.0',
+      description: 'Test .env file loading',
+      env_file: '.env', // Simulating loaded from .env
+      common_variables: {
+        APP_NAME: 'myapp', // Override from .env
+        VERSION: '1.0.0' // New variable
+      },
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging',
+          // Variables should include: REGISTRY (from .env), APP_NAME (overridden), VERSION (from common)
+          variables: { REGISTRY: 'docker.io/default', APP_NAME: 'myapp', VERSION: '1.0.0', REPLICAS: 2 },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        },
+        {
+          name: 'production',
+          description: 'Production',
+          variables: { REGISTRY: 'docker.io/default', APP_NAME: 'myapp', VERSION: '1.0.0', REPLICAS: 5 },
+          restrictions: [],
+          approval_required: true,
+          validation_required: false
+        }
+      ],
+      variables: {
+        staging: { REGISTRY: 'docker.io/default', APP_NAME: 'myapp', VERSION: '1.0.0', REPLICAS: 2 },
+        production: { REGISTRY: 'docker.io/default', APP_NAME: 'myapp', VERSION: '1.0.0', REPLICAS: 5 }
+      },
+      steps: [
+        {
+          name: 'Build Image',
+          type: 'automatic',
+          command: 'docker build -t ${REGISTRY}/${APP_NAME}:${VERSION} .'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Variables from .env and common_variables should be merged and used
+    assert(markdown.includes('docker build -t docker.io/default/myapp:1.0.0 .'),
+      'Should use variables from .env file merged with common_variables');
+  });
+
   it('should trim trailing <br> tags from multi-line commands', () => {
     const testOperation: Operation = {
       id: 'multiline-test-123',
@@ -841,5 +897,63 @@ kubectl apply -f worker.yaml`
     assert(markdown.includes('1. Check API health<br>2. Verify frontend loads<br>3. Confirm worker is running'),
       'Should convert instruction newlines to <br> tags');
     assert(!markdown.match(/<br>\s*`\)/), 'Should not have trailing <br> in instructions');
+  });
+
+  it('should expand steps with foreach loops (FIXME #8)', () => {
+    const testOperation: Operation = {
+      id: 'foreach-test-123',
+      name: 'Foreach Test',
+      version: '1.0.0',
+      description: 'Test foreach loops',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        }
+      ],
+      variables: { production: {} },
+      steps: [
+        {
+          name: 'Deploy Service (backend)',
+          type: 'automatic',
+          command: 'kubectl apply -f backend.yaml',
+          variables: { SERVICE: 'backend' }
+        },
+        {
+          name: 'Deploy Service (frontend)',
+          type: 'automatic',
+          command: 'kubectl apply -f frontend.yaml',
+          variables: { SERVICE: 'frontend' }
+        },
+        {
+          name: 'Deploy Service (worker)',
+          type: 'automatic',
+          command: 'kubectl apply -f worker.yaml',
+          variables: { SERVICE: 'worker' }
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Should have 3 expanded steps
+    assert(markdown.includes('Step 1: Deploy Service (backend)'), 'Should have first expanded step');
+    assert(markdown.includes('Step 2: Deploy Service (frontend)'), 'Should have second expanded step');
+    assert(markdown.includes('Step 3: Deploy Service (worker)'), 'Should have third expanded step');
+
+    // Each should have the correct command
+    assert(markdown.includes('kubectl apply -f backend.yaml'), 'Should have backend command');
+    assert(markdown.includes('kubectl apply -f frontend.yaml'), 'Should have frontend command');
+    assert(markdown.includes('kubectl apply -f worker.yaml'), 'Should have worker command');
   });
 });
