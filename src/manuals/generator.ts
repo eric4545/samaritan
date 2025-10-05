@@ -1,11 +1,19 @@
 import { Operation, Environment, Step } from '../models/operation';
 import { GenerationMetadata, generateYamlFrontmatter } from '../lib/git-metadata';
 
-function substituteVariables(command: string, variables: Record<string, any>): string {
+function substituteVariables(
+  command: string,
+  envVariables: Record<string, any>,
+  stepVariables?: Record<string, any>
+): string {
   let substitutedCommand = command;
-  for (const key in variables) {
+
+  // Merge variables with priority: step > env
+  const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
+
+  for (const key in mergedVariables) {
     const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
-    substitutedCommand = substitutedCommand.replace(regex, variables[key]);
+    substitutedCommand = substitutedCommand.replace(regex, mergedVariables[key]);
   }
   return substitutedCommand;
 }
@@ -34,7 +42,13 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
   if (step.needs && step.needs.length > 0) {
     stepCell += `<br>📋 <em>Depends on: ${step.needs.join(', ')}</em>`;
   }
-  
+
+  // Add ticket references
+  if (step.ticket) {
+    const tickets = Array.isArray(step.ticket) ? step.ticket : [step.ticket];
+    stepCell += `<br>🎫 <em>Tickets: ${tickets.join(', ')}</em>`;
+  }
+
   rows += `| ${stepCell} |`;
   
   // Subsequent columns: Commands for each environment
@@ -44,7 +58,7 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
 
     // Resolve variables if flag is enabled
     if (resolveVariables && rawCommand) {
-      displayCommand = substituteVariables(rawCommand, env.variables || {});
+      displayCommand = substituteVariables(rawCommand, env.variables || {}, step.variables);
     }
 
     // Clean up command for table format - replace newlines with <br>, escape pipes and backticks
@@ -98,6 +112,12 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
     stepCell += `<br>📋 <em>Depends on: ${step.needs.join(', ')}</em>`;
   }
 
+  // Add ticket references
+  if (step.ticket) {
+    const tickets = Array.isArray(step.ticket) ? step.ticket : [step.ticket];
+    stepCell += `<br>🎫 <em>Tickets: ${tickets.join(', ')}</em>`;
+  }
+
   rows += `| ${stepCell} |`;
 
   // Subsequent columns: Commands for each environment
@@ -107,7 +127,7 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
 
     // Resolve variables if flag is enabled
     if (resolveVariables && rawCommand) {
-      displayCommand = substituteVariables(rawCommand, env.variables || {});
+      displayCommand = substituteVariables(rawCommand, env.variables || {}, step.variables);
     }
 
     // Clean up command for table format - replace newlines with <br>, escape pipes and backticks
@@ -254,6 +274,8 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
     });
 
     // Generate section for each phase that has steps
+    let globalStepNumber = 1; // Continuous numbering across all phases
+
     Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
       if (phaseSteps.length === 0) return;
 
@@ -280,9 +302,10 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
       });
       markdown += '\n';
 
-      // Build table rows for this phase
-      phaseSteps.forEach((step, index) => {
-        markdown += generateStepRow(step, index + 1, operation.environments, resolveVariables);
+      // Build table rows for this phase with continuous numbering
+      phaseSteps.forEach((step) => {
+        markdown += generateStepRow(step, globalStepNumber, operation.environments, resolveVariables);
+        globalStepNumber++; // Increment for next step
       });
       markdown += '\n';
     });

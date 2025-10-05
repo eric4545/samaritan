@@ -91,10 +91,10 @@ describe('Manual Generator Unit Tests', () => {
     assert(markdown.includes('| Step | staging | production |'), 'Should have steps table header');
 
     // Test step formatting with icons and descriptions
-    // Note: Preflight steps are in their own phase section, so main steps start from Step 1
-    assert(markdown.includes('| Step 1: Build Application ⚙️<br>Build the Docker image |'), 'Should format step with icon and description');
-    assert(markdown.includes('| Step 2: Scale Service ⚙️<br>Scale to target replicas |'), 'Should handle automatic steps');
-    assert(markdown.includes('| Step 3: Manual Health Check 👤<br>Verify application health |'), 'Should handle manual steps with correct icon');
+    // Note: Continuous numbering - preflight is Step 1, so flight starts at Step 2
+    assert(markdown.includes('| Step 2: Build Application ⚙️<br>Build the Docker image |'), 'Should format step with icon and description');
+    assert(markdown.includes('| Step 3: Scale Service ⚙️<br>Scale to target replicas |'), 'Should handle automatic steps');
+    assert(markdown.includes('| Step 4: Manual Health Check 👤<br>Verify application health |'), 'Should handle manual steps with correct icon');
 
     // Test variable substitution in table
     assert(markdown.includes('`kubectl scale deployment app --replicas=2`'), 'Should substitute variables for staging');
@@ -593,6 +593,197 @@ describe('Manual Generator Unit Tests', () => {
     // Production should override LOG_FORMAT (text)
     assert(markdown.includes('LOG_FORMAT=text LOG_LEVEL=warn'),
       'Production should override LOG_FORMAT with env-specific value');
+  });
+
+  it('should support step-scoped variables that override environment variables (FIXME #2)', () => {
+    const testOperation: Operation = {
+      id: 'step-vars-test-123',
+      name: 'Step Variables Test',
+      version: '1.0.0',
+      description: 'Test step-scoped variables',
+      common_variables: {
+        REGISTRY: 'docker.io/default',
+        TAG: 'latest'
+      },
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging',
+          variables: { REGISTRY: 'docker.io/staging', TAG: 'latest', NAMESPACE: 'staging' },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        },
+        {
+          name: 'production',
+          description: 'Production',
+          variables: { REGISTRY: 'docker.io/prod', TAG: 'latest', NAMESPACE: 'prod' },
+          restrictions: [],
+          approval_required: true,
+          validation_required: false
+        }
+      ],
+      variables: {
+        staging: { REGISTRY: 'docker.io/staging', TAG: 'latest', NAMESPACE: 'staging' },
+        production: { REGISTRY: 'docker.io/prod', TAG: 'latest', NAMESPACE: 'prod' }
+      },
+      steps: [
+        {
+          name: 'Build Standard Image',
+          type: 'automatic',
+          command: 'docker build -t ${REGISTRY}/app:${TAG} .'
+        },
+        {
+          name: 'Build Special Image',
+          type: 'automatic',
+          command: 'docker build -t ${REGISTRY}/app:${TAG} .',
+          variables: {
+            TAG: 'special-v1.0' // Override TAG for this step only
+          }
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // First step uses environment TAG
+    assert(markdown.includes('docker build -t docker.io/staging/app:latest .'),
+      'First step should use environment TAG for staging');
+    assert(markdown.includes('docker build -t docker.io/prod/app:latest .'),
+      'First step should use environment TAG for production');
+
+    // Second step uses step-scoped TAG variable
+    assert(markdown.includes('docker build -t docker.io/staging/app:special-v1.0 .'),
+      'Second step should use step TAG override for staging');
+    assert(markdown.includes('docker build -t docker.io/prod/app:special-v1.0 .'),
+      'Second step should use step TAG override for production');
+  });
+
+  it('should use continuous numbering across all phases (FIXME #7)', () => {
+    const testOperation: Operation = {
+      id: 'numbering-test-123',
+      name: 'Phase Numbering Test',
+      version: '1.0.0',
+      description: 'Test continuous phase numbering',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        }
+      ],
+      variables: { production: {} },
+      steps: [
+        {
+          name: 'Preflight Check 1',
+          type: 'automatic',
+          phase: 'preflight',
+          command: 'echo preflight1'
+        },
+        {
+          name: 'Preflight Check 2',
+          type: 'automatic',
+          phase: 'preflight',
+          command: 'echo preflight2'
+        },
+        {
+          name: 'Main Step 1',
+          type: 'automatic',
+          phase: 'flight',
+          command: 'echo main1'
+        },
+        {
+          name: 'Main Step 2',
+          type: 'automatic',
+          phase: 'flight',
+          command: 'echo main2'
+        },
+        {
+          name: 'Postflight Check 1',
+          type: 'manual',
+          phase: 'postflight',
+          command: 'echo postflight1'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Should have continuous numbering: 1, 2, 3, 4, 5
+    assert(markdown.includes('Step 1: Preflight Check 1'), 'Preflight should start at 1');
+    assert(markdown.includes('Step 2: Preflight Check 2'), 'Preflight should continue to 2');
+    assert(markdown.includes('Step 3: Main Step 1'), 'Flight should continue from 3');
+    assert(markdown.includes('Step 4: Main Step 2'), 'Flight should continue to 4');
+    assert(markdown.includes('Step 5: Postflight Check 1'), 'Postflight should continue from 5');
+
+    // Should NOT reset numbering in each phase
+    assert(!markdown.match(/Flight Phase.*Step 1: Main Step 1/s),
+      'Flight phase should not start numbering from 1');
+  });
+
+  it('should display ticket references in steps (FIXME #9)', () => {
+    const testOperation: Operation = {
+      id: 'ticket-test-123',
+      name: 'Ticket Reference Test',
+      version: '1.0.0',
+      description: 'Test ticket references',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        }
+      ],
+      variables: { production: {} },
+      steps: [
+        {
+          name: 'Fix Bug',
+          type: 'manual',
+          command: 'Apply the bug fix',
+          ticket: 'JIRA-123'
+        },
+        {
+          name: 'Deploy Feature',
+          type: 'automatic',
+          command: 'kubectl apply -f feature.yaml',
+          ticket: ['TASK-456', 'BUG-789']
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Should display single ticket
+    assert(markdown.includes('🎫 <em>Tickets: JIRA-123</em>'),
+      'Should show single ticket reference with emoji');
+
+    // Should display multiple tickets
+    assert(markdown.includes('🎫 <em>Tickets: TASK-456, BUG-789</em>'),
+      'Should show multiple ticket references');
   });
 
   it('should trim trailing <br> tags from multi-line commands', () => {

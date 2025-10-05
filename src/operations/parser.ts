@@ -185,12 +185,13 @@ function resolveStepReferences(steps: any[], importContext: ImportContext): Step
       
       // Clone the referenced step and apply any overrides
       const clonedStep: Step = { ...referencedStep };
-      
+
       // Allow overriding certain properties
       if (stepData.timeout !== undefined) clonedStep.timeout = stepData.timeout;
       if (stepData.phase !== undefined) clonedStep.phase = stepData.phase as StepPhase;
       if (stepData.env !== undefined) clonedStep.env = { ...clonedStep.env, ...stepData.env };
       if (stepData.with !== undefined) clonedStep.with = { ...clonedStep.with, ...stepData.with };
+      if (stepData.variables !== undefined) clonedStep.variables = { ...clonedStep.variables, ...stepData.variables };
       if (stepData.evidence_required !== undefined) clonedStep.evidence_required = stepData.evidence_required;
       if (stepData.continue_on_error !== undefined) clonedStep.continue_on_error = stepData.continue_on_error;
 
@@ -250,6 +251,7 @@ function parseStep(stepData: any, stepIndex: number): Step {
     estimated_duration: stepData.estimated_duration,
     env: stepData.env,
     with: stepData.with,
+    variables: stepData.variables,
     evidence: parseEvidence(stepData),
     evidence_required: Boolean(stepData.evidence_required), // DEPRECATED: Use evidence.required instead
     evidence_types: stepData.evidence_types as EvidenceType[], // DEPRECATED: Use evidence.types instead
@@ -262,7 +264,8 @@ function parseStep(stepData: any, stepIndex: number): Step {
     sub_steps: subSteps,
     manual_override: Boolean(stepData.manual_override),
     manual_instructions: stepData.manual_instructions,
-    approval: stepData.approval
+    approval: stepData.approval,
+    ticket: stepData.ticket
   };
 }
 

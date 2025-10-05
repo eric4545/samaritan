@@ -111,6 +111,7 @@ export interface Step {
   estimated_duration?: number;
   env?: Record<string, any>;
   with?: Record<string, any>;
+  variables?: Record<string, any>; // Step-scoped variables (override env and common vars)
   evidence?: EvidenceConfig;
   evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
   evidence_types?: EvidenceType[]; // DEPRECATED: Use evidence.types instead
@@ -124,6 +125,7 @@ export interface Step {
   manual_override?: boolean;
   manual_instructions?: string;
   approval?: ApprovalConfig;
+  ticket?: string | string[]; // Bug/issue ticket references (e.g., "JIRA-123" or ["BUG-456", "TASK-789"])
 }
 
 export interface Environment {

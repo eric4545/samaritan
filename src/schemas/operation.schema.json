@@ -179,6 +179,10 @@
               "with": {
                 "type": "object"
               },
+              "variables": {
+                "type": "object",
+                "description": "Step-scoped variables that override environment and common variables"
+              },
               "evidence": {
                 "type": "object",
                 "properties": {
@@ -250,6 +254,10 @@
               "with": {
                 "type": "object"
               },
+              "variables": {
+                "type": "object",
+                "description": "Step-scoped variables that override environment and common variables"
+              },
               "evidence": {
                 "type": "object",
                 "properties": {
@@ -297,6 +305,22 @@
               },
               "manual_instructions": {
                 "type": "string"
+              },
+              "ticket": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "description": "Single ticket reference (e.g., JIRA-123)"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Multiple ticket references"
+                  }
+                ],
+                "description": "Bug/issue ticket references"
               },
               "rollback": {
                 "type": "object",
