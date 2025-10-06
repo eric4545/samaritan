@@ -92,9 +92,9 @@ describe('Manual Generator Unit Tests', () => {
 
     // Test step formatting with icons and descriptions
     // Note: Continuous numbering - preflight is Step 1, so flight starts at Step 2
-    assert(markdown.includes('| Step 2: Build Application ⚙️<br>Build the Docker image |'), 'Should format step with icon and description');
-    assert(markdown.includes('| Step 3: Scale Service ⚙️<br>Scale to target replicas |'), 'Should handle automatic steps');
-    assert(markdown.includes('| Step 4: Manual Health Check 👤<br>Verify application health |'), 'Should handle manual steps with correct icon');
+    assert(markdown.includes('| ☐ Step 2: Build Application ⚙️<br>Build the Docker image |'), 'Should format step with icon and description');
+    assert(markdown.includes('| ☐ Step 3: Scale Service ⚙️<br>Scale to target replicas |'), 'Should handle automatic steps');
+    assert(markdown.includes('| ☐ Step 4: Manual Health Check 👤<br>Verify application health |'), 'Should handle manual steps with correct icon');
 
     // Test variable substitution in table
     assert(markdown.includes('`kubectl scale deployment app --replicas=2`'), 'Should substitute variables for staging');
@@ -104,7 +104,7 @@ describe('Manual Generator Unit Tests', () => {
 
     // Test that both environments have commands
     // Should have 4 total step rows: 1 preflight + 3 main steps
-    const stepsTableMatch = markdown.match(/\| Step \d+:.*?\|.*?\|.*?\|/g);
+    const stepsTableMatch = markdown.match(/\| ☐ Step \d+:.*?\|.*?\|.*?\|/g);
     assert(stepsTableMatch && stepsTableMatch.length === 4, 'Should have 4 step table rows');
 
     // Snapshot the complete manual for regression testing
@@ -149,7 +149,7 @@ describe('Manual Generator Unit Tests', () => {
 
     // Should still create table format even with single environment
     assert(markdown.includes('| Step | production |'), 'Should create table with single environment column');
-    assert(markdown.includes('| Step 1: Deploy ⚙️ |'), 'Should format single environment step');
+    assert(markdown.includes('| ☐ Step 1: Deploy ⚙️'), 'Should format single environment step');
   });
 
   it('should handle operations without preflight checks', () => {
@@ -462,7 +462,7 @@ describe('Manual Generator Unit Tests', () => {
 
     // Table structure should remain intact
     assert(markdown.includes('| Step | production |'), 'Table header should be intact');
-    const tableRowsCount = (markdown.match(/\| Step \d+:/g) || []).length;
+    const tableRowsCount = (markdown.match(/\| ☐ Step \d+:/g) || []).length;
     assert(tableRowsCount === 2, 'Should have 2 step rows with proper table structure');
   });
 
@@ -1132,5 +1132,161 @@ kubectl apply -f worker.yaml`
     assert(markdown.includes('kubectl apply -f backend.yaml'), 'Should have backend command');
     assert(markdown.includes('kubectl apply -f frontend.yaml'), 'Should have frontend command');
     assert(markdown.includes('kubectl apply -f worker.yaml'), 'Should have worker command');
+  });
+
+  it('should include Gantt chart when requested with timeline data', (t) => {
+    const testOperation: Operation = {
+      id: 'test-gantt',
+      name: 'Test Gantt Operation',
+      version: '1.0.0',
+      description: 'Test Gantt chart generation',
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging environment',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+          targets: []
+        }
+      ],
+      variables: {},
+      steps: [
+        {
+          name: 'Pre-deployment Check',
+          type: 'automatic',
+          phase: 'preflight',
+          command: 'kubectl get nodes',
+          pic: 'DevOps Team',
+          timeline: '2024-01-15 09:00 UTC'
+        },
+        {
+          name: 'Deploy Backend',
+          type: 'automatic',
+          phase: 'flight',
+          command: 'kubectl apply -f backend.yaml',
+          pic: 'Backend Team',
+          timeline: '15 minutes'
+        },
+        {
+          name: 'Post-deployment Verification',
+          type: 'manual',
+          phase: 'postflight',
+          command: 'curl https://example.com/health',
+          pic: 'QA Team',
+          timeline: 'After all deployments complete'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManualWithMetadata(testOperation, undefined, undefined, false, true);
+
+    // Should include Mermaid Gantt chart
+    assert(markdown.includes('```mermaid'), 'Should have mermaid code block');
+    assert(markdown.includes('gantt'), 'Should have gantt keyword');
+    assert(markdown.includes('title Test Gantt Operation Timeline'), 'Should have operation title');
+
+    // Should include phase sections
+    assert(markdown.includes('section 🛫 Pre-Flight Phase'), 'Should have preflight section');
+    assert(markdown.includes('section ✈️ Flight Phase'), 'Should have flight section');
+    assert(markdown.includes('section 🛬 Post-Flight Phase'), 'Should have postflight section');
+
+    // Should include step names with PICs
+    assert(markdown.includes('Pre-deployment Check (DevOps Team)'), 'Should have preflight step with PIC');
+    assert(markdown.includes('Deploy Backend (Backend Team)'), 'Should have flight step with PIC');
+    assert(markdown.includes('Post-deployment Verification (QA Team)'), 'Should have postflight step with PIC');
+
+    // Should include timeline data
+    assert(markdown.includes(':2024-01-15 09:00 UTC'), 'Should have first timeline');
+    assert(markdown.includes(':15 minutes'), 'Should have second timeline');
+    assert(markdown.includes(':After all deployments complete'), 'Should have third timeline');
+  });
+
+  it('should not include Gantt chart when not requested', (t) => {
+    const testOperation: Operation = {
+      id: 'test-no-gantt',
+      name: 'Test No Gantt',
+      version: '1.0.0',
+      description: 'Test without Gantt chart',
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging environment',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+          targets: []
+        }
+      ],
+      variables: {},
+      steps: [
+        {
+          name: 'Deploy',
+          type: 'automatic',
+          command: 'kubectl apply -f app.yaml',
+          pic: 'DevOps Team',
+          timeline: '2024-01-15 09:00 UTC'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManualWithMetadata(testOperation, undefined, undefined, false, false);
+
+    // Should not include Mermaid Gantt chart
+    assert(!markdown.includes('```mermaid'), 'Should not have mermaid code block when gantt=false');
+    assert(!markdown.includes('gantt'), 'Should not have gantt keyword when gantt=false');
+  });
+
+  it('should not include Gantt chart when no steps have timeline', (t) => {
+    const testOperation: Operation = {
+      id: 'test-no-timeline',
+      name: 'Test No Timeline',
+      version: '1.0.0',
+      description: 'Test without timeline data',
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging environment',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+          targets: []
+        }
+      ],
+      variables: {},
+      steps: [
+        {
+          name: 'Deploy',
+          type: 'automatic',
+          command: 'kubectl apply -f app.yaml'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManualWithMetadata(testOperation, undefined, undefined, false, true);
+
+    // Should not include Gantt chart when no timeline data
+    assert(!markdown.includes('```mermaid'), 'Should not have mermaid code block when no timeline data');
   });
 });

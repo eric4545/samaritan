@@ -122,17 +122,17 @@ steps:
     assert(content.includes('## ✈️ Flight Phase (Main Operations)'), 'Operation Steps section should exist.');
     assert(content.includes('| Step | preprod | production |'), 'Steps table header should exist.');
     // Continuous numbering: 2 preflight steps, so flight starts at Step 3
-    assert(content.includes('| Step 3: Build Docker Image ✈️⚙️'), 'First step in flight phase should be Step 3.');
+    assert(content.includes('| ☐ Step 3: Build Docker Image ✈️⚙️'), 'First step in flight phase should be Step 3.');
     assert(content.includes('`docker build -t web-server:latest .`'), 'Docker build command should be present.');
 
     // Check steps with environment-specific commands in table format
-    assert(content.includes('| Step 6: Scale Deployment ✈️⚙️'), 'Scale Deployment step should be Step 6.');
+    assert(content.includes('| ☐ Step 6: Scale Deployment ✈️⚙️'), 'Scale Deployment step should be Step 6.');
     assert(content.includes('`kubectl scale deployment web-server --replicas=2`'), 'REPLICAS variable should be substituted for preprod.');
     assert(content.includes('`kubectl scale deployment web-server --replicas=5`'), 'REPLICAS variable should be substituted for production.');
 
-    assert(content.includes('| Step 7: Manual Verification ✈️👤'), 'Manual Verification step should be Step 7.');
+    assert(content.includes('| ☐ Step 7: Manual Verification ✈️👤'), 'Manual Verification step should be Step 7.');
     assert(content.includes('`curl https://web-server.example.com/health`'), 'Manual verification command should be present.');
-    assert(content.includes('| Step 8: Deploy to Kubernetes ✈️⚙️'), 'Last step should be Step 8.');
+    assert(content.includes('| ☐ Step 8: Deploy to Kubernetes ✈️⚙️'), 'Last step should be Step 8.');
     assert(content.includes('`kubectl apply -f k8s/deployment.yaml`'), 'kubectl command should be present.');
 
     // Functional tests above verify the important behavior

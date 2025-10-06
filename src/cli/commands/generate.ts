@@ -13,6 +13,7 @@ interface GenerateOptions {
   environment?: string; // Keep for backward compatibility
   resolveVars?: boolean;
   template?: string;
+  gantt?: boolean;
 }
 
 class DocumentationGenerator {
@@ -33,7 +34,7 @@ class DocumentationGenerator {
     );
 
     // Generate manual with metadata and environment filtering
-    const manual = generateManualWithMetadata(operation, metadata, targetEnv, options.resolveVars);
+    const manual = generateManualWithMetadata(operation, metadata, targetEnv, options.resolveVars, options.gantt);
 
     // Determine output file with environment suffix if specified
     const operationName = basename(operationFile, '.yaml');
@@ -345,6 +346,7 @@ generateCommand
   .option('-o, --output <file>', 'Output file path')
   .option('-e, --env <environment>', 'Generate for specific environment')
   .option('--resolve-vars', 'Resolve variables to actual values instead of showing placeholders')
+  .option('--gantt', 'Include Mermaid Gantt chart for timeline visualization')
   .action(async (operation: string, options: GenerateOptions) => {
     try {
       const generator = new DocumentationGenerator();

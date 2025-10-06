@@ -18,6 +18,62 @@ function substituteVariables(
   return substitutedCommand;
 }
 
+function generateGanttChart(operation: Operation): string {
+  // Filter steps that have timeline information
+  const stepsWithTimeline = operation.steps.filter(step => step.timeline);
+
+  if (stepsWithTimeline.length === 0) {
+    return '';
+  }
+
+  let gantt = '```mermaid\n';
+  gantt += 'gantt\n';
+  gantt += `    title ${operation.name} Timeline\n`;
+  gantt += '    dateFormat YYYY-MM-DD HH:mm\n';
+  gantt += '    axisFormat %m-%d %H:%M\n\n';
+
+  // Group steps by phase
+  const phases: { [key: string]: Step[] } = {
+    preflight: [],
+    flight: [],
+    postflight: []
+  };
+
+  stepsWithTimeline.forEach(step => {
+    const phase = step.phase || 'flight';
+    if (phases[phase]) {
+      phases[phase].push(step);
+    }
+  });
+
+  // Generate sections for each phase
+  const phaseNames = {
+    preflight: '🛫 Pre-Flight Phase',
+    flight: '✈️ Flight Phase',
+    postflight: '🛬 Post-Flight Phase'
+  };
+
+  Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
+    if (phaseSteps.length === 0) return;
+
+    gantt += `    section ${phaseNames[phaseName as keyof typeof phaseNames]}\n`;
+
+    phaseSteps.forEach((step, index) => {
+      const taskName = step.name.replace(/:/g, ''); // Remove colons as they break Mermaid syntax
+      const pic = step.pic ? ` (${step.pic})` : '';
+      const timeline = step.timeline || '';
+
+      // Format: Task name :status, start, duration or end
+      // Since we might not have structured dates, we'll use a simple format
+      gantt += `    ${taskName}${pic} :${timeline}\n`;
+    });
+    gantt += '\n';
+  });
+
+  gantt += '```\n\n';
+  return gantt;
+}
+
 function generateStepRow(step: Step, stepNumber: number, environments: Environment[], resolveVariables: boolean = false, prefix: string = ''): string {
   let rows = '';
 
@@ -30,7 +86,8 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
                     step.phase === 'postflight' ? '🛬' : '';
 
   // First column: Step name, phase, icon, and description
-  let stepCell = `${prefix}Step ${stepNumber}: ${step.name} ${phaseIcon}${typeIcon}`;
+  // Add checkbox for tracking completion
+  let stepCell = `☐ ${prefix}Step ${stepNumber}: ${step.name} ${phaseIcon}${typeIcon}`;
   if (step.phase) {
     stepCell += `<br><em>Phase: ${step.phase}</em>`;
   }
@@ -112,7 +169,8 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
                    step.type === 'conditional' ? '🔀' : '✋';
 
   // Format as: Step 1a: Build Backend API ⚙️
-  let stepCell = `Step ${stepId}: ${step.name} ${typeIcon}`;
+  // Add checkbox for tracking completion
+  let stepCell = `☐ Step ${stepId}: ${step.name} ${typeIcon}`;
   if (step.description && typeof step.description === 'string' && step.description.trim().length > 0) {
     stepCell += `<br>${step.description}`;
   }
@@ -179,13 +237,19 @@ export function generateManualWithMetadata(
   operation: Operation,
   metadata?: GenerationMetadata,
   targetEnvironment?: string,
-  resolveVariables?: boolean
+  resolveVariables?: boolean,
+  includeGantt?: boolean
 ): string {
   let markdown = '';
 
   // Add YAML frontmatter if metadata is provided
   if (metadata) {
     markdown += generateYamlFrontmatter(metadata);
+  }
+
+  // Add Gantt chart if requested and steps have timeline data
+  if (includeGantt) {
+    markdown += generateGanttChart(operation);
   }
 
   // Filter environments if specified
