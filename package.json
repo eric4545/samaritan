@@ -5,7 +5,10 @@
   "bin": {
     "samaritan": "dist/cli/index.js"
   },
-  "files": ["dist/", "README.md"],
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
     "test": "tsx --test tests/**/*.test.ts",
     "test:snapshots": "tsx --test tests/manuals/*.test.ts",
@@ -18,7 +21,14 @@
     "type": "git",
     "url": "git+https://github.com/eric4545/samaritan.git"
   },
-  "keywords": ["operations", "sre", "automation", "yaml", "cli", "ops-as-code"],
+  "keywords": [
+    "operations",
+    "sre",
+    "automation",
+    "yaml",
+    "cli",
+    "ops-as-code"
+  ],
   "author": "SAMARITAN Team",
   "license": "ISC",
   "bugs": {
@@ -27,6 +37,7 @@
   "homepage": "https://github.com/eric4545/samaritan#readme",
   "description": "SAMARITAN - Operations as Code CLI for SRE teams. Define operations once, execute anywhere with complete audit trails.",
   "dependencies": {
+    "@atlaskit/adf-utils": "^19.24.0",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "commander": "^14.0.0",

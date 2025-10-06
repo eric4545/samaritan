@@ -5,10 +5,11 @@ import { join, dirname, basename } from 'path';
 import { parseOperation } from '../../operations/parser';
 import { generateManualWithMetadata } from '../../manuals/generator';
 import { createGenerationMetadata } from '../../lib/git-metadata';
+import { generateADFString } from '../../manuals/adf-generator';
 
 interface GenerateOptions {
   output?: string;
-  format?: 'markdown' | 'confluence' | 'html' | 'pdf';
+  format?: 'markdown' | 'confluence' | 'adf' | 'html' | 'pdf';
   env?: string;
   environment?: string; // Keep for backward compatibility
   resolveVars?: boolean;
@@ -58,10 +59,13 @@ class DocumentationGenerator {
 
     const operation = await parseOperation(operationFile);
     const operationName = basename(operationFile, '.yaml');
-    
+
     switch (options.format) {
       case 'confluence':
         await this.generateConfluencePage(operation, operationName, options);
+        break;
+      case 'adf':
+        await this.generateADFDocs(operation, operationName, options);
         break;
       case 'html':
         await this.generateHtmlDocs(operation, operationName, options);
@@ -96,11 +100,30 @@ class DocumentationGenerator {
   private async generateConfluencePage(operation: any, operationName: string, options: GenerateOptions): Promise<void> {
     const confluenceContent = this.createConfluenceContent(operation);
     const outputFile = options.output || `confluence/${operationName}.confluence`;
-    
+
     await mkdir(dirname(outputFile), { recursive: true });
     await writeFile(outputFile, confluenceContent);
     console.log(`✅ Confluence content generated: ${outputFile}`);
     console.log('💡 Upload this content to your Confluence space');
+  }
+
+  private async generateADFDocs(operation: any, operationName: string, options: GenerateOptions): Promise<void> {
+    const targetEnv = options.env || options.environment;
+    const metadata = await createGenerationMetadata(
+      operationName,
+      operation.id,
+      operation.version,
+      targetEnv
+    );
+
+    const adfContent = generateADFString(operation, metadata, targetEnv, options.resolveVars);
+    const envSuffix = targetEnv ? `-${targetEnv}` : '';
+    const outputFile = options.output || `adf/${operationName}${envSuffix}.json`;
+
+    await mkdir(dirname(outputFile), { recursive: true });
+    await writeFile(outputFile, adfContent);
+    console.log(`✅ ADF (Atlassian Document Format) generated: ${outputFile}`);
+    console.log('💡 Import this JSON file into Confluence using the ADF importer');
   }
 
   private createMarkdownDocumentation(operation: any): string {
@@ -230,49 +253,180 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
   }
 
   private createConfluenceContent(operation: any): string {
-    return `{panel:title=${operation.name} - Operation Documentation|borderStyle=solid|borderColor=#ccc|titleBGColor=#f7f7f7|bgColor=#fff}
+    const phaseIcons = {
+      preflight: '🛫',
+      flight: '✈️',
+      postflight: '🛬'
+    };
+
+    const typeIcons: Record<string, string> = {
+      automatic: '⚙️',
+      manual: '👤',
+      approval: '✋',
+      conditional: '🔀'
+    };
+
+    // Build header panel
+    let content = `{panel:title=${operation.name} - Operation Documentation|borderStyle=solid|borderColor=#0052CC|titleBGColor=#DEEBFF|bgColor=#fff}
 
 h2. Overview
 *Version:* ${operation.version}
 *Description:* ${operation.description}
 *Author:* ${operation.author || 'Not specified'}
+${operation.category ? `*Category:* ${operation.category}` : ''}
 *Environments:* ${operation.environments.map((e: any) => e.name).join(', ')}
+${operation.emergency ? '*Emergency Operation:* {status:colour=Red|title=YES}' : ''}
 
 {panel}
 
-h2. Environments
+`;
 
-${operation.environments.map((env: any) => `
-h3. ${env.name}
-*Description:* ${env.description}
-*Approval Required:* ${env.approval_required ? 'Yes' : 'No'}
+    // Dependencies section
+    if (operation.needs && operation.needs.length > 0) {
+      content += `h2. Dependencies
 
-{panel:title=Variables|borderStyle=solid|borderColor=#ddd}
-${Object.entries(env.variables || {}).map(([key, value]) => `* {{${key}}}: ${value}`).join('\n')}
-{panel}
-`).join('')}
+{info}This operation depends on the following operations being completed first:{info}
 
-h2. Execution Steps
+${operation.needs.map((dep: string) => `* *${dep}*`).join('\n')}
 
-${operation.steps.map((step: any, index: number) => `
-h3. ${index + 1}. ${step.name}
-*Type:* ${step.type}
+`;
+    }
+
+    // Environments table
+    content += `h2. Environments
+
+|| Environment || Description || Approval Required || Validation Required || Targets ||
+${operation.environments.map((env: any) => `| ${env.name} | ${env.description || '-'} | ${env.approval_required ? '{status:colour=Yellow|title=YES}' : 'No'} | ${env.validation_required ? 'Yes' : 'No'} | ${env.targets?.join(', ') || '-'} |`).join('\n')}
+
+`;
+
+    // Environment details with variables
+    operation.environments.forEach((env: any) => {
+      content += `h3. ${env.name} - Variables
+
+{code:language=bash|title=Environment Variables}
+${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n')}
+{code}
+
+`;
+    });
+
+    // Group steps by phase
+    const phases: { [key: string]: any[] } = {
+      preflight: [],
+      flight: [],
+      postflight: []
+    };
+
+    operation.steps.forEach((step: any) => {
+      const phase = step.phase || 'flight';
+      if (phases[phase]) {
+        phases[phase].push(step);
+      }
+    });
+
+    let globalStepNumber = 1;
+
+    // Generate steps by phase
+    Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
+      if (phaseSteps.length === 0) return;
+
+      const phaseHeaders: Record<string, string> = {
+        preflight: 'Pre-Flight Phase',
+        flight: 'Flight Phase (Main Operations)',
+        postflight: 'Post-Flight Phase'
+      };
+
+      const phaseIcon = phaseIcons[phaseName as keyof typeof phaseIcons] || '';
+
+      content += `h2. ${phaseIcon} ${phaseHeaders[phaseName]}
+
+`;
+
+      phaseSteps.forEach((step: any) => {
+        const typeIcon = typeIcons[step.type] || '';
+        const phaseIconForStep = step.phase ? phaseIcons[step.phase as keyof typeof phaseIcons] || '' : '';
+
+        content += `h3. ${phaseIconForStep}${typeIcon} Step ${globalStepNumber}: ${step.name}
+
+*Type:* {status:colour=${step.type === 'automatic' ? 'Green' : step.type === 'manual' ? 'Blue' : 'Yellow'}|title=${step.type.toUpperCase()}}
 ${step.description ? `*Description:* ${step.description}` : ''}
+${step.phase ? `*Phase:* ${step.phase}` : ''}
+${step.pic ? `*Person In Charge:* ${step.pic}` : ''}
+${step.timeline ? `*Timeline:* ${step.timeline}` : ''}
+${step.needs && step.needs.length > 0 ? `*Dependencies:* ${step.needs.join(', ')}` : ''}
+${step.ticket ? `*Tickets:* ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}` : ''}
 
-${step.command ? `{panel:title=Command|borderStyle=solid}
-{code:bash}${step.command}{code}
-{panel}` : ''}
+${step.command ? `{code:language=bash|title=Command}
+${step.command}
+{code}` : ''}
 
-${step.instruction ? `{panel:title=Instructions|borderStyle=solid}
+${step.instruction ? `{panel:title=Instructions|borderStyle=solid|borderColor=#DFE1E6}
 ${step.instruction}
 {panel}` : ''}
-`).join('')}
 
-{panel:title=Generated Information|borderStyle=solid|borderColor=#f0f0f0}
-Generated on: ${new Date().toISOString()}
-Generated by: SAMARITAN CLI
+${step.rollback ? `{warning}
+*Rollback Available*
+${step.rollback.command ? `{code:language=bash}${step.rollback.command}{code}` : ''}
+${step.rollback.instruction ? step.rollback.instruction : ''}
+{warning}` : ''}
+
+`;
+
+        // Add substeps if present
+        if (step.sub_steps && step.sub_steps.length > 0) {
+          step.sub_steps.forEach((subStep: any, subIndex: number) => {
+            const subStepLetter = String.fromCharCode(97 + subIndex);
+            const subStepId = `${globalStepNumber}${subStepLetter}`;
+            const subTypeIcon = typeIcons[subStep.type] || '';
+
+            content += `h4. ${subTypeIcon} Step ${subStepId}: ${subStep.name}
+
+*Type:* ${subStep.type}
+${subStep.description ? `*Description:* ${subStep.description}` : ''}
+${subStep.pic ? `*Person In Charge:* ${subStep.pic}` : ''}
+${subStep.needs && subStep.needs.length > 0 ? `*Dependencies:* ${subStep.needs.join(', ')}` : ''}
+
+${subStep.command ? `{code:language=bash}${subStep.command}{code}` : ''}
+
+`;
+          });
+        }
+
+        globalStepNumber++;
+      });
+    });
+
+    // Rollback section if available
+    const stepsWithRollback = operation.steps.filter((step: any) => step.rollback);
+    if (stepsWithRollback.length > 0) {
+      content += `h2. 🔄 Rollback Procedures
+
+{warning}If deployment fails, execute the following rollback steps in reverse order:{warning}
+
+`;
+
+      stepsWithRollback.forEach((step: any, index: number) => {
+        content += `h3. Rollback for: ${step.name}
+
+${step.rollback.command ? `{code:language=bash}${step.rollback.command}{code}` : ''}
+${step.rollback.instruction ? step.rollback.instruction : ''}
+
+`;
+      });
+    }
+
+    // Footer with generation info
+    content += `
+----
+
+{panel:title=Generated Information|borderStyle=solid|borderColor=#f0f0f0|bgColor=#FAFBFC}
+*Generated on:* ${new Date().toISOString()}
+*Generated by:* SAMARITAN CLI
 {panel}
 `;
+
+    return content;
   }
 
   async generateSchedule(operationFile: string, options: GenerateOptions): Promise<void> {
@@ -361,7 +515,9 @@ generateCommand
   .command('docs <operation>')
   .description('Generate comprehensive documentation')
   .option('-o, --output <file>', 'Output file path')
-  .option('-f, --format <format>', 'Output format (markdown, html, confluence, pdf)', 'markdown')
+  .option('-f, --format <format>', 'Output format (markdown, html, confluence, adf, pdf)', 'markdown')
+  .option('-e, --env <environment>', 'Generate for specific environment')
+  .option('--resolve-vars', 'Resolve variables to actual values instead of showing placeholders')
   .action(async (operation: string, options: GenerateOptions) => {
     try {
       const generator = new DocumentationGenerator();
