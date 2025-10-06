@@ -343,7 +343,10 @@ function parseStep(stepData: any, stepIndex: number): Step {
     manual_instructions: stepData.manual_instructions,
     approval: stepData.approval,
     ticket: stepData.ticket,
-    foreach: stepData.foreach
+    foreach: stepData.foreach,
+    section_heading: Boolean(stepData.section_heading),
+    pic: stepData.pic,
+    timeline: stepData.timeline
   };
 }
 

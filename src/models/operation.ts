@@ -132,6 +132,9 @@ export interface Step {
   approval?: ApprovalConfig;
   ticket?: string | string[]; // Bug/issue ticket references (e.g., "JIRA-123" or ["BUG-456", "TASK-789"])
   foreach?: StepForeach; // Loop/matrix support for repeatable steps
+  section_heading?: boolean; // If true, render as a new markdown heading instead of table row
+  pic?: string; // Person In Charge for this step
+  timeline?: string; // Expected date/time or duration for this step
 }
 
 export interface Environment {

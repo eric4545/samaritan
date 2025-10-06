@@ -899,6 +899,183 @@ kubectl apply -f worker.yaml`
     assert(!markdown.match(/<br>\s*`\)/), 'Should not have trailing <br> in instructions');
   });
 
+  it('should render section headings to break up large tables', () => {
+    const testOperation: Operation = {
+      id: 'section-heading-test',
+      name: 'Section Heading Test',
+      version: '1.0.0',
+      description: 'Test section heading feature',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        }
+      ],
+      variables: { production: {} },
+      steps: [
+        {
+          name: 'Step 1',
+          type: 'automatic',
+          command: 'echo step1'
+        },
+        {
+          name: 'Database Migration',
+          type: 'manual',
+          description: 'Migrate database schema',
+          command: 'run migrations',
+          section_heading: true
+        },
+        {
+          name: 'Step 3',
+          type: 'automatic',
+          command: 'echo step3'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Should have section heading
+    assert(markdown.includes('### Database Migration'), 'Should have section heading');
+    assert(markdown.includes('Migrate database schema'), 'Should include description under heading');
+
+    // Should have steps before and after
+    assert(markdown.includes('Step 1: Step 1'), 'Should have step before section');
+    assert(markdown.includes('Step 3: Step 3'), 'Should have step after section');
+  });
+
+  it('should display PIC and timeline information', () => {
+    const testOperation: Operation = {
+      id: 'pic-timeline-test',
+      name: 'PIC Timeline Test',
+      version: '1.0.0',
+      description: 'Test PIC and timeline',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        }
+      ],
+      variables: { production: {} },
+      steps: [
+        {
+          name: 'Deploy Backend',
+          type: 'automatic',
+          command: 'kubectl apply -f backend.yaml',
+          pic: 'John Doe',
+          timeline: '2024-01-15 14:00 UTC'
+        },
+        {
+          name: 'Verify Health',
+          type: 'manual',
+          command: 'curl /health',
+          pic: 'Jane Smith',
+          timeline: '30 minutes after deployment'
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Should display PIC
+    assert(markdown.includes('👤 <em>PIC: John Doe</em>'), 'Should show PIC for first step');
+    assert(markdown.includes('👤 <em>PIC: Jane Smith</em>'), 'Should show PIC for second step');
+
+    // Should display timeline
+    assert(markdown.includes('⏱️ <em>Timeline: 2024-01-15 14:00 UTC</em>'), 'Should show timeline for first step');
+    assert(markdown.includes('⏱️ <em>Timeline: 30 minutes after deployment</em>'), 'Should show timeline for second step');
+  });
+
+  it('should display rollback procedures', () => {
+    const testOperation: Operation = {
+      id: 'rollback-test',
+      name: 'Rollback Test',
+      version: '1.0.0',
+      description: 'Test rollback display',
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging',
+          variables: { NAMESPACE: 'staging' },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false
+        },
+        {
+          name: 'production',
+          description: 'Production',
+          variables: { NAMESPACE: 'prod' },
+          restrictions: [],
+          approval_required: true,
+          validation_required: false
+        }
+      ],
+      variables: {
+        staging: { NAMESPACE: 'staging' },
+        production: { NAMESPACE: 'prod' }
+      },
+      steps: [
+        {
+          name: 'Deploy Application',
+          type: 'automatic',
+          command: 'kubectl apply -f deployment.yaml -n ${NAMESPACE}',
+          rollback: {
+            command: 'kubectl rollout undo deployment/app -n ${NAMESPACE}'
+          }
+        },
+        {
+          name: 'Update Config',
+          type: 'manual',
+          command: 'kubectl apply -f config.yaml',
+          rollback: {
+            instruction: 'kubectl delete configmap app-config && kubectl apply -f config-backup.yaml'
+          }
+        }
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0
+      }
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Should have rollback section
+    assert(markdown.includes('## 🔄 Rollback Procedures'), 'Should have rollback section');
+    assert(markdown.includes('Rollback for: Deploy Application'), 'Should have rollback for first step');
+    assert(markdown.includes('Rollback for: Update Config'), 'Should have rollback for second step');
+
+    // Should show rollback commands
+    assert(markdown.includes('kubectl rollout undo deployment/app'), 'Should show rollback command');
+    assert(markdown.includes('kubectl delete configmap app-config'), 'Should show rollback instruction');
+
+    // Should resolve variables in rollback
+    assert(markdown.includes('kubectl rollout undo deployment/app -n staging'), 'Should resolve NAMESPACE for staging');
+    assert(markdown.includes('kubectl rollout undo deployment/app -n prod'), 'Should resolve NAMESPACE for production');
+  });
+
   it('should expand steps with foreach loops (FIXME #8)', () => {
     const testOperation: Operation = {
       id: 'foreach-test-123',

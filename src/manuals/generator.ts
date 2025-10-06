@@ -49,6 +49,16 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
     stepCell += `<br>🎫 <em>Tickets: ${tickets.join(', ')}</em>`;
   }
 
+  // Add PIC (Person In Charge)
+  if (step.pic) {
+    stepCell += `<br>👤 <em>PIC: ${step.pic}</em>`;
+  }
+
+  // Add timeline
+  if (step.timeline) {
+    stepCell += `<br>⏱️ <em>Timeline: ${step.timeline}</em>`;
+  }
+
   rows += `| ${stepCell} |`;
   
   // Subsequent columns: Commands for each environment
@@ -116,6 +126,16 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
   if (step.ticket) {
     const tickets = Array.isArray(step.ticket) ? step.ticket : [step.ticket];
     stepCell += `<br>🎫 <em>Tickets: ${tickets.join(', ')}</em>`;
+  }
+
+  // Add PIC (Person In Charge)
+  if (step.pic) {
+    stepCell += `<br>👤 <em>PIC: ${step.pic}</em>`;
+  }
+
+  // Add timeline
+  if (step.timeline) {
+    stepCell += `<br>⏱️ <em>Timeline: ${step.timeline}</em>`;
   }
 
   rows += `| ${stepCell} |`;
@@ -303,11 +323,84 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
       markdown += '\n';
 
       // Build table rows for this phase with continuous numbering
-      phaseSteps.forEach((step) => {
+      // Handle section headings by closing/reopening tables
+      let tableOpen = true;
+
+      phaseSteps.forEach((step, index) => {
+        if (step.section_heading) {
+          // Close current table
+          if (tableOpen) {
+            markdown += '\n';
+            tableOpen = false;
+          }
+
+          // Add section heading
+          markdown += `### ${step.name}\n\n`;
+          if (step.description) {
+            markdown += `${step.description}\n\n`;
+          }
+
+          // Reopen table
+          markdown += '| Step |';
+          operation.environments.forEach(env => {
+            markdown += ` ${env.name} |`;
+          });
+          markdown += '\n';
+          markdown += '|------|';
+          operation.environments.forEach(() => {
+            markdown += '---------|';
+          });
+          markdown += '\n';
+          tableOpen = true;
+        }
+
         markdown += generateStepRow(step, globalStepNumber, operation.environments, resolveVariables);
         globalStepNumber++; // Increment for next step
       });
-      markdown += '\n';
+
+      if (tableOpen) {
+        markdown += '\n';
+      }
+    });
+  }
+
+  // Add rollback section if any steps have rollback defined
+  const stepsWithRollback = operation.steps.filter(step => step.rollback);
+  if (stepsWithRollback.length > 0) {
+    markdown += '## 🔄 Rollback Procedures\n\n';
+    markdown += 'If deployment fails, execute the following rollback steps:\n\n';
+
+    stepsWithRollback.forEach((step, index) => {
+      if (!step.rollback) return;
+
+      markdown += `### Rollback for: ${step.name}\n\n`;
+
+      if (step.rollback.command || step.rollback.instruction) {
+        markdown += '| Environment | Rollback Action |\n';
+        markdown += '|-------------|----------------|\n';
+
+        operation.environments.forEach(env => {
+          const rollbackCommand = step.rollback!.command || step.rollback!.instruction || '';
+          let displayCommand = rollbackCommand;
+
+          // Resolve variables if flag is enabled
+          if (resolveVariables && rollbackCommand) {
+            displayCommand = substituteVariables(rollbackCommand, env.variables || {}, step.variables);
+          }
+
+          // Clean up command
+          const cleanCommand = displayCommand
+            .trim()
+            .replace(/\n/g, '<br>')
+            .replace(/\|/g, '\\|')
+            .replace(/`/g, '\\`')
+            .replace(/<br>$/, '');
+
+          markdown += `| ${env.name} | \`${cleanCommand}\` |\n`;
+        });
+
+        markdown += '\n';
+      }
     });
   }
 

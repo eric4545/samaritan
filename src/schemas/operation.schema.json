@@ -343,6 +343,18 @@
                 },
                 "description": "Loop/matrix support for repeatable steps"
               },
+              "section_heading": {
+                "type": "boolean",
+                "description": "If true, render as a new markdown heading instead of table row"
+              },
+              "pic": {
+                "type": "string",
+                "description": "Person In Charge for this step"
+              },
+              "timeline": {
+                "type": "string",
+                "description": "Expected date/time or duration for this step"
+              },
               "rollback": {
                 "type": "object",
                 "properties": {
