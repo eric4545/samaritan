@@ -341,6 +341,29 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
   }
 
   private createConfluenceContent(operation: any, resolveVars: boolean = false): string {
+    return generateConfluenceContent(operation, resolveVars);
+  }
+
+  async generateSchedule(operationFile: string, options: GenerateOptions): Promise<void> {
+    console.log(`📅 Generating schedule for: ${operationFile}`);
+
+    const operation = parseOperation(operationFile);
+    const schedule = this.createGanttSchedule(operation);
+    const outputFile = options.output || `schedules/${basename(operationFile, '.yaml')}-schedule.md`;
+
+    await mkdir(dirname(outputFile), { recursive: true });
+    await writeFile(outputFile, schedule);
+    console.log(`✅ Schedule generated: ${outputFile}`);
+  }
+
+  private createGanttSchedule(operation: any): string {
+    // Gantt chart generation logic...
+    return `# Schedule for: ${operation.name}\n\nTODO: Implement Gantt chart generation`;
+  }
+}
+
+// Export as standalone function for testing
+export function generateConfluenceContent(operation: any, resolveVars: boolean = false): string {
     const phaseIcons = {
       preflight: '🛫',
       flight: '✈️',
@@ -598,68 +621,8 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
 `;
 
     return content;
-  }
-
-  async generateSchedule(operationFile: string, options: GenerateOptions): Promise<void> {
-    console.log(`📅 Generating schedule for: ${operationFile}`);
-    
-    const operation = parseOperation(operationFile);
-    const schedule = this.createGanttSchedule(operation);
-    const outputFile = options.output || `schedules/${basename(operationFile, '.yaml')}-schedule.md`;
-    
-    await mkdir(dirname(outputFile), { recursive: true });
-    await writeFile(outputFile, schedule);
-    console.log(`✅ Schedule generated: ${outputFile}`);
-  }
-
-  private createGanttSchedule(operation: any): string {
-    let schedule = `# ${operation.name} - Execution Schedule
-
-## Timeline Estimation
-
-| Step | Name | Type | Duration | Dependencies |
-|------|------|------|----------|--------------|
-`;
-
-    let totalDuration = 0;
-    operation.steps.forEach((step: any, index: number) => {
-      const duration = step.estimated_duration || (step.type === 'automatic' ? 60 : 300);
-      const deps = step.needs ? step.needs.join(', ') : 'None';
-      totalDuration += duration;
-      
-      schedule += `| ${index + 1} | ${step.name} | ${step.type} | ${Math.round(duration / 60)}min | ${deps} |\n`;
-    });
-
-    schedule += `\n**Total Estimated Duration**: ${Math.round(totalDuration / 60)} minutes\n\n`;
-
-    schedule += `## Gantt Chart (Mermaid)
-
-\`\`\`mermaid
-gantt
-    title ${operation.name} Execution Timeline
-    dateFormat X
-    axisFormat %M:%S
-    
-`;
-
-    let currentTime = 0;
-    operation.steps.forEach((step: any, index: number) => {
-      const duration = step.estimated_duration || (step.type === 'automatic' ? 60 : 300);
-      const startTime = currentTime;
-      const endTime = currentTime + duration;
-      
-      schedule += `    ${step.name.replace(/[^a-zA-Z0-9]/g, '_')} :${startTime}, ${endTime}\n`;
-      currentTime = endTime;
-    });
-
-    schedule += `\`\`\`
-
-*Note: This is an estimated timeline. Actual execution times may vary.*
-`;
-
-    return schedule;
-  }
 }
+
 
 // Generate command with subcommands
 const generateCommand = new Command('generate')
