@@ -2,77 +2,14 @@ import { describe, it, after } from 'node:test';
 import assert from 'node:assert';
 import { execSync } from 'child_process';
 import fs from 'fs';
+import { deploymentOperationYaml } from '../fixtures/operations';
 
 describe('Manual Generation CLI Command', () => {
   const testInputFilePath = '/tmp/test-deployment.yaml';
   const outputFilePath = '/tmp/temp-test-manual.md';
 
-  // Self-contained test YAML content
-  const testYamlContent = `name: Deploy Web Server
-version: 1.1.0
-description: Deploys the main web server application to the staging environment.
-
-environments:
-  - name: preprod
-    description: preprod
-    variables:
-      REPLICAS: 2
-      DB_HOST: preprod-db.example.com
-    targets:
-      - cluster-dev-us-east-1
-      - cluster-dev-eu-west-1
-  - name: production
-    description: Live production environment.
-    variables:
-      REPLICAS: 5
-      DB_HOST: prod-db.example.com
-    approval_required: true
-    targets:
-      - cluster-prod-us-east-1
-      - cluster-prod-eu-west-1
-      - cluster-prod-asia-south-1
-
-preflight:
-  - name: Check Git status
-    description: Ensure no uncommitted changes exist in the current branch.
-    command: git status --porcelain
-    expect_empty: true
-
-  - name: Check Docker daemon
-    description: Verify that the Docker daemon is running and accessible.
-    command: docker info
-
-steps:
-  - name: Build Docker Image
-    type: automatic
-    description: Build the application's Docker image.
-    command: docker build -t web-server:latest .
-
-  - name: Push Docker Image
-    type: automatic
-    description: Push the image to the container registry.
-    command: docker push my-registry/web-server:latest
-
-  - name: Request Approval
-    type: approval
-    description: Request manager approval for deployment.
-    command: jira create-ticket --type approval --summary "Deploy Web Server"
-
-  - name: Scale Deployment
-    type: automatic
-    description: Scale the Kubernetes deployment to the specified replica count.
-    command: kubectl scale deployment web-server --replicas=\${REPLICAS}
-
-  - name: Manual Verification
-    type: manual
-    description: Manually verify deployment health.
-    command: curl https://web-server.example.com/health
-
-  - name: Deploy to Kubernetes
-    type: automatic
-    description: Apply the Kubernetes deployment manifest.
-    command: kubectl apply -f k8s/deployment.yaml
-`;
+  // Use shared test YAML from fixtures
+  const testYamlContent = deploymentOperationYaml;
 
   after(() => {
     // Clean up all generated files
@@ -110,9 +47,10 @@ steps:
     // Check for Environments Overview table
     assert(content.includes('## Environments Overview'), 'Environments Overview section should exist.');
     assert(content.includes('| Environment | Description | Variables | Targets | Approval Required |'), 'Environments table header should exist.');
-    assert(content.includes('| preprod | preprod | REPLICAS: 2<br>DB_HOST: "preprod-db.example.com" |'), 'Preprod environment row should exist with <br> tags.');
-    assert(content.includes('| production | Live production environment. | REPLICAS: 5<br>DB_HOST: "prod-db.example.com" |'), 'Production environment row should exist with <br> tags.');
-    assert(content.includes('cluster-dev-us-east-1<br>cluster-dev-eu-west-1'), 'Preprod targets should use <br> tags.');
+    assert(content.includes('| staging | Staging environment for testing |'), 'Staging environment row should exist.');
+    assert(content.includes('REPLICAS: 2<br>DB_HOST: "staging-db.example.com"'), 'Staging variables should use <br> tags.');
+    assert(content.includes('| production | Live production environment |'), 'Production environment row should exist.');
+    assert(content.includes('REPLICAS: 5<br>DB_HOST: "prod-db.example.com"'), 'Production variables should use <br> tags.');
     assert(content.includes('| Yes |'), 'Production approval requirement should be shown.');
 
     // Check for Pre-flight Phase section (unified format)
@@ -120,20 +58,21 @@ steps:
 
     // Check for Operation Steps table
     assert(content.includes('## ✈️ Flight Phase (Main Operations)'), 'Operation Steps section should exist.');
-    assert(content.includes('| Step | preprod | production |'), 'Steps table header should exist.');
-    // Continuous numbering: 2 preflight steps, so flight starts at Step 3
-    assert(content.includes('| ☐ Step 3: Build Docker Image ✈️⚙️'), 'First step in flight phase should be Step 3.');
-    assert(content.includes('`docker build -t web-server:latest .`'), 'Docker build command should be present.');
+    assert(content.includes('| Step | staging | production |'), 'Steps table header should exist with correct environments.');
+
+    // Pre-flight array has 2 checks, then Build Docker Image from steps array, so flight phase starts at Step 4
+    assert(content.includes('☐ Step 4: Push Docker Image'), 'Push Docker Image step should be Step 4.');
+    assert(content.includes('`docker push my-registry/web-server:latest`'), 'Docker push command should be present.');
 
     // Check steps with environment-specific commands in table format
-    assert(content.includes('| ☐ Step 6: Scale Deployment ✈️⚙️'), 'Scale Deployment step should be Step 6.');
-    assert(content.includes('`kubectl scale deployment web-server --replicas=2`'), 'REPLICAS variable should be substituted for preprod.');
+    assert(content.includes('☐ Step 6: Scale Deployment'), 'Scale Deployment step should be Step 6.');
+    assert(content.includes('`kubectl scale deployment web-server --replicas=2`'), 'REPLICAS variable should be substituted for staging.');
     assert(content.includes('`kubectl scale deployment web-server --replicas=5`'), 'REPLICAS variable should be substituted for production.');
 
-    assert(content.includes('| ☐ Step 7: Manual Verification ✈️👤'), 'Manual Verification step should be Step 7.');
-    assert(content.includes('`curl https://web-server.example.com/health`'), 'Manual verification command should be present.');
-    assert(content.includes('| ☐ Step 8: Deploy to Kubernetes ✈️⚙️'), 'Last step should be Step 8.');
-    assert(content.includes('`kubectl apply -f k8s/deployment.yaml`'), 'kubectl command should be present.');
+    // Post-flight phase
+    assert(content.includes('## 🛬 Post-Flight Phase'), 'Post-Flight Phase section should exist.');
+    assert(content.includes('☐ Step 7: Health Check'), 'Health Check step should exist.');
+    assert(content.includes('☐ Step 8: Verify Services'), 'Verify Services step should exist.');
 
     // Functional tests above verify the important behavior
     // Snapshot removed due to YAML frontmatter making snapshots brittle

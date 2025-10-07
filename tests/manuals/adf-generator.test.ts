@@ -2,77 +2,11 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert'
 import { generateADF, generateADFString } from '../../src/manuals/adf-generator'
 import type { Operation } from '../../src/models/operation'
+import { deploymentOperation, operationWithSubSteps } from '../fixtures/operations'
 
 describe('ADF Generator', () => {
-  const mockOperation: Operation = {
-    id: 'test-deployment',
-    name: 'Deploy Web Server',
-    version: '1.0.0',
-    description: 'Test deployment operation',
-    environments: [
-      {
-        name: 'staging',
-        description: 'Staging environment',
-        variables: { REPLICAS: 2, DB_HOST: 'staging-db.example.com' },
-        restrictions: [],
-        approval_required: false,
-        validation_required: false,
-        targets: ['cluster-staging-us-east-1'],
-      },
-      {
-        name: 'production',
-        description: 'Production environment',
-        variables: { REPLICAS: 5, DB_HOST: 'prod-db.example.com' },
-        restrictions: [],
-        approval_required: true,
-        validation_required: true,
-        targets: ['cluster-prod-us-east-1', 'cluster-prod-eu-west-1'],
-      },
-    ],
-    variables: {},
-    steps: [
-      {
-        name: 'Build Docker Image',
-        type: 'automatic',
-        phase: 'preflight',
-        description: 'Build the application Docker image',
-        command: 'docker build -t web-server:latest .',
-      },
-      {
-        name: 'Deploy to Kubernetes',
-        type: 'automatic',
-        phase: 'flight',
-        description: 'Deploy the application to Kubernetes',
-        command: 'kubectl apply -f k8s/deployment.yaml',
-        rollback: {
-          command: 'kubectl rollout undo deployment/web-server',
-        },
-      },
-      {
-        name: 'Scale Deployment',
-        type: 'automatic',
-        phase: 'flight',
-        description: 'Scale the deployment to the specified replica count',
-        command: 'kubectl scale deployment web-server --replicas=${REPLICAS}',
-        variables: {},
-      },
-      {
-        name: 'Verify Deployment',
-        type: 'manual',
-        phase: 'postflight',
-        description: 'Manually verify the deployment',
-        instruction: 'Check the application health endpoint',
-        pic: 'john.doe',
-        timeline: '2024-01-15 10:00',
-        ticket: 'JIRA-123',
-      },
-    ],
-    preflight: [],
-    metadata: {
-      created_at: new Date('2024-01-01'),
-      updated_at: new Date('2024-01-15'),
-    },
-  }
+  // Use shared fixture as the primary test operation
+  const mockOperation = deploymentOperation
 
   it('should generate valid ADF structure', () => {
     const adf = generateADF(mockOperation)
@@ -101,7 +35,7 @@ describe('ADF Generator', () => {
       titleText.includes('Deploy Web Server'),
       'Title should include operation name'
     )
-    assert.ok(titleText.includes('v1.0.0'), 'Title should include version')
+    assert.ok(titleText.includes('v1.1.0'), 'Title should include version')
   })
 
   it('should include environments table', () => {
@@ -296,31 +230,8 @@ describe('ADF Generator', () => {
   })
 
   it('should handle sub-steps correctly', () => {
-    const opWithSubSteps: Operation = {
-      ...mockOperation,
-      steps: [
-        {
-          name: 'Parent Step',
-          type: 'automatic',
-          phase: 'flight',
-          description: 'Parent step with substeps',
-          sub_steps: [
-            {
-              name: 'Sub Step 1',
-              type: 'automatic',
-              command: 'echo "substep 1"',
-            },
-            {
-              name: 'Sub Step 2',
-              type: 'manual',
-              instruction: 'Do something manually',
-            },
-          ],
-        },
-      ],
-    }
-
-    const adfString = generateADFString(opWithSubSteps)
+    // Use shared fixture with sub-steps
+    const adfString = generateADFString(operationWithSubSteps)
 
     // Check for substep identifiers (1a, 1b)
     assert.ok(adfString.includes('Sub Step 1'), 'Should include substep 1')
