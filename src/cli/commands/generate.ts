@@ -87,7 +87,7 @@ class DocumentationGenerator {
     envFileSuffix: string,
     options: GenerateOptions
   ): Promise<void> {
-    const confluenceContent = this.createConfluenceContent(operation);
+    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars);
     const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.confluence`;
 
     await mkdir(dirname(outputFile), { recursive: true });
@@ -186,7 +186,7 @@ class DocumentationGenerator {
   }
 
   private async generateConfluencePage(operation: any, operationName: string, options: GenerateOptions): Promise<void> {
-    const confluenceContent = this.createConfluenceContent(operation);
+    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars);
     const outputFile = options.output || `confluence/${operationName}.confluence`;
 
     await mkdir(dirname(outputFile), { recursive: true });
@@ -340,7 +340,7 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
 </html>`;
   }
 
-  private createConfluenceContent(operation: any): string {
+  private createConfluenceContent(operation: any, resolveVars: boolean = false): string {
     const phaseIcons = {
       preflight: '🛫',
       flight: '✈️',
@@ -352,6 +352,22 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
       manual: '👤',
       approval: '✋',
       conditional: '🔀'
+    };
+
+    // Helper function to substitute variables (inline version)
+    const substituteVariables = (command: string, envVariables: Record<string, any>, stepVariables?: Record<string, any>): string => {
+      let substitutedCommand = command;
+      const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
+      for (const key in mergedVariables) {
+        const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
+        substitutedCommand = substitutedCommand.replace(regex, mergedVariables[key]);
+      }
+      return substitutedCommand;
+    };
+
+    // Helper to format multi-line text for Confluence table cells
+    const formatForTableCell = (text: string): string => {
+      return text.replace(/\n/g, '\\\\');
     };
 
     // Build header panel
@@ -415,7 +431,7 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
 
     let globalStepNumber = 1;
 
-    // Generate steps by phase
+    // Generate steps by phase with multi-column table
     Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
       if (phaseSteps.length === 0) return;
 
@@ -431,58 +447,109 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
 
 `;
 
+      // Build table header with environment columns
+      content += `|| Step ||`;
+      operation.environments.forEach((env: any) => {
+        content += ` ${env.name} ||`;
+      });
+      content += '\n';
+
+      // Build table rows for each step
       phaseSteps.forEach((step: any) => {
         const typeIcon = typeIcons[step.type] || '';
-        const phaseIconForStep = step.phase ? phaseIcons[step.phase as keyof typeof phaseIcons] || '' : '';
+        const phaseIconForStep = step.phase && step.phase !== phaseName ? phaseIcons[step.phase as keyof typeof phaseIcons] || '' : '';
 
-        content += `h3. ${phaseIconForStep}${typeIcon} Step ${globalStepNumber}: ${step.name}
+        // Build step info cell
+        let stepInfo = `${phaseIconForStep}${typeIcon} Step ${globalStepNumber}: ${step.name}`;
+        if (step.description) stepInfo += `\\\\${step.description}`;
+        if (step.pic) stepInfo += `\\\\👤 PIC: ${step.pic}`;
+        if (step.timeline) stepInfo += `\\\\⏱️ Timeline: ${step.timeline}`;
+        if (step.needs && step.needs.length > 0) stepInfo += `\\\\📋 Depends on: ${step.needs.join(', ')}`;
+        if (step.ticket) stepInfo += `\\\\🎫 Tickets: ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`;
+        if (step.if) stepInfo += `\\\\🔀 Condition: ${step.if}`;
 
-*Type:* {status:colour=${step.type === 'automatic' ? 'Green' : step.type === 'manual' ? 'Blue' : 'Yellow'}|title=${step.type.toUpperCase()}}
-${step.description ? `*Description:* ${step.description}` : ''}
-${step.phase ? `*Phase:* ${step.phase}` : ''}
-${step.pic ? `*Person In Charge:* ${step.pic}` : ''}
-${step.timeline ? `*Timeline:* ${step.timeline}` : ''}
-${step.needs && step.needs.length > 0 ? `*Dependencies:* ${step.needs.join(', ')}` : ''}
-${step.ticket ? `*Tickets:* ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}` : ''}
+        content += `| ${stepInfo} |`;
 
-${step.command ? `{code:language=bash|title=Command}
-${step.command}
-{code}` : ''}
+        // Add command cells for each environment
+        operation.environments.forEach((env: any) => {
+          const rawCommand = step.command || step.instruction || '';
+          let displayCommand = rawCommand;
 
-${step.instruction ? `{panel:title=Instructions|borderStyle=solid|borderColor=#DFE1E6}
-${step.instruction}
-{panel}` : ''}
+          // Resolve variables if flag is enabled
+          if (resolveVars && rawCommand) {
+            displayCommand = substituteVariables(rawCommand, env.variables || {}, step.variables);
+          }
 
-${step.rollback ? `{warning}
-*Rollback Available*
-${step.rollback.command ? `{code:language=bash}${step.rollback.command}{code}` : ''}
-${step.rollback.instruction ? step.rollback.instruction : ''}
-{warning}` : ''}
+          // Check if content is markdown
+          const isMarkdown = step.instruction && (
+            displayCommand.includes('\n#') ||
+            displayCommand.includes('\n-') ||
+            displayCommand.includes('\n*') ||
+            displayCommand.includes('\n1.') ||
+            displayCommand.includes('```') ||
+            displayCommand.includes('**')
+          );
 
-`;
+          if (displayCommand) {
+            if (isMarkdown) {
+              // For markdown instructions, format with line breaks
+              content += ` ${formatForTableCell(displayCommand)} |`;
+            } else {
+              // For commands, wrap in code block and format line breaks
+              const formattedCommand = formatForTableCell(displayCommand);
+              content += ` {code:bash}${formattedCommand}{code} |`;
+            }
+          } else if (step.sub_steps && step.sub_steps.length > 0) {
+            content += ` _(see substeps below)_ |`;
+          } else {
+            content += ` _(${step.type} step)_ |`;
+          }
+        });
 
-        // Add substeps if present
+        content += '\n';
+
+        // Add sub-steps in table format
         if (step.sub_steps && step.sub_steps.length > 0) {
           step.sub_steps.forEach((subStep: any, subIndex: number) => {
             const subStepLetter = String.fromCharCode(97 + subIndex);
             const subStepId = `${globalStepNumber}${subStepLetter}`;
             const subTypeIcon = typeIcons[subStep.type] || '';
 
-            content += `h4. ${subTypeIcon} Step ${subStepId}: ${subStep.name}
+            let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${subStep.name}`;
+            if (subStep.description) subStepInfo += `\\\\${subStep.description}`;
+            if (subStep.pic) subStepInfo += `\\\\👤 PIC: ${subStep.pic}`;
+            if (subStep.timeline) subStepInfo += `\\\\⏱️ Timeline: ${subStep.timeline}`;
+            if (subStep.needs && subStep.needs.length > 0) subStepInfo += `\\\\📋 Depends on: ${subStep.needs.join(', ')}`;
+            if (subStep.ticket) subStepInfo += `\\\\🎫 Tickets: ${Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket}`;
+            if (subStep.if) subStepInfo += `\\\\🔀 Condition: ${subStep.if}`;
 
-*Type:* ${subStep.type}
-${subStep.description ? `*Description:* ${subStep.description}` : ''}
-${subStep.pic ? `*Person In Charge:* ${subStep.pic}` : ''}
-${subStep.needs && subStep.needs.length > 0 ? `*Dependencies:* ${subStep.needs.join(', ')}` : ''}
+            content += `| ${subStepInfo} |`;
 
-${subStep.command ? `{code:language=bash}${subStep.command}{code}` : ''}
+            // Add command cells for sub-step
+            operation.environments.forEach((env: any) => {
+              const rawCommand = subStep.command || subStep.instruction || '';
+              let displayCommand = rawCommand;
 
-`;
+              if (resolveVars && rawCommand) {
+                displayCommand = substituteVariables(rawCommand, env.variables || {}, subStep.variables);
+              }
+
+              if (displayCommand) {
+                const formattedCommand = formatForTableCell(displayCommand);
+                content += ` {code:bash}${formattedCommand}{code} |`;
+              } else {
+                content += ` _(${subStep.type} step)_ |`;
+              }
+            });
+
+            content += '\n';
           });
         }
 
         globalStepNumber++;
       });
+
+      content += '\n';
     });
 
     // Rollback section if available
@@ -492,16 +559,32 @@ ${subStep.command ? `{code:language=bash}${subStep.command}{code}` : ''}
 
 {warning}If deployment fails, execute the following rollback steps in reverse order:{warning}
 
+|| Step || ${operation.environments.map((e: any) => `${e.name} ||`).join(' ')}
 `;
 
-      stepsWithRollback.forEach((step: any, index: number) => {
-        content += `h3. Rollback for: ${step.name}
+      stepsWithRollback.forEach((step: any) => {
+        content += `| Rollback for: ${step.name} |`;
 
-${step.rollback.command ? `{code:language=bash}${step.rollback.command}{code}` : ''}
-${step.rollback.instruction ? step.rollback.instruction : ''}
+        operation.environments.forEach((env: any) => {
+          const rollbackCommand = step.rollback!.command || step.rollback!.instruction || '';
+          let displayCommand = rollbackCommand;
 
-`;
+          if (resolveVars && rollbackCommand) {
+            displayCommand = substituteVariables(rollbackCommand, env.variables || {}, step.variables);
+          }
+
+          if (displayCommand) {
+            const formattedCommand = formatForTableCell(displayCommand);
+            content += ` {code:bash}${formattedCommand}{code} |`;
+          } else {
+            content += ` - |`;
+          }
+        });
+
+        content += '\n';
       });
+
+      content += '\n';
     }
 
     // Footer with generation info
