@@ -33,7 +33,7 @@ describe('Confluence Generator Tests', () => {
     assert.match(content, /🎫 Tickets: JIRA-123/)
   })
 
-  it('should format multi-line commands with double backslash', () => {
+  it('should format multi-line commands with actual newlines', () => {
     const multiLineYaml = `name: Multi-line Test
 version: 1.0.0
 description: Test multi-line commands
@@ -55,10 +55,10 @@ steps:
 
     const content = generateConfluence(multiLineYaml)
 
-    // Multi-line commands should use backticks with \\ line breaks (not code blocks)
-    assert.match(content, /echo "line 1"\\\\echo "line 2"\\\\echo "line 3"/)
-    // Should use backticks instead of {code:bash} for multi-line
-    assert.match(content, /```/)
+    // Multi-line commands should use {code:bash} with actual newlines
+    assert.match(content, /echo "line 1"\necho "line 2"\necho "line 3"/)
+    // Should use {code:bash} for proper Confluence wiki markup
+    assert.match(content, /\{code:bash\}/)
   })
 
   it('should substitute variables when resolveVars is true', () => {
@@ -221,8 +221,9 @@ steps:
     // Should not wrap markdown in code blocks
     assert.match(content, /# Instructions/)
     assert.match(content, /\*\*Important note\*\*/)
-    // Should format with \\ for line breaks
-    assert.match(content, /\\\\/)
+    // Should convert numbered lists to Confluence list markup
+    assert.match(content, /# First thing/)
+    assert.match(content, /# Second thing/)
   })
 
   it('should include operation metadata in panel', () => {

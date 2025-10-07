@@ -392,17 +392,23 @@ export function generateConfluenceContent(operation: any, resolveVars: boolean =
     const formatForTableCell = (text: string, useCodeBlock: boolean = true): string => {
       const hasMultipleLines = text.includes('\n');
 
-      if (hasMultipleLines && useCodeBlock) {
-        // For multi-line commands, don't use code blocks - just plain text with line breaks
-        // This allows \\ to work as line breaks in table cells
-        return text.replace(/\n/g, '\\\\');
-      } else if (hasMultipleLines && !useCodeBlock) {
-        // For instructions/markdown, preserve line breaks
-        return text.replace(/\n/g, '\\\\');
-      } else {
-        // Single line - no transformation needed
+      if (!hasMultipleLines) {
         return text;
       }
+
+      // Check if content contains list patterns (numbered or bulleted)
+      const hasNumberedList = /\n\d+\.\s/.test(text);
+      const hasBulletList = /\n[-*]\s/.test(text);
+
+      if (hasNumberedList || hasBulletList) {
+        // Convert markdown list syntax to Confluence wiki markup
+        return text
+          .replace(/\n(\d+)\.\s/g, '\n# ')  // Convert "1. " to "# "
+          .replace(/\n[-*]\s/g, '\n* ');     // Convert "- " or "* " to "* "
+      }
+
+      // In Confluence table cells, use actual newlines (not \\ escape sequences)
+      return text;
     };
 
     // Helper to add smart line breaks for long commands
@@ -412,15 +418,16 @@ export function generateConfluenceContent(operation: any, resolveVars: boolean =
       }
 
       // Break at logical points: pipes, operators, common flags
+      // In Confluence table cells, use actual newlines (not \\ escape sequences)
       let result = command
-        .replace(/ \| /g, ' |\\\\  ')           // Break before pipes
-        .replace(/ && /g, ' &&\\\\  ')          // Break before &&
-        .replace(/ \|\| /g, ' ||\\\\  ')        // Break before ||
-        .replace(/ --context /g, '\\\\  --context ')  // Break before --context
-        .replace(/ --namespace /g, '\\\\  --namespace ')  // Break before --namespace
-        .replace(/ -n /g, '\\\\  -n ')          // Break before -n flag
-        .replace(/ -f /g, '\\\\  -f ')          // Break before -f flag
-        .replace(/ -o /g, '\\\\  -o ');         // Break before -o flag
+        .replace(/ \| /g, ' |\n  ')           // Break before pipes
+        .replace(/ && /g, ' &&\n  ')          // Break before &&
+        .replace(/ \|\| /g, ' ||\n  ')        // Break before ||
+        .replace(/ --context /g, '\n  --context ')  // Break before --context
+        .replace(/ --namespace /g, '\n  --namespace ')  // Break before --namespace
+        .replace(/ -n /g, '\n  -n ')          // Break before -n flag
+        .replace(/ -f /g, '\n  -f ')          // Break before -f flag
+        .replace(/ -o /g, '\n  -o ');         // Break before -o flag
 
       return result;
     };
@@ -519,12 +526,12 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
 
         // Build step info cell
         let stepInfo = `${phaseIconForStep}${typeIcon} Step ${globalStepNumber}: ${step.name}`;
-        if (step.description) stepInfo += `\\\\${step.description}`;
-        if (step.pic) stepInfo += `\\\\👤 PIC: ${step.pic}`;
-        if (step.timeline) stepInfo += `\\\\⏱️ Timeline: ${step.timeline}`;
-        if (step.needs && step.needs.length > 0) stepInfo += `\\\\📋 Depends on: ${step.needs.join(', ')}`;
-        if (step.ticket) stepInfo += `\\\\🎫 Tickets: ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`;
-        if (step.if) stepInfo += `\\\\🔀 Condition: ${step.if}`;
+        if (step.description) stepInfo += `\n${step.description}`;
+        if (step.pic) stepInfo += `\n👤 PIC: ${step.pic}`;
+        if (step.timeline) stepInfo += `\n⏱️ Timeline: ${step.timeline}`;
+        if (step.needs && step.needs.length > 0) stepInfo += `\n📋 Depends on: ${step.needs.join(', ')}`;
+        if (step.ticket) stepInfo += `\n🎫 Tickets: ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`;
+        if (step.if) stepInfo += `\n🔀 Condition: ${step.if}`;
 
         content += `| ${stepInfo} |`;
 
@@ -557,19 +564,13 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
               const hasMultipleLines = displayCommand.includes('\n');
 
               if (hasMultipleLines) {
-                // Multi-line: use plain text with \\ line breaks (NO code block)
+                // Multi-line: use code block with line breaks
                 const formattedCommand = formatForTableCell(displayCommand, true);
-                content += ` \`\`\`\\\\${formattedCommand}\`\`\` |`;
+                content += ` {code:bash}${formattedCommand}{code} |`;
               } else {
                 // Single-line: apply smart line breaking if needed, then wrap in code block
                 const withBreaks = addSmartLineBreaks(displayCommand);
-                if (withBreaks.includes('\\\\')) {
-                  // Has line breaks after smart breaking - use plain text
-                  content += ` \`\`\`\\\\${withBreaks}\`\`\` |`;
-                } else {
-                  // Short single line - use code block
-                  content += ` {code:bash}${displayCommand}{code} |`;
-                }
+                content += ` {code:bash}${withBreaks}{code} |`;
               }
             }
           } else if (step.sub_steps && step.sub_steps.length > 0) {
@@ -589,12 +590,12 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
             const subTypeIcon = typeIcons[subStep.type] || '';
 
             let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${subStep.name}`;
-            if (subStep.description) subStepInfo += `\\\\${subStep.description}`;
-            if (subStep.pic) subStepInfo += `\\\\👤 PIC: ${subStep.pic}`;
-            if (subStep.timeline) subStepInfo += `\\\\⏱️ Timeline: ${subStep.timeline}`;
-            if (subStep.needs && subStep.needs.length > 0) subStepInfo += `\\\\📋 Depends on: ${subStep.needs.join(', ')}`;
-            if (subStep.ticket) subStepInfo += `\\\\🎫 Tickets: ${Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket}`;
-            if (subStep.if) subStepInfo += `\\\\🔀 Condition: ${subStep.if}`;
+            if (subStep.description) subStepInfo += `\n${subStep.description}`;
+            if (subStep.pic) subStepInfo += `\n👤 PIC: ${subStep.pic}`;
+            if (subStep.timeline) subStepInfo += `\n⏱️ Timeline: ${subStep.timeline}`;
+            if (subStep.needs && subStep.needs.length > 0) subStepInfo += `\n📋 Depends on: ${subStep.needs.join(', ')}`;
+            if (subStep.ticket) subStepInfo += `\n🎫 Tickets: ${Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket}`;
+            if (subStep.if) subStepInfo += `\n🔀 Condition: ${subStep.if}`;
 
             content += `| ${subStepInfo} |`;
 
@@ -611,17 +612,13 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
                 const hasMultipleLines = displayCommand.includes('\n');
 
                 if (hasMultipleLines) {
-                  // Multi-line: use plain text with \\ line breaks
+                  // Multi-line: use code block with line breaks
                   const formattedCommand = formatForTableCell(displayCommand, true);
-                  content += ` \`\`\`\\\\${formattedCommand}\`\`\` |`;
+                  content += ` {code:bash}${formattedCommand}{code} |`;
                 } else {
                   // Single-line: apply smart breaking
                   const withBreaks = addSmartLineBreaks(displayCommand);
-                  if (withBreaks.includes('\\\\')) {
-                    content += ` \`\`\`\\\\${withBreaks}\`\`\` |`;
-                  } else {
-                    content += ` {code:bash}${displayCommand}{code} |`;
-                  }
+                  content += ` {code:bash}${withBreaks}{code} |`;
                 }
               } else {
                 content += ` _(${subStep.type} step)_ |`;
@@ -665,15 +662,11 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
             if (hasMultipleLines) {
               // Multi-line rollback command
               const formattedCommand = formatForTableCell(displayCommand, true);
-              content += ` \`\`\`\\\\${formattedCommand}\`\`\` |`;
+              content += ` {code:bash}${formattedCommand}{code} |`;
             } else {
               // Single-line rollback command
               const withBreaks = addSmartLineBreaks(displayCommand);
-              if (withBreaks.includes('\\\\')) {
-                content += ` \`\`\`\\\\${withBreaks}\`\`\` |`;
-              } else {
-                content += ` {code:bash}${displayCommand}{code} |`;
-              }
+              content += ` {code:bash}${withBreaks}{code} |`;
             }
           } else {
             content += ` - |`;
