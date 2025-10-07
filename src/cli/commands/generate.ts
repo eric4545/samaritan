@@ -364,17 +364,36 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
 
 // Export as standalone function for testing
 export function generateConfluenceContent(operation: any, resolveVars: boolean = false): string {
+    // Use Confluence emoticons instead of Unicode emojis for better compatibility
     const phaseIcons = {
-      preflight: '🛫',
-      flight: '✈️',
-      postflight: '🛬'
+      preflight: '(/)',
+      flight: '(!)',
+      postflight: '(on)'
     };
 
     const typeIcons: Record<string, string> = {
-      automatic: '⚙️',
-      manual: '👤',
-      approval: '✋',
-      conditional: '🔀'
+      automatic: '(*)',
+      manual: '(i)',
+      approval: '(x)',
+      conditional: '(?)'
+    };
+
+    // Emoji replacement map for inline usage
+    const emojiMap: Record<string, string> = {
+      '👤': '(i)',  // PIC (person)
+      '⏱️': '(time)', // Timeline (doesn't exist, use text)
+      '📋': '(-)',  // Depends on (checklist)
+      '🎫': '(flag)', // Tickets
+      '🔀': '(?)'   // Condition
+    };
+
+    // Helper to replace Unicode emojis with Confluence emoticons
+    const replaceEmojis = (text: string): string => {
+      let result = text;
+      for (const [emoji, emoticon] of Object.entries(emojiMap)) {
+        result = result.replace(new RegExp(emoji, 'g'), emoticon);
+      }
+      return result;
     };
 
     // Helper function to substitute variables (inline version)
@@ -386,6 +405,12 @@ export function generateConfluenceContent(operation: any, resolveVars: boolean =
         substitutedCommand = substitutedCommand.replace(regex, mergedVariables[key]);
       }
       return substitutedCommand;
+    };
+
+    // Helper to escape Confluence macro syntax in text (for variables like ${VAR})
+    const escapeConfluenceMacros = (text: string): string => {
+      // Escape { and } to prevent Confluence from interpreting ${VAR} as macros
+      return text.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
     };
 
     // Helper to format multi-line text for Confluence table cells
@@ -461,24 +486,17 @@ ${operation.needs.map((dep: string) => `* *${dep}*`).join('\n')}
     // Environments table
     content += `h2. Environments
 
-|| Environment || Description || Approval Required || Validation Required || Targets ||
-${operation.environments.map((env: any) => `| ${env.name} | ${env.description || '-'} | ${env.approval_required ? '{status:colour=Yellow|title=YES}' : 'No'} | ${env.validation_required ? 'Yes' : 'No'} | ${env.targets?.join(', ') || '-'} |`).join('\n')}
-
-`;
-
-    // Environment details with variables (collapsible)
-    operation.environments.forEach((env: any) => {
+|| Environment || Description || Approval Required || Validation Required || Targets || Variables ||
+${operation.environments.map((env: any) => {
       const varCount = Object.keys(env.variables || {}).length;
-      content += `h3. ${env.name} - Variables
-
-{expand:title=Show ${varCount} environment variables}
-{code:language=bash}
-${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n')}
-{code}
-{expand}
+      const varsText = Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n');
+      const varsCell = varCount > 0
+        ? `{expand:title=Show ${varCount} variables}${varsText}{expand}`
+        : '-';
+      return `| ${env.name} | ${env.description || '-'} | ${env.approval_required ? '{status:colour=Yellow|title=YES}' : 'No'} | ${env.validation_required ? 'Yes' : 'No'} | ${env.targets?.join(', ') || '-'} | ${varsCell} |`;
+    }).join('\n')}
 
 `;
-    });
 
     // Group steps by phase
     const phases: { [key: string]: any[] } = {
@@ -524,18 +542,17 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
         const typeIcon = typeIcons[step.type] || '';
         const phaseIconForStep = step.phase && step.phase !== phaseName ? phaseIcons[step.phase as keyof typeof phaseIcons] || '' : '';
 
-        // Build step info cell
-        let stepInfo = `${phaseIconForStep}${typeIcon} Step ${globalStepNumber}: ${step.name}`;
-        if (step.description) stepInfo += `\n${step.description}`;
-        if (step.pic) stepInfo += `\n👤 PIC: ${step.pic}`;
-        if (step.timeline) stepInfo += `\n⏱️ Timeline: ${step.timeline}`;
-        if (step.needs && step.needs.length > 0) stepInfo += `\n📋 Depends on: ${step.needs.join(', ')}`;
-        if (step.ticket) stepInfo += `\n🎫 Tickets: ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`;
-        if (step.if) stepInfo += `\n🔀 Condition: ${step.if}`;
+        // Build step info cell (escape braces to prevent macro interpretation)
+        let stepInfo = `${phaseIconForStep}${typeIcon} Step ${globalStepNumber}: ${escapeConfluenceMacros(step.name)}`;
+        if (step.description) stepInfo += `\n${escapeConfluenceMacros(step.description)}`;
+        if (step.pic) stepInfo += `\n(i) PIC: ${escapeConfluenceMacros(step.pic)}`;
+        if (step.timeline) stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(step.timeline)}`;
+        if (step.needs && step.needs.length > 0) stepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(step.needs.join(', '))}`;
+        if (step.ticket) stepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket)}`;
+        if (step.if) stepInfo += `\n(?) Condition: ${escapeConfluenceMacros(step.if)}`;
 
-        content += `| ${stepInfo} |`;
-
-        // Add command cells for each environment
+        // Build all command cells for each environment
+        const commandCells: string[] = [];
         operation.environments.forEach((env: any) => {
           const rawCommand = step.command || step.instruction || '';
           let displayCommand = rawCommand;
@@ -555,10 +572,12 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
             displayCommand.includes('**')
           );
 
+          let cellContent = '';
           if (displayCommand) {
             if (isMarkdown) {
-              // For markdown instructions, format with line breaks (no code block)
-              content += ` ${formatForTableCell(displayCommand, false)} |`;
+              // For markdown instructions, format with line breaks (no code block) and escape macros
+              const formatted = formatForTableCell(displayCommand, false);
+              cellContent = escapeConfluenceMacros(formatted);
             } else {
               // Check if multi-line or long command
               const hasMultipleLines = displayCommand.includes('\n');
@@ -566,21 +585,23 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
               if (hasMultipleLines) {
                 // Multi-line: use code block with line breaks
                 const formattedCommand = formatForTableCell(displayCommand, true);
-                content += ` {code:bash}${formattedCommand}{code} |`;
+                cellContent = `{code:bash}${formattedCommand}{code}`;
               } else {
                 // Single-line: apply smart line breaking if needed, then wrap in code block
                 const withBreaks = addSmartLineBreaks(displayCommand);
-                content += ` {code:bash}${withBreaks}{code} |`;
+                cellContent = `{code:bash}${withBreaks}{code}`;
               }
             }
           } else if (step.sub_steps && step.sub_steps.length > 0) {
-            content += ` _(see substeps below)_ |`;
+            cellContent = '_(see substeps below)_';
           } else {
-            content += ` _(${step.type} step)_ |`;
+            cellContent = `_(${step.type} step)_`;
           }
+          commandCells.push(cellContent);
         });
 
-        content += '\n';
+        // Construct complete row with all cells
+        content += `| ${stepInfo} | ${commandCells.join(' | ')} |\n`;
 
         // Add sub-steps in table format
         if (step.sub_steps && step.sub_steps.length > 0) {
@@ -589,17 +610,16 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
             const subStepId = `${globalStepNumber}${subStepLetter}`;
             const subTypeIcon = typeIcons[subStep.type] || '';
 
-            let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${subStep.name}`;
-            if (subStep.description) subStepInfo += `\n${subStep.description}`;
-            if (subStep.pic) subStepInfo += `\n👤 PIC: ${subStep.pic}`;
-            if (subStep.timeline) subStepInfo += `\n⏱️ Timeline: ${subStep.timeline}`;
-            if (subStep.needs && subStep.needs.length > 0) subStepInfo += `\n📋 Depends on: ${subStep.needs.join(', ')}`;
-            if (subStep.ticket) subStepInfo += `\n🎫 Tickets: ${Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket}`;
-            if (subStep.if) subStepInfo += `\n🔀 Condition: ${subStep.if}`;
+            let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${escapeConfluenceMacros(subStep.name)}`;
+            if (subStep.description) subStepInfo += `\n${escapeConfluenceMacros(subStep.description)}`;
+            if (subStep.pic) subStepInfo += `\n(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`;
+            if (subStep.timeline) subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`;
+            if (subStep.needs && subStep.needs.length > 0) subStepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(subStep.needs.join(', '))}`;
+            if (subStep.ticket) subStepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket)}`;
+            if (subStep.if) subStepInfo += `\n(?) Condition: ${escapeConfluenceMacros(subStep.if)}`;
 
-            content += `| ${subStepInfo} |`;
-
-            // Add command cells for sub-step
+            // Build all command cells for sub-step
+            const subCommandCells: string[] = [];
             operation.environments.forEach((env: any) => {
               const rawCommand = subStep.command || subStep.instruction || '';
               let displayCommand = rawCommand;
@@ -608,24 +628,27 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
                 displayCommand = substituteVariables(rawCommand, env.variables || {}, subStep.variables);
               }
 
+              let cellContent = '';
               if (displayCommand) {
                 const hasMultipleLines = displayCommand.includes('\n');
 
                 if (hasMultipleLines) {
                   // Multi-line: use code block with line breaks
                   const formattedCommand = formatForTableCell(displayCommand, true);
-                  content += ` {code:bash}${formattedCommand}{code} |`;
+                  cellContent = `{code:bash}${formattedCommand}{code}`;
                 } else {
                   // Single-line: apply smart breaking
                   const withBreaks = addSmartLineBreaks(displayCommand);
-                  content += ` {code:bash}${withBreaks}{code} |`;
+                  cellContent = `{code:bash}${withBreaks}{code}`;
                 }
               } else {
-                content += ` _(${subStep.type} step)_ |`;
+                cellContent = `_(${subStep.type} step)_`;
               }
+              subCommandCells.push(cellContent);
             });
 
-            content += '\n';
+            // Construct complete row with all cells
+            content += `| ${subStepInfo} | ${subCommandCells.join(' | ')} |\n`;
           });
         }
 
@@ -638,7 +661,7 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
     // Rollback section if available
     const stepsWithRollback = operation.steps.filter((step: any) => step.rollback);
     if (stepsWithRollback.length > 0) {
-      content += `h2. 🔄 Rollback Procedures
+      content += `h2. (<) Rollback Procedures
 
 {warning}If deployment fails, execute the following rollback steps in reverse order:{warning}
 
@@ -646,8 +669,8 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
 `;
 
       stepsWithRollback.forEach((step: any) => {
-        content += `| Rollback for: ${step.name} |`;
-
+        // Build all rollback cells
+        const rollbackCells: string[] = [];
         operation.environments.forEach((env: any) => {
           const rollbackCommand = step.rollback!.command || step.rollback!.instruction || '';
           let displayCommand = rollbackCommand;
@@ -656,24 +679,27 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
             displayCommand = substituteVariables(rollbackCommand, env.variables || {}, step.variables);
           }
 
+          let cellContent = '';
           if (displayCommand) {
             const hasMultipleLines = displayCommand.includes('\n');
 
             if (hasMultipleLines) {
               // Multi-line rollback command
               const formattedCommand = formatForTableCell(displayCommand, true);
-              content += ` {code:bash}${formattedCommand}{code} |`;
+              cellContent = `{code:bash}${formattedCommand}{code}`;
             } else {
               // Single-line rollback command
               const withBreaks = addSmartLineBreaks(displayCommand);
-              content += ` {code:bash}${withBreaks}{code} |`;
+              cellContent = `{code:bash}${withBreaks}{code}`;
             }
           } else {
-            content += ` - |`;
+            cellContent = '-';
           }
+          rollbackCells.push(cellContent);
         });
 
-        content += '\n';
+        // Construct complete row
+        content += `| Rollback for: ${step.name} | ${rollbackCells.join(' | ')} |\n`;
       });
 
       content += '\n';

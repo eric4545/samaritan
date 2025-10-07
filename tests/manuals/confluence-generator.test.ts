@@ -17,20 +17,20 @@ describe('Confluence Generator Tests', () => {
     // Should have table header with environment columns
     assert.match(content, /\|\| Step \|\| staging \|\| production \|\|/)
 
-    // Should have phase headers
-    assert.match(content, /h2\. 🛫 Pre-Flight Phase/)
-    assert.match(content, /h2\. ✈️ Flight Phase/)
-    assert.match(content, /h2\. 🛬 Post-Flight Phase/)
+    // Should have phase headers (with Confluence emoticons)
+    assert.match(content, /h2\. \(\/\) Pre-Flight Phase/)
+    assert.match(content, /h2\. \(!\) Flight Phase/)
+    assert.match(content, /h2\. \(on\) Post-Flight Phase/)
   })
 
   it('should include step metadata in first column', () => {
     const content = generateConfluence(deploymentOperationYaml)
 
-    // Should include step with PIC, timeline, and ticket
+    // Should include step with PIC, timeline, and ticket (Confluence emoticons)
     assert.match(content, /Health Check/)
-    assert.match(content, /👤 PIC: john\.doe/)
-    assert.match(content, /⏱️ Timeline: 2024-01-15 10:00/)
-    assert.match(content, /🎫 Tickets: JIRA-123/)
+    assert.match(content, /\(i\) PIC: john\.doe/)
+    assert.match(content, /\(time\) Timeline: 2024-01-15 10:00/)
+    assert.match(content, /\(flag\) Tickets: JIRA-123/)
   })
 
   it('should format multi-line commands with actual newlines', () => {
@@ -110,7 +110,7 @@ steps:
     const content = generateConfluence(deploymentOperationYaml)
 
     // Should have rollback section
-    assert.match(content, /h2\. 🔄 Rollback Procedures/)
+    assert.match(content, /h2\. \(<\) Rollback Procedures/)
 
     // Should have table with environment columns
     assert.match(content, /\|\| Step \|\| staging \|\| production \|\|/)
@@ -144,7 +144,7 @@ steps:
     const content = generateConfluence(depsYaml)
 
     // Should show dependencies
-    assert.match(content, /📋 Depends on: Step One/)
+    assert.match(content, /\(-\) Depends on: Step One/)
   })
 
   it('should display conditional steps with condition', () => {
@@ -166,35 +166,38 @@ steps:
 
     const content = generateConfluence(conditionalYaml)
 
-    // Should show conditional icon and expression
-    assert.match(content, /🔀/)
-    assert.match(content, /🔀 Condition: \$\{ENVIRONMENT\} == 'production'/)
+    // Should show conditional icon (Confluence emoticon) and expression with escaped braces
+    assert.match(content, /\(\?\)/)
+    assert.match(content, /\(\?\) Condition: \$\\{ENVIRONMENT\\} == 'production'/)
   })
 
   it('should use type and phase icons', () => {
     const content = generateConfluence(deploymentOperationYaml)
 
-    // Should have type icons
-    assert.match(content, /⚙️/) // automatic
-    assert.match(content, /👤/) // manual
+    // Should have type icons (Confluence emoticons)
+    assert.match(content, /\(\*\)/) // automatic
+    assert.match(content, /\(i\)/) // manual
 
-    // Should have phase icons
-    assert.match(content, /🛫/) // preflight
-    assert.match(content, /✈️/) // flight
-    assert.match(content, /🛬/) // postflight
+    // Should have phase icons (Confluence emoticons)
+    assert.match(content, /\(\/\)/) // preflight (checkmark)
+    assert.match(content, /\(!\)/) // flight (warning)
+    assert.match(content, /\(on\)/) // postflight (lightbulb on)
   })
 
   it('should include environment details section', () => {
     const content = generateConfluence(deploymentOperationYaml)
 
-    // Should have environments table
+    // Should have environments table with Variables column
     assert.match(content, /h2\. Environments/)
-    assert.match(content, /\|\| Environment \|\| Description \|\| Approval Required/)
+    assert.match(content, /\|\| Environment \|\| Description \|\| Approval Required \|\| Validation Required \|\| Targets \|\| Variables \|\|/)
 
-    // Should have variables section for each environment
-    assert.match(content, /h3\. staging - Variables/)
-    assert.match(content, /h3\. production - Variables/)
+    // Should have variables in table with expand macro (not as separate h3 sections)
+    assert.match(content, /\{expand:title=Show \d+ variables\}/)
     assert.match(content, /REPLICAS=/)
+
+    // Should NOT have separate h3 variable sections
+    assert.doesNotMatch(content, /h3\. staging - Variables/)
+    assert.doesNotMatch(content, /h3\. production - Variables/)
   })
 
   it('should handle markdown instructions without code blocks', () => {
@@ -224,6 +227,64 @@ steps:
     // Should convert numbered lists to Confluence list markup
     assert.match(content, /# First thing/)
     assert.match(content, /# Second thing/)
+  })
+
+  it('should escape Confluence macros in markdown instructions', () => {
+    const markdownWithVarsYaml = `name: Escaping Test
+version: 1.0.0
+description: Test variable escaping in markdown
+
+environments:
+  - name: staging
+    variables:
+      API_ENDPOINT: "https://api.staging.com"
+      DB_HOST: "db.staging.com"
+
+steps:
+  - name: Manual Step with Variables
+    type: manual
+    phase: flight
+    instruction: |
+      # Check health endpoints
+      1. Verify API: curl \${API_ENDPOINT}/health
+      2. Check database: ping \${DB_HOST}
+      **Important**: Variables like \${FOO} should be escaped
+`
+
+    const content = generateConfluence(markdownWithVarsYaml)
+
+    // Variables in markdown instructions should be escaped to prevent macro interpretation
+    assert.match(content, /\$\\{API_ENDPOINT\\}/)
+    assert.match(content, /\$\\{DB_HOST\\}/)
+    assert.match(content, /\$\\{FOO\\}/)
+
+    // Should still have the markdown content
+    assert.match(content, /# Check health endpoints/)
+  })
+
+  it('should escape Confluence macros in step names and descriptions', () => {
+    const stepWithVarsYaml = `name: Escaping Test
+version: 1.0.0
+description: Test variable escaping
+
+environments:
+  - name: staging
+
+steps:
+  - name: Deploy \${SERVICE_NAME} to cluster
+    description: Deploys using \${DEPLOY_METHOD}
+    type: automatic
+    phase: flight
+    if: \${ENVIRONMENT} == 'production'
+    command: echo "deploy"
+`
+
+    const content = generateConfluence(stepWithVarsYaml)
+
+    // Variables in step names, descriptions, and conditions should be escaped
+    assert.match(content, /Deploy \$\\{SERVICE_NAME\\} to cluster/)
+    assert.match(content, /Deploys using \$\\{DEPLOY_METHOD\\}/)
+    assert.match(content, /Condition: \$\\{ENVIRONMENT\\}/)
   })
 
   it('should include operation metadata in panel', () => {
