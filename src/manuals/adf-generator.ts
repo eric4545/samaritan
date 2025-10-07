@@ -112,7 +112,7 @@ export function generateADF(
     if (phases.preflight.length > 0) {
       content.push(heading({ level: 2 })(text('🛫 Pre-Flight Phase')))
       content.push(
-        createStepsTable(phases.preflight, environments, globalStepNumber, resolveVariables)
+        createStepsTable(phases.preflight, environments, globalStepNumber, resolveVariables, 'preflight')
       )
       globalStepNumber += phases.preflight.length
     }
@@ -121,7 +121,7 @@ export function generateADF(
     if (phases.flight.length > 0) {
       content.push(heading({ level: 2 })(text('✈️ Flight Phase (Main Operations)')))
       content.push(
-        createStepsTable(phases.flight, environments, globalStepNumber, resolveVariables)
+        createStepsTable(phases.flight, environments, globalStepNumber, resolveVariables, 'flight')
       )
       globalStepNumber += phases.flight.length
     }
@@ -130,7 +130,7 @@ export function generateADF(
     if (phases.postflight.length > 0) {
       content.push(heading({ level: 2 })(text('🛬 Post-Flight Phase')))
       content.push(
-        createStepsTable(phases.postflight, environments, globalStepNumber, resolveVariables)
+        createStepsTable(phases.postflight, environments, globalStepNumber, resolveVariables, 'postflight')
       )
     }
   }
@@ -266,7 +266,8 @@ function createStepsTable(
   steps: Step[],
   environments: Environment[],
   startNumber: number,
-  resolveVariables?: boolean
+  resolveVariables?: boolean,
+  currentPhase?: string
 ): any {
   // Build header row
   const headerCells = [tableHeader()(paragraph(text('Step')))]
@@ -300,8 +301,8 @@ function createStepsTable(
       paragraph(strong(text(`Step ${stepNumber}: ${step.name} ${phaseIcon}${typeIcon}`)))
     )
 
-    // Add phase if present
-    if (step.phase) {
+    // Add phase only if it differs from the current section phase
+    if (step.phase && step.phase !== currentPhase) {
       stepCellContent.push(paragraph(em(text(`Phase: ${step.phase}`))))
     }
 
@@ -329,6 +330,11 @@ function createStepsTable(
     // Timeline
     if (step.timeline) {
       stepCellContent.push(paragraph(text(`⏱️ Timeline: ${step.timeline}`)))
+    }
+
+    // Conditional expression
+    if (step.if) {
+      stepCellContent.push(paragraph(text(`🔀 Condition: ${step.if}`)))
     }
 
     // Build command cells for each environment
@@ -392,6 +398,10 @@ function createStepsTable(
 
         if (subStep.timeline) {
           subStepCellContent.push(paragraph(text(`⏱️ Timeline: ${subStep.timeline}`)))
+        }
+
+        if (subStep.if) {
+          subStepCellContent.push(paragraph(text(`🔀 Condition: ${subStep.if}`)))
         }
 
         const subCells = [tableCell()(...subStepCellContent)]

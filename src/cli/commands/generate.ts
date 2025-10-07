@@ -21,10 +21,43 @@ class DocumentationGenerator {
   async generateManual(operationFile: string, options: GenerateOptions): Promise<void> {
     const targetEnv = options.env || options.environment;
     const envSuffix = targetEnv ? ` (${targetEnv})` : '';
-    console.log(`📄 Generating manual for: ${operationFile}${envSuffix}`);
+    const format = options.format || 'markdown';
+    console.log(`📄 Generating manual for: ${operationFile}${envSuffix} (format: ${format})`);
 
     // Parse operation
     const operation = await parseOperation(operationFile);
+    const operationName = basename(operationFile, '.yaml');
+    const envFileSuffix = targetEnv ? `-${targetEnv}` : '';
+
+    switch (format) {
+      case 'confluence':
+        await this.generateConfluenceManual(operation, operationName, envFileSuffix, options);
+        break;
+      case 'adf':
+        await this.generateADFManual(operation, operationName, envFileSuffix, options);
+        break;
+      case 'html':
+        await this.generateHtmlManual(operation, operationName, envFileSuffix, options);
+        break;
+      case 'markdown':
+      default:
+        await this.generateMarkdownManual(operation, operationFile, operationName, envFileSuffix, options);
+        break;
+    }
+
+    if (targetEnv) {
+      console.log(`🎯 Filtered for environment: ${targetEnv}`);
+    }
+  }
+
+  private async generateMarkdownManual(
+    operation: any,
+    operationFile: string,
+    operationName: string,
+    envFileSuffix: string,
+    options: GenerateOptions
+  ): Promise<void> {
+    const targetEnv = options.env || options.environment;
 
     // Create generation metadata
     const metadata = await createGenerationMetadata(
@@ -37,9 +70,7 @@ class DocumentationGenerator {
     // Generate manual with metadata and environment filtering
     const manual = generateManualWithMetadata(operation, metadata, targetEnv, options.resolveVars, options.gantt);
 
-    // Determine output file with environment suffix if specified
-    const operationName = basename(operationFile, '.yaml');
-    const envFileSuffix = targetEnv ? `-${targetEnv}` : '';
+    // Determine output file
     const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.md`;
 
     // Ensure output directory exists
@@ -48,10 +79,67 @@ class DocumentationGenerator {
     // Write manual
     await writeFile(outputFile, manual);
     console.log(`✅ Manual generated: ${outputFile}`);
+  }
 
-    if (targetEnv) {
-      console.log(`🎯 Filtered for environment: ${targetEnv}`);
-    }
+  private async generateConfluenceManual(
+    operation: any,
+    operationName: string,
+    envFileSuffix: string,
+    options: GenerateOptions
+  ): Promise<void> {
+    const confluenceContent = this.createConfluenceContent(operation);
+    const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.confluence`;
+
+    await mkdir(dirname(outputFile), { recursive: true });
+    await writeFile(outputFile, confluenceContent);
+    console.log(`✅ Confluence manual generated: ${outputFile}`);
+    console.log('💡 Upload this content to your Confluence space');
+  }
+
+  private async generateADFManual(
+    operation: any,
+    operationName: string,
+    envFileSuffix: string,
+    options: GenerateOptions
+  ): Promise<void> {
+    const targetEnv = options.env || options.environment;
+    const metadata = await createGenerationMetadata(
+      operationName,
+      operation.id,
+      operation.version,
+      targetEnv
+    );
+
+    const adfContent = generateADFString(operation, metadata, targetEnv, options.resolveVars);
+    const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.json`;
+
+    await mkdir(dirname(outputFile), { recursive: true });
+    await writeFile(outputFile, adfContent);
+    console.log(`✅ ADF manual generated: ${outputFile}`);
+    console.log('💡 Import this JSON file into Confluence using the ADF importer');
+  }
+
+  private async generateHtmlManual(
+    operation: any,
+    operationName: string,
+    envFileSuffix: string,
+    options: GenerateOptions
+  ): Promise<void> {
+    const targetEnv = options.env || options.environment;
+    const metadata = await createGenerationMetadata(
+      operationName,
+      operation.id,
+      operation.version,
+      targetEnv
+    );
+
+    const manual = generateManualWithMetadata(operation, metadata, targetEnv, options.resolveVars, options.gantt);
+    const htmlManual = this.markdownToHtml(manual, operation.name);
+    const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.html`;
+
+    await mkdir(dirname(outputFile), { recursive: true });
+    await writeFile(outputFile, htmlManual);
+    console.log(`✅ HTML manual generated: ${outputFile}`);
   }
 
   async generateDocs(operationFile: string, options: GenerateOptions): Promise<void> {
@@ -498,6 +586,7 @@ generateCommand
   .command('manual <operation>')
   .description('Generate operation manual')
   .option('-o, --output <file>', 'Output file path')
+  .option('-f, --format <format>', 'Output format (markdown, html, confluence, adf)', 'markdown')
   .option('-e, --env <environment>', 'Generate for specific environment')
   .option('--resolve-vars', 'Resolve variables to actual values instead of showing placeholders')
   .option('--gantt', 'Include Mermaid Gantt chart for timeline visualization')

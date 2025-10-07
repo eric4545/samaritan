@@ -74,7 +74,7 @@ function generateGanttChart(operation: Operation): string {
   return gantt;
 }
 
-function generateStepRow(step: Step, stepNumber: number, environments: Environment[], resolveVariables: boolean = false, prefix: string = ''): string {
+function generateStepRow(step: Step, stepNumber: number, environments: Environment[], resolveVariables: boolean = false, prefix: string = '', currentPhase?: string): string {
   let rows = '';
 
   const typeIcon = step.type === 'automatic' ? '⚙️' :
@@ -88,7 +88,8 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
   // First column: Step name, phase, icon, and description
   // Add checkbox for tracking completion
   let stepCell = `☐ ${prefix}Step ${stepNumber}: ${step.name} ${phaseIcon}${typeIcon}`;
-  if (step.phase) {
+  // Only show phase if it differs from the current section phase
+  if (step.phase && step.phase !== currentPhase) {
     stepCell += `<br><em>Phase: ${step.phase}</em>`;
   }
   if (step.description && typeof step.description === 'string' && step.description.trim().length > 0) {
@@ -116,8 +117,13 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
     stepCell += `<br>⏱️ <em>Timeline: ${step.timeline}</em>`;
   }
 
+  // Add conditional expression if present
+  if (step.if) {
+    stepCell += `<br>🔀 <em>Condition: ${step.if}</em>`;
+  }
+
   rows += `| ${stepCell} |`;
-  
+
   // Subsequent columns: Commands for each environment
   environments.forEach(env => {
     const rawCommand = step.command || step.instruction || '';
@@ -128,49 +134,106 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
       displayCommand = substituteVariables(rawCommand, env.variables || {}, step.variables);
     }
 
-    // Clean up command for table format - replace newlines with <br>, escape pipes and backticks
-    const cleanCommand = displayCommand
-      .trim()
-      .replace(/\n/g, '<br>')
-      .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
-      .replace(/`/g, '\\`')
-      .replace(/<br>$/, ''); // Remove trailing <br> tag
+    // Check if content appears to be markdown (contains markdown indicators)
+    const isMarkdown = step.instruction && (
+      displayCommand.includes('\n#') ||       // Headers
+      displayCommand.includes('\n-') ||        // Lists
+      displayCommand.includes('\n*') ||        // Lists
+      displayCommand.includes('\n1.') ||       // Ordered lists
+      displayCommand.includes('```') ||        // Code blocks
+      displayCommand.includes('**') ||         // Bold
+      displayCommand.match(/\n\s{2,}/)         // Indented blocks
+    );
 
-    if (cleanCommand) {
-      rows += ` \`${cleanCommand}\` |`;
-    } else if (step.sub_steps && step.sub_steps.length > 0) {
-      // If step has sub_steps but no command, indicate to see substeps
-      rows += ` _(see substeps below)_ |`;
+    // Clean up command for table format
+    if (isMarkdown) {
+      // For markdown instructions, preserve formatting and escape only pipes
+      const cleanCommand = displayCommand
+        .trim()
+        .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
+        .replace(/\n/g, '<br>');
+      rows += ` ${cleanCommand} |`;
     } else {
-      rows += ` _(${step.type} step)_ |`;
+      // For simple commands, wrap in backticks and escape special characters
+      const cleanCommand = displayCommand
+        .trim()
+        .replace(/\n/g, '<br>')
+        .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
+        .replace(/`/g, '\\`')
+        .replace(/<br>$/, ''); // Remove trailing <br> tag
+
+      if (cleanCommand) {
+        rows += ` \`${cleanCommand}\` |`;
+      } else if (step.sub_steps && step.sub_steps.length > 0) {
+        // If step has sub_steps but no command, indicate to see substeps
+        rows += ` _(see substeps below)_ |`;
+      } else {
+        rows += ` _(${step.type} step)_ |`;
+      }
     }
   });
-  
+
   rows += '\n';
-  
-  // Add sub-steps if present
+
+  // Add sub-steps if present with section_heading support
   if (step.sub_steps && step.sub_steps.length > 0) {
     step.sub_steps.forEach((subStep, subIndex) => {
       // Use letters for sub-steps: 1a, 1b, 1c, etc.
       const subStepLetter = String.fromCharCode(97 + subIndex); // 97 = 'a'
       const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
+
+      // Handle section headings for sub-steps
+      if (subStep.section_heading) {
+        // Close current table
+        rows += '\n';
+
+        // Add section heading
+        rows += `#### ${subStep.name}\n\n`;
+        if (subStep.description) {
+          rows += `${subStep.description}\n\n`;
+        }
+
+        // Add PIC and timeline if present in section heading
+        if (subStep.pic || subStep.timeline) {
+          const metadata = [];
+          if (subStep.pic) metadata.push(`👤 PIC: ${subStep.pic}`);
+          if (subStep.timeline) metadata.push(`⏱️ Timeline: ${subStep.timeline}`);
+          rows += `_${metadata.join(' • ')}_\n\n`;
+        }
+
+        // Reopen table with headers
+        rows += '| Step |';
+        environments.forEach(env => {
+          rows += ` ${env.name} |`;
+        });
+        rows += '\n';
+        rows += '|------|';
+        environments.forEach(() => {
+          rows += '---------|';
+        });
+        rows += '\n';
+      }
+
       rows += generateSubStepRow(subStep, subStepPrefix, environments, resolveVariables);
     });
   }
-  
+
   return rows;
 }
 
-function generateSubStepRow(step: Step, stepId: string, environments: Environment[], resolveVariables: boolean = false): string {
+function generateSubStepRow(step: Step, stepId: string, environments: Environment[], resolveVariables: boolean = false, depth: number = 1): string {
   let rows = '';
 
   const typeIcon = step.type === 'automatic' ? '⚙️' :
                    step.type === 'manual' ? '👤' :
                    step.type === 'conditional' ? '🔀' : '✋';
 
+  // Add indentation for deeper nesting levels using nbsp or spaces
+  const indent = '&nbsp;&nbsp;'.repeat(depth - 1);
+
   // Format as: Step 1a: Build Backend API ⚙️
   // Add checkbox for tracking completion
-  let stepCell = `☐ Step ${stepId}: ${step.name} ${typeIcon}`;
+  let stepCell = `☐ ${indent}Step ${stepId}: ${step.name} ${typeIcon}`;
   if (step.description && typeof step.description === 'string' && step.description.trim().length > 0) {
     stepCell += `<br>${step.description}`;
   }
@@ -196,6 +259,11 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
     stepCell += `<br>⏱️ <em>Timeline: ${step.timeline}</em>`;
   }
 
+  // Add conditional expression if present (for sub-steps)
+  if (step.if) {
+    stepCell += `<br>🔀 <em>Condition: ${step.if}</em>`;
+  }
+
   rows += `| ${stepCell} |`;
 
   // Subsequent columns: Commands for each environment
@@ -208,25 +276,99 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
       displayCommand = substituteVariables(rawCommand, env.variables || {}, step.variables);
     }
 
-    // Clean up command for table format - replace newlines with <br>, escape pipes and backticks
-    const cleanCommand = displayCommand
-      .trim()
-      .replace(/\n/g, '<br>')
-      .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
-      .replace(/`/g, '\\`')
-      .replace(/<br>$/, ''); // Remove trailing <br> tag
+    // Check if content appears to be markdown (contains markdown indicators)
+    const isMarkdown = step.instruction && (
+      displayCommand.includes('\n#') ||       // Headers
+      displayCommand.includes('\n-') ||        // Lists
+      displayCommand.includes('\n*') ||        // Lists
+      displayCommand.includes('\n1.') ||       // Ordered lists
+      displayCommand.includes('```') ||        // Code blocks
+      displayCommand.includes('**') ||         // Bold
+      displayCommand.match(/\n\s{2,}/)         // Indented blocks
+    );
 
-    if (cleanCommand) {
-      rows += ` \`${cleanCommand}\` |`;
-    } else if (step.sub_steps && step.sub_steps.length > 0) {
-      // If step has sub_steps but no command, indicate to see substeps
-      rows += ` _(see substeps below)_ |`;
+    // Clean up command for table format
+    if (isMarkdown) {
+      // For markdown instructions, preserve formatting and escape only pipes
+      const cleanCommand = displayCommand
+        .trim()
+        .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
+        .replace(/\n/g, '<br>');
+      rows += ` ${cleanCommand} |`;
     } else {
-      rows += ` _(${step.type} step)_ |`;
+      // For simple commands, wrap in backticks and escape special characters
+      const cleanCommand = displayCommand
+        .trim()
+        .replace(/\n/g, '<br>')
+        .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
+        .replace(/`/g, '\\`')
+        .replace(/<br>$/, ''); // Remove trailing <br> tag
+
+      if (cleanCommand) {
+        rows += ` \`${cleanCommand}\` |`;
+      } else if (step.sub_steps && step.sub_steps.length > 0) {
+        // If step has sub_steps but no command, indicate to see substeps
+        rows += ` _(see substeps below)_ |`;
+      } else {
+        rows += ` _(${step.type} step)_ |`;
+      }
     }
   });
 
   rows += '\n';
+
+  // Handle nested sub-steps recursively (e.g., 1a1, 1a2, 1a1a, etc.)
+  if (step.sub_steps && step.sub_steps.length > 0) {
+    step.sub_steps.forEach((nestedSubStep, nestedIndex) => {
+      // For nested sub-steps, determine numbering based on depth
+      // depth 1: 1a -> depth 2: 1a1, 1a2 -> depth 3: 1a1a, 1a1b
+      let nestedStepId: string;
+      if (depth % 2 === 1) {
+        // Odd depth: use numbers (1a1, 1a2, 1a3)
+        nestedStepId = `${stepId}${nestedIndex + 1}`;
+      } else {
+        // Even depth: use letters (1a1a, 1a1b, 1a1c)
+        const letter = String.fromCharCode(97 + nestedIndex);
+        nestedStepId = `${stepId}${letter}`;
+      }
+
+      // Handle section headings for nested sub-steps
+      if (nestedSubStep.section_heading) {
+        // Close current table
+        rows += '\n';
+
+        // Add section heading with appropriate level (h5 for double-nested)
+        const headingLevel = '#'.repeat(Math.min(4 + depth, 6)); // Max h6
+        rows += `${headingLevel} ${nestedSubStep.name}\n\n`;
+        if (nestedSubStep.description) {
+          rows += `${nestedSubStep.description}\n\n`;
+        }
+
+        // Add PIC and timeline if present
+        if (nestedSubStep.pic || nestedSubStep.timeline) {
+          const metadata = [];
+          if (nestedSubStep.pic) metadata.push(`👤 PIC: ${nestedSubStep.pic}`);
+          if (nestedSubStep.timeline) metadata.push(`⏱️ Timeline: ${nestedSubStep.timeline}`);
+          rows += `_${metadata.join(' • ')}_\n\n`;
+        }
+
+        // Reopen table with headers
+        rows += '| Step |';
+        environments.forEach(env => {
+          rows += ` ${env.name} |`;
+        });
+        rows += '\n';
+        rows += '|------|';
+        environments.forEach(() => {
+          rows += '---------|';
+        });
+        rows += '\n';
+      }
+
+      rows += generateSubStepRow(nestedSubStep, nestedStepId, environments, resolveVariables, depth + 1);
+    });
+  }
+
   return rows;
 }
 
@@ -404,6 +546,14 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
             markdown += `${step.description}\n\n`;
           }
 
+          // Add PIC and timeline if present in section heading
+          if (step.pic || step.timeline) {
+            const metadata = [];
+            if (step.pic) metadata.push(`👤 PIC: ${step.pic}`);
+            if (step.timeline) metadata.push(`⏱️ Timeline: ${step.timeline}`);
+            markdown += `_${metadata.join(' • ')}_\n\n`;
+          }
+
           // Reopen table
           markdown += '| Step |';
           operation.environments.forEach(env => {
@@ -418,7 +568,7 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
           tableOpen = true;
         }
 
-        markdown += generateStepRow(step, globalStepNumber, operation.environments, resolveVariables);
+        markdown += generateStepRow(step, globalStepNumber, operation.environments, resolveVariables, '', phaseName);
         globalStepNumber++; // Increment for next step
       });
 
