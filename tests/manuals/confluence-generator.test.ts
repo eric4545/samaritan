@@ -55,9 +55,10 @@ steps:
 
     const content = generateConfluence(multiLineYaml)
 
-    // Multi-line should use \\ as separator in code blocks
+    // Multi-line commands should use backticks with \\ line breaks (not code blocks)
     assert.match(content, /echo "line 1"\\\\echo "line 2"\\\\echo "line 3"/)
-    assert.match(content, /\{code:bash\}/)
+    // Should use backticks instead of {code:bash} for multi-line
+    assert.match(content, /```/)
   })
 
   it('should substitute variables when resolveVars is true', () => {

@@ -389,8 +389,40 @@ export function generateConfluenceContent(operation: any, resolveVars: boolean =
     };
 
     // Helper to format multi-line text for Confluence table cells
-    const formatForTableCell = (text: string): string => {
-      return text.replace(/\n/g, '\\\\');
+    const formatForTableCell = (text: string, useCodeBlock: boolean = true): string => {
+      const hasMultipleLines = text.includes('\n');
+
+      if (hasMultipleLines && useCodeBlock) {
+        // For multi-line commands, don't use code blocks - just plain text with line breaks
+        // This allows \\ to work as line breaks in table cells
+        return text.replace(/\n/g, '\\\\');
+      } else if (hasMultipleLines && !useCodeBlock) {
+        // For instructions/markdown, preserve line breaks
+        return text.replace(/\n/g, '\\\\');
+      } else {
+        // Single line - no transformation needed
+        return text;
+      }
+    };
+
+    // Helper to add smart line breaks for long commands
+    const addSmartLineBreaks = (command: string, maxLength: number = 100): string => {
+      if (command.length <= maxLength) {
+        return command;
+      }
+
+      // Break at logical points: pipes, operators, common flags
+      let result = command
+        .replace(/ \| /g, ' |\\\\  ')           // Break before pipes
+        .replace(/ && /g, ' &&\\\\  ')          // Break before &&
+        .replace(/ \|\| /g, ' ||\\\\  ')        // Break before ||
+        .replace(/ --context /g, '\\\\  --context ')  // Break before --context
+        .replace(/ --namespace /g, '\\\\  --namespace ')  // Break before --namespace
+        .replace(/ -n /g, '\\\\  -n ')          // Break before -n flag
+        .replace(/ -f /g, '\\\\  -f ')          // Break before -f flag
+        .replace(/ -o /g, '\\\\  -o ');         // Break before -o flag
+
+      return result;
     };
 
     // Build header panel
@@ -427,13 +459,16 @@ ${operation.environments.map((env: any) => `| ${env.name} | ${env.description ||
 
 `;
 
-    // Environment details with variables
+    // Environment details with variables (collapsible)
     operation.environments.forEach((env: any) => {
+      const varCount = Object.keys(env.variables || {}).length;
       content += `h3. ${env.name} - Variables
 
-{code:language=bash|title=Environment Variables}
+{expand:title=Show ${varCount} environment variables}
+{code:language=bash}
 ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n')}
 {code}
+{expand}
 
 `;
     });
@@ -515,12 +550,27 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
 
           if (displayCommand) {
             if (isMarkdown) {
-              // For markdown instructions, format with line breaks
-              content += ` ${formatForTableCell(displayCommand)} |`;
+              // For markdown instructions, format with line breaks (no code block)
+              content += ` ${formatForTableCell(displayCommand, false)} |`;
             } else {
-              // For commands, wrap in code block and format line breaks
-              const formattedCommand = formatForTableCell(displayCommand);
-              content += ` {code:bash}${formattedCommand}{code} |`;
+              // Check if multi-line or long command
+              const hasMultipleLines = displayCommand.includes('\n');
+
+              if (hasMultipleLines) {
+                // Multi-line: use plain text with \\ line breaks (NO code block)
+                const formattedCommand = formatForTableCell(displayCommand, true);
+                content += ` \`\`\`\\\\${formattedCommand}\`\`\` |`;
+              } else {
+                // Single-line: apply smart line breaking if needed, then wrap in code block
+                const withBreaks = addSmartLineBreaks(displayCommand);
+                if (withBreaks.includes('\\\\')) {
+                  // Has line breaks after smart breaking - use plain text
+                  content += ` \`\`\`\\\\${withBreaks}\`\`\` |`;
+                } else {
+                  // Short single line - use code block
+                  content += ` {code:bash}${displayCommand}{code} |`;
+                }
+              }
             }
           } else if (step.sub_steps && step.sub_steps.length > 0) {
             content += ` _(see substeps below)_ |`;
@@ -558,8 +608,21 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
               }
 
               if (displayCommand) {
-                const formattedCommand = formatForTableCell(displayCommand);
-                content += ` {code:bash}${formattedCommand}{code} |`;
+                const hasMultipleLines = displayCommand.includes('\n');
+
+                if (hasMultipleLines) {
+                  // Multi-line: use plain text with \\ line breaks
+                  const formattedCommand = formatForTableCell(displayCommand, true);
+                  content += ` \`\`\`\\\\${formattedCommand}\`\`\` |`;
+                } else {
+                  // Single-line: apply smart breaking
+                  const withBreaks = addSmartLineBreaks(displayCommand);
+                  if (withBreaks.includes('\\\\')) {
+                    content += ` \`\`\`\\\\${withBreaks}\`\`\` |`;
+                  } else {
+                    content += ` {code:bash}${displayCommand}{code} |`;
+                  }
+                }
               } else {
                 content += ` _(${subStep.type} step)_ |`;
               }
@@ -597,8 +660,21 @@ ${Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.strin
           }
 
           if (displayCommand) {
-            const formattedCommand = formatForTableCell(displayCommand);
-            content += ` {code:bash}${formattedCommand}{code} |`;
+            const hasMultipleLines = displayCommand.includes('\n');
+
+            if (hasMultipleLines) {
+              // Multi-line rollback command
+              const formattedCommand = formatForTableCell(displayCommand, true);
+              content += ` \`\`\`\\\\${formattedCommand}\`\`\` |`;
+            } else {
+              // Single-line rollback command
+              const withBreaks = addSmartLineBreaks(displayCommand);
+              if (withBreaks.includes('\\\\')) {
+                content += ` \`\`\`\\\\${withBreaks}\`\`\` |`;
+              } else {
+                content += ` {code:bash}${displayCommand}{code} |`;
+              }
+            }
           } else {
             content += ` - |`;
           }
