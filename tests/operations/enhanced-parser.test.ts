@@ -2,87 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import { parseOperation, OperationParseError } from '../../src/operations/parser';
+import { enhancedStepFieldsYaml, conditionalStepYaml, enhancedPreflightYaml } from '../fixtures/operations';
 
 describe('Enhanced Operation Parser', () => {
   it('should parse operation with new Step fields including instructions', async () => {
-    const enhancedYaml = `
-name: Enhanced Operation
-version: 2.1.0
-description: Testing all new fields
-author: test-engineer
-
-environments:
-  - name: staging
-    description: Staging environment
-    variables:
-      REPLICAS: 2
-      TIMEOUT: 30
-    restrictions: [business-hours]
-    approval_required: false
-
-steps:
-  - name: Check cluster access
-    type: automatic
-    phase: preflight
-    command: kubectl cluster-info
-    description: Verify cluster connectivity
-    timeout: 30
-
-  - name: Automatic Deployment
-    type: automatic
-    description: Deploy automatically
-    command: kubectl apply -f deployment.yaml
-    timeout: 300
-    estimated_duration: 180
-    evidence:
-      required: true
-      types: [log, screenshot]
-    continue_on_error: false
-
-  - name: Manual Configuration
-    type: manual
-    description: Manual configuration step
-    instruction: "Navigate to admin panel and configure the following settings..."
-    estimated_duration: 600
-    evidence:
-      required: true
-      types: [screenshot]
-
-  - name: Manual with Command
-    type: manual
-    description: Manual step with command reference
-    command: curl -X POST http://admin/configure
-    instruction: "Execute the command and verify the response contains 'success'"
-
-  - name: Complex Step with Sub-steps
-    type: automatic
-    description: Complex deployment with verification
-    command: kubectl apply -f complex-deployment.yaml
-    verify:
-      command: kubectl get pods -l app=myapp | grep Running
-    sub_steps:
-      - name: Wait for pods
-        type: automatic
-        command: kubectl wait --for=condition=ready pod -l app=myapp
-        timeout: 120
-      - name: Manual health check
-        type: manual
-        instruction: "Check application dashboard shows green status"
-        evidence:
-          required: true
-          types: [screenshot]
-
-  - name: Approval Step
-    type: approval
-    description: Require manager approval
-    approval:
-      required: true
-      approvers: [manager@company.com]
-      timeout: "24h"
-`;
-
-    const tempFile = '/tmp/enhanced-operation.yaml';
-    fs.writeFileSync(tempFile, enhancedYaml);
+    const tempFile = `/tmp/samaritan-test-${Date.now()}-enhanced-operation.yaml`;
+    fs.writeFileSync(tempFile, enhancedStepFieldsYaml);
 
     try {
       const operation = await parseOperation(tempFile);
@@ -159,7 +84,7 @@ steps:
       types: [invalid_evidence]
 `;
 
-    const tempFile = '/tmp/invalid-operation.yaml';
+    const tempFile = `/tmp/samaritan-test-${Date.now()}-invalid-operation.yaml`;
     fs.writeFileSync(tempFile, invalidYaml);
 
     try {
@@ -183,7 +108,7 @@ steps:
     description: Missing name should fail
 `;
 
-    const tempFile = '/tmp/invalid-steps.yaml';
+    const tempFile = `/tmp/samaritan-test-${Date.now()}-invalid-steps.yaml`;
     fs.writeFileSync(tempFile, invalidStepsYaml);
 
     try {
@@ -207,7 +132,7 @@ steps:
     timeout: "invalid"
 `;
 
-    const tempFile = '/tmp/invalid-numeric.yaml';
+    const tempFile = `/tmp/samaritan-test-${Date.now()}-invalid-numeric.yaml`;
     fs.writeFileSync(tempFile, invalidNumericYaml);
 
     try {
@@ -230,7 +155,7 @@ steps:
     type: unknown
 `;
 
-    const tempFile = '/tmp/error-test.yaml';
+    const tempFile = `/tmp/samaritan-test-${Date.now()}-error-test.yaml`;
     fs.writeFileSync(tempFile, invalidYaml);
 
     try {
@@ -249,21 +174,8 @@ steps:
   });
 
   it('should handle conditional steps', async () => {
-    const conditionalYaml = `
-name: Conditional Test
-version: 1.0.0
-environments:
-  - name: default
-steps:
-  - name: Conditional Step
-    type: conditional
-    if: "\${{ success() }}"
-    command: echo "Previous steps succeeded"
-    description: Only run if previous steps passed
-`;
-
-    const tempFile = '/tmp/conditional-test.yaml';
-    fs.writeFileSync(tempFile, conditionalYaml);
+    const tempFile = `/tmp/samaritan-test-${Date.now()}-conditional-test.yaml`;
+    fs.writeFileSync(tempFile, conditionalStepYaml);
 
     try {
       const operation = await parseOperation(tempFile);
@@ -278,28 +190,8 @@ steps:
   });
 
   it('should preserve all enhanced preflight fields', async () => {
-    const preflightYaml = `
-name: Preflight Test
-version: 1.0.0
-environments:
-  - name: default
-steps:
-  - name: Enhanced Preflight
-    type: automatic
-    phase: preflight
-    command: systemctl is-active docker
-    condition: active
-    description: Verify Docker service is running
-    timeout: 10
-    evidence:
-      required: true
-  - name: Simple Step
-    type: automatic
-    command: echo done
-`;
-
-    const tempFile = '/tmp/preflight-test.yaml';
-    fs.writeFileSync(tempFile, preflightYaml);
+    const tempFile = `/tmp/samaritan-test-${Date.now()}-preflight-test.yaml`;
+    fs.writeFileSync(tempFile, enhancedPreflightYaml);
 
     try {
       const operation = await parseOperation(tempFile);

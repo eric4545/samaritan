@@ -5,8 +5,8 @@ import fs from 'fs';
 import { deploymentOperationYaml } from '../fixtures/operations';
 
 describe('Manual Generation CLI Command', () => {
-  const testInputFilePath = '/tmp/test-deployment.yaml';
-  const outputFilePath = '/tmp/temp-test-manual.md';
+  const testInputFilePath = `/tmp/samaritan-test-${Date.now()}-test-deployment.yaml`;
+  const outputFilePath = `/tmp/samaritan-test-${Date.now()}-temp-test-manual.md`;
 
   // Use shared test YAML from fixtures
   const testYamlContent = deploymentOperationYaml;

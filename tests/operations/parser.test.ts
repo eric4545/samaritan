@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import { parseOperation } from '../../src/operations/parser';
 import { Operation, Environment, OperationMetadata } from '../../src/models/operation';
+import { minimalTestYaml, invalidOperationYaml, enhancedOperationYaml } from '../fixtures/operations';
 
 describe('Enhanced Operation Parser', () => {
   it('should parse legacy deployment.yaml with backward compatibility', async () => {
@@ -66,21 +67,9 @@ describe('Enhanced Operation Parser', () => {
   });
 
   it('should handle minimal YAML with proper defaults', async () => {
-    // Create a minimal test operation
-    const minimalYaml = `
-name: Minimal Test
-version: 1.0.0
-environments:
-  - name: default
-steps:
-  - name: Test Step
-    type: automatic
-    command: echo "test"
-`;
-    
     // Write to temporary file for testing
-    const tempFile = '/tmp/minimal-test.yaml';
-    fs.writeFileSync(tempFile, minimalYaml);
+    const tempFile = `/tmp/samaritan-test-${Date.now()}-minimal-test.yaml`;
+    fs.writeFileSync(tempFile, minimalTestYaml);
 
     try {
       const operation = await parseOperation(tempFile);
@@ -110,13 +99,8 @@ steps:
   });
 
   it('should validate required fields and throw errors for invalid YAML', async () => {
-    const invalidYaml = `
-name: Invalid Operation
-# Missing version and steps
-`;
-    
-    const tempFile = '/tmp/invalid-test.yaml';
-    fs.writeFileSync(tempFile, invalidYaml);
+    const tempFile = `/tmp/samaritan-test-${Date.now()}-invalid-test.yaml`;
+    fs.writeFileSync(tempFile, invalidOperationYaml);
 
     try {
       await assert.rejects(async () => {
@@ -128,40 +112,8 @@ name: Invalid Operation
   });
 
   it('should preserve all new enhanced fields when present', async () => {
-    const enhancedYaml = `
-name: Enhanced Operation
-version: 2.0.0
-description: Full-featured operation
-author: test-author
-category: deployment
-tags: [test, enhanced]
-emergency: true
-environments:
-  - name: staging
-    description: Staging environment
-    variables:
-      REPLICAS: 2
-    restrictions: [business-hours]
-    approval_required: false
-    validation_required: true
-preflight:
-  - name: Check prerequisites
-    type: command
-    command: echo "checking"
-    description: Verify system state
-steps:
-  - name: Deploy
-    type: automatic
-    description: Deploy the application
-    command: kubectl apply -f deployment.yaml
-    timeout: 300
-    evidence:
-      required: true
-      types: [screenshot, log]
-`;
-
-    const tempFile = '/tmp/enhanced-test.yaml';
-    fs.writeFileSync(tempFile, enhancedYaml);
+    const tempFile = `/tmp/samaritan-test-${Date.now()}-enhanced-test.yaml`;
+    fs.writeFileSync(tempFile, enhancedOperationYaml);
 
     try {
       const operation = await parseOperation(tempFile);

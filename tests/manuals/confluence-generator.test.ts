@@ -1,7 +1,22 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
 import { generateConfluenceContent } from '../../src/cli/commands/generate'
-import { deploymentOperation, deploymentOperationYaml, operationWithSubSteps, operationWithSectionHeadingsYaml, operationWithSectionHeadingFirstYaml } from '../fixtures/operations'
+import {
+  deploymentOperation,
+  deploymentOperationYaml,
+  operationWithSubSteps,
+  operationWithSectionHeadingsYaml,
+  operationWithSectionHeadingFirstYaml,
+  multiLineCommandYaml,
+  subStepsYaml,
+  dependenciesYaml,
+  conditionalConfluenceYaml,
+  markdownInstructionsYaml,
+  markdownWithVariablesYaml,
+  stepWithVariablesYaml,
+  markdownLinksYaml,
+  globalRollbackYaml
+} from '../fixtures/operations'
 import * as yaml from 'js-yaml'
 
 // Helper to generate Confluence content from YAML string
@@ -34,26 +49,7 @@ describe('Confluence Generator Tests', () => {
   })
 
   it('should format multi-line commands with actual newlines', () => {
-    const multiLineYaml = `name: Multi-line Test
-version: 1.0.0
-description: Test multi-line commands
-
-environments:
-  - name: staging
-    variables:
-      ENV: staging
-
-steps:
-  - name: Multi-line Command
-    type: automatic
-    phase: flight
-    command: |
-      echo "line 1"
-      echo "line 2"
-      echo "line 3"
-`
-
-    const content = generateConfluence(multiLineYaml)
+    const content = generateConfluence(multiLineCommandYaml)
 
     // Multi-line commands should use {code:bash} with actual newlines
     assert.match(content, /echo "line 1"\necho "line 2"\necho "line 3"/)
@@ -77,27 +73,6 @@ steps:
   })
 
   it('should handle sub-steps in table format', () => {
-    const subStepsYaml = `name: Sub-steps Test
-version: 1.0.0
-description: Test sub-steps
-
-environments:
-  - name: staging
-
-steps:
-  - name: Parent Step
-    type: manual
-    phase: flight
-    instruction: Main task
-    sub_steps:
-      - name: Sub Task A
-        type: automatic
-        command: echo "A"
-      - name: Sub Task B
-        type: automatic
-        command: echo "B"
-`
-
     const content = generateConfluence(subStepsYaml)
 
     // Should have sub-step rows with alphanumeric IDs
@@ -120,51 +95,14 @@ steps:
   })
 
   it('should include dependencies in step info', () => {
-    const depsYaml = `name: Dependencies Test
-version: 1.0.0
-description: Test dependencies
-
-environments:
-  - name: staging
-
-steps:
-  - name: Step One
-    type: automatic
-    phase: flight
-    command: echo "one"
-
-  - name: Step Two
-    type: automatic
-    phase: flight
-    command: echo "two"
-    needs:
-      - Step One
-`
-
-    const content = generateConfluence(depsYaml)
+    const content = generateConfluence(dependenciesYaml)
 
     // Should show dependencies
     assert.match(content, /\(-\) Depends on: Step One/)
   })
 
   it('should display conditional steps with condition', () => {
-    const conditionalYaml = `name: Conditional Test
-version: 1.0.0
-description: Test conditional steps
-
-environments:
-  - name: staging
-  - name: production
-
-steps:
-  - name: Production Only Step
-    type: conditional
-    phase: flight
-    command: echo "prod only"
-    if: "\${ENVIRONMENT} == 'production'"
-`
-
-    const content = generateConfluence(conditionalYaml)
+    const content = generateConfluence(conditionalConfluenceYaml)
 
     // Should show conditional icon (Confluence emoticon) and expression with escaped braces
     assert.match(content, /\(\?\)/)
@@ -201,25 +139,7 @@ steps:
   })
 
   it('should handle markdown instructions wrapped in markdown block', () => {
-    const markdownYaml = `name: Markdown Test
-version: 1.0.0
-description: Test markdown instructions
-
-environments:
-  - name: staging
-
-steps:
-  - name: Manual Step
-    type: manual
-    phase: flight
-    instruction: |
-      # Instructions
-      1. First thing
-      2. Second thing
-      **Important note**
-`
-
-    const content = generateConfluence(markdownYaml)
+    const content = generateConfluence(markdownInstructionsYaml)
 
     // Should wrap markdown instructions in {markdown} block to preserve formatting and links
     assert.match(content, /\{markdown\}/)
@@ -231,28 +151,7 @@ steps:
   })
 
   it('should preserve variables in markdown instructions without escaping', () => {
-    const markdownWithVarsYaml = `name: Escaping Test
-version: 1.0.0
-description: Test variable handling in markdown
-
-environments:
-  - name: staging
-    variables:
-      API_ENDPOINT: "https://api.staging.com"
-      DB_HOST: "db.staging.com"
-
-steps:
-  - name: Manual Step with Variables
-    type: manual
-    phase: flight
-    instruction: |
-      # Check health endpoints
-      1. Verify API: curl \${API_ENDPOINT}/health
-      2. Check database: ping \${DB_HOST}
-      **Important**: Variables like \${FOO} should be preserved
-`
-
-    const content = generateConfluence(markdownWithVarsYaml)
+    const content = generateConfluence(markdownWithVariablesYaml)
 
     // Variables in {markdown} block don't need escaping
     assert.match(content, /\{markdown\}/)
@@ -265,23 +164,7 @@ steps:
   })
 
   it('should escape Confluence macros in step names and descriptions', () => {
-    const stepWithVarsYaml = `name: Escaping Test
-version: 1.0.0
-description: Test variable escaping
-
-environments:
-  - name: staging
-
-steps:
-  - name: Deploy \${SERVICE_NAME} to cluster
-    description: Deploys using \${DEPLOY_METHOD}
-    type: automatic
-    phase: flight
-    if: \${ENVIRONMENT} == 'production'
-    command: echo "deploy"
-`
-
-    const content = generateConfluence(stepWithVarsYaml)
+    const content = generateConfluence(stepWithVariablesYaml)
 
     // Variables in step names, descriptions, and conditions should be escaped
     assert.match(content, /Deploy \$\\{SERVICE_NAME\\} to cluster/)
@@ -309,25 +192,7 @@ steps:
   })
 
   it('should preserve markdown links in markdown block', () => {
-    const linksYaml = `name: Links Test
-version: 1.0.0
-description: Test link conversion
-
-environments:
-  - name: staging
-
-steps:
-  - name: Check Documentation
-    type: manual
-    phase: flight
-    instruction: |
-      Review the following:
-      - [API Docs](https://api.example.com/docs)
-      - [Dashboard](https://dashboard.example.com)
-      - Contact [Support](mailto:support@example.com)
-`
-
-    const content = generateConfluence(linksYaml)
+    const content = generateConfluence(markdownLinksYaml)
 
     // Markdown links should be preserved in markdown format ({markdown} block displays them)
     assert.match(content, /\{markdown\}/)
@@ -337,34 +202,7 @@ steps:
   })
 
   it('should render global rollback section with instructions', () => {
-    const rollbackYaml = `name: Rollback Test
-version: 1.0.0
-description: Test global rollback
-
-environments:
-  - name: staging
-  - name: production
-
-steps:
-  - name: Deploy
-    type: automatic
-    phase: flight
-    command: kubectl apply -f app.yaml
-
-rollback:
-  automatic: false
-  conditions:
-    - health_check_failure
-    - error_rate_spike
-  steps:
-    - command: kubectl rollout undo deployment/app
-    - instruction: |
-        Verify rollback completed:
-        1. Check pods are running
-        2. Test API endpoints
-`
-
-    const content = generateConfluence(rollbackYaml)
+    const content = generateConfluence(globalRollbackYaml)
 
     // Should have global rollback section
     assert.match(content, /h3\. Global Rollback Plan/)
