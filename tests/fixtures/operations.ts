@@ -772,3 +772,48 @@ steps:
     pic: QA Team
     timeline: after Deploy Frontend, 20m
 `
+
+/**
+ * Evidence requirements test YAML
+ */
+export const evidenceRequiredYaml = `name: Evidence Test
+version: 1.0.0
+description: Test evidence requirements
+
+environments:
+  - name: staging
+  - name: production
+
+steps:
+  - name: Deploy Application
+    type: automatic
+    phase: flight
+    command: kubectl apply -f deployment.yaml
+    evidence:
+      required: true
+      types: ["screenshot", "command_output"]
+
+  - name: Manual Verification
+    type: manual
+    phase: postflight
+    instruction: |
+      Verify deployment is successful:
+      1. Check application homepage
+      2. Test login functionality
+    evidence:
+      required: true
+      types: ["screenshot"]
+
+  - name: Optional Check
+    type: manual
+    phase: postflight
+    instruction: Check monitoring dashboards
+    evidence:
+      required: false
+      types: ["screenshot", "log"]
+
+  - name: No Evidence
+    type: automatic
+    phase: postflight
+    command: echo "Done"
+`

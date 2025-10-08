@@ -337,6 +337,12 @@ function createStepsTable(
       stepCellContent.push(paragraph(text(`🔀 Condition: ${step.if}`)))
     }
 
+    // Evidence requirements
+    const evidenceInfo = formatEvidenceInfo(step.evidence)
+    if (evidenceInfo) {
+      stepCellContent.push(evidenceInfo)
+    }
+
     // Build command cells for each environment
     const cells = [tableCell()(...stepCellContent)]
 
@@ -404,6 +410,12 @@ function createStepsTable(
           subStepCellContent.push(paragraph(text(`🔀 Condition: ${subStep.if}`)))
         }
 
+        // Evidence requirements for sub-steps
+        const subEvidenceInfo = formatEvidenceInfo(subStep.evidence)
+        if (subEvidenceInfo) {
+          subStepCellContent.push(subEvidenceInfo)
+        }
+
         const subCells = [tableCell()(...subStepCellContent)]
 
         environments.forEach(env => {
@@ -449,6 +461,19 @@ function substituteVariables(
     substitutedCommand = substitutedCommand.replace(regex, mergedVariables[key])
   }
   return substitutedCommand
+}
+
+/**
+ * Format evidence requirements as ADF paragraph
+ */
+function formatEvidenceInfo(evidence?: { required?: boolean; types?: string[] }): any {
+  if (!evidence) return null
+
+  const types = evidence.types || []
+  const typesText = types.length > 0 ? `: ${types.join(', ')}` : ''
+  const status = evidence.required ? 'Required' : 'Optional'
+
+  return paragraph(em(text(`📎 Evidence ${status}${typesText}`)))
 }
 
 /**

@@ -10,16 +10,21 @@ import { generateADFString } from '../../manuals/adf-generator';
 interface GenerateOptions {
   output?: string;
   format?: 'markdown' | 'confluence' | 'adf' | 'html' | 'pdf';
-  env?: string;
-  environment?: string; // Keep for backward compatibility
+  env?: string; // Primary option: -e, --env
+  environment?: string; // DEPRECATED: Legacy alias for backward compatibility
   resolveVars?: boolean;
   template?: string;
   gantt?: boolean;
 }
 
+// Helper to get target environment from options (handles both --env and legacy --environment)
+function getTargetEnvironment(options: GenerateOptions): string | undefined {
+  return options.env || options.environment
+}
+
 class DocumentationGenerator {
   async generateManual(operationFile: string, options: GenerateOptions): Promise<void> {
-    const targetEnv = options.env || options.environment;
+    const targetEnv = getTargetEnvironment(options)
     const envSuffix = targetEnv ? ` (${targetEnv})` : '';
     const format = options.format || 'markdown';
     console.log(`📄 Generating manual for: ${operationFile}${envSuffix} (format: ${format})`);
@@ -57,7 +62,7 @@ class DocumentationGenerator {
     envFileSuffix: string,
     options: GenerateOptions
   ): Promise<void> {
-    const targetEnv = options.env || options.environment;
+    const targetEnv = getTargetEnvironment(options)
 
     // Create generation metadata
     const metadata = await createGenerationMetadata(
@@ -87,7 +92,8 @@ class DocumentationGenerator {
     envFileSuffix: string,
     options: GenerateOptions
   ): Promise<void> {
-    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars, options.gantt);
+    const targetEnv = getTargetEnvironment(options)
+    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars, options.gantt, targetEnv);
     const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.confluence`;
 
     await mkdir(dirname(outputFile), { recursive: true });
@@ -102,7 +108,7 @@ class DocumentationGenerator {
     envFileSuffix: string,
     options: GenerateOptions
   ): Promise<void> {
-    const targetEnv = options.env || options.environment;
+    const targetEnv = getTargetEnvironment(options)
     const metadata = await createGenerationMetadata(
       operationName,
       operation.id,
@@ -125,7 +131,7 @@ class DocumentationGenerator {
     envFileSuffix: string,
     options: GenerateOptions
   ): Promise<void> {
-    const targetEnv = options.env || options.environment;
+    const targetEnv = getTargetEnvironment(options)
     const metadata = await createGenerationMetadata(
       operationName,
       operation.id,
@@ -186,7 +192,8 @@ class DocumentationGenerator {
   }
 
   private async generateConfluencePage(operation: any, operationName: string, options: GenerateOptions): Promise<void> {
-    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars, options.gantt);
+    const targetEnv = getTargetEnvironment(options)
+    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars, options.gantt, targetEnv);
     const outputFile = options.output || `confluence/${operationName}.confluence`;
 
     await mkdir(dirname(outputFile), { recursive: true });
@@ -196,7 +203,7 @@ class DocumentationGenerator {
   }
 
   private async generateADFDocs(operation: any, operationName: string, options: GenerateOptions): Promise<void> {
-    const targetEnv = options.env || options.environment;
+    const targetEnv = getTargetEnvironment(options)
     const metadata = await createGenerationMetadata(
       operationName,
       operation.id,
@@ -340,8 +347,8 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
 </html>`;
   }
 
-  private createConfluenceContent(operation: any, resolveVars: boolean = false, includeGantt: boolean = false): string {
-    return generateConfluenceContent(operation, resolveVars, includeGantt);
+  private createConfluenceContent(operation: any, resolveVars: boolean = false, includeGantt: boolean = false, targetEnvironment?: string): string {
+    return generateConfluenceContent(operation, resolveVars, includeGantt, targetEnvironment);
   }
 
   async generateSchedule(operationFile: string, options: GenerateOptions): Promise<void> {
@@ -363,7 +370,22 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
 }
 
 // Export as standalone function for testing
-export function generateConfluenceContent(operation: any, resolveVars: boolean = false, includeGantt: boolean = false): string {
+export function generateConfluenceContent(operation: any, resolveVars: boolean = false, includeGantt: boolean = false, targetEnvironment?: string): string {
+    // Filter environments if specified
+    let environments = operation.environments;
+    if (targetEnvironment) {
+      environments = operation.environments.filter((env: any) => env.name === targetEnvironment);
+      if (environments.length === 0) {
+        throw new Error(`Environment '${targetEnvironment}' not found in operation. Available: ${operation.environments.map((e: any) => e.name).join(', ')}`);
+      }
+    }
+
+    // Create filtered operation for generation
+    const filteredOperation = {
+      ...operation,
+      environments
+    };
+
     // Use Confluence emoticons instead of Unicode emojis for better compatibility
     const phaseIcons = {
       preflight: '(/)',
@@ -421,6 +443,17 @@ export function generateConfluenceContent(operation: any, resolveVars: boolean =
       return result.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
     };
 
+    // Helper to format evidence area
+    const formatEvidenceArea = (evidence: any): string => {
+      if (!evidence) return ''
+
+      const types = evidence.types || []
+      const typesText = types.length > 0 ? ` - ${types.join(', ')}` : ''
+      const status = evidence.required ? 'Required' : 'Optional'
+
+      return `\n{expand:title=📎 Evidence (${status}${typesText})}Paste evidence here{expand}`
+    };
+
     // Helper to format multi-line text for Confluence table cells
     const formatForTableCell = (text: string, useCodeBlock: boolean = true): string => {
       const hasMultipleLines = text.includes('\n');
@@ -466,15 +499,15 @@ export function generateConfluenceContent(operation: any, resolveVars: boolean =
     };
 
     // Build header panel
-    let content = `{panel:title=${operation.name} - Operation Documentation|borderStyle=solid|borderColor=#0052CC|titleBGColor=#DEEBFF|bgColor=#fff}
+    let content = `{panel:title=${filteredOperation.name} - Operation Documentation|borderStyle=solid|borderColor=#0052CC|titleBGColor=#DEEBFF|bgColor=#fff}
 
 h2. Overview
-*Version:* ${operation.version}
-*Description:* ${operation.description}
-*Author:* ${operation.author || 'Not specified'}
-${operation.category ? `*Category:* ${operation.category}` : ''}
-*Environments:* ${operation.environments.map((e: any) => e.name).join(', ')}
-${operation.emergency ? '*Emergency Operation:* {status:colour=Red|title=YES}' : ''}
+*Version:* ${filteredOperation.version}
+*Description:* ${filteredOperation.description}
+*Author:* ${filteredOperation.author || 'Not specified'}
+${filteredOperation.category ? `*Category:* ${filteredOperation.category}` : ''}
+*Environments:* ${filteredOperation.environments.map((e: any) => e.name).join(', ')}
+${filteredOperation.emergency ? '*Emergency Operation:* {status:colour=Red|title=YES}' : ''}
 
 {panel}
 
@@ -482,7 +515,7 @@ ${operation.emergency ? '*Emergency Operation:* {status:colour=Red|title=YES}' :
 
     // Add Gantt chart if requested and steps have timeline data
     if (includeGantt) {
-        const stepsWithTimeline = operation.steps.filter((step: any) => step.timeline);
+        const stepsWithTimeline = filteredOperation.steps.filter((step: any) => step.timeline);
 
         if (stepsWithTimeline.length > 0) {
             content += `h2. Timeline Schedule
@@ -490,7 +523,7 @@ ${operation.emergency ? '*Emergency Operation:* {status:colour=Red|title=YES}' :
 {markdown}
 \`\`\`mermaid
 gantt
-    title ${operation.name} Timeline
+    title ${filteredOperation.name} Timeline
     dateFormat YYYY-MM-DD HH:mm
     axisFormat %m-%d %H:%M
 
@@ -540,12 +573,12 @@ gantt
 
 
     // Dependencies section
-    if (operation.needs && operation.needs.length > 0) {
+    if (filteredOperation.needs && filteredOperation.needs.length > 0) {
       content += `h2. Dependencies
 
 {info}This operation depends on the following operations being completed first:{info}
 
-${operation.needs.map((dep: string) => `* *${dep}*`).join('\n')}
+${filteredOperation.needs.map((dep: string) => `* *${dep}*`).join('\n')}
 
 `;
     }
@@ -554,7 +587,7 @@ ${operation.needs.map((dep: string) => `* *${dep}*`).join('\n')}
     content += `h2. Environments
 
 || Environment || Description || Approval Required || Validation Required || Targets || Variables ||
-${operation.environments.map((env: any) => {
+${filteredOperation.environments.map((env: any) => {
       const varCount = Object.keys(env.variables || {}).length;
       const varsText = Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n');
       const varsCell = varCount > 0
@@ -572,7 +605,7 @@ ${operation.environments.map((env: any) => {
       postflight: []
     };
 
-    operation.steps.forEach((step: any) => {
+    filteredOperation.steps.forEach((step: any) => {
       const phase = step.phase || 'flight';
       if (phases[phase]) {
         phases[phase].push(step);
@@ -604,7 +637,7 @@ ${operation.environments.map((env: any) => {
       if (!firstStepIsSection) {
         // Build table header with environment columns
         content += `|| Step ||`;
-        operation.environments.forEach((env: any) => {
+        filteredOperation.environments.forEach((env: any) => {
           content += ` ${env.name} ||`;
         });
         content += '\n';
@@ -637,7 +670,7 @@ ${operation.environments.map((env: any) => {
 
           // Reopen table
           content += `|| Step ||`;
-          operation.environments.forEach((env: any) => {
+          filteredOperation.environments.forEach((env: any) => {
             content += ` ${env.name} ||`;
           });
           content += '\n';
@@ -658,7 +691,7 @@ ${operation.environments.map((env: any) => {
 
         // Build all command cells for each environment
         const commandCells: string[] = [];
-        operation.environments.forEach((env: any) => {
+        filteredOperation.environments.forEach((env: any) => {
           const rawCommand = step.command || step.instruction || '';
           let displayCommand = rawCommand;
 
@@ -703,6 +736,12 @@ ${operation.environments.map((env: any) => {
           } else {
             cellContent = `_(${step.type} step)_`;
           }
+
+          // Add evidence area if required
+          if (step.evidence) {
+            cellContent += formatEvidenceArea(step.evidence);
+          }
+
           commandCells.push(cellContent);
         });
 
@@ -737,7 +776,7 @@ ${operation.environments.map((env: any) => {
 
               // Reopen table
               content += `|| Step ||`;
-              operation.environments.forEach((env: any) => {
+              filteredOperation.environments.forEach((env: any) => {
                 content += ` ${env.name} ||`;
               });
               content += '\n';
@@ -753,7 +792,7 @@ ${operation.environments.map((env: any) => {
 
             // Build all command cells for sub-step
             const subCommandCells: string[] = [];
-            operation.environments.forEach((env: any) => {
+            filteredOperation.environments.forEach((env: any) => {
               const rawCommand = subStep.command || subStep.instruction || '';
               let displayCommand = rawCommand;
 
@@ -778,6 +817,12 @@ ${operation.environments.map((env: any) => {
               } else {
                 cellContent = `_(${subStep.type} step)_`;
               }
+
+              // Add evidence area if required
+              if (subStep.evidence) {
+                cellContent += formatEvidenceArea(subStep.evidence);
+              }
+
               subCommandCells.push(cellContent);
             });
 
@@ -793,19 +838,19 @@ ${operation.environments.map((env: any) => {
     });
 
     // Rollback section if available
-    const stepsWithRollback = operation.steps.filter((step: any) => step.rollback);
+    const stepsWithRollback = filteredOperation.steps.filter((step: any) => step.rollback);
     if (stepsWithRollback.length > 0) {
       content += `h2. (<) Rollback Procedures
 
 {warning}If deployment fails, execute the following rollback steps in reverse order:{warning}
 
-|| Step || ${operation.environments.map((e: any) => `${e.name} ||`).join(' ')}
+|| Step || ${filteredOperation.environments.map((e: any) => `${e.name} ||`).join(' ')}
 `;
 
       stepsWithRollback.forEach((step: any) => {
         // Build all rollback cells
         const rollbackCells: string[] = [];
-        operation.environments.forEach((env: any) => {
+        filteredOperation.environments.forEach((env: any) => {
           const rollbackCommand = step.rollback!.command || step.rollback!.instruction || '';
           let displayCommand = rollbackCommand;
 
@@ -830,6 +875,12 @@ ${operation.environments.map((env: any) => {
           } else {
             cellContent = '-';
           }
+
+          // Add evidence area if required for rollback
+          if (step.rollback!.evidence) {
+            cellContent += formatEvidenceArea(step.rollback!.evidence);
+          }
+
           rollbackCells.push(cellContent);
         });
 
@@ -841,7 +892,7 @@ ${operation.environments.map((env: any) => {
     }
 
     // Global rollback section if available
-    if (operation.rollback && operation.rollback.steps && operation.rollback.steps.length > 0) {
+    if (filteredOperation.rollback && filteredOperation.rollback.steps && filteredOperation.rollback.steps.length > 0) {
       if (stepsWithRollback.length === 0) {
         // Only add header if not already added
         content += `h2. (<) Rollback Procedures
@@ -853,16 +904,16 @@ ${operation.environments.map((env: any) => {
 
       content += `h3. Global Rollback Plan
 
-*Automatic*: ${operation.rollback.automatic ? 'Yes' : 'No'}
-${operation.rollback.conditions?.length ? `*Conditions*: ${operation.rollback.conditions.join(', ')}\n` : ''}
+*Automatic*: ${filteredOperation.rollback.automatic ? 'Yes' : 'No'}
+${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOperation.rollback.conditions.join(', ')}\n` : ''}
 
-|| Step || ${operation.environments.map((e: any) => `${e.name} ||`).join(' ')}
+|| Step || ${filteredOperation.environments.map((e: any) => `${e.name} ||`).join(' ')}
 `;
 
-      operation.rollback.steps.forEach((rollbackStep: any, index: number) => {
+      filteredOperation.rollback.steps.forEach((rollbackStep: any, index: number) => {
         const rollbackCells: string[] = [];
 
-        operation.environments.forEach((env: any) => {
+        filteredOperation.environments.forEach((env: any) => {
           const rollbackCommand = rollbackStep.command || rollbackStep.instruction || '';
           let displayCommand = rollbackCommand;
 
@@ -898,6 +949,12 @@ ${operation.rollback.conditions?.length ? `*Conditions*: ${operation.rollback.co
           } else {
             cellContent = '-';
           }
+
+          // Add evidence area if required for global rollback step
+          if (rollbackStep.evidence) {
+            cellContent += formatEvidenceArea(rollbackStep.evidence);
+          }
+
           rollbackCells.push(cellContent);
         });
 

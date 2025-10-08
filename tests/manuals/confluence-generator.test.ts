@@ -16,14 +16,15 @@ import {
   stepWithVariablesYaml,
   markdownLinksYaml,
   globalRollbackYaml,
-  ganttTimelineYaml
+  ganttTimelineYaml,
+  evidenceRequiredYaml
 } from '../fixtures/operations'
 import * as yaml from 'js-yaml'
 
 // Helper to generate Confluence content from YAML string
-function generateConfluence(operationYaml: string, resolveVars: boolean = false, includeGantt: boolean = false): string {
+function generateConfluence(operationYaml: string, resolveVars: boolean = false, includeGantt: boolean = false, targetEnvironment?: string): string {
   const operation = yaml.load(operationYaml)
-  return generateConfluenceContent(operation, resolveVars, includeGantt)
+  return generateConfluenceContent(operation, resolveVars, includeGantt, targetEnvironment)
 }
 
 describe('Confluence Generator Tests', () => {
@@ -327,5 +328,97 @@ steps:
     assert.doesNotMatch(content, /\{markdown\}/)
     assert.doesNotMatch(content, /```mermaid/)
     assert.doesNotMatch(content, /h2\. Timeline Schedule/)
+  })
+
+  it('should filter environments when targetEnvironment is specified (staging only)', () => {
+    const content = generateConfluence(deploymentOperationYaml, false, false, 'staging')
+
+    // Should only have staging column in table header
+    assert.match(content, /\|\| Step \|\| staging \|\|/)
+
+    // Should NOT have production column
+    assert.doesNotMatch(content, /\|\| Step \|\| staging \|\| production \|\|/)
+    assert.doesNotMatch(content, /production \|\|/)
+
+    // Should show only staging in environments overview
+    assert.match(content, /\*Environments:\* staging/)
+    assert.doesNotMatch(content, /\*Environments:\*.*production/)
+  })
+
+  it('should filter environments when targetEnvironment is specified (production only)', () => {
+    const content = generateConfluence(deploymentOperationYaml, false, false, 'production')
+
+    // Should only have production column in table header
+    assert.match(content, /\|\| Step \|\| production \|\|/)
+
+    // Should NOT have staging column
+    assert.doesNotMatch(content, /\|\| Step \|\| staging \|\| production \|\|/)
+    assert.doesNotMatch(content, /staging \|\|/)
+
+    // Should show only production in environments overview
+    assert.match(content, /\*Environments:\* production/)
+    assert.doesNotMatch(content, /\*Environments:\*.*staging/)
+  })
+
+  it('should show all environments when targetEnvironment is not specified', () => {
+    const content = generateConfluence(deploymentOperationYaml, false, false)
+
+    // Should have both staging and production columns
+    assert.match(content, /\|\| Step \|\| staging \|\| production \|\|/)
+
+    // Should show both environments in environments overview
+    assert.match(content, /\*Environments:\* staging, production/)
+  })
+
+  it('should throw error when targetEnvironment does not exist', () => {
+    assert.throws(
+      () => generateConfluence(deploymentOperationYaml, false, false, 'nonexistent'),
+      /Environment 'nonexistent' not found/
+    )
+  })
+
+  it('should render evidence expand macro when evidence is required', () => {
+    const content = generateConfluence(evidenceRequiredYaml)
+
+    // Should have evidence expand macro for Deploy Application step (required, multiple types)
+    assert.match(content, /\{expand:title=📎 Evidence \(Required - screenshot, command_output\)\}Paste evidence here\{expand\}/)
+
+    // Should have evidence expand macro for Manual Verification step (required, single type)
+    assert.match(content, /\{expand:title=📎 Evidence \(Required - screenshot\)\}Paste evidence here\{expand\}/)
+
+    // Should have evidence expand macro for Optional Check step (optional)
+    assert.match(content, /\{expand:title=📎 Evidence \(Optional - screenshot, log\)\}Paste evidence here\{expand\}/)
+  })
+
+  it('should not render evidence expand macro when evidence is not specified', () => {
+    const content = generateConfluence(evidenceRequiredYaml)
+
+    // Count evidence expand macros - should be 3 (one for each step with evidence, repeated across environments)
+    const evidenceMatches = content.match(/\{expand:title=📎 Evidence/g)
+    // We have 2 environments (staging, production) and 3 steps with evidence = 6 expand macros
+    assert.strictEqual(evidenceMatches?.length, 6, 'Should have exactly 6 evidence expand macros (3 steps × 2 environments)')
+
+    // The "No Evidence" step should not have an expand macro
+    // Search for the No Evidence step and verify no evidence expand immediately follows
+    const noEvidencePattern = /No Evidence.*?\n/
+    assert.match(content, noEvidencePattern)
+  })
+
+  it('should render evidence with required indicator', () => {
+    const content = generateConfluence(evidenceRequiredYaml)
+
+    // Required evidence should have "Required" in the title
+    assert.match(content, /Evidence \(Required/)
+
+    // Optional evidence should have "Optional" in the title
+    assert.match(content, /Evidence \(Optional/)
+  })
+
+  it('should include evidence types in expand macro title', () => {
+    const content = generateConfluence(evidenceRequiredYaml)
+
+    // Should show evidence types in the title
+    assert.match(content, /Evidence \(Required - screenshot, command_output\)/)
+    assert.match(content, /Evidence \(Optional - screenshot, log\)/)
   })
 })

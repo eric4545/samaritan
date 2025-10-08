@@ -18,6 +18,16 @@ function substituteVariables(
   return substitutedCommand;
 }
 
+function formatEvidenceInfo(evidence?: { required?: boolean; types?: string[] }): string {
+  if (!evidence) return ''
+
+  const types = evidence.types || []
+  const typesText = types.length > 0 ? `: ${types.join(', ')}` : ''
+  const status = evidence.required ? 'Required' : 'Optional'
+
+  return `<br>📎 <em>Evidence ${status}${typesText}</em>`
+}
+
 function generateGanttChart(operation: Operation): string {
   // Filter steps that have timeline information
   const stepsWithTimeline = operation.steps.filter(step => step.timeline);
@@ -121,6 +131,9 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
   if (step.if) {
     stepCell += `<br>🔀 <em>Condition: ${step.if}</em>`;
   }
+
+  // Add evidence requirements if present
+  stepCell += formatEvidenceInfo(step.evidence)
 
   rows += `| ${stepCell} |`;
 
@@ -263,6 +276,9 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
   if (step.if) {
     stepCell += `<br>🔀 <em>Condition: ${step.if}</em>`;
   }
+
+  // Add evidence requirements if present
+  stepCell += formatEvidenceInfo(step.evidence)
 
   rows += `| ${stepCell} |`;
 
