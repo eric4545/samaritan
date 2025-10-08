@@ -725,3 +725,50 @@ rollback:
         1. Check pods are running
         2. Test API endpoints
 `
+
+/**
+ * Gantt chart timeline test YAML
+ */
+export const ganttTimelineYaml = `name: Deployment with Timeline
+version: 1.0.0
+description: Test Gantt chart generation with timeline data
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      REPLICAS: 2
+  - name: production
+    description: Production environment
+    variables:
+      REPLICAS: 5
+
+steps:
+  - name: Pre-deployment Check
+    type: automatic
+    phase: preflight
+    command: kubectl get nodes
+    pic: DevOps Team
+    timeline: 2024-01-15 09:00, 30m
+
+  - name: Deploy Backend
+    type: automatic
+    phase: flight
+    command: kubectl apply -f backend.yaml
+    pic: Backend Team
+    timeline: active, 15m
+
+  - name: Deploy Frontend
+    type: automatic
+    phase: flight
+    command: kubectl apply -f frontend.yaml
+    pic: Frontend Team
+    timeline: after Deploy Backend, 10m
+
+  - name: Post-deployment Verification
+    type: manual
+    phase: postflight
+    command: curl https://example.com/health
+    pic: QA Team
+    timeline: after Deploy Frontend, 20m
+`

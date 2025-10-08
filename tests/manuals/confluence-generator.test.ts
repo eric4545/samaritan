@@ -15,14 +15,15 @@ import {
   markdownWithVariablesYaml,
   stepWithVariablesYaml,
   markdownLinksYaml,
-  globalRollbackYaml
+  globalRollbackYaml,
+  ganttTimelineYaml
 } from '../fixtures/operations'
 import * as yaml from 'js-yaml'
 
 // Helper to generate Confluence content from YAML string
-function generateConfluence(operationYaml: string, resolveVars: boolean = false): string {
+function generateConfluence(operationYaml: string, resolveVars: boolean = false, includeGantt: boolean = false): string {
   const operation = yaml.load(operationYaml)
-  return generateConfluenceContent(operation, resolveVars)
+  return generateConfluenceContent(operation, resolveVars, includeGantt)
 }
 
 describe('Confluence Generator Tests', () => {
@@ -265,5 +266,66 @@ describe('Confluence Generator Tests', () => {
     assert.match(content, /Step 1: Initial Setup/)
     assert.match(content, /Step 2: Deploy App/)
     assert.match(content, /Step 3: Verify/)
+  })
+
+  it('should include Gantt chart when requested with timeline data', () => {
+    const content = generateConfluence(ganttTimelineYaml, false, true)
+
+    // Should include Mermaid Gantt chart wrapped in {markdown}
+    assert.match(content, /h2\. Timeline Schedule/)
+    assert.match(content, /\{markdown\}/)
+    assert.match(content, /```mermaid/)
+    assert.match(content, /gantt/)
+    assert.match(content, /title Deployment with Timeline Timeline/)
+
+    // Should include phase sections
+    assert.match(content, /section 🛫 Pre-Flight Phase/)
+    assert.match(content, /section ✈️ Flight Phase/)
+    assert.match(content, /section 🛬 Post-Flight Phase/)
+
+    // Should include step names with PICs
+    assert.match(content, /Pre-deployment Check \(DevOps Team\)/)
+    assert.match(content, /Deploy Backend \(Backend Team\)/)
+    assert.match(content, /Deploy Frontend \(Frontend Team\)/)
+    assert.match(content, /Post-deployment Verification \(QA Team\)/)
+
+    // Should include timeline data
+    assert.match(content, /:2024-01-15 09:00, 30m/)
+    assert.match(content, /:active, 15m/)
+    assert.match(content, /:after Deploy Backend, 10m/)
+    assert.match(content, /:after Deploy Frontend, 20m/)
+  })
+
+  it('should not include Gantt chart when not requested', () => {
+    const content = generateConfluence(ganttTimelineYaml, false, false)
+
+    // Should not include Mermaid Gantt chart when includeGantt is false
+    assert.doesNotMatch(content, /\{markdown\}/)
+    assert.doesNotMatch(content, /```mermaid/)
+    assert.doesNotMatch(content, /gantt/)
+    assert.doesNotMatch(content, /h2\. Timeline Schedule/)
+  })
+
+  it('should not include Gantt chart when no steps have timeline', () => {
+    // Use simple YAML without any timeline data
+    const noTimelineYaml = `name: No Timeline
+version: 1.0.0
+description: Test operation without timeline
+
+environments:
+  - name: staging
+
+steps:
+  - name: Deploy
+    type: automatic
+    phase: flight
+    command: kubectl apply -f app.yaml
+`
+    const content = generateConfluence(noTimelineYaml, false, true)
+
+    // Should not include Gantt chart when no timeline data exists
+    assert.doesNotMatch(content, /\{markdown\}/)
+    assert.doesNotMatch(content, /```mermaid/)
+    assert.doesNotMatch(content, /h2\. Timeline Schedule/)
   })
 })

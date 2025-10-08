@@ -87,7 +87,7 @@ class DocumentationGenerator {
     envFileSuffix: string,
     options: GenerateOptions
   ): Promise<void> {
-    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars);
+    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars, options.gantt);
     const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.confluence`;
 
     await mkdir(dirname(outputFile), { recursive: true });
@@ -186,7 +186,7 @@ class DocumentationGenerator {
   }
 
   private async generateConfluencePage(operation: any, operationName: string, options: GenerateOptions): Promise<void> {
-    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars);
+    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars, options.gantt);
     const outputFile = options.output || `confluence/${operationName}.confluence`;
 
     await mkdir(dirname(outputFile), { recursive: true });
@@ -340,8 +340,8 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
 </html>`;
   }
 
-  private createConfluenceContent(operation: any, resolveVars: boolean = false): string {
-    return generateConfluenceContent(operation, resolveVars);
+  private createConfluenceContent(operation: any, resolveVars: boolean = false, includeGantt: boolean = false): string {
+    return generateConfluenceContent(operation, resolveVars, includeGantt);
   }
 
   async generateSchedule(operationFile: string, options: GenerateOptions): Promise<void> {
@@ -363,7 +363,7 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
 }
 
 // Export as standalone function for testing
-export function generateConfluenceContent(operation: any, resolveVars: boolean = false): string {
+export function generateConfluenceContent(operation: any, resolveVars: boolean = false, includeGantt: boolean = false): string {
     // Use Confluence emoticons instead of Unicode emojis for better compatibility
     const phaseIcons = {
       preflight: '(/)',
@@ -479,6 +479,65 @@ ${operation.emergency ? '*Emergency Operation:* {status:colour=Red|title=YES}' :
 {panel}
 
 `;
+
+    // Add Gantt chart if requested and steps have timeline data
+    if (includeGantt) {
+        const stepsWithTimeline = operation.steps.filter((step: any) => step.timeline);
+
+        if (stepsWithTimeline.length > 0) {
+            content += `h2. Timeline Schedule
+
+{markdown}
+\`\`\`mermaid
+gantt
+    title ${operation.name} Timeline
+    dateFormat YYYY-MM-DD HH:mm
+    axisFormat %m-%d %H:%M
+
+`;
+
+            // Group steps by phase
+            const ganttPhases: { [key: string]: any[] } = {
+                preflight: [],
+                flight: [],
+                postflight: []
+            };
+
+            stepsWithTimeline.forEach((step: any) => {
+                const phase = step.phase || 'flight';
+                if (ganttPhases[phase]) {
+                    ganttPhases[phase].push(step);
+                }
+            });
+
+            // Generate sections for each phase
+            const ganttPhaseNames = {
+                preflight: '🛫 Pre-Flight Phase',
+                flight: '✈️ Flight Phase',
+                postflight: '🛬 Post-Flight Phase'
+            };
+
+            Object.entries(ganttPhases).forEach(([phaseName, phaseSteps]) => {
+                if (phaseSteps.length === 0) return;
+
+                content += `    section ${ganttPhaseNames[phaseName as keyof typeof ganttPhaseNames]}\n`;
+
+                phaseSteps.forEach((step: any) => {
+                    const taskName = step.name.replace(/:/g, ''); // Remove colons as they break Mermaid syntax
+                    const pic = step.pic ? ` (${step.pic})` : '';
+                    const timeline = step.timeline || '';
+                    content += `    ${taskName}${pic} :${timeline}\n`;
+                });
+                content += '\n';
+            });
+
+            content += `\`\`\`
+{markdown}
+
+`;
+        }
+    }
+
 
     // Dependencies section
     if (operation.needs && operation.needs.length > 0) {
