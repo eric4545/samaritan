@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
 import { generateConfluenceContent } from '../../src/cli/commands/generate'
-import { deploymentOperation, deploymentOperationYaml, operationWithSubSteps } from '../fixtures/operations'
+import { deploymentOperation, deploymentOperationYaml, operationWithSubSteps, operationWithSectionHeadingsYaml } from '../fixtures/operations'
 import * as yaml from 'js-yaml'
 
 // Helper to generate Confluence content from YAML string
@@ -379,5 +379,27 @@ rollback:
     assert.match(content, /Verify rollback completed:/)
     assert.match(content, /1\. Check pods are running/)
     assert.match(content, /2\. Test API endpoints/)
+  })
+
+  it('should handle section_heading to break up tables', () => {
+    const content = generateConfluence(operationWithSectionHeadingsYaml)
+
+    // Should have section heading before the step
+    assert.match(content, /h3\. Database Migration/)
+    assert.match(content, /Migrate database schema/)
+
+    // Should show PIC and timeline metadata under heading
+    assert.match(content, /\(i\) PIC: DBA Team/)
+    assert.match(content, /\(time\) Timeline: 2024-01-15 10:00/)
+
+    // Should have table before section
+    assert.match(content, /Step 1: Step Before Section/)
+
+    // Should reopen table after section heading
+    assert.match(content, /\|\| Step \|\| staging \|\| production \|\|/)
+
+    // Section heading step should still be in table (but after heading)
+    assert.match(content, /Step 2: Database Migration/)
+    assert.match(content, /Step 3: Step After Section/)
   })
 })

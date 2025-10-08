@@ -547,6 +547,33 @@ ${operation.environments.map((env: any) => {
 
       // Build table rows for each step
       phaseSteps.forEach((step: any) => {
+        // Handle section heading
+        if (step.section_heading) {
+          // Close current table
+          content += '\n';
+
+          // Add section heading
+          content += `h3. ${escapeConfluenceMacros(step.name)}\n\n`;
+          if (step.description) {
+            content += `${escapeConfluenceMacros(step.description)}\n\n`;
+          }
+
+          // Add PIC and timeline if present in section heading
+          if (step.pic || step.timeline) {
+            const metadata = [];
+            if (step.pic) metadata.push(`(i) PIC: ${escapeConfluenceMacros(step.pic)}`);
+            if (step.timeline) metadata.push(`(time) Timeline: ${escapeConfluenceMacros(step.timeline)}`);
+            content += `_${metadata.join(' • ')}_\n\n`;
+          }
+
+          // Reopen table
+          content += `|| Step ||`;
+          operation.environments.forEach((env: any) => {
+            content += ` ${env.name} ||`;
+          });
+          content += '\n';
+        }
+
         const typeIcon = typeIcons[step.type] || '';
         const phaseIconForStep = step.phase && step.phase !== phaseName ? phaseIcons[step.phase as keyof typeof phaseIcons] || '' : '';
 
@@ -618,6 +645,33 @@ ${operation.environments.map((env: any) => {
             const subStepLetter = String.fromCharCode(97 + subIndex);
             const subStepId = `${globalStepNumber}${subStepLetter}`;
             const subTypeIcon = typeIcons[subStep.type] || '';
+
+            // Handle section heading for sub-steps
+            if (subStep.section_heading) {
+              // Close current table
+              content += '\n';
+
+              // Add section heading (h4 for sub-step sections)
+              content += `h4. ${escapeConfluenceMacros(subStep.name)}\n\n`;
+              if (subStep.description) {
+                content += `${escapeConfluenceMacros(subStep.description)}\n\n`;
+              }
+
+              // Add PIC and timeline if present
+              if (subStep.pic || subStep.timeline) {
+                const metadata = [];
+                if (subStep.pic) metadata.push(`(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`);
+                if (subStep.timeline) metadata.push(`(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`);
+                content += `_${metadata.join(' • ')}_\n\n`;
+              }
+
+              // Reopen table
+              content += `|| Step ||`;
+              operation.environments.forEach((env: any) => {
+                content += ` ${env.name} ||`;
+              });
+              content += '\n';
+            }
 
             let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${escapeConfluenceMacros(subStep.name)}`;
             if (subStep.description) subStepInfo += `\n${escapeConfluenceMacros(subStep.description)}`;
