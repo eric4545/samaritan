@@ -514,27 +514,32 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
 
       markdown += `${phaseHeaders[phaseName as keyof typeof phaseHeaders]}\n\n`;
 
-      // Build table header
-      markdown += '| Step |';
-      operation.environments.forEach(env => {
-        markdown += ` ${env.name} |`;
-      });
-      markdown += '\n';
+      // Only build initial table header if first step is not a section heading
+      const firstStepIsSection = phaseSteps.length > 0 && phaseSteps[0].section_heading;
+      let tableOpen = false;
 
-      // Build table separator
-      markdown += '|------|';
-      operation.environments.forEach(() => {
-        markdown += '---------|';
-      });
-      markdown += '\n';
+      if (!firstStepIsSection) {
+        // Build table header
+        markdown += '| Step |';
+        operation.environments.forEach(env => {
+          markdown += ` ${env.name} |`;
+        });
+        markdown += '\n';
+
+        // Build table separator
+        markdown += '|------|';
+        operation.environments.forEach(() => {
+          markdown += '---------|';
+        });
+        markdown += '\n';
+        tableOpen = true;
+      }
 
       // Build table rows for this phase with continuous numbering
       // Handle section headings by closing/reopening tables
-      let tableOpen = true;
-
       phaseSteps.forEach((step, index) => {
         if (step.section_heading) {
-          // Close current table
+          // Close current table if one is open
           if (tableOpen) {
             markdown += '\n';
             tableOpen = false;

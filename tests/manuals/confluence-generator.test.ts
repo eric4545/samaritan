@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
 import { generateConfluenceContent } from '../../src/cli/commands/generate'
-import { deploymentOperation, deploymentOperationYaml, operationWithSubSteps, operationWithSectionHeadingsYaml } from '../fixtures/operations'
+import { deploymentOperation, deploymentOperationYaml, operationWithSubSteps, operationWithSectionHeadingsYaml, operationWithSectionHeadingFirstYaml } from '../fixtures/operations'
 import * as yaml from 'js-yaml'
 
 // Helper to generate Confluence content from YAML string
@@ -401,5 +401,31 @@ rollback:
     // Section heading step should still be in table (but after heading)
     assert.match(content, /Step 2: Database Migration/)
     assert.match(content, /Step 3: Step After Section/)
+  })
+
+  it('should not generate empty table when section_heading is first step', () => {
+    const content = generateConfluence(operationWithSectionHeadingFirstYaml)
+
+    // Should have phase header
+    assert.match(content, /h2\. \(!\) Flight Phase/)
+
+    // Should NOT have empty table before section heading
+    // The pattern to avoid: || Step || staging || production ||\n\nh3.
+    assert.doesNotMatch(content, /\|\| Step \|\|.*\n\nh3\. Initial Setup/)
+
+    // Should have section heading immediately after phase header
+    assert.match(content, /Flight Phase.*\n\nh3\. Initial Setup/s)
+
+    // Should have description
+    assert.match(content, /Setup required before deployment/)
+
+    // Should have PIC metadata
+    assert.match(content, /\(i\) PIC: DevOps Team/)
+
+    // After section heading, should have table with steps
+    assert.match(content, /h3\. Initial Setup.*\|\| Step \|\| staging \|\| production \|\|/s)
+    assert.match(content, /Step 1: Initial Setup/)
+    assert.match(content, /Step 2: Deploy App/)
+    assert.match(content, /Step 3: Verify/)
   })
 })

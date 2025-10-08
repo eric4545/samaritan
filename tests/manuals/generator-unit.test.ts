@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { generateManual, generateManualWithMetadata } from '../../src/manuals/generator';
 import { Operation } from '../../src/models/operation';
-import { deploymentOperation, minimalOperation } from '../fixtures/operations';
+import { deploymentOperation, minimalOperation, operationWithSectionHeadingFirstYaml } from '../fixtures/operations';
+import * as yaml from 'js-yaml';
 
 describe('Manual Generator Unit Tests', () => {
   it('should generate proper table format for multi-environment operations', (t) => {
@@ -1230,5 +1231,35 @@ kubectl apply -f worker.yaml`
 
     // Should not include Gantt chart when no timeline data
     assert(!markdown.includes('```mermaid'), 'Should not have mermaid code block when no timeline data');
+  });
+
+  it('should not generate empty table when section_heading is first step', () => {
+    const operation = yaml.load(operationWithSectionHeadingFirstYaml) as Operation;
+    const markdown = generateManual(operation);
+
+    // Should have phase header
+    assert(markdown.includes('## ✈️ Flight Phase'), 'Should have flight phase header');
+
+    // Should NOT have empty table before section heading
+    // The pattern to avoid: | Step | staging | production |\n|------|\n\n### Initial Setup
+    assert(!markdown.match(/\| Step \|.*\n\|------\|.*\n\n### Initial Setup/s),
+      'Should not have empty table before section heading');
+
+    // Should have section heading immediately after phase header
+    assert(markdown.match(/Flight Phase.*\n\n### Initial Setup/s),
+      'Should have section heading immediately after phase header');
+
+    // Should have description
+    assert(markdown.includes('Setup required before deployment'), 'Should have description');
+
+    // Should have PIC metadata
+    assert(markdown.includes('👤 PIC: DevOps Team'), 'Should have PIC metadata');
+
+    // After section heading, should have table with steps
+    assert(markdown.match(/### Initial Setup.*\| Step \| staging \| production \|/s),
+      'Should have table after section heading');
+    assert(markdown.includes('☐ Step 1: Initial Setup'), 'Should have step 1');
+    assert(markdown.includes('☐ Step 2: Deploy App'), 'Should have step 2');
+    assert(markdown.includes('☐ Step 3: Verify'), 'Should have step 3');
   });
 });

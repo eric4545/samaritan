@@ -538,19 +538,29 @@ ${operation.environments.map((env: any) => {
 
 `;
 
-      // Build table header with environment columns
-      content += `|| Step ||`;
-      operation.environments.forEach((env: any) => {
-        content += ` ${env.name} ||`;
-      });
-      content += '\n';
+      // Only build initial table header if first step is not a section heading
+      const firstStepIsSection = phaseSteps.length > 0 && phaseSteps[0].section_heading;
+      let tableOpen = false;
+
+      if (!firstStepIsSection) {
+        // Build table header with environment columns
+        content += `|| Step ||`;
+        operation.environments.forEach((env: any) => {
+          content += ` ${env.name} ||`;
+        });
+        content += '\n';
+        tableOpen = true;
+      }
 
       // Build table rows for each step
       phaseSteps.forEach((step: any) => {
         // Handle section heading
         if (step.section_heading) {
-          // Close current table
-          content += '\n';
+          // Close current table if one is open
+          if (tableOpen) {
+            content += '\n';
+            tableOpen = false;
+          }
 
           // Add section heading
           content += `h3. ${escapeConfluenceMacros(step.name)}\n\n`;
@@ -572,6 +582,7 @@ ${operation.environments.map((env: any) => {
             content += ` ${env.name} ||`;
           });
           content += '\n';
+          tableOpen = true;
         }
 
         const typeIcon = typeIcons[step.type] || '';

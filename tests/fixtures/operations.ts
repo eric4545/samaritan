@@ -315,3 +315,34 @@ steps:
     phase: flight
     command: echo "after"
 `
+
+/**
+ * Operation with section heading as first step (edge case)
+ */
+export const operationWithSectionHeadingFirstYaml = `name: Section First Test
+version: 1.0.0
+description: Test section heading as first step
+
+environments:
+  - name: staging
+  - name: production
+
+steps:
+  - name: Initial Setup
+    type: manual
+    phase: flight
+    section_heading: true
+    description: Setup required before deployment
+    pic: DevOps Team
+    command: run setup
+
+  - name: Deploy App
+    type: automatic
+    phase: flight
+    command: kubectl apply -f app.yaml
+
+  - name: Verify
+    type: manual
+    phase: flight
+    command: curl /health
+`
