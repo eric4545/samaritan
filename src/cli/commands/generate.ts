@@ -621,9 +621,9 @@ ${operation.environments.map((env: any) => {
           let cellContent = '';
           if (displayCommand) {
             if (isMarkdown) {
-              // For markdown instructions, wrap in {code:markdown} to match {code:bash} style
+              // For markdown instructions, wrap in {markdown} to preserve formatting and links
               const trimmed = displayCommand.replace(/\s+$/, '');
-              cellContent = `{code:markdown}\n${trimmed}\n{code}`;
+              cellContent = `{markdown}\n${trimmed}\n{markdown}`;
             } else {
               // Trim trailing newlines from command (YAML literal blocks add them)
               const trimmedCommand = displayCommand.replace(/\n+$/, '');
@@ -822,9 +822,9 @@ ${operation.rollback.conditions?.length ? `*Conditions*: ${operation.rollback.co
             );
 
             if (isMarkdown) {
-              // For markdown instructions, wrap in {code:markdown} to match {code:bash} style
+              // For markdown instructions, wrap in {markdown} to preserve formatting and links
               const trimmed = displayCommand.replace(/\s+$/, '');
-              cellContent = `{code:markdown}\n${trimmed}\n{code}`;
+              cellContent = `{markdown}\n${trimmed}\n{markdown}`;
             } else {
               const trimmedCommand = displayCommand.replace(/\n+$/, '');
               const hasMultipleLines = trimmedCommand.includes('\n');
