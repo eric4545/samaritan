@@ -396,6 +396,12 @@ export function generateConfluenceContent(operation: any, resolveVars: boolean =
       return result;
     };
 
+    // Helper to convert markdown links to Confluence format
+    const convertLinksToConfluence = (text: string): string => {
+      // Convert markdown links [text](url) to Confluence format [text|url]
+      return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '[$1|$2]');
+    };
+
     // Helper function to substitute variables (inline version)
     const substituteVariables = (command: string, envVariables: Record<string, any>, stepVariables?: Record<string, any>): string => {
       let substitutedCommand = command;
@@ -409,8 +415,10 @@ export function generateConfluenceContent(operation: any, resolveVars: boolean =
 
     // Helper to escape Confluence macro syntax in text (for variables like ${VAR})
     const escapeConfluenceMacros = (text: string): string => {
-      // Escape { and } to prevent Confluence from interpreting ${VAR} as macros
-      return text.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+      // First convert markdown links to Confluence format
+      let result = convertLinksToConfluence(text);
+      // Then escape { and } to prevent Confluence from interpreting ${VAR} as macros
+      return result.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
     };
 
     // Helper to format multi-line text for Confluence table cells
@@ -575,21 +583,23 @@ ${operation.environments.map((env: any) => {
           let cellContent = '';
           if (displayCommand) {
             if (isMarkdown) {
-              // For markdown instructions, format with line breaks (no code block) and escape macros
-              const formatted = formatForTableCell(displayCommand, false);
+              // For markdown instructions, trim trailing whitespace, format with line breaks (no code block) and escape macros
+              const trimmed = displayCommand.replace(/\s+$/, '');
+              const formatted = formatForTableCell(trimmed, false);
               cellContent = escapeConfluenceMacros(formatted);
             } else {
-              // Check if multi-line or long command
-              const hasMultipleLines = displayCommand.includes('\n');
+              // Trim trailing newlines from command (YAML literal blocks add them)
+              const trimmedCommand = displayCommand.replace(/\n+$/, '');
+              const hasMultipleLines = trimmedCommand.includes('\n');
 
               if (hasMultipleLines) {
-                // Multi-line: use code block with line breaks
-                const formattedCommand = formatForTableCell(displayCommand, true);
-                cellContent = `{code:bash}${formattedCommand}{code}`;
+                // Multi-line: use code block with line breaks (newline after opening tag)
+                const formattedCommand = formatForTableCell(trimmedCommand, true);
+                cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
               } else {
                 // Single-line: apply smart line breaking if needed, then wrap in code block
-                const withBreaks = addSmartLineBreaks(displayCommand);
-                cellContent = `{code:bash}${withBreaks}{code}`;
+                const withBreaks = addSmartLineBreaks(trimmedCommand);
+                cellContent = `{code:bash}\n${withBreaks}\n{code}`;
               }
             }
           } else if (step.sub_steps && step.sub_steps.length > 0) {
@@ -630,16 +640,17 @@ ${operation.environments.map((env: any) => {
 
               let cellContent = '';
               if (displayCommand) {
-                const hasMultipleLines = displayCommand.includes('\n');
+                const trimmedCommand = displayCommand.replace(/\n+$/, '');
+                const hasMultipleLines = trimmedCommand.includes('\n');
 
                 if (hasMultipleLines) {
                   // Multi-line: use code block with line breaks
-                  const formattedCommand = formatForTableCell(displayCommand, true);
-                  cellContent = `{code:bash}${formattedCommand}{code}`;
+                  const formattedCommand = formatForTableCell(trimmedCommand, true);
+                  cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
                 } else {
                   // Single-line: apply smart breaking
-                  const withBreaks = addSmartLineBreaks(displayCommand);
-                  cellContent = `{code:bash}${withBreaks}{code}`;
+                  const withBreaks = addSmartLineBreaks(trimmedCommand);
+                  cellContent = `{code:bash}\n${withBreaks}\n{code}`;
                 }
               } else {
                 cellContent = `_(${subStep.type} step)_`;
@@ -681,16 +692,17 @@ ${operation.environments.map((env: any) => {
 
           let cellContent = '';
           if (displayCommand) {
-            const hasMultipleLines = displayCommand.includes('\n');
+            const trimmedCommand = displayCommand.replace(/\n+$/, '');
+            const hasMultipleLines = trimmedCommand.includes('\n');
 
             if (hasMultipleLines) {
               // Multi-line rollback command
-              const formattedCommand = formatForTableCell(displayCommand, true);
-              cellContent = `{code:bash}${formattedCommand}{code}`;
+              const formattedCommand = formatForTableCell(trimmedCommand, true);
+              cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
             } else {
               // Single-line rollback command
-              const withBreaks = addSmartLineBreaks(displayCommand);
-              cellContent = `{code:bash}${withBreaks}{code}`;
+              const withBreaks = addSmartLineBreaks(trimmedCommand);
+              cellContent = `{code:bash}\n${withBreaks}\n{code}`;
             }
           } else {
             cellContent = '-';
@@ -700,6 +712,74 @@ ${operation.environments.map((env: any) => {
 
         // Construct complete row
         content += `| Rollback for: ${step.name} | ${rollbackCells.join(' | ')} |\n`;
+      });
+
+      content += '\n';
+    }
+
+    // Global rollback section if available
+    if (operation.rollback && operation.rollback.steps && operation.rollback.steps.length > 0) {
+      if (stepsWithRollback.length === 0) {
+        // Only add header if not already added
+        content += `h2. (<) Rollback Procedures
+
+{warning}If deployment fails, execute the following rollback steps:{warning}
+
+`;
+      }
+
+      content += `h3. Global Rollback Plan
+
+*Automatic*: ${operation.rollback.automatic ? 'Yes' : 'No'}
+${operation.rollback.conditions?.length ? `*Conditions*: ${operation.rollback.conditions.join(', ')}\n` : ''}
+
+|| Step || ${operation.environments.map((e: any) => `${e.name} ||`).join(' ')}
+`;
+
+      operation.rollback.steps.forEach((rollbackStep: any, index: number) => {
+        const rollbackCells: string[] = [];
+
+        operation.environments.forEach((env: any) => {
+          const rollbackCommand = rollbackStep.command || rollbackStep.instruction || '';
+          let displayCommand = rollbackCommand;
+
+          if (resolveVars && rollbackCommand) {
+            displayCommand = substituteVariables(rollbackCommand, env.variables || {}, {});
+          }
+
+          let cellContent = '';
+          if (displayCommand) {
+            // Check if it's markdown-style instruction
+            const isMarkdown = rollbackStep.instruction && (
+              displayCommand.includes('\n#') ||
+              displayCommand.includes('\n-') ||
+              displayCommand.includes('\n*') ||
+              displayCommand.includes('\n1.')
+            );
+
+            if (isMarkdown) {
+              // Format as markdown, trim trailing whitespace, escape macros
+              const trimmed = displayCommand.replace(/\s+$/, '');
+              const formatted = formatForTableCell(trimmed, false);
+              cellContent = escapeConfluenceMacros(formatted);
+            } else {
+              const trimmedCommand = displayCommand.replace(/\n+$/, '');
+              const hasMultipleLines = trimmedCommand.includes('\n');
+              if (hasMultipleLines) {
+                const formattedCommand = formatForTableCell(trimmedCommand, true);
+                cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
+              } else {
+                const withBreaks = addSmartLineBreaks(trimmedCommand);
+                cellContent = `{code:bash}\n${withBreaks}\n{code}`;
+              }
+            }
+          } else {
+            cellContent = '-';
+          }
+          rollbackCells.push(cellContent);
+        });
+
+        content += `| Rollback Step ${index + 1} | ${rollbackCells.join(' | ')} |\n`;
       });
 
       content += '\n';

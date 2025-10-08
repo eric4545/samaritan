@@ -1,0 +1,173 @@
+# Test fixtures for Confluence generator tests
+
+multiline_command: |
+  name: Multi-line Test
+  version: 1.0.0
+  description: Test multi-line commands
+
+  environments:
+    - name: staging
+
+  steps:
+    - name: Deploy
+      type: automatic
+      phase: flight
+      command: |
+        kubectl apply -f deployment.yaml
+        kubectl apply -f service.yaml
+        kubectl rollout status deployment/app
+
+substeps: |
+  name: Sub-steps Test
+  version: 1.0.0
+  description: Test sub-steps
+
+  environments:
+    - name: staging
+
+  steps:
+    - name: Parent Step
+      type: manual
+      phase: flight
+      sub_steps:
+        - name: Sub Step A
+          type: automatic
+          command: echo "step a"
+        - name: Sub Step B
+          type: automatic
+          command: echo "step b"
+
+dependencies: |
+  name: Dependencies Test
+  version: 1.0.0
+  description: Test dependencies
+
+  environments:
+    - name: staging
+
+  steps:
+    - name: Step One
+      type: automatic
+      phase: flight
+      command: echo "one"
+    - name: Step Two
+      type: automatic
+      phase: flight
+      command: echo "two"
+      needs: ["Step One"]
+
+conditional: |
+  name: Conditional Test
+  version: 1.0.0
+  description: Test conditional
+
+  environments:
+    - name: staging
+    - name: production
+
+  steps:
+    - name: Production Only Step
+      type: conditional
+      phase: flight
+      command: echo "prod only"
+      if: "${ENVIRONMENT} == 'production'"
+
+markdown_instructions: |
+  name: Markdown Test
+  version: 1.0.0
+  description: Test markdown instructions
+
+  environments:
+    - name: staging
+
+  steps:
+    - name: Manual Step
+      type: manual
+      phase: flight
+      instruction: |
+        # Instructions
+        1. First thing
+        2. Second thing
+        **Important note**
+
+var_escaping: |
+  name: Escaping Test
+  version: 1.0.0
+  description: Test variable escaping in markdown
+
+  environments:
+    - name: staging
+      variables:
+        API_ENDPOINT: "https://api.staging.com"
+        DB_HOST: "db.staging.com"
+
+  steps:
+    - name: Manual Step with Variables
+      type: manual
+      phase: flight
+      instruction: |
+        # Check health endpoints
+        1. Verify API: curl ${API_ENDPOINT}/health
+        2. Check database: ping ${DB_HOST}
+        **Important**: Variables like ${FOO} should be escaped
+
+step_var_escaping: |
+  name: Escaping Test
+  version: 1.0.0
+  description: Test variable escaping
+
+  environments:
+    - name: staging
+
+  steps:
+    - name: Deploy ${SERVICE_NAME} to cluster
+      description: Deploys using ${DEPLOY_METHOD}
+      type: automatic
+      phase: flight
+      if: ${ENVIRONMENT} == 'production'
+      command: echo "deploy"
+
+links: |
+  name: Links Test
+  version: 1.0.0
+  description: Test link conversion
+
+  environments:
+    - name: staging
+
+  steps:
+    - name: Check Documentation
+      type: manual
+      phase: flight
+      instruction: |
+        Review the following:
+        - [API Docs](https://api.example.com/docs)
+        - [Dashboard](https://dashboard.example.com)
+        - Contact [Support](mailto:support@example.com)
+
+global_rollback: |
+  name: Rollback Test
+  version: 1.0.0
+  description: Test global rollback
+
+  environments:
+    - name: staging
+    - name: production
+
+  steps:
+    - name: Deploy
+      type: automatic
+      phase: flight
+      command: kubectl apply -f app.yaml
+
+  rollback:
+    automatic: false
+    conditions:
+      - health_check_failure
+      - error_rate_spike
+    steps:
+      - command: kubectl rollout undo deployment/app
+      - instruction: |
+          Verify rollback completed:
+          1. Check pods are running
+          2. Test API endpoints
