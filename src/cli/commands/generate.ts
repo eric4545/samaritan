@@ -583,10 +583,9 @@ ${operation.environments.map((env: any) => {
           let cellContent = '';
           if (displayCommand) {
             if (isMarkdown) {
-              // For markdown instructions, trim trailing whitespace, format with line breaks (no code block) and escape macros
+              // For markdown instructions, wrap in {markdown} macro to preserve formatting and handle blank lines
               const trimmed = displayCommand.replace(/\s+$/, '');
-              const formatted = formatForTableCell(trimmed, false);
-              cellContent = escapeConfluenceMacros(formatted);
+              cellContent = `{markdown}\n${trimmed}\n{markdown}`;
             } else {
               // Trim trailing newlines from command (YAML literal blocks add them)
               const trimmedCommand = displayCommand.replace(/\n+$/, '');
@@ -758,10 +757,9 @@ ${operation.rollback.conditions?.length ? `*Conditions*: ${operation.rollback.co
             );
 
             if (isMarkdown) {
-              // Format as markdown, trim trailing whitespace, escape macros
+              // For markdown instructions, wrap in {markdown} macro to preserve formatting and handle blank lines
               const trimmed = displayCommand.replace(/\s+$/, '');
-              const formatted = formatForTableCell(trimmed, false);
-              cellContent = escapeConfluenceMacros(formatted);
+              cellContent = `{markdown}\n${trimmed}\n{markdown}`;
             } else {
               const trimmedCommand = displayCommand.replace(/\n+$/, '');
               const hasMultipleLines = trimmedCommand.includes('\n');
