@@ -1,5 +1,5 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const execAsync = promisify(exec);
 
@@ -43,14 +43,14 @@ export async function getGitMetadata(): Promise<GitMetadata | null> {
       { stdout: author },
       { stdout: date },
       { stdout: message },
-      { stdout: statusOutput }
+      { stdout: statusOutput },
     ] = await Promise.all([
       execAsync('git rev-parse HEAD'),
       execAsync('git rev-parse --abbrev-ref HEAD'),
       execAsync('git log -1 --format="%an"'),
       execAsync('git log -1 --format="%ai"'),
       execAsync('git log -1 --format="%s"'),
-      execAsync('git status --porcelain')
+      execAsync('git status --porcelain'),
     ]);
 
     const isDirty = statusOutput.trim().length > 0;
@@ -63,9 +63,9 @@ export async function getGitMetadata(): Promise<GitMetadata | null> {
       author: author.trim(),
       date: date.trim(),
       message: message.trim(),
-      isDirty
+      isDirty,
     };
-  } catch (error) {
+  } catch (_error) {
     // Not in a git repository or git not available
     return null;
   }
@@ -78,7 +78,7 @@ export async function createGenerationMetadata(
   sourceFile: string,
   operationId: string,
   operationVersion: string,
-  targetEnvironment?: string
+  targetEnvironment?: string,
 ): Promise<GenerationMetadata> {
   const gitMetadata = await getGitMetadata();
   const generatedAt = new Date().toISOString();
@@ -99,7 +99,7 @@ export async function createGenerationMetadata(
     git_date: gitMetadata?.date || 'unknown',
     git_message: gitMetadata?.message || 'unknown',
     git_dirty: gitMetadata?.isDirty || false,
-    generator_version: generatorVersion
+    generator_version: generatorVersion,
   };
 }
 
@@ -110,8 +110,12 @@ export function generateYamlFrontmatter(metadata: GenerationMetadata): string {
   const frontmatter = `---
 source_file: "${metadata.source_file}"
 operation_id: "${metadata.operation_id}"
-operation_version: "${metadata.operation_version}"${metadata.target_environment ? `
-target_environment: "${metadata.target_environment}"` : ''}
+operation_version: "${metadata.operation_version}"${
+    metadata.target_environment
+      ? `
+target_environment: "${metadata.target_environment}"`
+      : ''
+  }
 generated_at: "${metadata.generated_at}"
 git_sha: "${metadata.git_sha}"
 git_branch: "${metadata.git_branch}"

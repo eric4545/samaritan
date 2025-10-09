@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // Ultra-robust CommonJS bin script for maximum npx compatibility
-const { spawn } = require('child_process');
-const { join } = require('path');
-const { existsSync } = require('fs');
+const { spawn } = require('node:child_process');
+const { join } = require('node:path');
+const { existsSync } = require('node:fs');
 
 // Path to TypeScript CLI entry point
 const cliPath = join(__dirname, '..', 'src', 'cli', 'index.ts');
@@ -15,7 +15,7 @@ function runCli() {
     console.error('Dependencies not installed. Installing...');
     const install = spawn('npm', ['install', '--production'], {
       stdio: 'inherit',
-      cwd: join(__dirname, '..')
+      cwd: join(__dirname, '..'),
     });
 
     install.on('close', (code) => {
@@ -44,29 +44,46 @@ function startCli() {
     () => {
       const tsxPath = join(__dirname, '..', 'node_modules', '.bin', 'tsx');
       if (existsSync(tsxPath)) {
-        return spawn(tsxPath, [cliPath, ...process.argv.slice(2)], { stdio: 'inherit' });
+        return spawn(tsxPath, [cliPath, ...process.argv.slice(2)], {
+          stdio: 'inherit',
+        });
       }
       return null;
     },
 
     // Method 2: Direct tsx via node
     () => {
-      const tsxMain = join(__dirname, '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
+      const tsxMain = join(
+        __dirname,
+        '..',
+        'node_modules',
+        'tsx',
+        'dist',
+        'cli.mjs',
+      );
       if (existsSync(tsxMain)) {
-        return spawn('node', [tsxMain, cliPath, ...process.argv.slice(2)], { stdio: 'inherit' });
+        return spawn('node', [tsxMain, cliPath, ...process.argv.slice(2)], {
+          stdio: 'inherit',
+        });
       }
       return null;
     },
 
     // Method 3: Global npx fallback
-    () => spawn('npx', ['tsx', cliPath, ...process.argv.slice(2)], { stdio: 'inherit', shell: true })
+    () =>
+      spawn('npx', ['tsx', cliPath, ...process.argv.slice(2)], {
+        stdio: 'inherit',
+        shell: true,
+      }),
   ];
 
   let attemptIndex = 0;
 
   function tryNextAttempt() {
     if (attemptIndex >= attempts.length) {
-      console.error('All execution methods failed. Please install tsx globally: npm install -g tsx');
+      console.error(
+        'All execution methods failed. Please install tsx globally: npm install -g tsx',
+      );
       process.exit(1);
       return;
     }

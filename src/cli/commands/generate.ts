@@ -1,11 +1,10 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { basename, dirname } from 'node:path';
 import { Command } from 'commander';
-import { writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import { join, dirname, basename } from 'path';
-import { parseOperation } from '../../operations/parser';
-import { generateManualWithMetadata } from '../../manuals/generator';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { generateADFString } from '../../manuals/adf-generator';
+import { generateManualWithMetadata } from '../../manuals/generator';
+import { parseOperation } from '../../operations/parser';
 
 interface GenerateOptions {
   output?: string;
@@ -19,15 +18,20 @@ interface GenerateOptions {
 
 // Helper to get target environment from options (handles both --env and legacy --environment)
 function getTargetEnvironment(options: GenerateOptions): string | undefined {
-  return options.env || options.environment
+  return options.env || options.environment;
 }
 
 class DocumentationGenerator {
-  async generateManual(operationFile: string, options: GenerateOptions): Promise<void> {
-    const targetEnv = getTargetEnvironment(options)
+  async generateManual(
+    operationFile: string,
+    options: GenerateOptions,
+  ): Promise<void> {
+    const targetEnv = getTargetEnvironment(options);
     const envSuffix = targetEnv ? ` (${targetEnv})` : '';
     const format = options.format || 'markdown';
-    console.log(`📄 Generating manual for: ${operationFile}${envSuffix} (format: ${format})`);
+    console.log(
+      `📄 Generating manual for: ${operationFile}${envSuffix} (format: ${format})`,
+    );
 
     // Parse operation
     const operation = await parseOperation(operationFile);
@@ -36,17 +40,37 @@ class DocumentationGenerator {
 
     switch (format) {
       case 'confluence':
-        await this.generateConfluenceManual(operation, operationName, envFileSuffix, options);
+        await this.generateConfluenceManual(
+          operation,
+          operationName,
+          envFileSuffix,
+          options,
+        );
         break;
       case 'adf':
-        await this.generateADFManual(operation, operationName, envFileSuffix, options);
+        await this.generateADFManual(
+          operation,
+          operationName,
+          envFileSuffix,
+          options,
+        );
         break;
       case 'html':
-        await this.generateHtmlManual(operation, operationName, envFileSuffix, options);
+        await this.generateHtmlManual(
+          operation,
+          operationName,
+          envFileSuffix,
+          options,
+        );
         break;
-      case 'markdown':
       default:
-        await this.generateMarkdownManual(operation, operationFile, operationName, envFileSuffix, options);
+        await this.generateMarkdownManual(
+          operation,
+          operationFile,
+          operationName,
+          envFileSuffix,
+          options,
+        );
         break;
     }
 
@@ -60,23 +84,30 @@ class DocumentationGenerator {
     operationFile: string,
     operationName: string,
     envFileSuffix: string,
-    options: GenerateOptions
+    options: GenerateOptions,
   ): Promise<void> {
-    const targetEnv = getTargetEnvironment(options)
+    const targetEnv = getTargetEnvironment(options);
 
     // Create generation metadata
     const metadata = await createGenerationMetadata(
       operationFile,
       operation.id,
       operation.version,
-      targetEnv
+      targetEnv,
     );
 
     // Generate manual with metadata and environment filtering
-    const manual = generateManualWithMetadata(operation, metadata, targetEnv, options.resolveVars, options.gantt);
+    const manual = generateManualWithMetadata(
+      operation,
+      metadata,
+      targetEnv,
+      options.resolveVars,
+      options.gantt,
+    );
 
     // Determine output file
-    const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.md`;
+    const outputFile =
+      options.output || `manuals/${operationName}${envFileSuffix}-manual.md`;
 
     // Ensure output directory exists
     await mkdir(dirname(outputFile), { recursive: true });
@@ -90,11 +121,18 @@ class DocumentationGenerator {
     operation: any,
     operationName: string,
     envFileSuffix: string,
-    options: GenerateOptions
+    options: GenerateOptions,
   ): Promise<void> {
-    const targetEnv = getTargetEnvironment(options)
-    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars, options.gantt, targetEnv);
-    const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.confluence`;
+    const targetEnv = getTargetEnvironment(options);
+    const confluenceContent = this.createConfluenceContent(
+      operation,
+      options.resolveVars,
+      options.gantt,
+      targetEnv,
+    );
+    const outputFile =
+      options.output ||
+      `manuals/${operationName}${envFileSuffix}-manual.confluence`;
 
     await mkdir(dirname(outputFile), { recursive: true });
     await writeFile(outputFile, confluenceContent);
@@ -106,49 +144,67 @@ class DocumentationGenerator {
     operation: any,
     operationName: string,
     envFileSuffix: string,
-    options: GenerateOptions
+    options: GenerateOptions,
   ): Promise<void> {
-    const targetEnv = getTargetEnvironment(options)
+    const targetEnv = getTargetEnvironment(options);
     const metadata = await createGenerationMetadata(
       operationName,
       operation.id,
       operation.version,
-      targetEnv
+      targetEnv,
     );
 
-    const adfContent = generateADFString(operation, metadata, targetEnv, options.resolveVars);
-    const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.json`;
+    const adfContent = generateADFString(
+      operation,
+      metadata,
+      targetEnv,
+      options.resolveVars,
+    );
+    const outputFile =
+      options.output || `manuals/${operationName}${envFileSuffix}-manual.json`;
 
     await mkdir(dirname(outputFile), { recursive: true });
     await writeFile(outputFile, adfContent);
     console.log(`✅ ADF manual generated: ${outputFile}`);
-    console.log('💡 Import this JSON file into Confluence using the ADF importer');
+    console.log(
+      '💡 Import this JSON file into Confluence using the ADF importer',
+    );
   }
 
   private async generateHtmlManual(
     operation: any,
     operationName: string,
     envFileSuffix: string,
-    options: GenerateOptions
+    options: GenerateOptions,
   ): Promise<void> {
-    const targetEnv = getTargetEnvironment(options)
+    const targetEnv = getTargetEnvironment(options);
     const metadata = await createGenerationMetadata(
       operationName,
       operation.id,
       operation.version,
-      targetEnv
+      targetEnv,
     );
 
-    const manual = generateManualWithMetadata(operation, metadata, targetEnv, options.resolveVars, options.gantt);
+    const manual = generateManualWithMetadata(
+      operation,
+      metadata,
+      targetEnv,
+      options.resolveVars,
+      options.gantt,
+    );
     const htmlManual = this.markdownToHtml(manual, operation.name);
-    const outputFile = options.output || `manuals/${operationName}${envFileSuffix}-manual.html`;
+    const outputFile =
+      options.output || `manuals/${operationName}${envFileSuffix}-manual.html`;
 
     await mkdir(dirname(outputFile), { recursive: true });
     await writeFile(outputFile, htmlManual);
     console.log(`✅ HTML manual generated: ${outputFile}`);
   }
 
-  async generateDocs(operationFile: string, options: GenerateOptions): Promise<void> {
+  async generateDocs(
+    operationFile: string,
+    options: GenerateOptions,
+  ): Promise<void> {
     console.log(`📚 Generating documentation for: ${operationFile}`);
 
     const operation = await parseOperation(operationFile);
@@ -172,29 +228,47 @@ class DocumentationGenerator {
     }
   }
 
-  private async generateMarkdownDocs(operation: any, operationName: string, options: GenerateOptions): Promise<void> {
+  private async generateMarkdownDocs(
+    operation: any,
+    operationName: string,
+    options: GenerateOptions,
+  ): Promise<void> {
     const docs = this.createMarkdownDocumentation(operation);
     const outputFile = options.output || `docs/${operationName}.md`;
-    
+
     await mkdir(dirname(outputFile), { recursive: true });
     await writeFile(outputFile, docs);
     console.log(`✅ Documentation generated: ${outputFile}`);
   }
 
-  private async generateHtmlDocs(operation: any, operationName: string, options: GenerateOptions): Promise<void> {
+  private async generateHtmlDocs(
+    operation: any,
+    operationName: string,
+    options: GenerateOptions,
+  ): Promise<void> {
     const markdownDocs = this.createMarkdownDocumentation(operation);
     const htmlDocs = this.markdownToHtml(markdownDocs, operation.name);
     const outputFile = options.output || `docs/${operationName}.html`;
-    
+
     await mkdir(dirname(outputFile), { recursive: true });
     await writeFile(outputFile, htmlDocs);
     console.log(`✅ HTML documentation generated: ${outputFile}`);
   }
 
-  private async generateConfluencePage(operation: any, operationName: string, options: GenerateOptions): Promise<void> {
-    const targetEnv = getTargetEnvironment(options)
-    const confluenceContent = this.createConfluenceContent(operation, options.resolveVars, options.gantt, targetEnv);
-    const outputFile = options.output || `confluence/${operationName}.confluence`;
+  private async generateConfluencePage(
+    operation: any,
+    operationName: string,
+    options: GenerateOptions,
+  ): Promise<void> {
+    const targetEnv = getTargetEnvironment(options);
+    const confluenceContent = this.createConfluenceContent(
+      operation,
+      options.resolveVars,
+      options.gantt,
+      targetEnv,
+    );
+    const outputFile =
+      options.output || `confluence/${operationName}.confluence`;
 
     await mkdir(dirname(outputFile), { recursive: true });
     await writeFile(outputFile, confluenceContent);
@@ -202,30 +276,44 @@ class DocumentationGenerator {
     console.log('💡 Upload this content to your Confluence space');
   }
 
-  private async generateADFDocs(operation: any, operationName: string, options: GenerateOptions): Promise<void> {
-    const targetEnv = getTargetEnvironment(options)
+  private async generateADFDocs(
+    operation: any,
+    operationName: string,
+    options: GenerateOptions,
+  ): Promise<void> {
+    const targetEnv = getTargetEnvironment(options);
     const metadata = await createGenerationMetadata(
       operationName,
       operation.id,
       operation.version,
-      targetEnv
+      targetEnv,
     );
 
-    const adfContent = generateADFString(operation, metadata, targetEnv, options.resolveVars);
+    const adfContent = generateADFString(
+      operation,
+      metadata,
+      targetEnv,
+      options.resolveVars,
+    );
     const envSuffix = targetEnv ? `-${targetEnv}` : '';
-    const outputFile = options.output || `adf/${operationName}${envSuffix}.json`;
+    const outputFile =
+      options.output || `adf/${operationName}${envSuffix}.json`;
 
     await mkdir(dirname(outputFile), { recursive: true });
     await writeFile(outputFile, adfContent);
     console.log(`✅ ADF (Atlassian Document Format) generated: ${outputFile}`);
-    console.log('💡 Import this JSON file into Confluence using the ADF importer');
+    console.log(
+      '💡 Import this JSON file into Confluence using the ADF importer',
+    );
   }
 
   private createMarkdownDocumentation(operation: any): string {
-    const envList = operation.environments.map((env: any) => env.name).join(', ');
+    const envList = operation.environments
+      .map((env: any) => env.name)
+      .join(', ');
     const stepCount = operation.steps.length;
     const preflightCount = operation.preflight?.length || 0;
-    
+
     return `# ${operation.name}
 
 ## Overview
@@ -243,66 +331,104 @@ class DocumentationGenerator {
 
 ## Environments
 
-${operation.environments.map((env: any) => `
+${operation.environments
+  .map(
+    (env: any) => `
 ### ${env.name}
 **Description**: ${env.description}
 **Approval Required**: ${env.approval_required ? 'Yes' : 'No'}
 **Validation Required**: ${env.validation_required ? 'Yes' : 'No'}
 
 **Variables**:
-${Object.entries(env.variables || {}).map(([key, value]) => `- \`${key}\`: ${value}`).join('\n')}
+${Object.entries(env.variables || {})
+  .map(([key, value]) => `- \`${key}\`: ${value}`)
+  .join('\n')}
 
 ${env.restrictions?.length ? `**Restrictions**: ${env.restrictions.join(', ')}` : ''}
-`).join('')}
+`,
+  )
+  .join('')}
 
 ## Preflight Checks
 
-${operation.preflight?.map((check: any, index: number) => `
+${
+  operation.preflight
+    ?.map(
+      (check: any, index: number) => `
 ### ${index + 1}. ${check.name}
 **Type**: ${check.type}
 **Description**: ${check.description}
 ${check.command ? `**Command**: \`${check.command}\`` : ''}
 ${check.condition ? `**Expected**: ${check.condition}` : ''}
 ${check.timeout ? `**Timeout**: ${check.timeout}s` : ''}
-`).join('') || 'No preflight checks defined.'}
+`,
+    )
+    .join('') || 'No preflight checks defined.'
+}
 
 ## Execution Steps
 
-${operation.steps.map((step: any, index: number) => `
+${operation.steps
+  .map(
+    (step: any, index: number) => `
 ### ${index + 1}. ${step.name}
 **Type**: ${step.type}
 ${step.description ? `**Description**: ${step.description}` : ''}
 
-${step.command ? `**Command**:
+${
+  step.command
+    ? `**Command**:
 \`\`\`bash
 ${step.command}
-\`\`\`` : ''}
+\`\`\``
+    : ''
+}
 
-${step.instruction ? `**Instructions**:
-${step.instruction}` : ''}
+${
+  step.instruction
+    ? `**Instructions**:
+${step.instruction}`
+    : ''
+}
 
 ${step.timeout ? `**Timeout**: ${step.timeout}s` : ''}
 ${step.estimated_duration ? `**Estimated Duration**: ${step.estimated_duration}s` : ''}
 ${step.evidence_required ? `**Evidence Required**: ${step.evidence_types?.join(', ') || 'Yes'}` : ''}
 ${step.continue_on_error ? `**Continue on Error**: Yes` : ''}
 
-${step.rollback ? `**Rollback**:
-${step.rollback.command ? `\`${step.rollback.command}\`` : step.rollback.instruction || 'See rollback instructions'}` : ''}
-`).join('')}
+${
+  step.rollback
+    ? `**Rollback**:
+${step.rollback.command ? `\`${step.rollback.command}\`` : step.rollback.instruction || 'See rollback instructions'}`
+    : ''
+}
+`,
+  )
+  .join('')}
 
-${operation.rollback ? `
+${
+  operation.rollback
+    ? `
 ## Rollback Plan
 
 **Automatic**: ${operation.rollback.automatic ? 'Yes' : 'No'}
 
-${operation.rollback.steps?.map((step: any, index: number) => `
+${
+  operation.rollback.steps
+    ?.map(
+      (step: any, index: number) => `
 ### ${index + 1}. Rollback Step
 ${step.command ? `**Command**: \`${step.command}\`` : ''}
 ${step.instruction ? `**Instructions**: ${step.instruction}` : ''}
-`).join('') || ''}
+`,
+    )
+    .join('') || ''
+}
 
 ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.conditions.join(', ')}` : ''}
-` : ''}
+`
+    : ''
+}
 
 ## Notes
 - Generated on: ${new Date().toISOString()}
@@ -316,15 +442,18 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
 
   private markdownToHtml(markdown: string, title: string): string {
     // Simple markdown to HTML conversion (basic implementation)
-    let html = markdown
+    const html = markdown
       .replace(/^# (.+)$/gm, '<h1>$1</h1>')
       .replace(/^## (.+)$/gm, '<h2>$1</h2>')
       .replace(/^### (.+)$/gm, '<h3>$1</h3>')
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\`(.+?)\`/g, '<code>$1</code>')
+      .replace(/`(.+?)`/g, '<code>$1</code>')
       .replace(/^- (.+)$/gm, '<li>$1</li>')
       .replace(/\n\n/g, '</p><p>')
-      .replace(/```bash\n([\s\S]*?)```/g, '<pre><code class="bash">$1</code></pre>')
+      .replace(
+        /```bash\n([\s\S]*?)```/g,
+        '<pre><code class="bash">$1</code></pre>',
+      )
       .replace(/```\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
 
     return `<!DOCTYPE html>
@@ -347,16 +476,31 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
 </html>`;
   }
 
-  private createConfluenceContent(operation: any, resolveVars: boolean = false, includeGantt: boolean = false, targetEnvironment?: string): string {
-    return generateConfluenceContent(operation, resolveVars, includeGantt, targetEnvironment);
+  private createConfluenceContent(
+    operation: any,
+    resolveVars: boolean = false,
+    includeGantt: boolean = false,
+    targetEnvironment?: string,
+  ): string {
+    return generateConfluenceContent(
+      operation,
+      resolveVars,
+      includeGantt,
+      targetEnvironment,
+    );
   }
 
-  async generateSchedule(operationFile: string, options: GenerateOptions): Promise<void> {
+  async generateSchedule(
+    operationFile: string,
+    options: GenerateOptions,
+  ): Promise<void> {
     console.log(`📅 Generating schedule for: ${operationFile}`);
 
     const operation = parseOperation(operationFile);
     const schedule = this.createGanttSchedule(operation);
-    const outputFile = options.output || `schedules/${basename(operationFile, '.yaml')}-schedule.md`;
+    const outputFile =
+      options.output ||
+      `schedules/${basename(operationFile, '.yaml')}-schedule.md`;
 
     await mkdir(dirname(outputFile), { recursive: true });
     await writeFile(outputFile, schedule);
@@ -370,136 +514,158 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
 }
 
 // Export as standalone function for testing
-export function generateConfluenceContent(operation: any, resolveVars: boolean = false, includeGantt: boolean = false, targetEnvironment?: string): string {
-    // Filter environments if specified
-    let environments = operation.environments;
-    if (targetEnvironment) {
-      environments = operation.environments.filter((env: any) => env.name === targetEnvironment);
-      if (environments.length === 0) {
-        throw new Error(`Environment '${targetEnvironment}' not found in operation. Available: ${operation.environments.map((e: any) => e.name).join(', ')}`);
-      }
+export function generateConfluenceContent(
+  operation: any,
+  resolveVars: boolean = false,
+  includeGantt: boolean = false,
+  targetEnvironment?: string,
+): string {
+  // Filter environments if specified
+  let environments = operation.environments;
+  if (targetEnvironment) {
+    environments = operation.environments.filter(
+      (env: any) => env.name === targetEnvironment,
+    );
+    if (environments.length === 0) {
+      throw new Error(
+        `Environment '${targetEnvironment}' not found in operation. Available: ${operation.environments.map((e: any) => e.name).join(', ')}`,
+      );
+    }
+  }
+
+  // Create filtered operation for generation
+  const filteredOperation = {
+    ...operation,
+    environments,
+  };
+
+  // Use Confluence emoticons instead of Unicode emojis for better compatibility
+  const phaseIcons = {
+    preflight: '(/)',
+    flight: '(!)',
+    postflight: '(on)',
+  };
+
+  const typeIcons: Record<string, string> = {
+    automatic: '(*)',
+    manual: '(i)',
+    approval: '(x)',
+    conditional: '(?)',
+  };
+
+  // Emoji replacement map for inline usage
+  const emojiMap: Record<string, string> = {
+    '👤': '(i)', // PIC (person)
+    '⏱️': '(time)', // Timeline (doesn't exist, use text)
+    '📋': '(-)', // Depends on (checklist)
+    '🎫': '(flag)', // Tickets
+    '🔀': '(?)', // Condition
+  };
+
+  // Helper to replace Unicode emojis with Confluence emoticons
+  const _replaceEmojis = (text: string): string => {
+    let result = text;
+    for (const [emoji, emoticon] of Object.entries(emojiMap)) {
+      result = result.replace(new RegExp(emoji, 'g'), emoticon);
+    }
+    return result;
+  };
+
+  // Helper to convert markdown links to Confluence format
+  const convertLinksToConfluence = (text: string): string => {
+    // Convert markdown links [text](url) to Confluence format [text|url]
+    return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '[$1|$2]');
+  };
+
+  // Helper function to substitute variables (inline version)
+  const substituteVariables = (
+    command: string,
+    envVariables: Record<string, any>,
+    stepVariables?: Record<string, any>,
+  ): string => {
+    let substitutedCommand = command;
+    const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
+    for (const key in mergedVariables) {
+      const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
+      substitutedCommand = substitutedCommand.replace(
+        regex,
+        mergedVariables[key],
+      );
+    }
+    return substitutedCommand;
+  };
+
+  // Helper to escape Confluence macro syntax in text (for variables like ${VAR})
+  const escapeConfluenceMacros = (text: string): string => {
+    // First convert markdown links to Confluence format
+    const result = convertLinksToConfluence(text);
+    // Then escape { and } to prevent Confluence from interpreting ${VAR} as macros
+    return result.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+  };
+
+  // Helper to format evidence area
+  const formatEvidenceArea = (evidence: any): string => {
+    if (!evidence) return '';
+
+    const types = evidence.types || [];
+    const typesText = types.length > 0 ? ` - ${types.join(', ')}` : '';
+    const status = evidence.required ? 'Required' : 'Optional';
+
+    return `\n{expand:title=📎 Evidence (${status}${typesText})}Paste evidence here{expand}`;
+  };
+
+  // Helper to format multi-line text for Confluence table cells
+  const formatForTableCell = (
+    text: string,
+    _useCodeBlock: boolean = true,
+  ): string => {
+    const hasMultipleLines = text.includes('\n');
+
+    if (!hasMultipleLines) {
+      return text;
     }
 
-    // Create filtered operation for generation
-    const filteredOperation = {
-      ...operation,
-      environments
-    };
+    // Check if content contains list patterns (numbered or bulleted)
+    const hasNumberedList = /\n\d+\.\s/.test(text);
+    const hasBulletList = /\n[-*]\s/.test(text);
 
-    // Use Confluence emoticons instead of Unicode emojis for better compatibility
-    const phaseIcons = {
-      preflight: '(/)',
-      flight: '(!)',
-      postflight: '(on)'
-    };
+    if (hasNumberedList || hasBulletList) {
+      // Convert markdown list syntax to Confluence wiki markup
+      return text
+        .replace(/\n(\d+)\.\s/g, '\n# ') // Convert "1. " to "# "
+        .replace(/\n[-*]\s/g, '\n* '); // Convert "- " or "* " to "* "
+    }
 
-    const typeIcons: Record<string, string> = {
-      automatic: '(*)',
-      manual: '(i)',
-      approval: '(x)',
-      conditional: '(?)'
-    };
+    // In Confluence table cells, use actual newlines (not \\ escape sequences)
+    return text;
+  };
 
-    // Emoji replacement map for inline usage
-    const emojiMap: Record<string, string> = {
-      '👤': '(i)',  // PIC (person)
-      '⏱️': '(time)', // Timeline (doesn't exist, use text)
-      '📋': '(-)',  // Depends on (checklist)
-      '🎫': '(flag)', // Tickets
-      '🔀': '(?)'   // Condition
-    };
+  // Helper to add smart line breaks for long commands
+  const addSmartLineBreaks = (
+    command: string,
+    maxLength: number = 100,
+  ): string => {
+    if (command.length <= maxLength) {
+      return command;
+    }
 
-    // Helper to replace Unicode emojis with Confluence emoticons
-    const replaceEmojis = (text: string): string => {
-      let result = text;
-      for (const [emoji, emoticon] of Object.entries(emojiMap)) {
-        result = result.replace(new RegExp(emoji, 'g'), emoticon);
-      }
-      return result;
-    };
+    // Break at logical points: pipes, operators, common flags
+    // In Confluence table cells, use actual newlines (not \\ escape sequences)
+    const result = command
+      .replace(/ \| /g, ' |\n  ') // Break before pipes
+      .replace(/ && /g, ' &&\n  ') // Break before &&
+      .replace(/ \|\| /g, ' ||\n  ') // Break before ||
+      .replace(/ --context /g, '\n  --context ') // Break before --context
+      .replace(/ --namespace /g, '\n  --namespace ') // Break before --namespace
+      .replace(/ -n /g, '\n  -n ') // Break before -n flag
+      .replace(/ -f /g, '\n  -f ') // Break before -f flag
+      .replace(/ -o /g, '\n  -o '); // Break before -o flag
 
-    // Helper to convert markdown links to Confluence format
-    const convertLinksToConfluence = (text: string): string => {
-      // Convert markdown links [text](url) to Confluence format [text|url]
-      return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '[$1|$2]');
-    };
+    return result;
+  };
 
-    // Helper function to substitute variables (inline version)
-    const substituteVariables = (command: string, envVariables: Record<string, any>, stepVariables?: Record<string, any>): string => {
-      let substitutedCommand = command;
-      const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
-      for (const key in mergedVariables) {
-        const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
-        substitutedCommand = substitutedCommand.replace(regex, mergedVariables[key]);
-      }
-      return substitutedCommand;
-    };
-
-    // Helper to escape Confluence macro syntax in text (for variables like ${VAR})
-    const escapeConfluenceMacros = (text: string): string => {
-      // First convert markdown links to Confluence format
-      let result = convertLinksToConfluence(text);
-      // Then escape { and } to prevent Confluence from interpreting ${VAR} as macros
-      return result.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
-    };
-
-    // Helper to format evidence area
-    const formatEvidenceArea = (evidence: any): string => {
-      if (!evidence) return ''
-
-      const types = evidence.types || []
-      const typesText = types.length > 0 ? ` - ${types.join(', ')}` : ''
-      const status = evidence.required ? 'Required' : 'Optional'
-
-      return `\n{expand:title=📎 Evidence (${status}${typesText})}Paste evidence here{expand}`
-    };
-
-    // Helper to format multi-line text for Confluence table cells
-    const formatForTableCell = (text: string, useCodeBlock: boolean = true): string => {
-      const hasMultipleLines = text.includes('\n');
-
-      if (!hasMultipleLines) {
-        return text;
-      }
-
-      // Check if content contains list patterns (numbered or bulleted)
-      const hasNumberedList = /\n\d+\.\s/.test(text);
-      const hasBulletList = /\n[-*]\s/.test(text);
-
-      if (hasNumberedList || hasBulletList) {
-        // Convert markdown list syntax to Confluence wiki markup
-        return text
-          .replace(/\n(\d+)\.\s/g, '\n# ')  // Convert "1. " to "# "
-          .replace(/\n[-*]\s/g, '\n* ');     // Convert "- " or "* " to "* "
-      }
-
-      // In Confluence table cells, use actual newlines (not \\ escape sequences)
-      return text;
-    };
-
-    // Helper to add smart line breaks for long commands
-    const addSmartLineBreaks = (command: string, maxLength: number = 100): string => {
-      if (command.length <= maxLength) {
-        return command;
-      }
-
-      // Break at logical points: pipes, operators, common flags
-      // In Confluence table cells, use actual newlines (not \\ escape sequences)
-      let result = command
-        .replace(/ \| /g, ' |\n  ')           // Break before pipes
-        .replace(/ && /g, ' &&\n  ')          // Break before &&
-        .replace(/ \|\| /g, ' ||\n  ')        // Break before ||
-        .replace(/ --context /g, '\n  --context ')  // Break before --context
-        .replace(/ --namespace /g, '\n  --namespace ')  // Break before --namespace
-        .replace(/ -n /g, '\n  -n ')          // Break before -n flag
-        .replace(/ -f /g, '\n  -f ')          // Break before -f flag
-        .replace(/ -o /g, '\n  -o ');         // Break before -o flag
-
-      return result;
-    };
-
-    // Build header panel
-    let content = `{panel:title=${filteredOperation.name} - Operation Documentation|borderStyle=solid|borderColor=#0052CC|titleBGColor=#DEEBFF|bgColor=#fff}
+  // Build header panel
+  let content = `{panel:title=${filteredOperation.name} - Operation Documentation|borderStyle=solid|borderColor=#0052CC|titleBGColor=#DEEBFF|bgColor=#fff}
 
 h2. Overview
 *Version:* ${filteredOperation.version}
@@ -513,12 +679,14 @@ ${filteredOperation.emergency ? '*Emergency Operation:* {status:colour=Red|title
 
 `;
 
-    // Add Gantt chart if requested and steps have timeline data
-    if (includeGantt) {
-        const stepsWithTimeline = filteredOperation.steps.filter((step: any) => step.timeline);
+  // Add Gantt chart if requested and steps have timeline data
+  if (includeGantt) {
+    const stepsWithTimeline = filteredOperation.steps.filter(
+      (step: any) => step.timeline,
+    );
 
-        if (stepsWithTimeline.length > 0) {
-            content += `h2. Timeline Schedule
+    if (stepsWithTimeline.length > 0) {
+      content += `h2. Timeline Schedule
 
 {markdown}
 \`\`\`mermaid
@@ -529,113 +697,155 @@ gantt
 
 `;
 
-            // Group steps by phase
-            const ganttPhases: { [key: string]: any[] } = {
-                preflight: [],
-                flight: [],
-                postflight: []
-            };
+      // Group steps by phase
+      const ganttPhases: { [key: string]: any[] } = {
+        preflight: [],
+        flight: [],
+        postflight: [],
+      };
 
-            stepsWithTimeline.forEach((step: any) => {
-                const phase = step.phase || 'flight';
-                if (ganttPhases[phase]) {
-                    ganttPhases[phase].push(step);
-                }
-            });
+      stepsWithTimeline.forEach((step: any) => {
+        const phase = step.phase || 'flight';
+        if (ganttPhases[phase]) {
+          ganttPhases[phase].push(step);
+        }
+      });
 
-            // Generate sections for each phase
-            const ganttPhaseNames = {
-                preflight: '🛫 Pre-Flight Phase',
-                flight: '✈️ Flight Phase',
-                postflight: '🛬 Post-Flight Phase'
-            };
+      // Generate sections for each phase
+      const ganttPhaseNames = {
+        preflight: '🛫 Pre-Flight Phase',
+        flight: '✈️ Flight Phase',
+        postflight: '🛬 Post-Flight Phase',
+      };
 
-            Object.entries(ganttPhases).forEach(([phaseName, phaseSteps]) => {
-                if (phaseSteps.length === 0) return;
+      Object.entries(ganttPhases).forEach(([phaseName, phaseSteps]) => {
+        if (phaseSteps.length === 0) return;
 
-                content += `    section ${ganttPhaseNames[phaseName as keyof typeof ganttPhaseNames]}\n`;
+        content += `    section ${ganttPhaseNames[phaseName as keyof typeof ganttPhaseNames]}\n`;
 
-                phaseSteps.forEach((step: any) => {
-                    const taskName = step.name.replace(/:/g, ''); // Remove colons as they break Mermaid syntax
-                    const pic = step.pic ? ` (${step.pic})` : '';
-                    const timeline = step.timeline || '';
-                    content += `    ${taskName}${pic} :${timeline}\n`;
-                });
-                content += '\n';
-            });
+        phaseSteps.forEach((step: any) => {
+          const taskName = step.name.replace(/:/g, ''); // Remove colons as they break Mermaid syntax
+          const pic = step.pic ? ` (${step.pic})` : '';
+          const timeline = step.timeline || '';
+          content += `    ${taskName}${pic} :${timeline}\n`;
+        });
+        content += '\n';
+      });
 
-            content += `\`\`\`
+      content += `\`\`\`
 {markdown}
 
 `;
-        }
     }
+  }
 
-
-    // Dependencies section
-    if (filteredOperation.needs && filteredOperation.needs.length > 0) {
-      content += `h2. Dependencies
+  // Dependencies section
+  if (filteredOperation.needs && filteredOperation.needs.length > 0) {
+    content += `h2. Dependencies
 
 {info}This operation depends on the following operations being completed first:{info}
 
 ${filteredOperation.needs.map((dep: string) => `* *${dep}*`).join('\n')}
 
 `;
-    }
+  }
 
-    // Environments table
-    content += `h2. Environments
+  // Environments table
+  content += `h2. Environments
 
 || Environment || Description || Approval Required || Validation Required || Targets || Variables ||
-${filteredOperation.environments.map((env: any) => {
-      const varCount = Object.keys(env.variables || {}).length;
-      const varsText = Object.entries(env.variables || {}).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n');
-      const varsCell = varCount > 0
+${filteredOperation.environments
+  .map((env: any) => {
+    const varCount = Object.keys(env.variables || {}).length;
+    const varsText = Object.entries(env.variables || {})
+      .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+      .join('\n');
+    const varsCell =
+      varCount > 0
         ? `{expand:title=Show ${varCount} variables}${varsText}{expand}`
         : '-';
-      return `| ${env.name} | ${env.description || '-'} | ${env.approval_required ? '{status:colour=Yellow|title=YES}' : 'No'} | ${env.validation_required ? 'Yes' : 'No'} | ${env.targets?.join(', ') || '-'} | ${varsCell} |`;
-    }).join('\n')}
+    return `| ${env.name} | ${env.description || '-'} | ${env.approval_required ? '{status:colour=Yellow|title=YES}' : 'No'} | ${env.validation_required ? 'Yes' : 'No'} | ${env.targets?.join(', ') || '-'} | ${varsCell} |`;
+  })
+  .join('\n')}
 
 `;
 
-    // Group steps by phase
-    const phases: { [key: string]: any[] } = {
-      preflight: [],
-      flight: [],
-      postflight: []
+  // Group steps by phase
+  const phases: { [key: string]: any[] } = {
+    preflight: [],
+    flight: [],
+    postflight: [],
+  };
+
+  filteredOperation.steps.forEach((step: any) => {
+    const phase = step.phase || 'flight';
+    if (phases[phase]) {
+      phases[phase].push(step);
+    }
+  });
+
+  let globalStepNumber = 1;
+
+  // Generate steps by phase with multi-column table
+  Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
+    if (phaseSteps.length === 0) return;
+
+    const phaseHeaders: Record<string, string> = {
+      preflight: 'Pre-Flight Phase',
+      flight: 'Flight Phase (Main Operations)',
+      postflight: 'Post-Flight Phase',
     };
 
-    filteredOperation.steps.forEach((step: any) => {
-      const phase = step.phase || 'flight';
-      if (phases[phase]) {
-        phases[phase].push(step);
-      }
-    });
+    const phaseIcon = phaseIcons[phaseName as keyof typeof phaseIcons] || '';
 
-    let globalStepNumber = 1;
-
-    // Generate steps by phase with multi-column table
-    Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
-      if (phaseSteps.length === 0) return;
-
-      const phaseHeaders: Record<string, string> = {
-        preflight: 'Pre-Flight Phase',
-        flight: 'Flight Phase (Main Operations)',
-        postflight: 'Post-Flight Phase'
-      };
-
-      const phaseIcon = phaseIcons[phaseName as keyof typeof phaseIcons] || '';
-
-      content += `h2. ${phaseIcon} ${phaseHeaders[phaseName]}
+    content += `h2. ${phaseIcon} ${phaseHeaders[phaseName]}
 
 `;
 
-      // Only build initial table header if first step is not a section heading
-      const firstStepIsSection = phaseSteps.length > 0 && phaseSteps[0].section_heading;
-      let tableOpen = false;
+    // Only build initial table header if first step is not a section heading
+    const firstStepIsSection =
+      phaseSteps.length > 0 && phaseSteps[0].section_heading;
+    let tableOpen = false;
 
-      if (!firstStepIsSection) {
-        // Build table header with environment columns
+    if (!firstStepIsSection) {
+      // Build table header with environment columns
+      content += `|| Step ||`;
+      filteredOperation.environments.forEach((env: any) => {
+        content += ` ${env.name} ||`;
+      });
+      content += '\n';
+      tableOpen = true;
+    }
+
+    // Build table rows for each step
+    phaseSteps.forEach((step: any) => {
+      // Handle section heading
+      if (step.section_heading) {
+        // Close current table if one is open
+        if (tableOpen) {
+          content += '\n';
+          tableOpen = false;
+        }
+
+        // Add section heading
+        content += `h3. ${escapeConfluenceMacros(step.name)}\n\n`;
+        if (step.description) {
+          content += `${escapeConfluenceMacros(step.description)}\n\n`;
+        }
+
+        // Add PIC and timeline if present in section heading
+        if (step.pic || step.timeline) {
+          const metadata = [];
+          if (step.pic)
+            metadata.push(`(i) PIC: ${escapeConfluenceMacros(step.pic)}`);
+          if (step.timeline)
+            metadata.push(
+              `(time) Timeline: ${escapeConfluenceMacros(step.timeline)}`,
+            );
+          content += `_${metadata.join(' • ')}_\n\n`;
+        }
+
+        // Reopen table
         content += `|| Step ||`;
         filteredOperation.environments.forEach((env: any) => {
           content += ` ${env.name} ||`;
@@ -644,265 +854,274 @@ ${filteredOperation.environments.map((env: any) => {
         tableOpen = true;
       }
 
-      // Build table rows for each step
-      phaseSteps.forEach((step: any) => {
-        // Handle section heading
-        if (step.section_heading) {
-          // Close current table if one is open
-          if (tableOpen) {
-            content += '\n';
-            tableOpen = false;
-          }
+      const typeIcon = typeIcons[step.type] || '';
+      const phaseIconForStep =
+        step.phase && step.phase !== phaseName
+          ? phaseIcons[step.phase as keyof typeof phaseIcons] || ''
+          : '';
 
-          // Add section heading
-          content += `h3. ${escapeConfluenceMacros(step.name)}\n\n`;
-          if (step.description) {
-            content += `${escapeConfluenceMacros(step.description)}\n\n`;
-          }
+      // Build step info cell (escape braces to prevent macro interpretation)
+      let stepInfo = `${phaseIconForStep}${typeIcon} Step ${globalStepNumber}: ${escapeConfluenceMacros(step.name)}`;
+      if (step.description)
+        stepInfo += `\n${escapeConfluenceMacros(step.description)}`;
+      if (step.pic)
+        stepInfo += `\n(i) PIC: ${escapeConfluenceMacros(step.pic)}`;
+      if (step.timeline)
+        stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(step.timeline)}`;
+      if (step.needs && step.needs.length > 0)
+        stepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(step.needs.join(', '))}`;
+      if (step.ticket)
+        stepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket)}`;
+      if (step.if)
+        stepInfo += `\n(?) Condition: ${escapeConfluenceMacros(step.if)}`;
 
-          // Add PIC and timeline if present in section heading
-          if (step.pic || step.timeline) {
-            const metadata = [];
-            if (step.pic) metadata.push(`(i) PIC: ${escapeConfluenceMacros(step.pic)}`);
-            if (step.timeline) metadata.push(`(time) Timeline: ${escapeConfluenceMacros(step.timeline)}`);
-            content += `_${metadata.join(' • ')}_\n\n`;
-          }
+      // Build all command cells for each environment
+      const commandCells: string[] = [];
+      filteredOperation.environments.forEach((env: any) => {
+        const rawCommand = step.command || step.instruction || '';
+        let displayCommand = rawCommand;
 
-          // Reopen table
-          content += `|| Step ||`;
-          filteredOperation.environments.forEach((env: any) => {
-            content += ` ${env.name} ||`;
-          });
-          content += '\n';
-          tableOpen = true;
+        // Resolve variables if flag is enabled
+        if (resolveVars && rawCommand) {
+          displayCommand = substituteVariables(
+            rawCommand,
+            env.variables || {},
+            step.variables,
+          );
         }
 
-        const typeIcon = typeIcons[step.type] || '';
-        const phaseIconForStep = step.phase && step.phase !== phaseName ? phaseIcons[step.phase as keyof typeof phaseIcons] || '' : '';
-
-        // Build step info cell (escape braces to prevent macro interpretation)
-        let stepInfo = `${phaseIconForStep}${typeIcon} Step ${globalStepNumber}: ${escapeConfluenceMacros(step.name)}`;
-        if (step.description) stepInfo += `\n${escapeConfluenceMacros(step.description)}`;
-        if (step.pic) stepInfo += `\n(i) PIC: ${escapeConfluenceMacros(step.pic)}`;
-        if (step.timeline) stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(step.timeline)}`;
-        if (step.needs && step.needs.length > 0) stepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(step.needs.join(', '))}`;
-        if (step.ticket) stepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket)}`;
-        if (step.if) stepInfo += `\n(?) Condition: ${escapeConfluenceMacros(step.if)}`;
-
-        // Build all command cells for each environment
-        const commandCells: string[] = [];
-        filteredOperation.environments.forEach((env: any) => {
-          const rawCommand = step.command || step.instruction || '';
-          let displayCommand = rawCommand;
-
-          // Resolve variables if flag is enabled
-          if (resolveVars && rawCommand) {
-            displayCommand = substituteVariables(rawCommand, env.variables || {}, step.variables);
-          }
-
-          // Check if content is markdown
-          const isMarkdown = step.instruction && (
-            displayCommand.includes('\n#') ||
+        // Check if content is markdown
+        const isMarkdown =
+          step.instruction &&
+          (displayCommand.includes('\n#') ||
             displayCommand.includes('\n-') ||
             displayCommand.includes('\n*') ||
             displayCommand.includes('\n1.') ||
             displayCommand.includes('```') ||
-            displayCommand.includes('**')
-          );
+            displayCommand.includes('**'));
 
-          let cellContent = '';
-          if (displayCommand) {
-            if (isMarkdown) {
-              // For markdown instructions, wrap in {markdown} to preserve formatting and links
-              const trimmed = displayCommand.replace(/\s+$/, '');
-              cellContent = `{markdown}\n${trimmed}\n{markdown}`;
+        let cellContent = '';
+        if (displayCommand) {
+          if (isMarkdown) {
+            // For markdown instructions, wrap in {markdown} to preserve formatting and links
+            const trimmed = displayCommand.replace(/\s+$/, '');
+            cellContent = `{markdown}\n${trimmed}\n{markdown}`;
+          } else {
+            // Trim trailing newlines from command (YAML literal blocks add them)
+            const trimmedCommand = displayCommand.replace(/\n+$/, '');
+            const hasMultipleLines = trimmedCommand.includes('\n');
+
+            if (hasMultipleLines) {
+              // Multi-line: use code block with line breaks (newline after opening tag)
+              const formattedCommand = formatForTableCell(trimmedCommand, true);
+              cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
             } else {
-              // Trim trailing newlines from command (YAML literal blocks add them)
+              // Single-line: apply smart line breaking if needed, then wrap in code block
+              const withBreaks = addSmartLineBreaks(trimmedCommand);
+              cellContent = `{code:bash}\n${withBreaks}\n{code}`;
+            }
+          }
+        } else if (step.sub_steps && step.sub_steps.length > 0) {
+          cellContent = '_(see substeps below)_';
+        } else {
+          cellContent = `_(${step.type} step)_`;
+        }
+
+        // Add evidence area if required
+        if (step.evidence) {
+          cellContent += formatEvidenceArea(step.evidence);
+        }
+
+        commandCells.push(cellContent);
+      });
+
+      // Construct complete row with all cells
+      content += `| ${stepInfo} | ${commandCells.join(' | ')} |\n`;
+
+      // Add sub-steps in table format
+      if (step.sub_steps && step.sub_steps.length > 0) {
+        step.sub_steps.forEach((subStep: any, subIndex: number) => {
+          const subStepLetter = String.fromCharCode(97 + subIndex);
+          const subStepId = `${globalStepNumber}${subStepLetter}`;
+          const subTypeIcon = typeIcons[subStep.type] || '';
+
+          // Handle section heading for sub-steps
+          if (subStep.section_heading) {
+            // Close current table
+            content += '\n';
+
+            // Add section heading (h4 for sub-step sections)
+            content += `h4. ${escapeConfluenceMacros(subStep.name)}\n\n`;
+            if (subStep.description) {
+              content += `${escapeConfluenceMacros(subStep.description)}\n\n`;
+            }
+
+            // Add PIC and timeline if present
+            if (subStep.pic || subStep.timeline) {
+              const metadata = [];
+              if (subStep.pic)
+                metadata.push(
+                  `(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`,
+                );
+              if (subStep.timeline)
+                metadata.push(
+                  `(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`,
+                );
+              content += `_${metadata.join(' • ')}_\n\n`;
+            }
+
+            // Reopen table
+            content += `|| Step ||`;
+            filteredOperation.environments.forEach((env: any) => {
+              content += ` ${env.name} ||`;
+            });
+            content += '\n';
+          }
+
+          let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${escapeConfluenceMacros(subStep.name)}`;
+          if (subStep.description)
+            subStepInfo += `\n${escapeConfluenceMacros(subStep.description)}`;
+          if (subStep.pic)
+            subStepInfo += `\n(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`;
+          if (subStep.timeline)
+            subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`;
+          if (subStep.needs && subStep.needs.length > 0)
+            subStepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(subStep.needs.join(', '))}`;
+          if (subStep.ticket)
+            subStepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket)}`;
+          if (subStep.if)
+            subStepInfo += `\n(?) Condition: ${escapeConfluenceMacros(subStep.if)}`;
+
+          // Build all command cells for sub-step
+          const subCommandCells: string[] = [];
+          filteredOperation.environments.forEach((env: any) => {
+            const rawCommand = subStep.command || subStep.instruction || '';
+            let displayCommand = rawCommand;
+
+            if (resolveVars && rawCommand) {
+              displayCommand = substituteVariables(
+                rawCommand,
+                env.variables || {},
+                subStep.variables,
+              );
+            }
+
+            let cellContent = '';
+            if (displayCommand) {
               const trimmedCommand = displayCommand.replace(/\n+$/, '');
               const hasMultipleLines = trimmedCommand.includes('\n');
 
               if (hasMultipleLines) {
-                // Multi-line: use code block with line breaks (newline after opening tag)
-                const formattedCommand = formatForTableCell(trimmedCommand, true);
+                // Multi-line: use code block with line breaks
+                const formattedCommand = formatForTableCell(
+                  trimmedCommand,
+                  true,
+                );
                 cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
               } else {
-                // Single-line: apply smart line breaking if needed, then wrap in code block
+                // Single-line: apply smart breaking
                 const withBreaks = addSmartLineBreaks(trimmedCommand);
                 cellContent = `{code:bash}\n${withBreaks}\n{code}`;
               }
-            }
-          } else if (step.sub_steps && step.sub_steps.length > 0) {
-            cellContent = '_(see substeps below)_';
-          } else {
-            cellContent = `_(${step.type} step)_`;
-          }
-
-          // Add evidence area if required
-          if (step.evidence) {
-            cellContent += formatEvidenceArea(step.evidence);
-          }
-
-          commandCells.push(cellContent);
-        });
-
-        // Construct complete row with all cells
-        content += `| ${stepInfo} | ${commandCells.join(' | ')} |\n`;
-
-        // Add sub-steps in table format
-        if (step.sub_steps && step.sub_steps.length > 0) {
-          step.sub_steps.forEach((subStep: any, subIndex: number) => {
-            const subStepLetter = String.fromCharCode(97 + subIndex);
-            const subStepId = `${globalStepNumber}${subStepLetter}`;
-            const subTypeIcon = typeIcons[subStep.type] || '';
-
-            // Handle section heading for sub-steps
-            if (subStep.section_heading) {
-              // Close current table
-              content += '\n';
-
-              // Add section heading (h4 for sub-step sections)
-              content += `h4. ${escapeConfluenceMacros(subStep.name)}\n\n`;
-              if (subStep.description) {
-                content += `${escapeConfluenceMacros(subStep.description)}\n\n`;
-              }
-
-              // Add PIC and timeline if present
-              if (subStep.pic || subStep.timeline) {
-                const metadata = [];
-                if (subStep.pic) metadata.push(`(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`);
-                if (subStep.timeline) metadata.push(`(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`);
-                content += `_${metadata.join(' • ')}_\n\n`;
-              }
-
-              // Reopen table
-              content += `|| Step ||`;
-              filteredOperation.environments.forEach((env: any) => {
-                content += ` ${env.name} ||`;
-              });
-              content += '\n';
+            } else {
+              cellContent = `_(${subStep.type} step)_`;
             }
 
-            let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${escapeConfluenceMacros(subStep.name)}`;
-            if (subStep.description) subStepInfo += `\n${escapeConfluenceMacros(subStep.description)}`;
-            if (subStep.pic) subStepInfo += `\n(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`;
-            if (subStep.timeline) subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`;
-            if (subStep.needs && subStep.needs.length > 0) subStepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(subStep.needs.join(', '))}`;
-            if (subStep.ticket) subStepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket)}`;
-            if (subStep.if) subStepInfo += `\n(?) Condition: ${escapeConfluenceMacros(subStep.if)}`;
+            // Add evidence area if required
+            if (subStep.evidence) {
+              cellContent += formatEvidenceArea(subStep.evidence);
+            }
 
-            // Build all command cells for sub-step
-            const subCommandCells: string[] = [];
-            filteredOperation.environments.forEach((env: any) => {
-              const rawCommand = subStep.command || subStep.instruction || '';
-              let displayCommand = rawCommand;
-
-              if (resolveVars && rawCommand) {
-                displayCommand = substituteVariables(rawCommand, env.variables || {}, subStep.variables);
-              }
-
-              let cellContent = '';
-              if (displayCommand) {
-                const trimmedCommand = displayCommand.replace(/\n+$/, '');
-                const hasMultipleLines = trimmedCommand.includes('\n');
-
-                if (hasMultipleLines) {
-                  // Multi-line: use code block with line breaks
-                  const formattedCommand = formatForTableCell(trimmedCommand, true);
-                  cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
-                } else {
-                  // Single-line: apply smart breaking
-                  const withBreaks = addSmartLineBreaks(trimmedCommand);
-                  cellContent = `{code:bash}\n${withBreaks}\n{code}`;
-                }
-              } else {
-                cellContent = `_(${subStep.type} step)_`;
-              }
-
-              // Add evidence area if required
-              if (subStep.evidence) {
-                cellContent += formatEvidenceArea(subStep.evidence);
-              }
-
-              subCommandCells.push(cellContent);
-            });
-
-            // Construct complete row with all cells
-            content += `| ${subStepInfo} | ${subCommandCells.join(' | ')} |\n`;
+            subCommandCells.push(cellContent);
           });
-        }
 
-        globalStepNumber++;
-      });
+          // Construct complete row with all cells
+          content += `| ${subStepInfo} | ${subCommandCells.join(' | ')} |\n`;
+        });
+      }
 
-      content += '\n';
+      globalStepNumber++;
     });
 
-    // Rollback section if available
-    const stepsWithRollback = filteredOperation.steps.filter((step: any) => step.rollback);
-    if (stepsWithRollback.length > 0) {
-      content += `h2. (<) Rollback Procedures
+    content += '\n';
+  });
+
+  // Rollback section if available
+  const stepsWithRollback = filteredOperation.steps.filter(
+    (step: any) => step.rollback,
+  );
+  if (stepsWithRollback.length > 0) {
+    content += `h2. (<) Rollback Procedures
 
 {warning}If deployment fails, execute the following rollback steps in reverse order:{warning}
 
 || Step || ${filteredOperation.environments.map((e: any) => `${e.name} ||`).join(' ')}
 `;
 
-      stepsWithRollback.forEach((step: any) => {
-        // Build all rollback cells
-        const rollbackCells: string[] = [];
-        filteredOperation.environments.forEach((env: any) => {
-          const rollbackCommand = step.rollback!.command || step.rollback!.instruction || '';
-          let displayCommand = rollbackCommand;
+    stepsWithRollback.forEach((step: any) => {
+      // Build all rollback cells
+      const rollbackCells: string[] = [];
+      filteredOperation.environments.forEach((env: any) => {
+        const rollbackCommand =
+          step.rollback?.command || step.rollback?.instruction || '';
+        let displayCommand = rollbackCommand;
 
-          if (resolveVars && rollbackCommand) {
-            displayCommand = substituteVariables(rollbackCommand, env.variables || {}, step.variables);
-          }
+        if (resolveVars && rollbackCommand) {
+          displayCommand = substituteVariables(
+            rollbackCommand,
+            env.variables || {},
+            step.variables,
+          );
+        }
 
-          let cellContent = '';
-          if (displayCommand) {
-            const trimmedCommand = displayCommand.replace(/\n+$/, '');
-            const hasMultipleLines = trimmedCommand.includes('\n');
+        let cellContent = '';
+        if (displayCommand) {
+          const trimmedCommand = displayCommand.replace(/\n+$/, '');
+          const hasMultipleLines = trimmedCommand.includes('\n');
 
-            if (hasMultipleLines) {
-              // Multi-line rollback command
-              const formattedCommand = formatForTableCell(trimmedCommand, true);
-              cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
-            } else {
-              // Single-line rollback command
-              const withBreaks = addSmartLineBreaks(trimmedCommand);
-              cellContent = `{code:bash}\n${withBreaks}\n{code}`;
-            }
+          if (hasMultipleLines) {
+            // Multi-line rollback command
+            const formattedCommand = formatForTableCell(trimmedCommand, true);
+            cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
           } else {
-            cellContent = '-';
+            // Single-line rollback command
+            const withBreaks = addSmartLineBreaks(trimmedCommand);
+            cellContent = `{code:bash}\n${withBreaks}\n{code}`;
           }
+        } else {
+          cellContent = '-';
+        }
 
-          // Add evidence area if required for rollback
-          if (step.rollback!.evidence) {
-            cellContent += formatEvidenceArea(step.rollback!.evidence);
-          }
+        // Add evidence area if required for rollback
+        if (step.rollback?.evidence) {
+          cellContent += formatEvidenceArea(step.rollback?.evidence);
+        }
 
-          rollbackCells.push(cellContent);
-        });
-
-        // Construct complete row
-        content += `| Rollback for: ${step.name} | ${rollbackCells.join(' | ')} |\n`;
+        rollbackCells.push(cellContent);
       });
 
-      content += '\n';
-    }
+      // Construct complete row
+      content += `| Rollback for: ${step.name} | ${rollbackCells.join(' | ')} |\n`;
+    });
 
-    // Global rollback section if available
-    if (filteredOperation.rollback && filteredOperation.rollback.steps && filteredOperation.rollback.steps.length > 0) {
-      if (stepsWithRollback.length === 0) {
-        // Only add header if not already added
-        content += `h2. (<) Rollback Procedures
+    content += '\n';
+  }
+
+  // Global rollback section if available
+  if (
+    filteredOperation.rollback?.steps &&
+    filteredOperation.rollback.steps.length > 0
+  ) {
+    if (stepsWithRollback.length === 0) {
+      // Only add header if not already added
+      content += `h2. (<) Rollback Procedures
 
 {warning}If deployment fails, execute the following rollback steps:{warning}
 
 `;
-      }
+    }
 
-      content += `h3. Global Rollback Plan
+    content += `h3. Global Rollback Plan
 
 *Automatic*: ${filteredOperation.rollback.automatic ? 'Yes' : 'No'}
 ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOperation.rollback.conditions.join(', ')}\n` : ''}
@@ -910,26 +1129,32 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
 || Step || ${filteredOperation.environments.map((e: any) => `${e.name} ||`).join(' ')}
 `;
 
-      filteredOperation.rollback.steps.forEach((rollbackStep: any, index: number) => {
+    filteredOperation.rollback.steps.forEach(
+      (rollbackStep: any, index: number) => {
         const rollbackCells: string[] = [];
 
         filteredOperation.environments.forEach((env: any) => {
-          const rollbackCommand = rollbackStep.command || rollbackStep.instruction || '';
+          const rollbackCommand =
+            rollbackStep.command || rollbackStep.instruction || '';
           let displayCommand = rollbackCommand;
 
           if (resolveVars && rollbackCommand) {
-            displayCommand = substituteVariables(rollbackCommand, env.variables || {}, {});
+            displayCommand = substituteVariables(
+              rollbackCommand,
+              env.variables || {},
+              {},
+            );
           }
 
           let cellContent = '';
           if (displayCommand) {
             // Check if it's markdown-style instruction
-            const isMarkdown = rollbackStep.instruction && (
-              displayCommand.includes('\n#') ||
-              displayCommand.includes('\n-') ||
-              displayCommand.includes('\n*') ||
-              displayCommand.includes('\n1.')
-            );
+            const isMarkdown =
+              rollbackStep.instruction &&
+              (displayCommand.includes('\n#') ||
+                displayCommand.includes('\n-') ||
+                displayCommand.includes('\n*') ||
+                displayCommand.includes('\n1.'));
 
             if (isMarkdown) {
               // For markdown instructions, wrap in {markdown} to preserve formatting and links
@@ -939,7 +1164,10 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
               const trimmedCommand = displayCommand.replace(/\n+$/, '');
               const hasMultipleLines = trimmedCommand.includes('\n');
               if (hasMultipleLines) {
-                const formattedCommand = formatForTableCell(trimmedCommand, true);
+                const formattedCommand = formatForTableCell(
+                  trimmedCommand,
+                  true,
+                );
                 cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
               } else {
                 const withBreaks = addSmartLineBreaks(trimmedCommand);
@@ -959,13 +1187,14 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
         });
 
         content += `| Rollback Step ${index + 1} | ${rollbackCells.join(' | ')} |\n`;
-      });
+      },
+    );
 
-      content += '\n';
-    }
+    content += '\n';
+  }
 
-    // Footer with generation info
-    content += `
+  // Footer with generation info
+  content += `
 ----
 
 {panel:title=Generated Information|borderStyle=solid|borderColor=#f0f0f0|bgColor=#FAFBFC}
@@ -974,21 +1203,28 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
 {panel}
 `;
 
-    return content;
+  return content;
 }
 
-
 // Generate command with subcommands
-const generateCommand = new Command('generate')
-  .description('Generate documentation and reports');
+const generateCommand = new Command('generate').description(
+  'Generate documentation and reports',
+);
 
 generateCommand
   .command('manual <operation>')
   .description('Generate operation manual')
   .option('-o, --output <file>', 'Output file path')
-  .option('-f, --format <format>', 'Output format (markdown, html, confluence, adf)', 'markdown')
+  .option(
+    '-f, --format <format>',
+    'Output format (markdown, html, confluence, adf)',
+    'markdown',
+  )
   .option('-e, --env <environment>', 'Generate for specific environment')
-  .option('--resolve-vars', 'Resolve variables to actual values instead of showing placeholders')
+  .option(
+    '--resolve-vars',
+    'Resolve variables to actual values instead of showing placeholders',
+  )
   .option('--gantt', 'Include Mermaid Gantt chart for timeline visualization')
   .action(async (operation: string, options: GenerateOptions) => {
     try {
@@ -1004,9 +1240,16 @@ generateCommand
   .command('docs <operation>')
   .description('Generate comprehensive documentation')
   .option('-o, --output <file>', 'Output file path')
-  .option('-f, --format <format>', 'Output format (markdown, html, confluence, adf, pdf)', 'markdown')
+  .option(
+    '-f, --format <format>',
+    'Output format (markdown, html, confluence, adf, pdf)',
+    'markdown',
+  )
   .option('-e, --env <environment>', 'Generate for specific environment')
-  .option('--resolve-vars', 'Resolve variables to actual values instead of showing placeholders')
+  .option(
+    '--resolve-vars',
+    'Resolve variables to actual values instead of showing placeholders',
+  )
   .action(async (operation: string, options: GenerateOptions) => {
     try {
       const generator = new DocumentationGenerator();

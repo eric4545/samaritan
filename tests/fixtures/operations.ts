@@ -1,4 +1,4 @@
-import type { Operation } from '../../src/models/operation'
+import type { Operation } from '../../src/models/operation';
 
 /**
  * Shared test operation in YAML format
@@ -87,7 +87,7 @@ steps:
     phase: postflight
     description: Verify all services are running correctly
     command: curl https://web-server.example.com/health
-`
+`;
 
 /**
  * Parsed TypeScript Operation object
@@ -97,7 +97,8 @@ export const deploymentOperation: Operation = {
   id: 'deploy-web-server',
   name: 'Deploy Web Server',
   version: '1.1.0',
-  description: 'Deploys the main web server application to staging and production environments.',
+  description:
+    'Deploys the main web server application to staging and production environments.',
   environments: [
     {
       name: 'staging',
@@ -105,7 +106,7 @@ export const deploymentOperation: Operation = {
       variables: {
         REPLICAS: 2,
         DB_HOST: 'staging-db.example.com',
-        PORT: 8080
+        PORT: 8080,
       },
       restrictions: [],
       approval_required: false,
@@ -118,7 +119,7 @@ export const deploymentOperation: Operation = {
       variables: {
         REPLICAS: 5,
         DB_HOST: 'prod-db.example.com',
-        PORT: 80
+        PORT: 80,
       },
       restrictions: [],
       approval_required: true,
@@ -163,7 +164,8 @@ export const deploymentOperation: Operation = {
       name: 'Scale Deployment',
       type: 'automatic',
       phase: 'flight',
-      description: 'Scale the Kubernetes deployment to the specified replica count',
+      description:
+        'Scale the Kubernetes deployment to the specified replica count',
       command: 'kubectl scale deployment web-server --replicas=${REPLICAS}',
     },
     {
@@ -171,7 +173,8 @@ export const deploymentOperation: Operation = {
       type: 'manual',
       phase: 'postflight',
       description: 'Manually verify deployment health',
-      instruction: 'Check the application health endpoint at http://localhost:${PORT}/health',
+      instruction:
+        'Check the application health endpoint at http://localhost:${PORT}/health',
       pic: 'john.doe',
       timeline: '2024-01-15 10:00',
       ticket: 'JIRA-123',
@@ -203,7 +206,7 @@ export const deploymentOperation: Operation = {
     created_at: new Date('2024-01-01'),
     updated_at: new Date('2024-01-15'),
   },
-}
+};
 
 /**
  * Minimal operation for edge case testing
@@ -236,7 +239,7 @@ export const minimalOperation: Operation = {
     created_at: new Date(),
     updated_at: new Date(),
   },
-}
+};
 
 /**
  * Operation with sub-steps for testing nested structure
@@ -282,7 +285,7 @@ export const operationWithSubSteps: Operation = {
     created_at: new Date(),
     updated_at: new Date(),
   },
-}
+};
 
 /**
  * Operation with section headings for testing table breaks
@@ -314,7 +317,7 @@ steps:
     type: automatic
     phase: flight
     command: echo "after"
-`
+`;
 
 /**
  * Operation with section heading as first step (edge case)
@@ -345,7 +348,7 @@ steps:
     type: manual
     phase: flight
     command: curl /health
-`
+`;
 
 // Parser test fixtures
 
@@ -360,14 +363,14 @@ steps:
   - name: Test Step
     type: automatic
     command: echo "test"
-`
+`;
 
 /**
  * Invalid YAML missing required fields
  */
 export const invalidOperationYaml = `name: Invalid Operation
 # Missing version and steps
-`
+`;
 
 /**
  * Enhanced operation YAML with all new fields
@@ -401,7 +404,7 @@ steps:
     evidence:
       required: true
       types: [screenshot, log]
-`
+`;
 
 // Enhanced parser test fixtures
 
@@ -481,7 +484,7 @@ steps:
       required: true
       approvers: [manager@company.com]
       timeout: "24h"
-`
+`;
 
 /**
  * Conditional step test YAML
@@ -496,7 +499,7 @@ steps:
     if: "\${{ success() }}"
     command: echo "Previous steps succeeded"
     description: Only run if previous steps passed
-`
+`;
 
 /**
  * Enhanced preflight fields test YAML
@@ -518,7 +521,7 @@ steps:
   - name: Simple Step
     type: automatic
     command: echo done
-`
+`;
 
 // Confluence generator test fixtures
 
@@ -542,7 +545,7 @@ steps:
       echo "line 1"
       echo "line 2"
       echo "line 3"
-`
+`;
 
 /**
  * Sub-steps test YAML
@@ -566,7 +569,7 @@ steps:
       - name: Sub Task B
         type: automatic
         command: echo "B"
-`
+`;
 
 /**
  * Dependencies test YAML
@@ -590,7 +593,7 @@ steps:
     command: echo "two"
     needs:
       - Step One
-`
+`;
 
 /**
  * Conditional step for Confluence test YAML
@@ -609,7 +612,7 @@ steps:
     phase: flight
     command: echo "prod only"
     if: "\${ENVIRONMENT} == 'production'"
-`
+`;
 
 /**
  * Markdown instructions test YAML
@@ -630,7 +633,7 @@ steps:
       1. First thing
       2. Second thing
       **Important note**
-`
+`;
 
 /**
  * Markdown with variables test YAML
@@ -654,7 +657,7 @@ steps:
       1. Verify API: curl \${API_ENDPOINT}/health
       2. Check database: ping \${DB_HOST}
       **Important**: Variables like \${FOO} should be preserved
-`
+`;
 
 /**
  * Step with variables for escaping test YAML
@@ -673,7 +676,7 @@ steps:
     phase: flight
     if: \${ENVIRONMENT} == 'production'
     command: echo "deploy"
-`
+`;
 
 /**
  * Markdown links test YAML
@@ -694,7 +697,7 @@ steps:
       - [API Docs](https://api.example.com/docs)
       - [Dashboard](https://dashboard.example.com)
       - Contact [Support](mailto:support@example.com)
-`
+`;
 
 /**
  * Global rollback test YAML
@@ -724,7 +727,7 @@ rollback:
         Verify rollback completed:
         1. Check pods are running
         2. Test API endpoints
-`
+`;
 
 /**
  * Gantt chart timeline test YAML
@@ -771,7 +774,7 @@ steps:
     command: curl https://example.com/health
     pic: QA Team
     timeline: after Deploy Frontend, 20m
-`
+`;
 
 /**
  * Evidence requirements test YAML
@@ -816,4 +819,4 @@ steps:
     type: automatic
     phase: postflight
     command: echo "Done"
-`
+`;

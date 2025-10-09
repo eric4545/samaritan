@@ -1,11 +1,11 @@
-import { 
-  EvidenceItem, 
-  EvidenceValidationResult, 
-  EvidenceValidationRule, 
-  EvidenceMetadata 
+import crypto from 'node:crypto';
+import type {
+  EvidenceItem,
+  EvidenceMetadata,
+  EvidenceValidationResult,
+  EvidenceValidationRule,
 } from '../models/evidence';
-import { EvidenceType } from '../models/operation';
-import crypto from 'crypto';
+import type { EvidenceType } from '../models/operation';
 
 // Default validation rules for each evidence type
 const DEFAULT_VALIDATION_RULES: Record<EvidenceType, EvidenceValidationRule> = {
@@ -13,53 +13,54 @@ const DEFAULT_VALIDATION_RULES: Record<EvidenceType, EvidenceValidationRule> = {
     type: 'screenshot',
     max_size: 10 * 1024 * 1024, // 10MB
     allowed_formats: ['image/png', 'image/jpeg', 'image/webp'],
-    min_resolution: '800x600'
+    min_resolution: '800x600',
   },
   log: {
     type: 'log',
     max_size: 50 * 1024 * 1024, // 50MB
     allowed_formats: ['text/plain', 'text/csv', 'application/json'],
-    forbidden_content: ['password', 'secret', 'token', 'key=']
+    forbidden_content: ['password', 'secret', 'token', 'key='],
   },
   command_output: {
     type: 'command_output',
     max_size: 10 * 1024 * 1024, // 10MB
     allowed_formats: ['text/plain'],
-    forbidden_content: ['password', 'secret', 'token']
+    forbidden_content: ['password', 'secret', 'token'],
   },
   file: {
     type: 'file',
     max_size: 100 * 1024 * 1024, // 100MB
-    allowed_formats: ['*'] // Allow all formats for generic files
+    allowed_formats: ['*'], // Allow all formats for generic files
   },
   photo: {
     type: 'photo',
     max_size: 20 * 1024 * 1024, // 20MB
     allowed_formats: ['image/png', 'image/jpeg', 'image/webp', 'image/heic'],
-    min_resolution: '640x480'
+    min_resolution: '640x480',
   },
   video: {
     type: 'video',
     max_size: 500 * 1024 * 1024, // 500MB
     allowed_formats: ['video/mp4', 'video/webm', 'video/quicktime'],
-    max_duration: 300 // 5 minutes
-  }
+    max_duration: 300, // 5 minutes
+  },
 };
 
 /**
  * Validates an evidence item against validation rules
  */
 export function validateEvidence(
-  evidence: EvidenceItem, 
-  customRules?: EvidenceValidationRule[]
+  evidence: EvidenceItem,
+  customRules?: EvidenceValidationRule[],
 ): EvidenceValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const metadata: Partial<EvidenceMetadata> = {};
 
   // Get validation rules (custom or default)
-  const rules = customRules?.find(r => r.type === evidence.type) || 
-                DEFAULT_VALIDATION_RULES[evidence.type];
+  const rules =
+    customRules?.find((r) => r.type === evidence.type) ||
+    DEFAULT_VALIDATION_RULES[evidence.type];
 
   // Validate content exists
   if (!evidence.content || evidence.content.length === 0) {
@@ -68,22 +69,26 @@ export function validateEvidence(
   }
 
   // Calculate content size
-  const contentSize = Buffer.isBuffer(evidence.content) 
-    ? evidence.content.length 
+  const contentSize = Buffer.isBuffer(evidence.content)
+    ? evidence.content.length
     : Buffer.byteLength(evidence.content, 'utf8');
 
   metadata.size = contentSize;
 
   // Validate file size
   if (rules.max_size && contentSize > rules.max_size) {
-    errors.push(`File size ${formatBytes(contentSize)} exceeds maximum ${formatBytes(rules.max_size)}`);
+    errors.push(
+      `File size ${formatBytes(contentSize)} exceeds maximum ${formatBytes(rules.max_size)}`,
+    );
   }
 
   // Validate format
   if (rules.allowed_formats && !rules.allowed_formats.includes('*')) {
     const format = evidence.metadata.format;
     if (!format || !rules.allowed_formats.includes(format)) {
-      errors.push(`Format '${format}' not allowed. Allowed formats: ${rules.allowed_formats.join(', ')}`);
+      errors.push(
+        `Format '${format}' not allowed. Allowed formats: ${rules.allowed_formats.join(', ')}`,
+      );
     }
   }
 
@@ -92,21 +97,25 @@ export function validateEvidence(
 
   // Check for forbidden content
   if (rules.forbidden_content) {
-    const foundForbidden = rules.forbidden_content.filter(forbidden => 
-      contentStr.toLowerCase().includes(forbidden.toLowerCase())
+    const foundForbidden = rules.forbidden_content.filter((forbidden) =>
+      contentStr.toLowerCase().includes(forbidden.toLowerCase()),
     );
     if (foundForbidden.length > 0) {
-      errors.push(`Content contains forbidden terms: ${foundForbidden.join(', ')}`);
+      errors.push(
+        `Content contains forbidden terms: ${foundForbidden.join(', ')}`,
+      );
     }
   }
 
   // Check for required content
   if (rules.required_content) {
-    const missingRequired = rules.required_content.filter(required => 
-      !contentStr.toLowerCase().includes(required.toLowerCase())
+    const missingRequired = rules.required_content.filter(
+      (required) => !contentStr.toLowerCase().includes(required.toLowerCase()),
     );
     if (missingRequired.length > 0) {
-      warnings.push(`Content missing recommended terms: ${missingRequired.join(', ')}`);
+      warnings.push(
+        `Content missing recommended terms: ${missingRequired.join(', ')}`,
+      );
     }
   }
 
@@ -128,7 +137,7 @@ export function validateEvidence(
     valid: errors.length === 0,
     errors,
     warnings,
-    metadata
+    metadata,
   };
 }
 
@@ -138,9 +147,9 @@ export function validateEvidence(
 function validateImageEvidence(
   evidence: EvidenceItem,
   rules: EvidenceValidationRule,
-  errors: string[],
+  _errors: string[],
   warnings: string[],
-  metadata: Partial<EvidenceMetadata>
+  metadata: Partial<EvidenceMetadata>,
 ): void {
   // Check if content looks like base64 image data
   const contentStr = evidence.content.toString();
@@ -151,10 +160,14 @@ function validateImageEvidence(
   // Validate minimum resolution if specified
   if (rules.min_resolution && evidence.metadata.resolution) {
     const [minWidth, minHeight] = rules.min_resolution.split('x').map(Number);
-    const [actualWidth, actualHeight] = evidence.metadata.resolution.split('x').map(Number);
-    
+    const [actualWidth, actualHeight] = evidence.metadata.resolution
+      .split('x')
+      .map(Number);
+
     if (actualWidth < minWidth || actualHeight < minHeight) {
-      warnings.push(`Resolution ${evidence.metadata.resolution} is below minimum ${rules.min_resolution}`);
+      warnings.push(
+        `Resolution ${evidence.metadata.resolution} is below minimum ${rules.min_resolution}`,
+      );
     }
   }
 }
@@ -166,13 +179,15 @@ function validateVideoEvidence(
   evidence: EvidenceItem,
   rules: EvidenceValidationRule,
   errors: string[],
-  warnings: string[],
-  metadata: Partial<EvidenceMetadata>
+  _warnings: string[],
+  _metadata: Partial<EvidenceMetadata>,
 ): void {
   // Validate duration
   if (rules.max_duration && evidence.metadata.duration) {
     if (evidence.metadata.duration > rules.max_duration) {
-      errors.push(`Video duration ${evidence.metadata.duration}s exceeds maximum ${rules.max_duration}s`);
+      errors.push(
+        `Video duration ${evidence.metadata.duration}s exceeds maximum ${rules.max_duration}s`,
+      );
     }
   }
 }
@@ -182,13 +197,13 @@ function validateVideoEvidence(
  */
 function validateTextEvidence(
   evidence: EvidenceItem,
-  rules: EvidenceValidationRule,
+  _rules: EvidenceValidationRule,
   errors: string[],
-  warnings: string[],
-  metadata: Partial<EvidenceMetadata>
+  _warnings: string[],
+  metadata: Partial<EvidenceMetadata>,
 ): void {
   const contentStr = evidence.content.toString();
-  
+
   // Check if content looks like structured logs
   try {
     JSON.parse(contentStr);
@@ -218,12 +233,12 @@ function generateChecksum(content: string | Buffer): string {
  */
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
-  
+
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+
+  return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
 }
 
 /**
@@ -232,16 +247,18 @@ function formatBytes(bytes: number): string {
 export function validateStepEvidence(
   evidence: EvidenceItem[],
   requiredTypes: EvidenceType[],
-  validationRules?: EvidenceValidationRule[]
+  validationRules?: EvidenceValidationRule[],
 ): EvidenceValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const metadata: Partial<EvidenceMetadata> = {};
 
   // Check if all required types are present
-  const providedTypes = evidence.map(e => e.type);
-  const missingTypes = requiredTypes.filter(type => !providedTypes.includes(type));
-  
+  const providedTypes = evidence.map((e) => e.type);
+  const missingTypes = requiredTypes.filter(
+    (type) => !providedTypes.includes(type),
+  );
+
   if (missingTypes.length > 0) {
     errors.push(`Missing required evidence types: ${missingTypes.join(', ')}`);
   }
@@ -261,6 +278,6 @@ export function validateStepEvidence(
     valid: errors.length === 0,
     errors,
     warnings,
-    metadata
+    metadata,
   };
 }

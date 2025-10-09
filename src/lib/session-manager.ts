@@ -1,8 +1,16 @@
-import { randomUUID } from 'crypto';
-import { OperationSession, SessionCheckpoint } from '../models/session';
-import { EvidenceItem, RetryRecord, ApprovalRecord } from '../models/evidence';
-import { SessionStatus, ExecutionMode } from '../models/operation';
-import { OperationExecutor, ExecutionContext, OperationExecutionState } from './executor';
+import { randomUUID } from 'node:crypto';
+import type {
+  ApprovalRecord,
+  EvidenceItem,
+  RetryRecord,
+} from '../models/evidence';
+import type { ExecutionMode, SessionStatus } from '../models/operation';
+import type { OperationSession, SessionCheckpoint } from '../models/session';
+import type {
+  ExecutionContext,
+  OperationExecutionState,
+  OperationExecutor,
+} from './executor';
 
 /**
  * Session management for operation execution with persistence and resume capability
@@ -19,7 +27,7 @@ export class SessionManager {
     environment: string,
     operator: string,
     mode: ExecutionMode = 'automatic',
-    variables?: Record<string, any>
+    variables?: Record<string, any>,
   ): OperationSession {
     const session: OperationSession = {
       id: randomUUID(),
@@ -37,7 +45,7 @@ export class SessionManager {
       mode,
       variables,
       operator,
-      completion_percentage: 0
+      completion_percentage: 0,
     };
 
     this.sessions.set(session.id, session);
@@ -54,14 +62,20 @@ export class SessionManager {
   /**
    * Update session with executor state
    */
-  updateSessionFromExecutor(sessionId: string, executorState: OperationExecutionState): void {
+  updateSessionFromExecutor(
+    sessionId: string,
+    executorState: OperationExecutionState,
+  ): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    session.status = this.mapExecutorStatusToSessionStatus(executorState.status);
+    session.status = this.mapExecutorStatusToSessionStatus(
+      executorState.status,
+    );
     session.current_step_index = executorState.currentStepIndex;
     session.updated_at = new Date();
-    session.completion_percentage = this.calculateCompletionPercentage(executorState);
+    session.completion_percentage =
+      this.calculateCompletionPercentage(executorState);
 
     // Collect evidence from completed steps
     session.evidence = this.collectEvidenceFromSteps(executorState);
@@ -75,7 +89,7 @@ export class SessionManager {
   createCheckpoint(
     sessionId: string,
     confluencePageId?: string,
-    versionNumber?: number
+    versionNumber?: number,
   ): SessionCheckpoint {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -87,12 +101,12 @@ export class SessionManager {
       confluence_page_id: confluencePageId || `confluence-${Date.now()}`,
       version_number: versionNumber || session.checkpoints.length + 1,
       timestamp: new Date(),
-      state_snapshot: JSON.stringify(session)
+      state_snapshot: JSON.stringify(session),
     };
 
     session.checkpoints.push(checkpoint);
     session.updated_at = new Date();
-    
+
     this.sessions.set(sessionId, session);
     return checkpoint;
   }
@@ -100,7 +114,10 @@ export class SessionManager {
   /**
    * Resume session from checkpoint
    */
-  resumeFromCheckpoint(sessionId: string, checkpointIndex?: number): OperationSession {
+  resumeFromCheckpoint(
+    sessionId: string,
+    checkpointIndex?: number,
+  ): OperationSession {
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
@@ -108,13 +125,17 @@ export class SessionManager {
 
     const checkpointIdx = checkpointIndex ?? session.checkpoints.length - 1;
     const checkpoint = session.checkpoints[checkpointIdx];
-    
+
     if (!checkpoint) {
-      throw new Error(`Checkpoint ${checkpointIdx} not found for session ${sessionId}`);
+      throw new Error(
+        `Checkpoint ${checkpointIdx} not found for session ${sessionId}`,
+      );
     }
 
     // Restore session state from checkpoint
-    const restoredSession: OperationSession = JSON.parse(checkpoint.state_snapshot);
+    const restoredSession: OperationSession = JSON.parse(
+      checkpoint.state_snapshot,
+    );
     restoredSession.id = sessionId; // Ensure ID consistency
     restoredSession.status = 'running'; // Resume as running
     restoredSession.updated_at = new Date();
@@ -185,7 +206,9 @@ export class SessionManager {
     if (session) {
       session.status = success ? 'completed' : 'failed';
       session.updated_at = new Date();
-      session.completion_percentage = success ? 100 : session.completion_percentage;
+      session.completion_percentage = success
+        ? 100
+        : session.completion_percentage;
       this.sessions.set(sessionId, session);
     }
   }
@@ -233,23 +256,23 @@ export class SessionManager {
     this.executors.set(sessionId, executor);
 
     // Set up event handlers to update session automatically
-    executor.on('step_completed', (event) => {
+    executor.on('step_completed', (_event) => {
       this.updateSessionFromExecutor(sessionId, executor.getState());
     });
 
-    executor.on('step_failed', (event) => {
+    executor.on('step_failed', (_event) => {
       this.updateSessionFromExecutor(sessionId, executor.getState());
     });
 
-    executor.on('operation_completed', (event) => {
+    executor.on('operation_completed', (_event) => {
       this.completeSession(sessionId, true);
     });
 
-    executor.on('operation_failed', (event) => {
+    executor.on('operation_failed', (_event) => {
       this.completeSession(sessionId, false);
     });
 
-    executor.on('operation_paused', (event) => {
+    executor.on('operation_paused', (_event) => {
       this.pauseSession(sessionId);
     });
   }
@@ -272,14 +295,16 @@ export class SessionManager {
    * List sessions by status
    */
   listSessionsByStatus(status: SessionStatus): OperationSession[] {
-    return this.listSessions().filter(session => session.status === status);
+    return this.listSessions().filter((session) => session.status === status);
   }
 
   /**
    * List sessions by operation
    */
   listSessionsByOperation(operationId: string): OperationSession[] {
-    return this.listSessions().filter(session => session.operation_id === operationId);
+    return this.listSessions().filter(
+      (session) => session.operation_id === operationId,
+    );
   }
 
   /**
@@ -309,7 +334,7 @@ export class SessionManager {
       approvalCount: session.approvals.length,
       checkpointCount: session.checkpoints.length,
       duration: executorSummary?.duration,
-      lastError: executorSummary?.lastError
+      lastError: executorSummary?.lastError,
     };
   }
 
@@ -322,8 +347,12 @@ export class SessionManager {
 
     let cleaned = 0;
     for (const [sessionId, session] of this.sessions.entries()) {
-      if ((session.status === 'completed' || session.status === 'failed' || session.status === 'cancelled') &&
-          session.updated_at < cutoffDate) {
+      if (
+        (session.status === 'completed' ||
+          session.status === 'failed' ||
+          session.status === 'cancelled') &&
+        session.updated_at < cutoffDate
+      ) {
         this.sessions.delete(sessionId);
         this.executors.delete(sessionId);
         cleaned++;
@@ -352,7 +381,9 @@ export class SessionManager {
 
   // Private helper methods
 
-  private mapExecutorStatusToSessionStatus(executorStatus: string): SessionStatus {
+  private mapExecutorStatusToSessionStatus(
+    executorStatus: string,
+  ): SessionStatus {
     switch (executorStatus) {
       case 'pending':
       case 'running':
@@ -370,14 +401,20 @@ export class SessionManager {
     }
   }
 
-  private calculateCompletionPercentage(executorState: OperationExecutionState): number {
+  private calculateCompletionPercentage(
+    executorState: OperationExecutionState,
+  ): number {
     if (executorState.totalSteps === 0) return 0;
-    return Math.round((executorState.completedSteps / executorState.totalSteps) * 100);
+    return Math.round(
+      (executorState.completedSteps / executorState.totalSteps) * 100,
+    );
   }
 
-  private collectEvidenceFromSteps(executorState: OperationExecutionState): EvidenceItem[] {
+  private collectEvidenceFromSteps(
+    executorState: OperationExecutionState,
+  ): EvidenceItem[] {
     const evidence: EvidenceItem[] = [];
-    
+
     for (const stepState of executorState.steps) {
       if (stepState.evidenceCollector) {
         evidence.push(...stepState.evidenceCollector.getState().collected);
@@ -400,7 +437,9 @@ export const SessionUtils = {
   /**
    * Create execution context from session
    */
-  createExecutionContextFromSession(session: OperationSession): ExecutionContext {
+  createExecutionContextFromSession(
+    session: OperationSession,
+  ): ExecutionContext {
     return {
       operationId: session.operation_id,
       environment: session.environment,
@@ -408,7 +447,7 @@ export const SessionUtils = {
       operator: session.operator || 'unknown',
       sessionId: session.id,
       dryRun: false,
-      autoMode: session.mode === 'automatic'
+      autoMode: session.mode === 'automatic',
     };
   },
 
@@ -416,9 +455,10 @@ export const SessionUtils = {
    * Format session duration
    */
   formatSessionDuration(session: OperationSession): string {
-    const endTime = session.status === 'running' ? new Date() : session.updated_at;
+    const endTime =
+      session.status === 'running' ? new Date() : session.updated_at;
     const duration = endTime.getTime() - session.started_at.getTime();
-    
+
     const hours = Math.floor(duration / (1000 * 60 * 60));
     const minutes = Math.floor((duration % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((duration % (1000 * 60)) / 1000);
@@ -437,12 +477,18 @@ export const SessionUtils = {
    */
   getSessionStatusEmoji(status: SessionStatus): string {
     switch (status) {
-      case 'running': return '🔄';
-      case 'paused': return '⏸️';
-      case 'completed': return '✅';
-      case 'failed': return '❌';
-      case 'cancelled': return '🚫';
-      default: return '❓';
+      case 'running':
+        return '🔄';
+      case 'paused':
+        return '⏸️';
+      case 'completed':
+        return '✅';
+      case 'failed':
+        return '❌';
+      case 'cancelled':
+        return '🚫';
+      default:
+        return '❓';
     }
-  }
+  },
 };

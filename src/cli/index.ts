@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { projectCommands } from './commands/project';
-import { validateCommand } from './commands/validate';
 import { generateCommand } from './commands/generate';
+import { projectCommands } from './commands/project';
 import { qrhCommand } from './commands/qrh';
-import { runCommand, resumeCommand } from './commands/run';
+import { resumeCommand, runCommand } from './commands/run';
+import { validateCommand } from './commands/validate';
 
 const program = new Command();
 
@@ -42,7 +42,9 @@ program
   .description('Open documentation')
   .action(() => {
     console.log('📚 Documentation: https://github.com/samaritan/docs');
-    console.log('🚀 Quickstart: https://github.com/samaritan/docs/quickstart.md');
+    console.log(
+      '🚀 Quickstart: https://github.com/samaritan/docs/quickstart.md',
+    );
   });
 
 program
@@ -64,7 +66,10 @@ try {
     console.error(`❌ Unknown command: ${error.message}`);
     console.log('💡 Use "samaritan help" to see available commands');
     process.exit(1);
-  } else if (error.code === 'commander.helpDisplayed' || error.code === 'commander.help') {
+  } else if (
+    error.code === 'commander.helpDisplayed' ||
+    error.code === 'commander.help'
+  ) {
     process.exit(0);
   } else if (error.code === 'commander.version') {
     process.exit(0);

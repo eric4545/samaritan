@@ -1,19 +1,22 @@
-import { Operation, Step, StepType } from '../models/operation';
-import { EvidenceCollector, createEvidenceRequirements } from '../evidence/collector';
-import { EvidenceItem } from '../models/evidence';
+import {
+  createEvidenceRequirements,
+  EvidenceCollector,
+} from '../evidence/collector';
+import type { EvidenceItem } from '../models/evidence';
+import type { Operation, Step } from '../models/operation';
 
 /**
  * Execution status for operations and steps
  */
-export type ExecutionStatus = 
-  | 'pending'     // Not started
-  | 'running'     // Currently executing
-  | 'completed'   // Successfully completed
-  | 'failed'      // Failed execution
-  | 'skipped'     // Skipped (conditional)
-  | 'cancelled'   // User cancelled
-  | 'waiting'     // Waiting for approval/manual input
-  | 'paused';     // Execution paused
+export type ExecutionStatus =
+  | 'pending' // Not started
+  | 'running' // Currently executing
+  | 'completed' // Successfully completed
+  | 'failed' // Failed execution
+  | 'skipped' // Skipped (conditional)
+  | 'cancelled' // User cancelled
+  | 'waiting' // Waiting for approval/manual input
+  | 'paused'; // Execution paused
 
 /**
  * Step execution result
@@ -113,7 +116,10 @@ export interface ExecutionEvent {
  */
 export class OperationExecutor {
   private state: OperationExecutionState;
-  private eventHandlers: Map<ExecutionEventType, Array<(event: ExecutionEvent) => void>> = new Map();
+  private eventHandlers: Map<
+    ExecutionEventType,
+    Array<(event: ExecutionEvent) => void>
+  > = new Map();
 
   constructor(operation: Operation, context: ExecutionContext) {
     this.state = {
@@ -121,16 +127,16 @@ export class OperationExecutor {
       context,
       status: 'pending',
       currentStepIndex: 0,
-      steps: operation.steps.map(step => ({
+      steps: operation.steps.map((step) => ({
         step,
         status: 'pending',
-        retryCount: 0
+        retryCount: 0,
       })),
       startTime: new Date(),
       totalSteps: operation.steps.length,
       completedSteps: 0,
       failedSteps: 0,
-      skippedSteps: 0
+      skippedSteps: 0,
     };
 
     // Initialize evidence collectors for steps that require evidence
@@ -148,8 +154,10 @@ export class OperationExecutor {
    * Get execution summary
    */
   getSummary() {
-    const { status, totalSteps, completedSteps, failedSteps, skippedSteps } = this.state;
-    const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+    const { status, totalSteps, completedSteps, failedSteps, skippedSteps } =
+      this.state;
+    const progress =
+      totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
 
     return {
       operationId: this.state.operation.id,
@@ -163,7 +171,7 @@ export class OperationExecutor {
       skippedSteps,
       currentStep: this.getCurrentStep()?.step.name,
       duration: this.getExecutionDuration(),
-      lastError: this.getLastError()
+      lastError: this.getLastError(),
     };
   }
 
@@ -189,42 +197,42 @@ export class OperationExecutor {
       type: 'operation_started',
       timestamp: new Date(),
       operationId: this.state.operation.id,
-      message: `Started operation: ${this.state.operation.name}`
+      message: `Started operation: ${this.state.operation.name}`,
     });
 
     try {
       await this.executeSteps();
-      
+
       if (this.state.failedSteps === 0) {
         this.state.status = 'completed';
         this.state.endTime = new Date();
-        
+
         this.emitEvent({
           type: 'operation_completed',
           timestamp: new Date(),
           operationId: this.state.operation.id,
-          message: `Operation completed successfully`
+          message: `Operation completed successfully`,
         });
       } else {
         this.state.status = 'failed';
         this.state.endTime = new Date();
-        
+
         this.emitEvent({
           type: 'operation_failed',
           timestamp: new Date(),
           operationId: this.state.operation.id,
-          message: `Operation failed with ${this.state.failedSteps} failed steps`
+          message: `Operation failed with ${this.state.failedSteps} failed steps`,
         });
       }
     } catch (error) {
       this.state.status = 'failed';
       this.state.endTime = new Date();
-      
+
       this.emitEvent({
         type: 'operation_failed',
         timestamp: new Date(),
         operationId: this.state.operation.id,
-        message: `Operation failed: ${(error as Error).message}`
+        message: `Operation failed: ${(error as Error).message}`,
       });
     }
   }
@@ -235,12 +243,12 @@ export class OperationExecutor {
   pause(): void {
     if (this.state.status === 'running') {
       this.state.status = 'paused';
-      
+
       this.emitEvent({
         type: 'operation_paused',
         timestamp: new Date(),
         operationId: this.state.operation.id,
-        message: 'Operation paused by user'
+        message: 'Operation paused by user',
       });
     }
   }
@@ -261,7 +269,7 @@ export class OperationExecutor {
   cancel(): void {
     this.state.status = 'cancelled';
     this.state.endTime = new Date();
-    
+
     // Cancel current step if running
     const currentStep = this.getCurrentStep();
     if (currentStep && currentStep.status === 'running') {
@@ -272,7 +280,10 @@ export class OperationExecutor {
   /**
    * Execute a specific step manually
    */
-  async executeStepManually(stepIndex: number, userInput?: string): Promise<StepExecutionResult> {
+  async executeStepManually(
+    stepIndex: number,
+    userInput?: string,
+  ): Promise<StepExecutionResult> {
     const stepState = this.state.steps[stepIndex];
     if (!stepState) {
       throw new Error(`Step ${stepIndex} not found`);
@@ -294,7 +305,7 @@ export class OperationExecutor {
       evidenceData.type,
       evidenceData.content,
       this.state.context.operator,
-      evidenceData.options
+      evidenceData.options,
     );
 
     return result.success;
@@ -310,11 +321,14 @@ export class OperationExecutor {
   /**
    * Register event handler
    */
-  on(eventType: ExecutionEventType, handler: (event: ExecutionEvent) => void): void {
+  on(
+    eventType: ExecutionEventType,
+    handler: (event: ExecutionEvent) => void,
+  ): void {
     if (!this.eventHandlers.has(eventType)) {
       this.eventHandlers.set(eventType, []);
     }
-    this.eventHandlers.get(eventType)!.push(handler);
+    this.eventHandlers.get(eventType)?.push(handler);
   }
 
   /**
@@ -323,7 +337,7 @@ export class OperationExecutor {
   private emitEvent(event: ExecutionEvent): void {
     const handlers = this.eventHandlers.get(event.type);
     if (handlers) {
-      handlers.forEach(handler => handler(event));
+      handlers.forEach((handler) => handler(event));
     }
   }
 
@@ -331,21 +345,21 @@ export class OperationExecutor {
    * Initialize evidence collectors for steps
    */
   private initializeEvidenceCollectors(): void {
-    this.state.steps.forEach(stepState => {
+    this.state.steps.forEach((stepState) => {
       const { step } = stepState;
       if (step.evidence_required) {
         const requirements = createEvidenceRequirements(
           step.evidence_required,
           step.evidence_types,
           {
-            description: `Evidence required for step: ${step.name}`
-          }
+            description: `Evidence required for step: ${step.name}`,
+          },
         );
 
         if (requirements) {
           stepState.evidenceCollector = new EvidenceCollector(
             step.id || `step-${this.state.steps.indexOf(stepState)}`,
-            requirements
+            requirements,
           );
         }
       }
@@ -362,7 +376,7 @@ export class OperationExecutor {
       }
 
       const stepState = this.state.steps[this.state.currentStepIndex];
-      
+
       // Check if step should be skipped (conditional execution)
       if (await this.shouldSkipStep(stepState)) {
         stepState.status = 'skipped';
@@ -372,7 +386,7 @@ export class OperationExecutor {
           timestamp: new Date(),
           operationId: this.state.operation.id,
           stepId: stepState.step.id,
-          message: `Step skipped: ${stepState.step.name}`
+          message: `Step skipped: ${stepState.step.name}`,
         });
         this.state.currentStepIndex++;
         continue;
@@ -380,12 +394,12 @@ export class OperationExecutor {
 
       try {
         const result = await this.executeStep(stepState);
-        
+
         if (result.status === 'completed') {
           this.state.completedSteps++;
         } else if (result.status === 'failed') {
           this.state.failedSteps++;
-          
+
           // Check if we should continue on error
           if (!stepState.step.continue_on_error) {
             break; // Stop execution
@@ -395,7 +409,7 @@ export class OperationExecutor {
         stepState.status = 'failed';
         stepState.lastError = (error as Error).message;
         this.state.failedSteps++;
-        
+
         if (!stepState.step.continue_on_error) {
           break; // Stop execution
         }
@@ -408,14 +422,17 @@ export class OperationExecutor {
   /**
    * Execute a single step
    */
-  private async executeStep(stepState: StepExecutionState, userInput?: string): Promise<StepExecutionResult> {
+  private async executeStep(
+    stepState: StepExecutionState,
+    userInput?: string,
+  ): Promise<StepExecutionResult> {
     const { step } = stepState;
     stepState.status = 'running';
 
     const result: StepExecutionResult = {
       stepId: step.id || `step-${this.state.steps.indexOf(stepState)}`,
       status: 'running',
-      startTime: new Date()
+      startTime: new Date(),
     };
 
     this.emitEvent({
@@ -423,7 +440,7 @@ export class OperationExecutor {
       timestamp: new Date(),
       operationId: this.state.operation.id,
       stepId: result.stepId,
-      message: `Started step: ${step.name}`
+      message: `Started step: ${step.name}`,
     });
 
     try {
@@ -442,7 +459,7 @@ export class OperationExecutor {
               timestamp: new Date(),
               operationId: this.state.operation.id,
               stepId: result.stepId,
-              message: `Manual execution required for: ${step.name}`
+              message: `Manual execution required for: ${step.name}`,
             });
             return result;
           }
@@ -455,9 +472,9 @@ export class OperationExecutor {
             timestamp: new Date(),
             operationId: this.state.operation.id,
             stepId: result.stepId,
-            message: `Manual step: ${step.name}`
+            message: `Manual step: ${step.name}`,
           });
-          
+
           // In a real implementation, this would wait for user input
           if (userInput) {
             result.status = 'completed';
@@ -474,7 +491,7 @@ export class OperationExecutor {
             timestamp: new Date(),
             operationId: this.state.operation.id,
             stepId: result.stepId,
-            message: `Approval required for: ${step.name}`
+            message: `Approval required for: ${step.name}`,
           });
           return result; // Wait for approval
 
@@ -489,7 +506,7 @@ export class OperationExecutor {
           timestamp: new Date(),
           operationId: this.state.operation.id,
           stepId: result.stepId,
-          message: `Evidence required for step: ${step.name}`
+          message: `Evidence required for step: ${step.name}`,
         });
 
         // Check if evidence collection is complete
@@ -510,16 +527,15 @@ export class OperationExecutor {
         timestamp: new Date(),
         operationId: this.state.operation.id,
         stepId: result.stepId,
-        message: `Step ${result.status}: ${step.name}`
+        message: `Step ${result.status}: ${step.name}`,
       });
 
       return result;
-
     } catch (error) {
       result.status = 'failed';
       result.error = (error as Error).message;
       result.endTime = new Date();
-      
+
       stepState.status = 'failed';
       stepState.lastError = result.error;
       stepState.result = result;
@@ -529,7 +545,7 @@ export class OperationExecutor {
         timestamp: new Date(),
         operationId: this.state.operation.id,
         stepId: result.stepId,
-        message: `Step failed: ${step.name} - ${result.error}`
+        message: `Step failed: ${step.name} - ${result.error}`,
       });
 
       return result;
@@ -539,9 +555,11 @@ export class OperationExecutor {
   /**
    * Check if step should be skipped based on conditions
    */
-  private async shouldSkipStep(stepState: StepExecutionState): Promise<boolean> {
+  private async shouldSkipStep(
+    stepState: StepExecutionState,
+  ): Promise<boolean> {
     const { step } = stepState;
-    
+
     // TODO: Implement conditional logic evaluation
     // For now, just return false (don't skip)
     if (step.if) {
@@ -565,7 +583,7 @@ export class OperationExecutor {
    * Get last error message
    */
   private getLastError(): string | undefined {
-    const failedStep = this.state.steps.find(s => s.status === 'failed');
+    const failedStep = this.state.steps.find((s) => s.status === 'failed');
     return failedStep?.lastError;
   }
 }
@@ -573,7 +591,10 @@ export class OperationExecutor {
 /**
  * Create a new operation executor
  */
-export function createExecutor(operation: Operation, context: ExecutionContext): OperationExecutor {
+export function createExecutor(
+  operation: Operation,
+  context: ExecutionContext,
+): OperationExecutor {
   return new OperationExecutor(operation, context);
 }
 
@@ -593,7 +614,7 @@ export const ExecutorUtils = {
       dryRun?: boolean;
       autoMode?: boolean;
       sessionId?: string;
-    } = {}
+    } = {},
   ): ExecutionContext {
     return {
       operationId,
@@ -602,7 +623,7 @@ export const ExecutorUtils = {
       operator,
       sessionId: options.sessionId || `session-${Date.now()}`,
       dryRun: options.dryRun || false,
-      autoMode: options.autoMode !== false // Default to true
+      autoMode: options.autoMode !== false, // Default to true
     };
   },
 
@@ -628,15 +649,24 @@ export const ExecutorUtils = {
    */
   getStatusEmoji(status: ExecutionStatus): string {
     switch (status) {
-      case 'pending': return '⏳';
-      case 'running': return '🔄';
-      case 'completed': return '✅';
-      case 'failed': return '❌';
-      case 'skipped': return '⏭️';
-      case 'cancelled': return '🚫';
-      case 'waiting': return '⏸️';
-      case 'paused': return '⏸️';
-      default: return '❓';
+      case 'pending':
+        return '⏳';
+      case 'running':
+        return '🔄';
+      case 'completed':
+        return '✅';
+      case 'failed':
+        return '❌';
+      case 'skipped':
+        return '⏭️';
+      case 'cancelled':
+        return '🚫';
+      case 'waiting':
+        return '⏸️';
+      case 'paused':
+        return '⏸️';
+      default:
+        return '❓';
     }
-  }
+  },
 };

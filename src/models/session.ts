@@ -1,5 +1,5 @@
-import { EvidenceItem, RetryRecord, ApprovalRecord } from './evidence';
-import { SessionStatus, ExecutionMode } from './operation';
+import type { ApprovalRecord, EvidenceItem, RetryRecord } from './evidence';
+import type { ExecutionMode, SessionStatus } from './operation';
 
 export interface SessionCheckpoint {
   step_index: number;

@@ -1,8 +1,7 @@
+import { existsSync } from 'node:fs';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Command } from 'commander';
-import { mkdir, writeFile, readdir, readFile } from 'fs/promises';
-import { existsSync } from 'fs';
-import { join, dirname } from 'path';
-
 
 const DEFAULT_CONFIG = `# SAMARITAN Configuration
 project:
@@ -175,18 +174,22 @@ troubleshooting_tips:
 
 // Available operation templates
 const TEMPLATE_DESCRIPTIONS: { [key: string]: string } = {
-  'deployment': 'Application deployment with approval gates',
-  'backup': 'Database backup with verification',
+  deployment: 'Application deployment with approval gates',
+  backup: 'Database backup with verification',
   'incident-response': 'Emergency incident response procedure',
-  'maintenance': 'Routine maintenance operations'
+  maintenance: 'Routine maintenance operations',
 };
 
 async function loadTemplate(templateName: string): Promise<string> {
   try {
-    const templatePath = join(__dirname, '../../../templates/operations', `${templateName}.yaml`);
+    const templatePath = join(
+      __dirname,
+      '../../../templates/operations',
+      `${templateName}.yaml`,
+    );
     const template = await readFile(templatePath, 'utf8');
     return template;
-  } catch (error) {
+  } catch (_error) {
     throw new Error(`Template '${templateName}' not found`);
   }
 }
@@ -195,12 +198,13 @@ async function getAvailableTemplates(): Promise<string[]> {
   try {
     const templatesDir = join(__dirname, '../../../templates/operations');
     const files = await readdir(templatesDir);
-    return files.filter(f => f.endsWith('.yaml')).map(f => f.replace('.yaml', ''));
-  } catch (error) {
+    return files
+      .filter((f) => f.endsWith('.yaml'))
+      .map((f) => f.replace('.yaml', ''));
+  } catch (_error) {
     return Object.keys(TEMPLATE_DESCRIPTIONS);
   }
 }
-
 
 async function createDirectory(path: string): Promise<void> {
   try {
@@ -219,19 +223,31 @@ async function initProject(existing: boolean = false): Promise<void> {
     // Check if directory is empty
     try {
       const files = await readdir('.');
-      const importantFiles = files.filter(f => !f.startsWith('.') && !['node_modules', 'package.json', 'package-lock.json'].includes(f));
+      const importantFiles = files.filter(
+        (f) =>
+          !f.startsWith('.') &&
+          !['node_modules', 'package.json', 'package-lock.json'].includes(f),
+      );
       if (importantFiles.length > 0) {
-        console.error('❌ Directory is not empty. Use --existing flag to add SAMARITAN to existing project.');
+        console.error(
+          '❌ Directory is not empty. Use --existing flag to add SAMARITAN to existing project.',
+        );
         process.exit(1);
       }
-    } catch (error) {
+    } catch (_error) {
       // Directory doesn't exist or can't be read, that's fine
     }
   }
 
   // Create directories
-  const directories = ['operations', 'qrh', 'templates', '.samaritan/sessions', '.samaritan/evidence'];
-  
+  const directories = [
+    'operations',
+    'qrh',
+    'templates',
+    '.samaritan/sessions',
+    '.samaritan/evidence',
+  ];
+
   for (const dir of directories) {
     await createDirectory(dir);
     console.log(`📁 Created: ${dir}/`);
@@ -264,16 +280,19 @@ async function initProject(existing: boolean = false): Promise<void> {
 .env.local
 node_modules/
 `;
-  
+
   if (!existsSync('.gitignore')) {
     await writeFile('.gitignore', gitignoreContent);
     console.log('📄 Created: .gitignore');
   } else {
     // Append to existing .gitignore
-    const fs = await import('fs');
+    const fs = await import('node:fs');
     const existingContent = await fs.promises.readFile('.gitignore', 'utf8');
     if (!existingContent.includes('.samaritan/')) {
-      await fs.promises.appendFile('.gitignore', '\n# SAMARITAN\n' + gitignoreContent);
+      await fs.promises.appendFile(
+        '.gitignore',
+        `\n# SAMARITAN\n${gitignoreContent}`,
+      );
       console.log('📄 Updated: .gitignore');
     }
   }
@@ -295,7 +314,7 @@ async function createOperation(template?: string): Promise<void> {
   if (template && !availableTemplates.includes(template)) {
     console.error(`❌ Unknown template: ${template}`);
     console.log('Available templates:');
-    availableTemplates.forEach(tmpl => {
+    availableTemplates.forEach((tmpl) => {
       const description = TEMPLATE_DESCRIPTIONS[tmpl] || 'Operation template';
       console.log(`  - ${tmpl}: ${description}`);
     });
@@ -318,11 +337,15 @@ async function createOperation(template?: string): Promise<void> {
 
     console.log(`✅ Created operation: ${filePath}`);
     console.log('\n📋 Template placeholders to customize:');
-    console.log('   Replace __PLACEHOLDER__ values with your specific settings');
+    console.log(
+      '   Replace __PLACEHOLDER__ values with your specific settings',
+    );
     console.log('\nNext steps:');
     console.log(`  1. Edit ${filePath} and replace all __PLACEHOLDER__ values`);
     console.log(`  2. npx github:eric4545/samaritan validate ${filePath}`);
-    console.log(`  3. npx github:eric4545/samaritan run ${filePath} --env <environment>`);
+    console.log(
+      `  3. npx github:eric4545/samaritan run ${filePath} --env <environment>`,
+    );
   } catch (error: any) {
     console.error(`❌ Failed to create operation: ${error.message}`);
     process.exit(1);
@@ -346,7 +369,10 @@ const createCommand = new Command('create')
   .description('Create new SAMARITAN resources')
   .command('operation')
   .description('Create a new operation')
-  .option('--template <name>', 'Use a template (deployment, backup, incident-response, maintenance)')
+  .option(
+    '--template <name>',
+    'Use a template (deployment, backup, incident-response, maintenance)',
+  )
   .action(async (options) => {
     try {
       await createOperation(options.template);
@@ -358,5 +384,5 @@ const createCommand = new Command('create')
 
 export const projectCommands = {
   init: initCommand,
-  create: createCommand
+  create: createCommand,
 };

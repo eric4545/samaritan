@@ -1,11 +1,11 @@
+import { existsSync } from 'node:fs';
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Command } from 'commander';
-import { readdir, readFile } from 'fs/promises';
-import { existsSync } from 'fs';
-import { join } from 'path';
 import { load as parseYaml } from 'js-yaml';
-import { QRHEntry, Priority, QRHCategory } from '../../models/qrh';
 import { OperationExecutor } from '../../lib/executor';
 import { sessionManager } from '../../lib/session-manager';
+import type { Priority, QRHCategory, QRHEntry } from '../../models/qrh';
 
 interface QRHSearchOptions {
   priority?: Priority;
@@ -34,10 +34,12 @@ class QRHManager {
     }
 
     const files = await readdir(this.qrhDirectory);
-    const yamlFiles = files.filter(file => file.endsWith('.yaml') || file.endsWith('.yml'));
-    
+    const yamlFiles = files.filter(
+      (file) => file.endsWith('.yaml') || file.endsWith('.yml'),
+    );
+
     const entries: QRHEntry[] = [];
-    
+
     for (const file of yamlFiles) {
       try {
         const content = await readFile(join(this.qrhDirectory, file), 'utf8');
@@ -54,37 +56,46 @@ class QRHManager {
     return entries;
   }
 
-  async searchEntries(query: string, options: QRHSearchOptions = {}): Promise<QRHEntry[]> {
+  async searchEntries(
+    query: string,
+    options: QRHSearchOptions = {},
+  ): Promise<QRHEntry[]> {
     const allEntries = await this.loadAllEntries();
     const lowerQuery = query.toLowerCase();
-    
-    let results = allEntries.filter(entry => {
+
+    let results = allEntries.filter((entry) => {
       // Text search
-      const matchesText = 
+      const matchesText =
         entry.title.toLowerCase().includes(lowerQuery) ||
-        entry.keywords.some(keyword => keyword.toLowerCase().includes(lowerQuery)) ||
-        entry.pagerduty_alerts.some(alert => alert.toLowerCase().includes(lowerQuery)) ||
-        (entry.description && entry.description.toLowerCase().includes(lowerQuery));
-      
+        entry.keywords.some((keyword) =>
+          keyword.toLowerCase().includes(lowerQuery),
+        ) ||
+        entry.pagerduty_alerts.some((alert) =>
+          alert.toLowerCase().includes(lowerQuery),
+        ) ||
+        entry.description?.toLowerCase().includes(lowerQuery);
+
       // Priority filter
-      const matchesPriority = !options.priority || entry.priority === options.priority;
-      
-      // Category filter  
-      const matchesCategory = !options.category || entry.category === options.category;
-      
+      const matchesPriority =
+        !options.priority || entry.priority === options.priority;
+
+      // Category filter
+      const matchesCategory =
+        !options.category || entry.category === options.category;
+
       return matchesText && matchesPriority && matchesCategory;
     });
 
     // Sort by priority (P0 first) and then by relevance
     results.sort((a, b) => {
-      const priorityOrder = { 'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3 };
+      const priorityOrder = { P0: 0, P1: 1, P2: 2, P3: 3 };
       const aPriority = priorityOrder[a.priority] || 999;
       const bPriority = priorityOrder[b.priority] || 999;
-      
+
       if (aPriority !== bPriority) {
         return aPriority - bPriority;
       }
-      
+
       // Secondary sort by title match relevance
       const aRelevance = a.title.toLowerCase().includes(lowerQuery) ? 0 : 1;
       const bRelevance = b.title.toLowerCase().includes(lowerQuery) ? 0 : 1;
@@ -100,63 +111,67 @@ class QRHManager {
 
   async findEntryById(id: string): Promise<QRHEntry | null> {
     const allEntries = await this.loadAllEntries();
-    return allEntries.find(entry => entry.id === id) || null;
+    return allEntries.find((entry) => entry.id === id) || null;
   }
 
   async listByPriority(priority: Priority): Promise<QRHEntry[]> {
     const allEntries = await this.loadAllEntries();
-    return allEntries.filter(entry => entry.priority === priority);
+    return allEntries.filter((entry) => entry.priority === priority);
   }
 
   async listByCategory(category: QRHCategory): Promise<QRHEntry[]> {
     const allEntries = await this.loadAllEntries();
-    return allEntries.filter(entry => entry.category === category);
+    return allEntries.filter((entry) => entry.category === category);
   }
 
   displayEntry(entry: QRHEntry, verbose: boolean = false): void {
     const priorityEmoji = {
-      'P0': '🚨',
-      'P1': '⚠️',
-      'P2': '⚡',
-      'P3': '📋'
+      P0: '🚨',
+      P1: '⚠️',
+      P2: '⚡',
+      P3: '📋',
     };
 
     const categoryEmoji = {
-      'incident': '🔥',
-      'alert': '🚨',
-      'maintenance': '🔧',
-      'emergency': '🆘'
+      incident: '🔥',
+      alert: '🚨',
+      maintenance: '🔧',
+      emergency: '🆘',
     };
 
-    console.log(`${priorityEmoji[entry.priority]} ${categoryEmoji[entry.category]} ${entry.title}`);
+    console.log(
+      `${priorityEmoji[entry.priority]} ${categoryEmoji[entry.category]} ${entry.title}`,
+    );
     console.log(`   ID: ${entry.id}`);
     console.log(`   Priority: ${entry.priority} | Category: ${entry.category}`);
-    
+
     if (entry.estimated_time) {
       console.log(`   Estimated Time: ${entry.estimated_time} minutes`);
     }
-    
+
     if (verbose) {
       if (entry.description) {
         console.log(`   Description: ${entry.description}`);
       }
-      
+
       if (entry.keywords.length > 0) {
         console.log(`   Keywords: ${entry.keywords.join(', ')}`);
       }
-      
+
       if (entry.pagerduty_alerts.length > 0) {
-        console.log(`   PagerDuty Alerts: ${entry.pagerduty_alerts.join(', ')}`);
+        console.log(
+          `   PagerDuty Alerts: ${entry.pagerduty_alerts.join(', ')}`,
+        );
       }
-      
+
       if (entry.prerequisites && entry.prerequisites.length > 0) {
         console.log(`   Prerequisites: ${entry.prerequisites.join(', ')}`);
       }
-      
+
       console.log(`   Author: ${entry.author}`);
       console.log(`   Last Updated: ${entry.last_updated.toDateString()}`);
     }
-    
+
     console.log('');
   }
 
@@ -167,17 +182,22 @@ class QRHManager {
     }
 
     console.log(`🆘 Executing emergency procedure: ${entry.title}`);
-    console.log(`   Priority: ${entry.priority} | Estimated Time: ${entry.estimated_time || 'Unknown'} minutes\n`);
+    console.log(
+      `   Priority: ${entry.priority} | Estimated Time: ${entry.estimated_time || 'Unknown'} minutes\n`,
+    );
 
     if (entry.prerequisites && entry.prerequisites.length > 0) {
       console.log('📋 Prerequisites:');
-      entry.prerequisites.forEach(prereq => console.log(`   - ${prereq}`));
+      entry.prerequisites.forEach((prereq) => console.log(`   - ${prereq}`));
       console.log('');
     }
 
     // Convert QRH entry to operation-like format for execution
-    const operation = this.qrhToOperation(entry, options.environment || 'emergency');
-    
+    const operation = this.qrhToOperation(
+      entry,
+      options.environment || 'emergency',
+    );
+
     // Create execution context
     const context = {
       operationId: entry.id,
@@ -186,7 +206,7 @@ class QRHManager {
       operator: process.env.USER || 'qrh-operator',
       sessionId: `qrh-${entry.id}-${Date.now()}`,
       dryRun: options.dryRun || false,
-      autoMode: options.autoApprove || false
+      autoMode: options.autoApprove || false,
     };
 
     // Create session
@@ -194,7 +214,7 @@ class QRHManager {
       entry.id,
       context.environment,
       context.operator,
-      options.autoApprove ? 'automatic' : 'manual'
+      options.autoApprove ? 'automatic' : 'manual',
     );
 
     // Execute with executor
@@ -202,16 +222,16 @@ class QRHManager {
     sessionManager.associateExecutor(session.id, executor);
 
     console.log(`🔄 Session started: ${session.id}`);
-    
+
     if (options.verbose) {
       executor.on('step_started', (event) => {
         console.log(`▶️  Starting: ${event.step.name}`);
       });
-      
+
       executor.on('step_completed', (event) => {
         console.log(`✅ Completed: ${event.step.name}`);
       });
-      
+
       executor.on('step_failed', (event) => {
         console.log(`❌ Failed: ${event.step.name} - ${event.error}`);
       });
@@ -220,20 +240,19 @@ class QRHManager {
     try {
       await executor.execute();
       console.log(`\n✅ Emergency procedure completed successfully!`);
-      
+
       if (entry.troubleshooting_tips && entry.troubleshooting_tips.length > 0) {
         console.log('\n💡 Additional Troubleshooting Tips:');
-        entry.troubleshooting_tips.forEach(tip => console.log(`   - ${tip}`));
+        entry.troubleshooting_tips.forEach((tip) => console.log(`   - ${tip}`));
       }
-      
     } catch (error: any) {
       console.error(`\n❌ Emergency procedure failed: ${error.message}`);
-      
+
       if (entry.troubleshooting_tips && entry.troubleshooting_tips.length > 0) {
         console.log('\n💡 Troubleshooting Tips:');
-        entry.troubleshooting_tips.forEach(tip => console.log(`   - ${tip}`));
+        entry.troubleshooting_tips.forEach((tip) => console.log(`   - ${tip}`));
       }
-      
+
       throw error;
     }
   }
@@ -246,54 +265,63 @@ class QRHManager {
       description: entry.description || entry.title,
       category: entry.category,
       emergency: true,
-      environments: [{
-        name: environment,
-        description: `Emergency environment for ${entry.title}`,
-        variables: {},
-        restrictions: [],
-        approval_required: false,
-        validation_required: false
-      }],
+      environments: [
+        {
+          name: environment,
+          description: `Emergency environment for ${entry.title}`,
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+        },
+      ],
       variables: { [environment]: {} },
       steps: entry.procedure,
       preflight: [],
       metadata: {
         created_at: entry.last_updated,
         updated_at: entry.last_updated,
-        source: `qrh/${entry.id}.yaml`
-      }
+        source: `qrh/${entry.id}.yaml`,
+      },
     };
   }
 }
 
 // QRH command with subcommands
-const qrhCommand = new Command('qrh')
-  .description('Quick Reference Handbook for emergency procedures');
+const qrhCommand = new Command('qrh').description(
+  'Quick Reference Handbook for emergency procedures',
+);
 
 qrhCommand
   .command('search <query>')
   .description('Search emergency procedures')
   .option('-p, --priority <priority>', 'Filter by priority (P0, P1, P2, P3)')
-  .option('-c, --category <category>', 'Filter by category (incident, alert, maintenance, emergency)')
+  .option(
+    '-c, --category <category>',
+    'Filter by category (incident, alert, maintenance, emergency)',
+  )
   .option('-l, --limit <number>', 'Limit number of results', parseInt)
   .option('-v, --verbose', 'Show detailed information')
   .action(async (query: string, options: QRHSearchOptions) => {
     try {
       const qrh = new QRHManager();
       const results = await qrh.searchEntries(query, options);
-      
+
       if (results.length === 0) {
         console.log(`❌ No emergency procedures found for: "${query}"`);
-        console.log('💡 Try broader search terms or check available procedures with "samaritan qrh list"');
+        console.log(
+          '💡 Try broader search terms or check available procedures with "samaritan qrh list"',
+        );
         return;
       }
-      
-      console.log(`🔍 Found ${results.length} emergency procedure(s) for: "${query}"\n`);
-      
-      results.forEach(entry => {
+
+      console.log(
+        `🔍 Found ${results.length} emergency procedure(s) for: "${query}"\n`,
+      );
+
+      results.forEach((entry) => {
         qrh.displayEntry(entry, options.verbose);
       });
-      
     } catch (error: any) {
       console.error(`❌ Search failed: ${error.message}`);
       process.exit(1);
@@ -304,13 +332,16 @@ qrhCommand
   .command('list')
   .description('List all emergency procedures')
   .option('-p, --priority <priority>', 'Filter by priority (P0, P1, P2, P3)')
-  .option('-c, --category <category>', 'Filter by category (incident, alert, maintenance, emergency)')
+  .option(
+    '-c, --category <category>',
+    'Filter by category (incident, alert, maintenance, emergency)',
+  )
   .option('-v, --verbose', 'Show detailed information')
   .action(async (options: QRHSearchOptions) => {
     try {
       const qrh = new QRHManager();
       let results: QRHEntry[];
-      
+
       if (options.priority) {
         results = await qrh.listByPriority(options.priority);
       } else if (options.category) {
@@ -318,31 +349,35 @@ qrhCommand
       } else {
         results = await qrh.loadAllEntries();
       }
-      
+
       if (results.length === 0) {
         console.log('❌ No emergency procedures found');
-        console.log('💡 Create your first QRH entry with "samaritan create qrh"');
+        console.log(
+          '💡 Create your first QRH entry with "samaritan create qrh"',
+        );
         return;
       }
-      
+
       console.log(`📚 Emergency Procedures (${results.length} total)\n`);
-      
+
       // Group by priority for better display
-      const grouped = results.reduce((acc, entry) => {
-        if (!acc[entry.priority]) acc[entry.priority] = [];
-        acc[entry.priority].push(entry);
-        return acc;
-      }, {} as Record<Priority, QRHEntry[]>);
-      
-      ['P0', 'P1', 'P2', 'P3'].forEach(priority => {
+      const grouped = results.reduce(
+        (acc, entry) => {
+          if (!acc[entry.priority]) acc[entry.priority] = [];
+          acc[entry.priority].push(entry);
+          return acc;
+        },
+        {} as Record<Priority, QRHEntry[]>,
+      );
+
+      ['P0', 'P1', 'P2', 'P3'].forEach((priority) => {
         if (grouped[priority as Priority]) {
           console.log(`🚨 ${priority} Priority:`);
-          grouped[priority as Priority].forEach(entry => {
+          grouped[priority as Priority].forEach((entry) => {
             qrh.displayEntry(entry, options.verbose);
           });
         }
       });
-      
     } catch (error: any) {
       console.error(`❌ Failed to list procedures: ${error.message}`);
       process.exit(1);
@@ -360,7 +395,6 @@ qrhCommand
     try {
       const qrh = new QRHManager();
       await qrh.executeEntry(procedureId, options);
-      
     } catch (error: any) {
       console.error(`❌ Emergency procedure failed: ${error.message}`);
       process.exit(1);
@@ -374,28 +408,31 @@ qrhCommand
     try {
       const qrh = new QRHManager();
       const entry = await qrh.findEntryById(procedureId);
-      
+
       if (!entry) {
         console.error(`❌ Procedure not found: ${procedureId}`);
         process.exit(1);
       }
-      
+
       qrh.displayEntry(entry, true);
-      
+
       console.log('📋 Procedure Steps:');
       entry.procedure.forEach((step, index) => {
         console.log(`\n${index + 1}. ${step.name}`);
         console.log(`   Type: ${step.type}`);
-        if (step.description) console.log(`   Description: ${step.description}`);
+        if (step.description)
+          console.log(`   Description: ${step.description}`);
         if (step.command) console.log(`   Command: ${step.command}`);
-        if (step.instruction) console.log(`   Instructions: ${step.instruction}`);
+        if (step.instruction)
+          console.log(`   Instructions: ${step.instruction}`);
         if (step.evidence_required) console.log(`   Evidence Required: Yes`);
       });
-      
+
       if (entry.related_operations && entry.related_operations.length > 0) {
-        console.log(`\n🔗 Related Operations: ${entry.related_operations.join(', ')}`);
+        console.log(
+          `\n🔗 Related Operations: ${entry.related_operations.join(', ')}`,
+        );
       }
-      
     } catch (error: any) {
       console.error(`❌ Failed to show procedure: ${error.message}`);
       process.exit(1);

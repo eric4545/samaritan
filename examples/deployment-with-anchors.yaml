@@ -1,0 +1,238 @@
+name: Deploy Web Server with YAML Anchors
+version: 1.0.0
+description: Demonstrates YAML anchors and aliases for DRY configuration
+author: sre-team@company.com
+category: deployment
+
+# YAML Anchors Demo: Define reusable configurations once, reference multiple times
+
+# ============================================================================
+# REUSABLE CONFIGURATION ANCHORS
+# ============================================================================
+
+common_variables:
+  # Evidence configuration templates
+  evidence_screenshot_only: &evidence_screenshot
+    required: true
+    types: [screenshot]
+
+  evidence_full_audit: &evidence_full
+    required: true
+    types: [screenshot, log]
+
+  # Retry configuration templates
+  retry_standard: &retry_standard
+    max_attempts: 3
+    backoff: exponential
+
+  retry_critical: &retry_critical
+    max_attempts: 5
+    backoff: linear
+
+  # Timeout standards
+  timeout_short: &timeout_short 60
+  timeout_medium: &timeout_medium 300
+  timeout_long: &timeout_long 600
+
+  # Base environment variables (shared across all environments)
+  env_base: &env_base
+    DB_PORT: 5432
+    REDIS_PORT: 6379
+    LOG_LEVEL: info
+    HEALTH_CHECK_PATH: /health
+
+# ============================================================================
+# ENVIRONMENTS (using anchor merging)
+# ============================================================================
+
+environments:
+  - name: preprod
+    description: Pre-production environment
+    variables:
+      <<: *env_base  # Merge base environment variables
+      REPLICAS: 2
+      DB_HOST: preprod-db.example.com
+      REDIS_HOST: preprod-redis.example.com
+      DOMAIN: preprod.example.com
+    targets:
+      - cluster-dev-us-east-1
+      - cluster-dev-eu-west-1
+
+  - name: production
+    description: Live production environment
+    variables:
+      <<: *env_base  # Merge base environment variables
+      REPLICAS: 5
+      DB_HOST: prod-db.example.com
+      REDIS_HOST: prod-redis.example.com
+      DOMAIN: example.com
+      LOG_LEVEL: warn  # Override for production
+    approval_required: true
+    targets:
+      - cluster-prod-us-east-1
+      - cluster-prod-eu-west-1
+      - cluster-prod-asia-south-1
+
+# ============================================================================
+# PREFLIGHT CHECKS (using anchor references)
+# ============================================================================
+
+preflight:
+  - name: Check Git Status
+    description: Ensure no uncommitted changes exist
+    command: git status --porcelain
+    expect_empty: true
+    evidence: *evidence_screenshot
+
+  - name: Check Docker Daemon
+    description: Verify Docker daemon is running
+    command: docker info
+    evidence: *evidence_screenshot
+
+  - name: Check Database Connection
+    description: Verify database is accessible
+    command: pg_isready -h ${DB_HOST} -p ${DB_PORT}
+    timeout: *timeout_short
+    evidence: *evidence_screenshot
+
+  - name: Check Redis Connection
+    description: Verify Redis is accessible
+    command: redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT} ping
+    timeout: *timeout_short
+    evidence: *evidence_screenshot
+
+# ============================================================================
+# DEPLOYMENT STEPS (using multiple anchor types)
+# ============================================================================
+
+steps:
+  - name: Build Docker Image
+    type: automatic
+    description: Build the application's Docker image
+    command: docker build -t web-server:latest .
+    timeout: *timeout_medium
+    evidence: *evidence_full
+    retry: *retry_standard
+
+  - name: Push Docker Image
+    type: automatic
+    description: Push the image to the container registry
+    command: docker push my-registry/web-server:latest
+    timeout: *timeout_medium
+    evidence: *evidence_full
+    retry: *retry_critical  # More aggressive retry for critical step
+
+  - name: Request Approval
+    type: approval
+    description: Request manager approval for deployment
+    command: jira create-ticket --type approval --summary "Deploy Web Server"
+    evidence: *evidence_screenshot
+
+  - name: Run Database Migrations
+    type: automatic
+    description: Apply database schema changes
+    command: npm run migrate -- --host ${DB_HOST}
+    timeout: *timeout_long
+    evidence: *evidence_full
+    retry: *retry_critical
+    rollback:
+      instruction: |
+        Rollback database migration:
+        ```bash
+        npm run migrate:rollback -- --host ${DB_HOST}
+        ```
+      timeout: *timeout_medium
+      evidence: *evidence_full
+
+  - name: Scale Deployment
+    type: automatic
+    description: Scale the Kubernetes deployment to the specified replica count
+    command: kubectl scale deployment web-server --replicas=${REPLICAS}
+    timeout: *timeout_medium
+    evidence: *evidence_screenshot
+    retry: *retry_standard
+
+  - name: Deploy to Kubernetes
+    type: automatic
+    description: Apply the Kubernetes deployment manifest
+    command: kubectl apply -f k8s/deployment.yaml
+    timeout: *timeout_medium
+    evidence: *evidence_full
+    retry: *retry_standard
+    rollback:
+      instruction: |
+        Rollback to previous deployment:
+        ```bash
+        kubectl rollout undo deployment/web-server
+        ```
+
+        Verify rollback:
+        ```bash
+        kubectl rollout status deployment/web-server
+        ```
+      timeout: *timeout_medium
+      evidence: *evidence_full
+
+  - name: Verify Health Check
+    type: manual
+    description: Manually verify deployment health
+    instruction: |
+      1. Check pod status:
+      ```bash
+      kubectl get pods -l app=web-server
+      ```
+
+      2. Verify all pods are running (expected: ${REPLICAS})
+
+      3. Test health endpoint:
+      ```bash
+      curl https://${DOMAIN}${HEALTH_CHECK_PATH}
+      ```
+
+      4. Expected response: {"status": "healthy"}
+    timeout: *timeout_short
+    evidence: *evidence_full
+    retry: *retry_standard
+
+  - name: Smoke Test
+    type: manual
+    description: Run basic smoke tests
+    instruction: |
+      1. Open application: https://${DOMAIN}
+      2. Verify homepage loads successfully
+      3. Test user login flow
+      4. Check dashboard displays correctly
+      5. Verify database connectivity (check user list)
+    evidence: *evidence_full
+
+# ============================================================================
+# BENEFITS OF YAML ANCHORS IN THIS EXAMPLE:
+# ============================================================================
+#
+# 1. Evidence Configuration DRY:
+#    - Define once (&evidence_screenshot, &evidence_full)
+#    - Reference multiple times (*evidence_screenshot, *evidence_full)
+#    - Easy to update globally
+#
+# 2. Retry Policy Consistency:
+#    - Standard retry for most steps
+#    - Critical retry for important steps
+#    - Change policy in one place
+#
+# 3. Timeout Standards:
+#    - Named timeouts (short/medium/long)
+#    - Self-documenting
+#    - Easy to adjust
+#
+# 4. Environment Variable Sharing:
+#    - Base variables defined once (&env_base)
+#    - Merged into each environment (<<: *env_base)
+#    - Environment-specific overrides
+#
+# 5. Maintenance Benefits:
+#    - Change evidence requirements once
+#    - Update retry policy globally
+#    - Adjust timeouts consistently
+#    - Reduce configuration errors
+#
+# ============================================================================

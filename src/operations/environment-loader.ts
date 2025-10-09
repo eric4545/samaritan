@@ -1,7 +1,7 @@
-import fs from 'fs';
+import fs from 'node:fs';
+import { resolve } from 'node:path';
 import yaml from 'js-yaml';
-import { resolve, dirname, join } from 'path';
-import { Environment } from '../models/operation';
+import type { Environment } from '../models/operation';
 
 interface EnvironmentManifest {
   apiVersion: string;
@@ -34,7 +34,9 @@ export class EnvironmentLoader {
 
   constructor(private baseDirectory: string) {}
 
-  async loadEnvironmentManifest(manifestName: string): Promise<EnvironmentManifest> {
+  async loadEnvironmentManifest(
+    manifestName: string,
+  ): Promise<EnvironmentManifest> {
     // Check cache first
     if (this.manifestCache.has(manifestName)) {
       return this.manifestCache.get(manifestName)!;
@@ -51,7 +53,7 @@ export class EnvironmentLoader {
       resolve(this.baseDirectory, '../environments', `${manifestName}.yaml`),
       resolve(this.baseDirectory, '../environments', `${manifestName}.yml`),
       resolve(this.baseDirectory, '..', `${manifestName}.yaml`),
-      resolve(this.baseDirectory, '..', `${manifestName}.yml`)
+      resolve(this.baseDirectory, '..', `${manifestName}.yml`),
     ];
 
     let manifestPath: string | null = null;
@@ -63,7 +65,9 @@ export class EnvironmentLoader {
     }
 
     if (!manifestPath) {
-      throw new Error(`Environment manifest '${manifestName}' not found. Searched: ${possiblePaths.join(', ')}`);
+      throw new Error(
+        `Environment manifest '${manifestName}' not found. Searched: ${possiblePaths.join(', ')}`,
+      );
     }
 
     try {
@@ -71,26 +75,33 @@ export class EnvironmentLoader {
       const manifest = yaml.load(content) as EnvironmentManifest;
 
       // Validate manifest structure
-      if (!manifest.apiVersion || !manifest.kind || manifest.kind !== 'EnvironmentManifest') {
+      if (
+        !manifest.apiVersion ||
+        !manifest.kind ||
+        manifest.kind !== 'EnvironmentManifest'
+      ) {
         throw new Error(`Invalid environment manifest: ${manifestPath}`);
       }
 
       if (!manifest.environments || !Array.isArray(manifest.environments)) {
-        throw new Error(`Environment manifest must contain 'environments' array: ${manifestPath}`);
+        throw new Error(
+          `Environment manifest must contain 'environments' array: ${manifestPath}`,
+        );
       }
 
       // Cache the manifest
       this.manifestCache.set(manifestName, manifest);
       return manifest;
-
     } catch (error) {
-      throw new Error(`Failed to load environment manifest '${manifestName}' from ${manifestPath}: ${(error as Error).message}`);
+      throw new Error(
+        `Failed to load environment manifest '${manifestName}' from ${manifestPath}: ${(error as Error).message}`,
+      );
     }
   }
 
   async resolveEnvironments(
     environmentRefs: EnvironmentRef[],
-    environmentOverrides?: EnvironmentOverride
+    environmentOverrides?: EnvironmentOverride,
   ): Promise<Environment[]> {
     const resolvedEnvironments: Environment[] = [];
     const seenEnvironments = new Set<string>();
@@ -99,9 +110,10 @@ export class EnvironmentLoader {
       const manifest = await this.loadEnvironmentManifest(ref.manifest);
 
       // Determine which environments to use
-      const envsToUse = ref.environments === 'all' || !ref.environments
-        ? manifest.environments.map(e => e.name)
-        : ref.environments;
+      const envsToUse =
+        ref.environments === 'all' || !ref.environments
+          ? manifest.environments.map((e) => e.name)
+          : ref.environments;
 
       for (const envName of envsToUse) {
         // Skip if already processed
@@ -111,9 +123,13 @@ export class EnvironmentLoader {
         seenEnvironments.add(envName);
 
         // Find the environment in the manifest
-        const manifestEnv = manifest.environments.find(e => e.name === envName);
+        const manifestEnv = manifest.environments.find(
+          (e) => e.name === envName,
+        );
         if (!manifestEnv) {
-          throw new Error(`Environment '${envName}' not found in manifest '${ref.manifest}'`);
+          throw new Error(
+            `Environment '${envName}' not found in manifest '${ref.manifest}'`,
+          );
         }
 
         // Clone the environment and apply overrides
@@ -124,14 +140,17 @@ export class EnvironmentLoader {
           restrictions: [...(manifestEnv.restrictions || [])],
           approval_required: manifestEnv.approval_required,
           validation_required: manifestEnv.validation_required,
-          targets: [...(manifestEnv.targets || [])]
+          targets: [...(manifestEnv.targets || [])],
         };
 
         // Apply environment-specific overrides
         const override = environmentOverrides?.[envName];
         if (override) {
           if (override.variables) {
-            resolvedEnv.variables = { ...resolvedEnv.variables, ...override.variables };
+            resolvedEnv.variables = {
+              ...resolvedEnv.variables,
+              ...override.variables,
+            };
           }
           if (override.approval_required !== undefined) {
             resolvedEnv.approval_required = override.approval_required;
@@ -140,7 +159,10 @@ export class EnvironmentLoader {
             resolvedEnv.validation_required = override.validation_required;
           }
           if (override.restrictions) {
-            resolvedEnv.restrictions = [...resolvedEnv.restrictions, ...override.restrictions];
+            resolvedEnv.restrictions = [
+              ...resolvedEnv.restrictions,
+              ...override.restrictions,
+            ];
           }
           if (override.targets) {
             resolvedEnv.targets = [...resolvedEnv.targets, ...override.targets];

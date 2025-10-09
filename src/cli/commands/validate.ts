@@ -1,10 +1,7 @@
+import { existsSync } from 'node:fs';
 import { Command } from 'commander';
-import { readFile } from 'fs/promises';
-import { existsSync } from 'fs';
-import { join } from 'path';
+import type { Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
-import { Operation } from '../../models/operation';
-import { ValidationError } from '../../validation/schema-validator';
 
 interface ValidationResult {
   valid: boolean;
@@ -20,11 +17,14 @@ interface ValidationOptions {
 }
 
 class OperationValidator {
-  async validateFile(filePath: string, options: ValidationOptions = {}): Promise<ValidationResult> {
+  async validateFile(
+    filePath: string,
+    options: ValidationOptions = {},
+  ): Promise<ValidationResult> {
     const result: ValidationResult = {
       valid: true,
       errors: [],
-      warnings: []
+      warnings: [],
     };
 
     try {
@@ -57,12 +57,13 @@ class OperationValidator {
       if (options.environment) {
         this.validateForEnvironment(operation, options.environment, result);
       }
-
     } catch (error: any) {
       result.errors.push(`Parsing error: ${error.message}`);
       if (error.errors && Array.isArray(error.errors)) {
         error.errors.forEach((validationError: any) => {
-          result.errors.push(`  ${validationError.field}: ${validationError.message}`);
+          result.errors.push(
+            `  ${validationError.field}: ${validationError.message}`,
+          );
         });
       }
       result.valid = false;
@@ -72,10 +73,16 @@ class OperationValidator {
     return result;
   }
 
-  private validateOperationStructure(operation: Operation, result: ValidationResult, options: ValidationOptions): void {
+  private validateOperationStructure(
+    operation: Operation,
+    result: ValidationResult,
+    options: ValidationOptions,
+  ): void {
     // Version validation
     if (!operation.version.match(/^\d+\.\d+\.\d+$/)) {
-      result.warnings.push('Version should follow semantic versioning (e.g., 1.0.0)');
+      result.warnings.push(
+        'Version should follow semantic versioning (e.g., 1.0.0)',
+      );
     }
 
     // Required fields
@@ -84,26 +91,41 @@ class OperationValidator {
     }
 
     if (!operation.author && options.strict) {
-      result.warnings.push('Operation author not specified (recommended for traceability)');
+      result.warnings.push(
+        'Operation author not specified (recommended for traceability)',
+      );
     }
 
     if (!operation.category && options.strict) {
-      result.warnings.push('Operation category not specified (recommended for organization)');
+      result.warnings.push(
+        'Operation category not specified (recommended for organization)',
+      );
     }
 
     // Emergency operations validation
     if (operation.emergency) {
-      if (!operation.category?.includes('emergency') && !operation.category?.includes('incident')) {
-        result.warnings.push('Emergency operations should have category "emergency" or "incident"');
+      if (
+        !operation.category?.includes('emergency') &&
+        !operation.category?.includes('incident')
+      ) {
+        result.warnings.push(
+          'Emergency operations should have category "emergency" or "incident"',
+        );
       }
-      
-      if (operation.steps.some(step => step.approval?.required)) {
-        result.warnings.push('Emergency operations typically should not require approvals');
+
+      if (operation.steps.some((step) => step.approval?.required)) {
+        result.warnings.push(
+          'Emergency operations typically should not require approvals',
+        );
       }
     }
   }
 
-  private validateEnvironments(operation: Operation, result: ValidationResult, options: ValidationOptions): void {
+  private validateEnvironments(
+    operation: Operation,
+    result: ValidationResult,
+    options: ValidationOptions,
+  ): void {
     if (operation.environments.length === 0) {
       result.errors.push('At least one environment must be defined');
       return;
@@ -125,17 +147,25 @@ class OperationValidator {
       // Production environment checks
       if (env.name.toLowerCase().includes('prod')) {
         if (!env.approval_required && options.strict) {
-          result.warnings.push(`Production environment ${env.name} should require approval`);
+          result.warnings.push(
+            `Production environment ${env.name} should require approval`,
+          );
         }
-        
+
         if (!env.validation_required && options.strict) {
-          result.warnings.push(`Production environment ${env.name} should require validation`);
+          result.warnings.push(
+            `Production environment ${env.name} should require validation`,
+          );
         }
       }
     }
   }
 
-  private validateSteps(operation: Operation, result: ValidationResult, options: ValidationOptions): void {
+  private validateSteps(
+    operation: Operation,
+    result: ValidationResult,
+    _options: ValidationOptions,
+  ): void {
     if (operation.steps.length === 0) {
       result.errors.push('At least one step must be defined');
       return;
@@ -143,7 +173,7 @@ class OperationValidator {
 
     const stepNames = new Set<string>();
     const stepIds = new Set<string>();
-    
+
     // First pass: collect all step names and IDs
     for (let i = 0; i < operation.steps.length; i++) {
       const step = operation.steps[i];
@@ -152,13 +182,14 @@ class OperationValidator {
         stepIds.add(step.id);
       }
     }
-    
+
     for (let i = 0; i < operation.steps.length; i++) {
       const step = operation.steps[i];
-      
+
       // Check step ID uniqueness
       if (step.id) {
-        const duplicateId = Array.from(stepIds).filter(id => id === step.id).length > 1;
+        const duplicateId =
+          Array.from(stepIds).filter((id) => id === step.id).length > 1;
         if (duplicateId) {
           result.errors.push(`Duplicate step ID: ${step.id}`);
         }
@@ -170,44 +201,65 @@ class OperationValidator {
       if (step.needs) {
         for (const dep of step.needs) {
           if (!stepNames.has(dep) && !stepIds.has(dep)) {
-            result.warnings.push(`Step ${i + 1} (${step.name}): dependency '${dep}' not found among step names or IDs`);
+            result.warnings.push(
+              `Step ${i + 1} (${step.name}): dependency '${dep}' not found among step names or IDs`,
+            );
           }
         }
       }
 
       // Evidence validation
-      if (step.evidence_required && (!step.evidence_types || step.evidence_types.length === 0)) {
-        result.warnings.push(`Step ${i + 1} (${step.name}): evidence required but no evidence types specified`);
+      if (
+        step.evidence_required &&
+        (!step.evidence_types || step.evidence_types.length === 0)
+      ) {
+        result.warnings.push(
+          `Step ${i + 1} (${step.name}): evidence required but no evidence types specified`,
+        );
       }
 
       // Timeout validation
       if (step.timeout && step.timeout < 0) {
-        result.errors.push(`Step ${i + 1} (${step.name}): timeout cannot be negative`);
+        result.errors.push(
+          `Step ${i + 1} (${step.name}): timeout cannot be negative`,
+        );
       }
 
       // Estimated duration validation
       if (step.estimated_duration && step.estimated_duration < 0) {
-        result.errors.push(`Step ${i + 1} (${step.name}): estimated_duration cannot be negative`);
+        result.errors.push(
+          `Step ${i + 1} (${step.name}): estimated_duration cannot be negative`,
+        );
       }
 
       // Rollback validation
-      if (step.rollback && !step.rollback.command && !step.rollback.instruction) {
-        result.warnings.push(`Step ${i + 1} (${step.name}): rollback defined but no command or instruction specified`);
+      if (
+        step.rollback &&
+        !step.rollback.command &&
+        !step.rollback.instruction
+      ) {
+        result.warnings.push(
+          `Step ${i + 1} (${step.name}): rollback defined but no command or instruction specified`,
+        );
       }
     }
   }
 
-  private validateVariables(operation: Operation, result: ValidationResult, options: ValidationOptions): void {
+  private validateVariables(
+    operation: Operation,
+    result: ValidationResult,
+    _options: ValidationOptions,
+  ): void {
     // Collect all variable references from steps
     const usedVariables = new Set<string>();
-    
+
     for (const step of operation.steps) {
       // Simple regex to find ${variable} patterns
       const variableRegex = /\$\{([^}]+)\}/g;
-      
+
       [step.command, step.instruction, JSON.stringify(step.env || {})]
         .filter(Boolean)
-        .forEach(text => {
+        .forEach((text) => {
           let match;
           while ((match = variableRegex.exec(text!)) !== null) {
             usedVariables.add(match[1]);
@@ -218,62 +270,95 @@ class OperationValidator {
     // Check if all used variables are defined in environments
     for (const envName of Object.keys(operation.variables)) {
       const envVariables = new Set(Object.keys(operation.variables[envName]));
-      
+
       for (const usedVar of usedVariables) {
         // Skip built-in variables
         if (['DATE', 'TIME', 'USER', 'environment'].includes(usedVar)) {
           continue;
         }
-        
+
         if (!envVariables.has(usedVar)) {
-          result.warnings.push(`Variable '${usedVar}' used in steps but not defined in environment '${envName}'`);
+          result.warnings.push(
+            `Variable '${usedVar}' used in steps but not defined in environment '${envName}'`,
+          );
         }
       }
     }
   }
 
-  private validatePreflight(operation: Operation, result: ValidationResult, options: ValidationOptions): void {
+  private validatePreflight(
+    operation: Operation,
+    result: ValidationResult,
+    _options: ValidationOptions,
+  ): void {
     for (let i = 0; i < operation.preflight.length; i++) {
       const check = operation.preflight[i];
-      
+
       if (check.type === 'command' && !check.command) {
-        result.errors.push(`Preflight check ${i + 1} (${check.name}): command type requires a command`);
+        result.errors.push(
+          `Preflight check ${i + 1} (${check.name}): command type requires a command`,
+        );
       }
-      
+
       if (check.type === 'manual' && !check.description) {
-        result.warnings.push(`Preflight check ${i + 1} (${check.name}): manual checks should have detailed description`);
+        result.warnings.push(
+          `Preflight check ${i + 1} (${check.name}): manual checks should have detailed description`,
+        );
       }
 
       if (check.timeout && check.timeout < 0) {
-        result.errors.push(`Preflight check ${i + 1} (${check.name}): timeout cannot be negative`);
+        result.errors.push(
+          `Preflight check ${i + 1} (${check.name}): timeout cannot be negative`,
+        );
       }
     }
   }
 
-  private strictValidation(operation: Operation, result: ValidationResult, options: ValidationOptions): void {
+  private strictValidation(
+    operation: Operation,
+    result: ValidationResult,
+    _options: ValidationOptions,
+  ): void {
     // Strict mode additional checks
     if (!operation.rollback) {
-      result.warnings.push('No rollback plan defined (recommended for production operations)');
+      result.warnings.push(
+        'No rollback plan defined (recommended for production operations)',
+      );
     }
 
-    if (operation.steps.filter(s => s.evidence_required).length === 0) {
-      result.warnings.push('No steps require evidence collection (recommended for audit trails)');
+    if (operation.steps.filter((s) => s.evidence_required).length === 0) {
+      result.warnings.push(
+        'No steps require evidence collection (recommended for audit trails)',
+      );
     }
 
     if (!operation.preflight || operation.preflight.length === 0) {
-      result.warnings.push('No preflight checks defined (recommended to validate prerequisites)');
+      result.warnings.push(
+        'No preflight checks defined (recommended to validate prerequisites)',
+      );
     }
 
     // Check for hardcoded values that should be variables
     for (const step of operation.steps) {
-      if (step.command?.includes('prod') || step.instruction?.includes('prod')) {
-        result.warnings.push(`Step ${step.name}: possible hardcoded environment reference, consider using variables`);
+      if (
+        step.command?.includes('prod') ||
+        step.instruction?.includes('prod')
+      ) {
+        result.warnings.push(
+          `Step ${step.name}: possible hardcoded environment reference, consider using variables`,
+        );
       }
     }
   }
 
-  private validateForEnvironment(operation: Operation, envName: string, result: ValidationResult): void {
-    const environment = operation.environments.find(env => env.name === envName);
+  private validateForEnvironment(
+    operation: Operation,
+    envName: string,
+    result: ValidationResult,
+  ): void {
+    const environment = operation.environments.find(
+      (env) => env.name === envName,
+    );
     if (!environment) {
       result.errors.push(`Environment '${envName}' not found in operation`);
       return;
@@ -281,7 +366,7 @@ class OperationValidator {
 
     // Check if all required variables are defined for this environment
     const envVariables = operation.variables[envName] || {};
-    
+
     if (Object.keys(envVariables).length === 0) {
       result.warnings.push(`No variables defined for environment '${envName}'`);
     }
@@ -296,16 +381,20 @@ const validateCommand = new Command('validate')
   .option('-v, --verbose', 'Verbose output')
   .action(async (file: string, options: ValidationOptions) => {
     const validator = new OperationValidator();
-    
+
     console.log(`🔍 Validating operation: ${file}\n`);
-    
+
     try {
       const result = await validator.validateFile(file, options);
-      
+
       if (options.verbose && result.operation) {
-        console.log(`📋 Operation: ${result.operation.name} v${result.operation.version}`);
+        console.log(
+          `📋 Operation: ${result.operation.name} v${result.operation.version}`,
+        );
         console.log(`📝 Description: ${result.operation.description}`);
-        console.log(`🏗️  Environments: ${result.operation.environments.map(e => e.name).join(', ')}`);
+        console.log(
+          `🏗️  Environments: ${result.operation.environments.map((e) => e.name).join(', ')}`,
+        );
         console.log(`🔧 Steps: ${result.operation.steps.length}`);
         console.log('');
       }
@@ -313,14 +402,14 @@ const validateCommand = new Command('validate')
       // Display warnings
       if (result.warnings.length > 0) {
         console.log('⚠️  Warnings:');
-        result.warnings.forEach(warning => console.log(`   ${warning}`));
+        result.warnings.forEach((warning) => console.log(`   ${warning}`));
         console.log('');
       }
 
       // Display errors
       if (result.errors.length > 0) {
         console.log('❌ Errors:');
-        result.errors.forEach(error => console.log(`   ${error}`));
+        result.errors.forEach((error) => console.log(`   ${error}`));
         console.log('');
       }
 
@@ -336,7 +425,6 @@ const validateCommand = new Command('validate')
         console.log(`   ${result.errors.length} error(s) found`);
         process.exit(1);
       }
-      
     } catch (error: any) {
       console.error(`❌ Validation failed: ${error.message}`);
       process.exit(1);

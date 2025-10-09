@@ -1,5 +1,4 @@
-import { Step } from './operation';
-import { Priority, QRHCategory } from './operation';
+import type { Priority, QRHCategory, Step } from './operation';
 
 // Re-export types used by QRH
 export type { Priority, QRHCategory };

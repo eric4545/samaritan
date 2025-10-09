@@ -1,7 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+
 // In CommonJS, __dirname is available globally
 
 // Load schema
@@ -12,7 +13,7 @@ const operationSchema = JSON.parse(readFileSync(schemaPath, 'utf8'));
 const ajv = new Ajv({
   allErrors: true,
   verbose: true,
-  strict: false // Allow additional properties for flexibility
+  strict: false, // Allow additional properties for flexibility
 });
 addFormats(ajv); // Add date-time format support
 
@@ -51,7 +52,7 @@ export function validateOperationSchema(data: any): ValidationError[] {
       errors.push({
         field: error.instancePath || error.schemaPath || 'root',
         message: error.message || 'Validation failed',
-        value: error.data
+        value: error.data,
       });
     }
   }

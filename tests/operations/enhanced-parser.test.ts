@@ -1,8 +1,15 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
-import { parseOperation, OperationParseError } from '../../src/operations/parser';
-import { enhancedStepFieldsYaml, conditionalStepYaml, enhancedPreflightYaml } from '../fixtures/operations';
+import { describe, it } from 'node:test';
+import {
+  OperationParseError,
+  parseOperation,
+} from '../../src/operations/parser';
+import {
+  conditionalStepYaml,
+  enhancedPreflightYaml,
+  enhancedStepFieldsYaml,
+} from '../fixtures/operations';
 
 describe('Enhanced Operation Parser', () => {
   it('should parse operation with new Step fields including instructions', async () => {
@@ -32,21 +39,33 @@ describe('Enhanced Operation Parser', () => {
       // Test manual step with instruction
       const manualStep = operation.steps[2];
       assert.strictEqual(manualStep.type, 'manual');
-      assert.strictEqual(manualStep.instruction, 'Navigate to admin panel and configure the following settings...');
+      assert.strictEqual(
+        manualStep.instruction,
+        'Navigate to admin panel and configure the following settings...',
+      );
       assert.strictEqual(manualStep.estimated_duration, 600);
       assert.strictEqual(manualStep.evidence?.required, true);
 
       // Test manual step with both command and instruction
       const manualWithCommand = operation.steps[3];
       assert.strictEqual(manualWithCommand.type, 'manual');
-      assert.strictEqual(manualWithCommand.command, 'curl -X POST http://admin/configure');
-      assert.strictEqual(manualWithCommand.instruction, 'Execute the command and verify the response contains \'success\'');
+      assert.strictEqual(
+        manualWithCommand.command,
+        'curl -X POST http://admin/configure',
+      );
+      assert.strictEqual(
+        manualWithCommand.instruction,
+        "Execute the command and verify the response contains 'success'",
+      );
 
       // Test step with verify and sub_steps
       const complexStep = operation.steps[4];
       assert.strictEqual(complexStep.type, 'automatic');
       assert.ok(complexStep.verify);
-      assert.strictEqual(complexStep.verify.command, 'kubectl get pods -l app=myapp | grep Running');
+      assert.strictEqual(
+        complexStep.verify.command,
+        'kubectl get pods -l app=myapp | grep Running',
+      );
       assert.ok(complexStep.sub_steps);
       assert.strictEqual(complexStep.sub_steps.length, 2);
 
@@ -58,7 +77,10 @@ describe('Enhanced Operation Parser', () => {
 
       const subStep2 = complexStep.sub_steps[1];
       assert.strictEqual(subStep2.type, 'manual');
-      assert.strictEqual(subStep2.instruction, 'Check application dashboard shows green status');
+      assert.strictEqual(
+        subStep2.instruction,
+        'Check application dashboard shows green status',
+      );
       assert.strictEqual(subStep2.evidence?.required, true);
 
       // Test approval step
@@ -66,7 +88,6 @@ describe('Enhanced Operation Parser', () => {
       assert.strictEqual(approvalStep.type, 'approval');
       assert.ok(approvalStep.approval);
       assert.strictEqual(approvalStep.approval.required, true);
-
     } finally {
       fs.unlinkSync(tempFile);
     }
@@ -165,9 +186,21 @@ steps:
       assert(error instanceof OperationParseError);
       assert(error.errors.length > 0);
       // Schema validation produces different field paths
-      assert(error.errors.some(e => e.field.includes('version') || e.field === '/version'));
-      assert(error.errors.some(e => e.field.includes('name') || e.field.includes('/steps')));
-      assert(error.errors.some(e => e.field.includes('type') || e.field.includes('/steps')));
+      assert(
+        error.errors.some(
+          (e) => e.field.includes('version') || e.field === '/version',
+        ),
+      );
+      assert(
+        error.errors.some(
+          (e) => e.field.includes('name') || e.field.includes('/steps'),
+        ),
+      );
+      assert(
+        error.errors.some(
+          (e) => e.field.includes('type') || e.field.includes('/steps'),
+        ),
+      );
     } finally {
       fs.unlinkSync(tempFile);
     }
@@ -183,7 +216,6 @@ steps:
 
       assert.strictEqual(conditionalStep.type, 'conditional');
       assert.strictEqual(conditionalStep.if, '${{ success() }}');
-
     } finally {
       fs.unlinkSync(tempFile);
     }
@@ -196,14 +228,15 @@ steps:
     try {
       const operation = await parseOperation(tempFile);
       // After unified steps, find step with phase: 'preflight'
-      const preflightStep = operation.steps.find(step => step.phase === 'preflight');
+      const preflightStep = operation.steps.find(
+        (step) => step.phase === 'preflight',
+      );
       assert.ok(preflightStep, 'Should have preflight step');
 
       assert.strictEqual(preflightStep.type, 'automatic');
       assert.strictEqual(preflightStep.condition, 'active');
       assert.strictEqual(preflightStep.timeout, 10);
       assert.strictEqual(preflightStep.evidence?.required, true);
-
     } finally {
       fs.unlinkSync(tempFile);
     }

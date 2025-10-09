@@ -1,9 +1,12 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
+import { describe, it } from 'node:test';
 import { parseOperation } from '../../src/operations/parser';
-import { Operation, Environment, OperationMetadata } from '../../src/models/operation';
-import { minimalTestYaml, invalidOperationYaml, enhancedOperationYaml } from '../fixtures/operations';
+import {
+  enhancedOperationYaml,
+  invalidOperationYaml,
+  minimalTestYaml,
+} from '../fixtures/operations';
 
 describe('Enhanced Operation Parser', () => {
   it('should parse legacy deployment.yaml with backward compatibility', async () => {
@@ -12,7 +15,10 @@ describe('Enhanced Operation Parser', () => {
     // Verify basic fields work
     assert.strictEqual(operation.name, 'Deploy Web Server');
     assert.strictEqual(operation.version, '1.1.0');
-    assert.strictEqual(operation.description, 'Deploys the main web server application to the staging environment.');
+    assert.strictEqual(
+      operation.description,
+      'Deploys the main web server application to the staging environment.',
+    );
 
     // Verify enhanced fields have defaults
     assert.ok(operation.id); // Should be generated UUID
@@ -23,14 +29,18 @@ describe('Enhanced Operation Parser', () => {
     // Verify environments are properly converted
     assert.ok(operation.environments);
     assert.strictEqual(operation.environments.length, 2);
-    
-    const preprodEnv = operation.environments.find(env => env.name === 'preprod');
+
+    const preprodEnv = operation.environments.find(
+      (env) => env.name === 'preprod',
+    );
     assert.ok(preprodEnv);
     assert.strictEqual(preprodEnv.description, 'preprod');
     assert.strictEqual(preprodEnv.approval_required, false);
     assert.strictEqual(preprodEnv.variables.REPLICAS, 2);
 
-    const prodEnv = operation.environments.find(env => env.name === 'production');
+    const prodEnv = operation.environments.find(
+      (env) => env.name === 'production',
+    );
     assert.ok(prodEnv);
     assert.strictEqual(prodEnv.approval_required, true);
     assert.strictEqual(prodEnv.variables.REPLICAS, 5);
@@ -51,13 +61,17 @@ describe('Enhanced Operation Parser', () => {
     assert.strictEqual(operation.steps.length, 8); // 2 preflight + 6 original steps
 
     // Check preflight steps (now in unified steps with phase)
-    const preflightSteps = operation.steps.filter(step => step.phase === 'preflight');
+    const preflightSteps = operation.steps.filter(
+      (step) => step.phase === 'preflight',
+    );
     assert.strictEqual(preflightSteps.length, 2);
     assert.strictEqual(preflightSteps[0].name, 'Check Git status');
     assert.strictEqual(preflightSteps[0].type, 'automatic');
 
     // Check regular steps (should be the original steps, starting after preflight)
-    const regularSteps = operation.steps.filter(step => step.phase !== 'preflight');
+    const regularSteps = operation.steps.filter(
+      (step) => step.phase !== 'preflight',
+    );
     assert.strictEqual(regularSteps.length, 6);
     assert.strictEqual(regularSteps[0].name, 'Build Docker Image');
     assert.strictEqual(regularSteps[0].type, 'automatic');
@@ -131,7 +145,7 @@ describe('Enhanced Operation Parser', () => {
       assert.strictEqual(env.validation_required, true);
 
       // Verify enhanced step fields (Deploy step is now at index 1 after preflight migration)
-      const deployStep = operation.steps.find(step => step.name === 'Deploy');
+      const deployStep = operation.steps.find((step) => step.name === 'Deploy');
       assert.ok(deployStep, 'Deploy step should exist');
       assert.strictEqual(deployStep.timeout, 300);
       assert.strictEqual(deployStep.evidence?.required, true);
@@ -139,10 +153,11 @@ describe('Enhanced Operation Parser', () => {
       assert.ok(deployStep.evidence?.types?.includes('log'));
 
       // Verify enhanced preflight fields (now in unified steps with phase)
-      const preflightStep = operation.steps.find(step => step.phase === 'preflight');
+      const preflightStep = operation.steps.find(
+        (step) => step.phase === 'preflight',
+      );
       assert.ok(preflightStep, 'Preflight step should exist');
       assert.strictEqual(preflightStep.type, 'automatic');
-
     } finally {
       fs.unlinkSync(tempFile);
     }

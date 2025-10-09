@@ -1,12 +1,12 @@
-import {
-  EvidenceItem,
+import { randomUUID } from 'node:crypto';
+import type {
   EvidenceCollectionState,
+  EvidenceItem,
+  EvidenceMetadata,
   EvidenceRequirement,
-  EvidenceMetadata
 } from '../models/evidence';
-import { EvidenceType } from '../models/operation';
+import type { EvidenceType } from '../models/operation';
 import { validateEvidence, validateStepEvidence } from './validator';
-import { randomUUID } from 'crypto';
 
 /**
  * Evidence collector manages the collection and validation of evidence for a step
@@ -21,7 +21,7 @@ export class EvidenceCollector {
       collected: [],
       missing: [...requirements.types],
       validation_errors: [],
-      completed: false
+      completed: false,
     };
   }
 
@@ -44,7 +44,7 @@ export class EvidenceCollector {
       description?: string;
       automatic?: boolean;
       metadata?: Partial<EvidenceMetadata>;
-    } = {}
+    } = {},
   ): { success: boolean; evidence?: EvidenceItem; errors: string[] } {
     const errors: string[] = [];
 
@@ -61,17 +61,19 @@ export class EvidenceCollector {
       validated: false,
       description: options.description,
       metadata: {
-        size: Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content, 'utf8'),
+        size: Buffer.isBuffer(content)
+          ? content.length
+          : Buffer.byteLength(content, 'utf8'),
         format: this.detectFormat(type, content, options.filename),
         source: options.automatic ? 'automatic' : 'manual',
-        ...options.metadata
-      }
+        ...options.metadata,
+      },
     };
 
     // Validate evidence
     const validationRules = this.state.requirements.validation_rules;
     const validation = validateEvidence(evidence, validationRules);
-    
+
     if (!validation.valid) {
       errors.push(...validation.errors);
       return { success: false, errors };
@@ -83,10 +85,10 @@ export class EvidenceCollector {
 
     // Add to collection
     this.state.collected.push(evidence);
-    
+
     // Update missing types
     this.updateMissingTypes();
-    
+
     // Update completion status
     this.updateCompletionStatus();
 
@@ -97,7 +99,7 @@ export class EvidenceCollector {
    * Remove evidence item from collection
    */
   removeEvidence(evidenceId: string): boolean {
-    const index = this.state.collected.findIndex(e => e.id === evidenceId);
+    const index = this.state.collected.findIndex((e) => e.id === evidenceId);
     if (index === -1) return false;
 
     this.state.collected.splice(index, 1);
@@ -109,11 +111,15 @@ export class EvidenceCollector {
   /**
    * Validate all collected evidence
    */
-  validateCollection(): { valid: boolean; errors: string[]; warnings: string[] } {
+  validateCollection(): {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  } {
     const validation = validateStepEvidence(
       this.state.collected,
       this.state.requirements.types,
-      this.state.requirements.validation_rules
+      this.state.requirements.validation_rules,
     );
 
     this.state.validation_errors = validation.errors;
@@ -127,8 +133,9 @@ export class EvidenceCollector {
    */
   isComplete(): boolean {
     const hasAllRequiredTypes = this.state.missing.length === 0;
-    const meetsMinimumCount = !this.state.requirements.minimum_count || 
-                              this.state.collected.length >= this.state.requirements.minimum_count;
+    const meetsMinimumCount =
+      !this.state.requirements.minimum_count ||
+      this.state.collected.length >= this.state.requirements.minimum_count;
     const hasNoValidationErrors = this.state.validation_errors.length === 0;
 
     return hasAllRequiredTypes && meetsMinimumCount && hasNoValidationErrors;
@@ -138,7 +145,7 @@ export class EvidenceCollector {
    * Get evidence items by type
    */
   getEvidenceByType(type: EvidenceType): EvidenceItem[] {
-    return this.state.collected.filter(e => e.type === type);
+    return this.state.collected.filter((e) => e.type === type);
   }
 
   /**
@@ -152,7 +159,7 @@ export class EvidenceCollector {
     validationErrors: string[];
   } {
     const byType: Record<EvidenceType, number> = {} as any;
-    
+
     // Initialize counts
     for (const type of this.state.requirements.types) {
       byType[type] = 0;
@@ -168,7 +175,7 @@ export class EvidenceCollector {
       byType,
       missing: this.state.missing,
       completed: this.state.completed,
-      validationErrors: this.state.validation_errors
+      validationErrors: this.state.validation_errors,
     };
   }
 
@@ -185,7 +192,7 @@ export class EvidenceCollector {
       stepId: this.state.step_id,
       collected: this.state.collected,
       summary: this.getSummary(),
-      timestamp: new Date()
+      timestamp: new Date(),
     };
   }
 
@@ -193,8 +200,10 @@ export class EvidenceCollector {
    * Update missing types based on collected evidence
    */
   private updateMissingTypes(): void {
-    const collectedTypes = new Set(this.state.collected.map(e => e.type));
-    this.state.missing = this.state.requirements.types.filter(type => !collectedTypes.has(type));
+    const collectedTypes = new Set(this.state.collected.map((e) => e.type));
+    this.state.missing = this.state.requirements.types.filter(
+      (type) => !collectedTypes.has(type),
+    );
   }
 
   /**
@@ -207,26 +216,38 @@ export class EvidenceCollector {
   /**
    * Detect content format based on type and content
    */
-  private detectFormat(type: EvidenceType, content: string | Buffer, filename?: string): string {
+  private detectFormat(
+    type: EvidenceType,
+    content: string | Buffer,
+    filename?: string,
+  ): string {
     // Try to detect from filename extension
     if (filename) {
       const ext = filename.split('.').pop()?.toLowerCase();
       switch (ext) {
-        case 'png': return 'image/png';
+        case 'png':
+          return 'image/png';
         case 'jpg':
-        case 'jpeg': return 'image/jpeg';
-        case 'webp': return 'image/webp';
-        case 'mp4': return 'video/mp4';
-        case 'webm': return 'video/webm';
-        case 'json': return 'application/json';
-        case 'csv': return 'text/csv';
-        default: break;
+        case 'jpeg':
+          return 'image/jpeg';
+        case 'webp':
+          return 'image/webp';
+        case 'mp4':
+          return 'video/mp4';
+        case 'webm':
+          return 'video/webm';
+        case 'json':
+          return 'application/json';
+        case 'csv':
+          return 'text/csv';
+        default:
+          break;
       }
     }
 
     // Try to detect from content
     const contentStr = content.toString();
-    
+
     // Check for base64 image data
     if (contentStr.startsWith('data:')) {
       return contentStr.split(';')[0].replace('data:', '');
@@ -264,8 +285,8 @@ export class EvidenceCollector {
  * Create evidence collector for a step
  */
 export function createEvidenceCollector(
-  stepId: string, 
-  requirements: EvidenceRequirement
+  stepId: string,
+  requirements: EvidenceRequirement,
 ): EvidenceCollector {
   return new EvidenceCollector(stepId, requirements);
 }
@@ -280,7 +301,7 @@ export function createEvidenceRequirements(
     minimumCount?: number;
     description?: string;
     autoCollect?: boolean;
-  } = {}
+  } = {},
 ): EvidenceRequirement | null {
   if (!evidenceRequired) return null;
 
@@ -288,6 +309,6 @@ export function createEvidenceRequirements(
     types: evidenceTypes || ['screenshot'],
     minimum_count: options.minimumCount || 1,
     description: options.description || 'Evidence required for step completion',
-    auto_collect: options.autoCollect || false
+    auto_collect: options.autoCollect || false,
   };
 }

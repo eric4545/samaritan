@@ -1,10 +1,13 @@
-import { Operation, Environment, Step } from '../models/operation';
-import { GenerationMetadata, generateYamlFrontmatter } from '../lib/git-metadata';
+import {
+  type GenerationMetadata,
+  generateYamlFrontmatter,
+} from '../lib/git-metadata';
+import type { Environment, Operation, Step } from '../models/operation';
 
 function substituteVariables(
   command: string,
   envVariables: Record<string, any>,
-  stepVariables?: Record<string, any>
+  stepVariables?: Record<string, any>,
 ): string {
   let substitutedCommand = command;
 
@@ -13,24 +16,30 @@ function substituteVariables(
 
   for (const key in mergedVariables) {
     const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
-    substitutedCommand = substitutedCommand.replace(regex, mergedVariables[key]);
+    substitutedCommand = substitutedCommand.replace(
+      regex,
+      mergedVariables[key],
+    );
   }
   return substitutedCommand;
 }
 
-function formatEvidenceInfo(evidence?: { required?: boolean; types?: string[] }): string {
-  if (!evidence) return ''
+function formatEvidenceInfo(evidence?: {
+  required?: boolean;
+  types?: string[];
+}): string {
+  if (!evidence) return '';
 
-  const types = evidence.types || []
-  const typesText = types.length > 0 ? `: ${types.join(', ')}` : ''
-  const status = evidence.required ? 'Required' : 'Optional'
+  const types = evidence.types || [];
+  const typesText = types.length > 0 ? `: ${types.join(', ')}` : '';
+  const status = evidence.required ? 'Required' : 'Optional';
 
-  return `<br>📎 <em>Evidence ${status}${typesText}</em>`
+  return `<br>📎 <em>Evidence ${status}${typesText}</em>`;
 }
 
 function generateGanttChart(operation: Operation): string {
   // Filter steps that have timeline information
-  const stepsWithTimeline = operation.steps.filter(step => step.timeline);
+  const stepsWithTimeline = operation.steps.filter((step) => step.timeline);
 
   if (stepsWithTimeline.length === 0) {
     return '';
@@ -46,10 +55,10 @@ function generateGanttChart(operation: Operation): string {
   const phases: { [key: string]: Step[] } = {
     preflight: [],
     flight: [],
-    postflight: []
+    postflight: [],
   };
 
-  stepsWithTimeline.forEach(step => {
+  stepsWithTimeline.forEach((step) => {
     const phase = step.phase || 'flight';
     if (phases[phase]) {
       phases[phase].push(step);
@@ -60,7 +69,7 @@ function generateGanttChart(operation: Operation): string {
   const phaseNames = {
     preflight: '🛫 Pre-Flight Phase',
     flight: '✈️ Flight Phase',
-    postflight: '🛬 Post-Flight Phase'
+    postflight: '🛬 Post-Flight Phase',
   };
 
   Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
@@ -68,7 +77,7 @@ function generateGanttChart(operation: Operation): string {
 
     gantt += `    section ${phaseNames[phaseName as keyof typeof phaseNames]}\n`;
 
-    phaseSteps.forEach((step, index) => {
+    phaseSteps.forEach((step, _index) => {
       const taskName = step.name.replace(/:/g, ''); // Remove colons as they break Mermaid syntax
       const pic = step.pic ? ` (${step.pic})` : '';
       const timeline = step.timeline || '';
@@ -84,16 +93,33 @@ function generateGanttChart(operation: Operation): string {
   return gantt;
 }
 
-function generateStepRow(step: Step, stepNumber: number, environments: Environment[], resolveVariables: boolean = false, prefix: string = '', currentPhase?: string): string {
+function generateStepRow(
+  step: Step,
+  stepNumber: number,
+  environments: Environment[],
+  resolveVariables: boolean = false,
+  prefix: string = '',
+  currentPhase?: string,
+): string {
   let rows = '';
 
-  const typeIcon = step.type === 'automatic' ? '⚙️' :
-                   step.type === 'manual' ? '👤' :
-                   step.type === 'conditional' ? '🔀' : '✋';
+  const typeIcon =
+    step.type === 'automatic'
+      ? '⚙️'
+      : step.type === 'manual'
+        ? '👤'
+        : step.type === 'conditional'
+          ? '🔀'
+          : '✋';
 
-  const phaseIcon = step.phase === 'preflight' ? '🛫' :
-                    step.phase === 'flight' ? '✈️' :
-                    step.phase === 'postflight' ? '🛬' : '';
+  const phaseIcon =
+    step.phase === 'preflight'
+      ? '🛫'
+      : step.phase === 'flight'
+        ? '✈️'
+        : step.phase === 'postflight'
+          ? '🛬'
+          : '';
 
   // First column: Step name, phase, icon, and description
   // Add checkbox for tracking completion
@@ -102,10 +128,14 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
   if (step.phase && step.phase !== currentPhase) {
     stepCell += `<br><em>Phase: ${step.phase}</em>`;
   }
-  if (step.description && typeof step.description === 'string' && step.description.trim().length > 0) {
+  if (
+    step.description &&
+    typeof step.description === 'string' &&
+    step.description.trim().length > 0
+  ) {
     stepCell += `<br>${step.description}`;
   }
-  
+
   // Add dependency information
   if (step.needs && step.needs.length > 0) {
     stepCell += `<br>📋 <em>Depends on: ${step.needs.join(', ')}</em>`;
@@ -133,30 +163,34 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
   }
 
   // Add evidence requirements if present
-  stepCell += formatEvidenceInfo(step.evidence)
+  stepCell += formatEvidenceInfo(step.evidence);
 
   rows += `| ${stepCell} |`;
 
   // Subsequent columns: Commands for each environment
-  environments.forEach(env => {
+  environments.forEach((env) => {
     const rawCommand = step.command || step.instruction || '';
     let displayCommand = rawCommand;
 
     // Resolve variables if flag is enabled
     if (resolveVariables && rawCommand) {
-      displayCommand = substituteVariables(rawCommand, env.variables || {}, step.variables);
+      displayCommand = substituteVariables(
+        rawCommand,
+        env.variables || {},
+        step.variables,
+      );
     }
 
     // Check if content appears to be markdown (contains markdown indicators)
-    const isMarkdown = step.instruction && (
-      displayCommand.includes('\n#') ||       // Headers
-      displayCommand.includes('\n-') ||        // Lists
-      displayCommand.includes('\n*') ||        // Lists
-      displayCommand.includes('\n1.') ||       // Ordered lists
-      displayCommand.includes('```') ||        // Code blocks
-      displayCommand.includes('**') ||         // Bold
-      displayCommand.match(/\n\s{2,}/)         // Indented blocks
-    );
+    const isMarkdown =
+      step.instruction &&
+      (displayCommand.includes('\n#') || // Headers
+        displayCommand.includes('\n-') || // Lists
+        displayCommand.includes('\n*') || // Lists
+        displayCommand.includes('\n1.') || // Ordered lists
+        displayCommand.includes('```') || // Code blocks
+        displayCommand.includes('**') || // Bold
+        displayCommand.match(/\n\s{2,}/)); // Indented blocks
 
     // Clean up command for table format
     if (isMarkdown) {
@@ -210,13 +244,14 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
         if (subStep.pic || subStep.timeline) {
           const metadata = [];
           if (subStep.pic) metadata.push(`👤 PIC: ${subStep.pic}`);
-          if (subStep.timeline) metadata.push(`⏱️ Timeline: ${subStep.timeline}`);
+          if (subStep.timeline)
+            metadata.push(`⏱️ Timeline: ${subStep.timeline}`);
           rows += `_${metadata.join(' • ')}_\n\n`;
         }
 
         // Reopen table with headers
         rows += '| Step |';
-        environments.forEach(env => {
+        environments.forEach((env) => {
           rows += ` ${env.name} |`;
         });
         rows += '\n';
@@ -227,19 +262,35 @@ function generateStepRow(step: Step, stepNumber: number, environments: Environme
         rows += '\n';
       }
 
-      rows += generateSubStepRow(subStep, subStepPrefix, environments, resolveVariables);
+      rows += generateSubStepRow(
+        subStep,
+        subStepPrefix,
+        environments,
+        resolveVariables,
+      );
     });
   }
 
   return rows;
 }
 
-function generateSubStepRow(step: Step, stepId: string, environments: Environment[], resolveVariables: boolean = false, depth: number = 1): string {
+function generateSubStepRow(
+  step: Step,
+  stepId: string,
+  environments: Environment[],
+  resolveVariables: boolean = false,
+  depth: number = 1,
+): string {
   let rows = '';
 
-  const typeIcon = step.type === 'automatic' ? '⚙️' :
-                   step.type === 'manual' ? '👤' :
-                   step.type === 'conditional' ? '🔀' : '✋';
+  const typeIcon =
+    step.type === 'automatic'
+      ? '⚙️'
+      : step.type === 'manual'
+        ? '👤'
+        : step.type === 'conditional'
+          ? '🔀'
+          : '✋';
 
   // Add indentation for deeper nesting levels using nbsp or spaces
   const indent = '&nbsp;&nbsp;'.repeat(depth - 1);
@@ -247,7 +298,11 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
   // Format as: Step 1a: Build Backend API ⚙️
   // Add checkbox for tracking completion
   let stepCell = `☐ ${indent}Step ${stepId}: ${step.name} ${typeIcon}`;
-  if (step.description && typeof step.description === 'string' && step.description.trim().length > 0) {
+  if (
+    step.description &&
+    typeof step.description === 'string' &&
+    step.description.trim().length > 0
+  ) {
     stepCell += `<br>${step.description}`;
   }
 
@@ -278,30 +333,34 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
   }
 
   // Add evidence requirements if present
-  stepCell += formatEvidenceInfo(step.evidence)
+  stepCell += formatEvidenceInfo(step.evidence);
 
   rows += `| ${stepCell} |`;
 
   // Subsequent columns: Commands for each environment
-  environments.forEach(env => {
+  environments.forEach((env) => {
     const rawCommand = step.command || step.instruction || '';
     let displayCommand = rawCommand;
 
     // Resolve variables if flag is enabled
     if (resolveVariables && rawCommand) {
-      displayCommand = substituteVariables(rawCommand, env.variables || {}, step.variables);
+      displayCommand = substituteVariables(
+        rawCommand,
+        env.variables || {},
+        step.variables,
+      );
     }
 
     // Check if content appears to be markdown (contains markdown indicators)
-    const isMarkdown = step.instruction && (
-      displayCommand.includes('\n#') ||       // Headers
-      displayCommand.includes('\n-') ||        // Lists
-      displayCommand.includes('\n*') ||        // Lists
-      displayCommand.includes('\n1.') ||       // Ordered lists
-      displayCommand.includes('```') ||        // Code blocks
-      displayCommand.includes('**') ||         // Bold
-      displayCommand.match(/\n\s{2,}/)         // Indented blocks
-    );
+    const isMarkdown =
+      step.instruction &&
+      (displayCommand.includes('\n#') || // Headers
+        displayCommand.includes('\n-') || // Lists
+        displayCommand.includes('\n*') || // Lists
+        displayCommand.includes('\n1.') || // Ordered lists
+        displayCommand.includes('```') || // Code blocks
+        displayCommand.includes('**') || // Bold
+        displayCommand.match(/\n\s{2,}/)); // Indented blocks
 
     // Clean up command for table format
     if (isMarkdown) {
@@ -364,13 +423,14 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
         if (nestedSubStep.pic || nestedSubStep.timeline) {
           const metadata = [];
           if (nestedSubStep.pic) metadata.push(`👤 PIC: ${nestedSubStep.pic}`);
-          if (nestedSubStep.timeline) metadata.push(`⏱️ Timeline: ${nestedSubStep.timeline}`);
+          if (nestedSubStep.timeline)
+            metadata.push(`⏱️ Timeline: ${nestedSubStep.timeline}`);
           rows += `_${metadata.join(' • ')}_\n\n`;
         }
 
         // Reopen table with headers
         rows += '| Step |';
-        environments.forEach(env => {
+        environments.forEach((env) => {
           rows += ` ${env.name} |`;
         });
         rows += '\n';
@@ -381,7 +441,13 @@ function generateSubStepRow(step: Step, stepId: string, environments: Environmen
         rows += '\n';
       }
 
-      rows += generateSubStepRow(nestedSubStep, nestedStepId, environments, resolveVariables, depth + 1);
+      rows += generateSubStepRow(
+        nestedSubStep,
+        nestedStepId,
+        environments,
+        resolveVariables,
+        depth + 1,
+      );
     });
   }
 
@@ -396,7 +462,7 @@ export function generateManualWithMetadata(
   metadata?: GenerationMetadata,
   targetEnvironment?: string,
   resolveVariables?: boolean,
-  includeGantt?: boolean
+  includeGantt?: boolean,
 ): string {
   let markdown = '';
 
@@ -413,16 +479,20 @@ export function generateManualWithMetadata(
   // Filter environments if specified
   let environments = operation.environments;
   if (targetEnvironment) {
-    environments = operation.environments.filter(env => env.name === targetEnvironment);
+    environments = operation.environments.filter(
+      (env) => env.name === targetEnvironment,
+    );
     if (environments.length === 0) {
-      throw new Error(`Environment '${targetEnvironment}' not found in operation. Available: ${operation.environments.map(e => e.name).join(', ')}`);
+      throw new Error(
+        `Environment '${targetEnvironment}' not found in operation. Available: ${operation.environments.map((e) => e.name).join(', ')}`,
+      );
     }
   }
 
   // Create filtered operation for generation
   const filteredOperation = {
     ...operation,
-    environments
+    environments,
   };
 
   markdown += generateManualContent(filteredOperation, resolveVariables);
@@ -440,7 +510,10 @@ export function generateManual(operation: Operation): string {
 /**
  * Core manual content generation (without frontmatter)
  */
-function generateManualContent(operation: Operation, resolveVariables: boolean = false): string {
+function generateManualContent(
+  operation: Operation,
+  resolveVariables: boolean = false,
+): string {
   let markdown = `# Manual for: ${operation.name} (v${operation.version})\n\n`;
   if (operation.description) {
     markdown += `_${operation.description}_\n\n`;
@@ -449,8 +522,9 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
   // Operation Dependencies
   if (operation.needs && operation.needs.length > 0) {
     markdown += '## Dependencies\n\n';
-    markdown += 'This operation depends on the following operations being completed first:\n\n';
-    operation.needs.forEach(dep => {
+    markdown +=
+      'This operation depends on the following operations being completed first:\n\n';
+    operation.needs.forEach((dep) => {
       markdown += `- **${dep}**\n`;
     });
     markdown += '\n';
@@ -472,7 +546,8 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
   // Show imported step libraries
   if ((operation as any).imports && Array.isArray((operation as any).imports)) {
     markdown += '## Imported Step Libraries\n\n';
-    markdown += 'This operation uses reusable steps from the following libraries:\n\n';
+    markdown +=
+      'This operation uses reusable steps from the following libraries:\n\n';
     (operation as any).imports.forEach((importPath: string) => {
       markdown += `- \`${importPath}\`\n`;
     });
@@ -482,17 +557,21 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
   // Environments Overview Table
   if (operation.environments && operation.environments.length > 0) {
     markdown += '## Environments Overview\n\n';
-    markdown += '| Environment | Description | Variables | Targets | Approval Required |\n';
-    markdown += '| ----------- | ----------- | --------- | ------- | ----------------- |\n';
-    operation.environments.forEach(env => {
+    markdown +=
+      '| Environment | Description | Variables | Targets | Approval Required |\n';
+    markdown +=
+      '| ----------- | ----------- | --------- | ------- | ----------------- |\n';
+    operation.environments.forEach((env) => {
       // Format variables with line breaks for better readability
-      const vars = env.variables ? Object.keys(env.variables)
-        .map(key => `${key}: ${JSON.stringify(env.variables[key])}`)
-        .join('<br>') : '';
-      
+      const vars = env.variables
+        ? Object.keys(env.variables)
+            .map((key) => `${key}: ${JSON.stringify(env.variables[key])}`)
+            .join('<br>')
+        : '';
+
       // Format targets with line breaks
       const targets = env.targets ? env.targets.join('<br>') : '';
-      
+
       const approval = env.approval_required === true ? 'Yes' : 'No';
       markdown += `| ${env.name} | ${env.description || ''} | ${vars} | ${targets} | ${approval} |\n`;
     });
@@ -505,10 +584,10 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
     const phases: { [key: string]: Step[] } = {
       preflight: [],
       flight: [],
-      postflight: []
+      postflight: [],
     };
 
-    operation.steps.forEach(step => {
+    operation.steps.forEach((step) => {
       const phase = step.phase || 'flight';
       if (phases[phase]) {
         phases[phase].push(step);
@@ -525,19 +604,20 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
       const phaseHeaders = {
         preflight: '## 🛫 Pre-Flight Phase',
         flight: '## ✈️ Flight Phase (Main Operations)',
-        postflight: '## 🛬 Post-Flight Phase'
+        postflight: '## 🛬 Post-Flight Phase',
       };
 
       markdown += `${phaseHeaders[phaseName as keyof typeof phaseHeaders]}\n\n`;
 
       // Only build initial table header if first step is not a section heading
-      const firstStepIsSection = phaseSteps.length > 0 && phaseSteps[0].section_heading;
+      const firstStepIsSection =
+        phaseSteps.length > 0 && phaseSteps[0].section_heading;
       let tableOpen = false;
 
       if (!firstStepIsSection) {
         // Build table header
         markdown += '| Step |';
-        operation.environments.forEach(env => {
+        operation.environments.forEach((env) => {
           markdown += ` ${env.name} |`;
         });
         markdown += '\n';
@@ -553,7 +633,7 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
 
       // Build table rows for this phase with continuous numbering
       // Handle section headings by closing/reopening tables
-      phaseSteps.forEach((step, index) => {
+      phaseSteps.forEach((step, _index) => {
         if (step.section_heading) {
           // Close current table if one is open
           if (tableOpen) {
@@ -577,7 +657,7 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
 
           // Reopen table
           markdown += '| Step |';
-          operation.environments.forEach(env => {
+          operation.environments.forEach((env) => {
             markdown += ` ${env.name} |`;
           });
           markdown += '\n';
@@ -589,7 +669,14 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
           tableOpen = true;
         }
 
-        markdown += generateStepRow(step, globalStepNumber, operation.environments, resolveVariables, '', phaseName);
+        markdown += generateStepRow(
+          step,
+          globalStepNumber,
+          operation.environments,
+          resolveVariables,
+          '',
+          phaseName,
+        );
         globalStepNumber++; // Increment for next step
       });
 
@@ -600,12 +687,13 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
   }
 
   // Add rollback section if any steps have rollback defined
-  const stepsWithRollback = operation.steps.filter(step => step.rollback);
+  const stepsWithRollback = operation.steps.filter((step) => step.rollback);
   if (stepsWithRollback.length > 0) {
     markdown += '## 🔄 Rollback Procedures\n\n';
-    markdown += 'If deployment fails, execute the following rollback steps:\n\n';
+    markdown +=
+      'If deployment fails, execute the following rollback steps:\n\n';
 
-    stepsWithRollback.forEach((step, index) => {
+    stepsWithRollback.forEach((step, _index) => {
       if (!step.rollback) return;
 
       markdown += `### Rollback for: ${step.name}\n\n`;
@@ -614,13 +702,18 @@ function generateManualContent(operation: Operation, resolveVariables: boolean =
         markdown += '| Environment | Rollback Action |\n';
         markdown += '|-------------|----------------|\n';
 
-        operation.environments.forEach(env => {
-          const rollbackCommand = step.rollback!.command || step.rollback!.instruction || '';
+        operation.environments.forEach((env) => {
+          const rollbackCommand =
+            step.rollback?.command || step.rollback?.instruction || '';
           let displayCommand = rollbackCommand;
 
           // Resolve variables if flag is enabled
           if (resolveVariables && rollbackCommand) {
-            displayCommand = substituteVariables(rollbackCommand, env.variables || {}, step.variables);
+            displayCommand = substituteVariables(
+              rollbackCommand,
+              env.variables || {},
+              step.variables,
+            );
           }
 
           // Clean up command

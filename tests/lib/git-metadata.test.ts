@@ -1,8 +1,8 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { describe, it } from 'node:test';
 import {
+  createGenerationMetadata,
   generateYamlFrontmatter,
-  createGenerationMetadata
 } from '../../src/lib/git-metadata';
 
 describe('Git Metadata', () => {
@@ -12,7 +12,7 @@ describe('Git Metadata', () => {
         'examples/test.yaml',
         'test-op-123',
         '2.0.0',
-        'production'
+        'production',
       );
 
       // Test basic fields that should always be present
@@ -23,19 +23,34 @@ describe('Git Metadata', () => {
       assert.strictEqual(metadata.generator_version, '1.0.0');
 
       // Should have valid ISO timestamp
-      assert(metadata.generated_at.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/), 'Should have valid ISO timestamp');
+      assert(
+        metadata.generated_at.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
+        'Should have valid ISO timestamp',
+      );
 
       // Git fields should be present (either real values or 'unknown')
       assert(typeof metadata.git_sha === 'string', 'Should have git_sha field');
-      assert(typeof metadata.git_branch === 'string', 'Should have git_branch field');
-      assert(typeof metadata.git_dirty === 'boolean', 'Should have git_dirty field');
+      assert(
+        typeof metadata.git_branch === 'string',
+        'Should have git_branch field',
+      );
+      assert(
+        typeof metadata.git_dirty === 'boolean',
+        'Should have git_dirty field',
+      );
 
       // Git metadata should either be real values or fallback to 'unknown'
       if (metadata.git_sha !== 'unknown') {
-        assert(metadata.git_sha.length >= 7, 'Real git SHA should be at least 7 characters');
+        assert(
+          metadata.git_sha.length >= 7,
+          'Real git SHA should be at least 7 characters',
+        );
       }
       if (metadata.git_branch !== 'unknown') {
-        assert(metadata.git_branch.length > 0, 'Real git branch should not be empty');
+        assert(
+          metadata.git_branch.length > 0,
+          'Real git branch should not be empty',
+        );
       }
     });
 
@@ -43,7 +58,7 @@ describe('Git Metadata', () => {
       const metadata = await createGenerationMetadata(
         'examples/test.yaml',
         'test-op-456',
-        '1.5.0'
+        '1.5.0',
         // No target environment
       );
 
@@ -58,12 +73,15 @@ describe('Git Metadata', () => {
       const metadata = await createGenerationMetadata(
         'examples/test.yaml',
         'test-sha-123',
-        '1.0.0'
+        '1.0.0',
       );
 
       // If we have a real git SHA (not 'unknown'), short SHA should be first 8 characters
       if (metadata.git_sha !== 'unknown' && metadata.git_sha.length >= 8) {
-        assert.strictEqual(metadata.git_short_sha, metadata.git_sha.substring(0, 8));
+        assert.strictEqual(
+          metadata.git_short_sha,
+          metadata.git_sha.substring(0, 8),
+        );
       } else if (metadata.git_sha === 'unknown') {
         assert.strictEqual(metadata.git_short_sha, 'unknown');
       }
@@ -85,14 +103,20 @@ describe('Git Metadata', () => {
         git_date: '2023-12-01 15:25:30 +0000',
         git_message: 'feat: enhance deployment process',
         git_dirty: false,
-        generator_version: '1.2.3'
+        generator_version: '1.2.3',
       };
 
       const frontmatter = generateYamlFrontmatter(metadata);
 
       // Should start and end with ---
-      assert(frontmatter.startsWith('---\n'), 'Should start with YAML frontmatter delimiter');
-      assert(frontmatter.includes('\n---\n\n'), 'Should end with YAML frontmatter delimiter and newlines');
+      assert(
+        frontmatter.startsWith('---\n'),
+        'Should start with YAML frontmatter delimiter',
+      );
+      assert(
+        frontmatter.includes('\n---\n\n'),
+        'Should end with YAML frontmatter delimiter and newlines',
+      );
 
       // Should contain all expected fields
       assert(frontmatter.includes('source_file: "examples/deployment.yaml"'));
@@ -105,7 +129,9 @@ describe('Git Metadata', () => {
       assert(frontmatter.includes('git_short_sha: "abcdef12"'));
       assert(frontmatter.includes('git_author: "DevOps Team"'));
       assert(frontmatter.includes('git_date: "2023-12-01 15:25:30 +0000"'));
-      assert(frontmatter.includes('git_message: "feat: enhance deployment process"'));
+      assert(
+        frontmatter.includes('git_message: "feat: enhance deployment process"'),
+      );
       assert(frontmatter.includes('git_dirty: false'));
       assert(frontmatter.includes('generator_version: "1.2.3"'));
     });
@@ -123,13 +149,19 @@ describe('Git Metadata', () => {
         git_date: '2023-12-01 15:25:30 +0000',
         git_message: 'test commit',
         git_dirty: true,
-        generator_version: '1.0.0'
+        generator_version: '1.0.0',
       };
 
       const frontmatter = generateYamlFrontmatter(metadata);
 
-      assert(!frontmatter.includes('target_environment:'), 'Should not include target_environment when undefined');
-      assert(frontmatter.includes('source_file: "examples/test.yaml"'), 'Should still include other fields');
+      assert(
+        !frontmatter.includes('target_environment:'),
+        'Should not include target_environment when undefined',
+      );
+      assert(
+        frontmatter.includes('source_file: "examples/test.yaml"'),
+        'Should still include other fields',
+      );
     });
 
     it('should properly escape quotes in git messages', () => {
@@ -145,14 +177,18 @@ describe('Git Metadata', () => {
         git_date: '2023-12-01 15:25:30 +0000',
         git_message: 'fix: handle "quoted" strings in config',
         git_dirty: false,
-        generator_version: '1.0.0'
+        generator_version: '1.0.0',
       };
 
       const frontmatter = generateYamlFrontmatter(metadata);
 
       // Should contain the quoted strings (YAML will handle escaping)
       assert(frontmatter.includes('git_author: "Test "Quotes" User"'));
-      assert(frontmatter.includes('git_message: "fix: handle "quoted" strings in config"'));
+      assert(
+        frontmatter.includes(
+          'git_message: "fix: handle "quoted" strings in config"',
+        ),
+      );
     });
   });
 });

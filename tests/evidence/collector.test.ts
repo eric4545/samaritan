@@ -1,14 +1,18 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { EvidenceCollector, createEvidenceCollector, createEvidenceRequirements } from '../../src/evidence/collector';
-import { EvidenceRequirement } from '../../src/models/evidence';
+import { describe, it } from 'node:test';
+import {
+  createEvidenceCollector,
+  createEvidenceRequirements,
+  EvidenceCollector,
+} from '../../src/evidence/collector';
+import type { EvidenceRequirement } from '../../src/models/evidence';
 
 describe('Evidence Collector', () => {
   it('should create collector with initial state', () => {
     const requirements: EvidenceRequirement = {
       types: ['screenshot', 'log'],
       minimum_count: 2,
-      description: 'Test evidence collection'
+      description: 'Test evidence collection',
     };
 
     const collector = createEvidenceCollector('step-1', requirements);
@@ -23,7 +27,7 @@ describe('Evidence Collector', () => {
   it('should add valid evidence successfully', () => {
     const requirements: EvidenceRequirement = {
       types: ['screenshot'],
-      minimum_count: 1
+      minimum_count: 1,
     };
 
     const collector = new EvidenceCollector('step-1', requirements);
@@ -34,8 +38,8 @@ describe('Evidence Collector', () => {
       {
         filename: 'screenshot.png',
         description: 'Test screenshot',
-        metadata: { format: 'image/png' }
-      }
+        metadata: { format: 'image/png' },
+      },
     );
 
     assert.strictEqual(result.success, true);
@@ -53,11 +57,13 @@ describe('Evidence Collector', () => {
   it('should reject invalid evidence', () => {
     const requirements: EvidenceRequirement = {
       types: ['screenshot'],
-      validation_rules: [{
-        type: 'screenshot',
-        max_size: 100, // Very small limit
-        allowed_formats: ['image/png']
-      }]
+      validation_rules: [
+        {
+          type: 'screenshot',
+          max_size: 100, // Very small limit
+          allowed_formats: ['image/png'],
+        },
+      ],
     };
 
     const collector = new EvidenceCollector('step-1', requirements);
@@ -65,12 +71,12 @@ describe('Evidence Collector', () => {
       'screenshot',
       'x'.repeat(200), // Exceeds size limit
       'test-user',
-      { metadata: { format: 'image/png' } }
+      { metadata: { format: 'image/png' } },
     );
 
     assert.strictEqual(result.success, false);
     assert.ok(result.errors.length > 0);
-    assert.ok(result.errors.some(e => e.includes('exceeds maximum')));
+    assert.ok(result.errors.some((e) => e.includes('exceeds maximum')));
 
     const state = collector.getState();
     assert.strictEqual(state.collected.length, 0);
@@ -79,7 +85,7 @@ describe('Evidence Collector', () => {
   it('should track missing evidence types', () => {
     const requirements: EvidenceRequirement = {
       types: ['screenshot', 'log', 'command_output'],
-      minimum_count: 3
+      minimum_count: 3,
     };
 
     const collector = new EvidenceCollector('step-1', requirements);
@@ -104,7 +110,7 @@ describe('Evidence Collector', () => {
   it('should handle minimum count requirements', () => {
     const requirements: EvidenceRequirement = {
       types: ['screenshot'],
-      minimum_count: 3
+      minimum_count: 3,
     };
 
     const collector = new EvidenceCollector('step-1', requirements);
@@ -124,20 +130,20 @@ describe('Evidence Collector', () => {
 
   it('should remove evidence correctly', () => {
     const requirements: EvidenceRequirement = {
-      types: ['screenshot', 'log']
+      types: ['screenshot', 'log'],
     };
 
     const collector = new EvidenceCollector('step-1', requirements);
 
     // Add evidence
     const result1 = collector.addEvidence('screenshot', 'screenshot', 'user1');
-    const result2 = collector.addEvidence('log', 'log', 'user1');
+    const _result2 = collector.addEvidence('log', 'log', 'user1');
 
     assert.strictEqual(collector.getState().collected.length, 2);
     assert.strictEqual(collector.isComplete(), true);
 
     // Remove screenshot
-    const removed = collector.removeEvidence(result1.evidence!.id);
+    const removed = collector.removeEvidence(result1.evidence?.id);
     assert.strictEqual(removed, true);
     assert.strictEqual(collector.getState().collected.length, 1);
     assert.strictEqual(collector.isComplete(), false);
@@ -149,7 +155,7 @@ describe('Evidence Collector', () => {
 
   it('should get evidence by type', () => {
     const requirements: EvidenceRequirement = {
-      types: ['screenshot', 'log']
+      types: ['screenshot', 'log'],
     };
 
     const collector = new EvidenceCollector('step-1', requirements);
@@ -169,7 +175,7 @@ describe('Evidence Collector', () => {
 
   it('should generate collection summary', () => {
     const requirements: EvidenceRequirement = {
-      types: ['screenshot', 'log', 'command_output']
+      types: ['screenshot', 'log', 'command_output'],
     };
 
     const collector = new EvidenceCollector('step-1', requirements);
@@ -191,19 +197,25 @@ describe('Evidence Collector', () => {
   it('should validate entire collection', () => {
     const requirements: EvidenceRequirement = {
       types: ['screenshot'],
-      validation_rules: [{
-        type: 'screenshot',
-        forbidden_content: ['secret']
-      }]
+      validation_rules: [
+        {
+          type: 'screenshot',
+          forbidden_content: ['secret'],
+        },
+      ],
     };
 
     const collector = new EvidenceCollector('step-1', requirements);
 
     // Add valid evidence
     collector.addEvidence('screenshot', 'valid content', 'user1');
-    
+
     // Add invalid evidence (this should be rejected at add time)
-    const invalidResult = collector.addEvidence('screenshot', 'contains secret data', 'user1');
+    const invalidResult = collector.addEvidence(
+      'screenshot',
+      'contains secret data',
+      'user1',
+    );
     assert.strictEqual(invalidResult.success, false);
 
     // Validate collection
@@ -213,7 +225,7 @@ describe('Evidence Collector', () => {
 
   it('should export collection data', () => {
     const requirements: EvidenceRequirement = {
-      types: ['screenshot']
+      types: ['screenshot'],
     };
 
     const collector = new EvidenceCollector('step-1', requirements);
@@ -229,14 +241,14 @@ describe('Evidence Collector', () => {
 
   it('should detect content formats correctly', () => {
     const requirements: EvidenceRequirement = {
-      types: ['screenshot', 'log', 'file']
+      types: ['screenshot', 'log', 'file'],
     };
 
     const collector = new EvidenceCollector('step-1', requirements);
 
     // Test PNG detection from filename
     const pngResult = collector.addEvidence('screenshot', 'content', 'user1', {
-      filename: 'test.png'
+      filename: 'test.png',
     });
     assert.strictEqual(pngResult.evidence?.metadata.format, 'image/png');
 
@@ -246,7 +258,11 @@ describe('Evidence Collector', () => {
     assert.strictEqual(logResult.evidence?.metadata.format, 'application/json');
 
     // Test base64 image detection
-    const base64Result = collector.addEvidence('screenshot', 'data:image/jpeg;base64,abc123', 'user1');
+    const base64Result = collector.addEvidence(
+      'screenshot',
+      'data:image/jpeg;base64,abc123',
+      'user1',
+    );
     assert.strictEqual(base64Result.evidence?.metadata.format, 'image/jpeg');
   });
 });
@@ -259,8 +275,8 @@ describe('Evidence Requirements Helper', () => {
       {
         minimumCount: 2,
         description: 'Custom description',
-        autoCollect: true
-      }
+        autoCollect: true,
+      },
     );
 
     assert.ok(requirements);

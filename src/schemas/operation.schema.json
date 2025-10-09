@@ -142,7 +142,14 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "enum": ["screenshot", "log", "command_output", "file", "photo", "video"]
+                  "enum": [
+                    "screenshot",
+                    "log",
+                    "command_output",
+                    "file",
+                    "photo",
+                    "video"
+                  ]
                 }
               }
             }
@@ -197,7 +204,14 @@
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "enum": ["screenshot", "log", "command_output", "file", "photo", "video"]
+                      "enum": [
+                        "screenshot",
+                        "log",
+                        "command_output",
+                        "file",
+                        "photo",
+                        "video"
+                      ]
                     }
                   }
                 }
@@ -272,7 +286,14 @@
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "enum": ["screenshot", "log", "command_output", "file", "photo", "video"]
+                      "enum": [
+                        "screenshot",
+                        "log",
+                        "command_output",
+                        "file",
+                        "photo",
+                        "video"
+                      ]
                     }
                   }
                 }
@@ -285,7 +306,14 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "enum": ["screenshot", "log", "command_output", "file", "photo", "video"]
+                  "enum": [
+                    "screenshot",
+                    "log",
+                    "command_output",
+                    "file",
+                    "photo",
+                    "video"
+                  ]
                 },
                 "description": "DEPRECATED: Use evidence.types instead"
               },

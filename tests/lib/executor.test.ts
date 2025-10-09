@@ -1,7 +1,7 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { OperationExecutor, createExecutor, ExecutorUtils } from '../../src/lib/executor';
-import { Operation } from '../../src/models/operation';
+import { describe, it } from 'node:test';
+import { createExecutor, ExecutorUtils } from '../../src/lib/executor';
+import type { Operation } from '../../src/models/operation';
 
 describe('Operation Executor', () => {
   const testOperation: Operation = {
@@ -9,29 +9,31 @@ describe('Operation Executor', () => {
     name: 'Test Operation',
     version: '1.0.0',
     description: 'Test operation for executor',
-    environments: [{
-      name: 'test',
-      description: 'Test environment',
-      variables: { TEST_VAR: 'test_value' },
-      restrictions: [],
-      approval_required: false,
-      validation_required: false
-    }],
+    environments: [
+      {
+        name: 'test',
+        description: 'Test environment',
+        variables: { TEST_VAR: 'test_value' },
+        restrictions: [],
+        approval_required: false,
+        validation_required: false,
+      },
+    ],
     variables: {
-      test: { TEST_VAR: 'test_value' }
+      test: { TEST_VAR: 'test_value' },
     },
     steps: [
       {
         name: 'Automatic Step',
         type: 'automatic',
         description: 'Test automatic step',
-        command: 'echo "hello world"'
+        command: 'echo "hello world"',
       },
       {
         name: 'Manual Step',
         type: 'manual',
         description: 'Test manual step',
-        instruction: 'Please verify the output'
+        instruction: 'Please verify the output',
       },
       {
         name: 'Evidence Step',
@@ -39,15 +41,15 @@ describe('Operation Executor', () => {
         description: 'Step requiring evidence',
         command: 'ls -la',
         evidence_required: true,
-        evidence_types: ['screenshot', 'command_output']
-      }
+        evidence_types: ['screenshot', 'command_output'],
+      },
     ],
     preflight: [],
     metadata: {
       created_at: new Date(),
       updated_at: new Date(),
-      execution_count: 0
-    }
+      execution_count: 0,
+    },
   };
 
   it('should create executor with initial state', () => {
@@ -55,7 +57,7 @@ describe('Operation Executor', () => {
       'test-op-1',
       'test',
       { TEST_VAR: 'test_value' },
-      'test-user'
+      'test-user',
     );
 
     const executor = createExecutor(testOperation, context);
@@ -76,7 +78,7 @@ describe('Operation Executor', () => {
       'test-op-1',
       'test',
       { TEST_VAR: 'test_value' },
-      'test-user'
+      'test-user',
     );
 
     const executor = createExecutor(testOperation, context);
@@ -90,7 +92,7 @@ describe('Operation Executor', () => {
     assert.ok(state.steps[2].evidenceCollector);
     assert.deepStrictEqual(
       state.steps[2].evidenceCollector.getState().requirements.types,
-      ['screenshot', 'command_output']
+      ['screenshot', 'command_output'],
     );
   });
 
@@ -99,7 +101,7 @@ describe('Operation Executor', () => {
       'test-op-1',
       'test',
       { TEST_VAR: 'test_value' },
-      'test-user'
+      'test-user',
     );
 
     const executor = createExecutor(testOperation, context);
@@ -122,7 +124,7 @@ describe('Operation Executor', () => {
       'test-op-1',
       'test',
       { TEST_VAR: 'test_value' },
-      'test-user'
+      'test-user',
     );
 
     const executor = createExecutor(testOperation, context);
@@ -151,7 +153,7 @@ describe('Operation Executor', () => {
       'test-op-1',
       'test',
       { TEST_VAR: 'test_value' },
-      'test-user'
+      'test-user',
     );
 
     const executor = createExecutor(testOperation, context);
@@ -172,7 +174,7 @@ describe('Operation Executor', () => {
       'test-op-1',
       'test',
       { TEST_VAR: 'test_value' },
-      'test-user'
+      'test-user',
     );
 
     const executor = createExecutor(testOperation, context);
@@ -190,7 +192,7 @@ describe('Operation Executor', () => {
       'test-op-1',
       'test',
       { TEST_VAR: 'test_value' },
-      'test-user'
+      'test-user',
     );
 
     const executor = createExecutor(testOperation, context);
@@ -199,7 +201,7 @@ describe('Operation Executor', () => {
     const result1 = executor.addEvidence(0, {
       type: 'screenshot',
       content: 'test content',
-      options: { filename: 'test.png' }
+      options: { filename: 'test.png' },
     });
     assert.strictEqual(result1, false);
 
@@ -207,15 +209,17 @@ describe('Operation Executor', () => {
     const result2 = executor.addEvidence(2, {
       type: 'screenshot',
       content: 'test screenshot content',
-      options: { 
+      options: {
         filename: 'test.png',
-        metadata: { format: 'image/png' }
-      }
+        metadata: { format: 'image/png' },
+      },
     });
     assert.strictEqual(result2, true);
 
     // Verify evidence was added
-    const evidenceState = executor.getState().steps[2].evidenceCollector?.getState();
+    const evidenceState = executor
+      .getState()
+      .steps[2].evidenceCollector?.getState();
     assert.strictEqual(evidenceState?.collected.length, 1);
     assert.strictEqual(evidenceState?.collected[0].type, 'screenshot');
   });
@@ -226,7 +230,7 @@ describe('Operation Executor', () => {
       'test',
       { TEST_VAR: 'test_value' },
       'test-user',
-      { dryRun: true }
+      { dryRun: true },
     );
 
     const executor = createExecutor(testOperation, context);
@@ -239,7 +243,7 @@ describe('Operation Executor', () => {
       'test',
       { TEST_VAR: 'test_value' },
       'test-user',
-      { autoMode: true }
+      { autoMode: true },
     );
 
     const manualContext = ExecutorUtils.createContext(
@@ -247,7 +251,7 @@ describe('Operation Executor', () => {
       'test',
       { TEST_VAR: 'test_value' },
       'test-user',
-      { autoMode: false }
+      { autoMode: false },
     );
 
     const autoExecutor = createExecutor(testOperation, autoContext);
@@ -264,7 +268,7 @@ describe('Executor Utils', () => {
       'op-1',
       'prod',
       { VAR1: 'value1' },
-      'user1'
+      'user1',
     );
 
     assert.strictEqual(context.operationId, 'op-1');
@@ -285,8 +289,8 @@ describe('Executor Utils', () => {
       {
         dryRun: true,
         autoMode: false,
-        sessionId: 'custom-session-123'
-      }
+        sessionId: 'custom-session-123',
+      },
     );
 
     assert.strictEqual(context.dryRun, true);

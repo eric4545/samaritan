@@ -1,10 +1,9 @@
+import { existsSync } from 'node:fs';
 import { Command } from 'commander';
-import { readFile } from 'fs/promises';
-import { existsSync } from 'fs';
-import { parseOperation } from '../../operations/parser';
 import { OperationExecutor } from '../../lib/executor';
-import { sessionManager, SessionUtils } from '../../lib/session-manager';
-import { Operation, ExecutionMode } from '../../models/operation';
+import { SessionUtils, sessionManager } from '../../lib/session-manager';
+import type { ExecutionMode, Operation } from '../../models/operation';
+import { parseOperation } from '../../operations/parser';
 
 interface RunOptions {
   environment: string;
@@ -24,40 +23,56 @@ interface ResumeOptions {
 }
 
 class OperationRunner {
-  async runOperation(operationFile: string, options: RunOptions): Promise<void> {
+  async runOperation(
+    operationFile: string,
+    options: RunOptions,
+  ): Promise<void> {
     console.log(`🚀 Starting operation: ${operationFile}`);
     console.log(`🎯 Target environment: ${options.environment}`);
-    
+
     // Parse operation
     const operation = await this.parseOperationFile(operationFile);
-    
+
     // Validate environment exists
-    const environment = operation.environments.find(env => env.name === options.environment);
+    const environment = operation.environments.find(
+      (env) => env.name === options.environment,
+    );
     if (!environment) {
-      throw new Error(`Environment '${options.environment}' not found in operation. Available: ${operation.environments.map(e => e.name).join(', ')}`);
+      throw new Error(
+        `Environment '${options.environment}' not found in operation. Available: ${operation.environments.map((e) => e.name).join(', ')}`,
+      );
     }
 
     // Parse additional variables
     const additionalVars = this.parseVariables(options.variables || []);
-    
+
     // Create execution context
     const context = {
       operationId: operation.id,
       environment: options.environment,
-      variables: { ...operation.variables[options.environment], ...additionalVars },
+      variables: {
+        ...operation.variables[options.environment],
+        ...additionalVars,
+      },
       operator: process.env.USER || 'unknown',
       sessionId: `run-${operation.id}-${Date.now()}`,
       dryRun: options.dryRun || false,
-      autoMode: options.mode === 'automatic' || options.autoApprove || false
+      autoMode: options.mode === 'automatic' || options.autoApprove || false,
     };
 
     // Show operation summary
     this.displayOperationSummary(operation, environment, context);
 
     // Check for approval requirements
-    if (environment.approval_required && !options.autoApprove && !options.dryRun) {
+    if (
+      environment.approval_required &&
+      !options.autoApprove &&
+      !options.dryRun
+    ) {
       console.log('⚠️  This environment requires approval.');
-      console.log('💡 Use --auto-approve to skip approval prompts or ensure approvals are pre-authorized.');
+      console.log(
+        '💡 Use --auto-approve to skip approval prompts or ensure approvals are pre-authorized.',
+      );
     }
 
     // Create session
@@ -66,7 +81,7 @@ class OperationRunner {
       options.environment,
       context.operator,
       options.mode || (options.autoApprove ? 'automatic' : 'hybrid'),
-      { ...context.variables, ...additionalVars }
+      { ...context.variables, ...additionalVars },
     );
 
     console.log(`📋 Session created: ${session.id}\n`);
@@ -89,14 +104,16 @@ class OperationRunner {
       // Execute operation
       console.log('▶️  Starting operation execution...\n');
       await executor.execute();
-      
+
       console.log('\n✅ Operation completed successfully!');
-      
+
       // Show session summary
       const summary = sessionManager.getSessionSummary(session.id);
       if (summary) {
         console.log(`📊 Execution Summary:`);
-        console.log(`   Duration: ${SessionUtils.formatSessionDuration(session)}`);
+        console.log(
+          `   Duration: ${SessionUtils.formatSessionDuration(session)}`,
+        );
         console.log(`   Evidence collected: ${summary.evidenceCount} items`);
         console.log(`   Retries: ${summary.retryCount}`);
         console.log(`   Approvals: ${summary.approvalCount}`);
@@ -105,30 +122,36 @@ class OperationRunner {
       // Generate automatic documentation if configured
       if (operation.reporting?.confluence || !options.dryRun) {
         console.log('\n📄 Generating execution report...');
-        console.log('💡 Use "samaritan generate docs" to create comprehensive documentation');
+        console.log(
+          '💡 Use "samaritan generate docs" to create comprehensive documentation',
+        );
       }
-
     } catch (error: any) {
       console.error(`\n❌ Operation failed: ${error.message}`);
-      
+
       const currentSession = sessionManager.getSession(session.id);
       if (currentSession) {
         console.log(`\n🔄 To resume from where you left off:`);
         console.log(`   samaritan resume ${session.id}`);
-        
+
         if (operation.rollback) {
           console.log(`\n🔄 To rollback changes:`);
-          console.log(`   # Rollback not yet implemented - check operation definition`);
+          console.log(
+            `   # Rollback not yet implemented - check operation definition`,
+          );
         }
       }
-      
+
       throw error;
     }
   }
 
-  async resumeSession(sessionId: string, options: ResumeOptions): Promise<void> {
+  async resumeSession(
+    sessionId: string,
+    options: ResumeOptions,
+  ): Promise<void> {
     console.log(`🔄 Resuming session: ${sessionId}`);
-    
+
     // Get session
     const session = sessionManager.getSession(sessionId);
     if (!session) {
@@ -149,18 +172,22 @@ class OperationRunner {
     console.log(`   Environment: ${session.environment}`);
     console.log(`   Current step: ${session.current_step_index + 1}`);
     console.log(`   Progress: ${session.completion_percentage || 0}%`);
-    console.log(`   Status: ${SessionUtils.getSessionStatusEmoji(session.status)} ${session.status}`);
+    console.log(
+      `   Status: ${SessionUtils.getSessionStatusEmoji(session.status)} ${session.status}`,
+    );
 
     // Get associated executor or create new one
-    let executor = sessionManager.getExecutor(sessionId);
-    
+    const executor = sessionManager.getExecutor(sessionId);
+
     if (!executor) {
       // Need to recreate executor from session
       console.log('🔄 Recreating executor from session state...');
-      
+
       // We need the original operation - try to find it
       // This is a simplified implementation - in practice you'd want to store operation file path in session
-      throw new Error('Executor recreation not yet implemented - operation file path needed');
+      throw new Error(
+        'Executor recreation not yet implemented - operation file path needed',
+      );
     }
 
     // Setup event handlers
@@ -170,9 +197,8 @@ class OperationRunner {
       // Resume execution
       console.log('\n▶️  Resuming operation execution...\n');
       await sessionManager.resumeSession(sessionId);
-      
+
       console.log('\n✅ Operation resumed and completed successfully!');
-      
     } catch (error: any) {
       console.error(`\n❌ Resume failed: ${error.message}`);
       throw error;
@@ -189,13 +215,15 @@ class OperationRunner {
 
   private parseVariables(variableStrings: string[]): Record<string, any> {
     const variables: Record<string, any> = {};
-    
+
     for (const varString of variableStrings) {
       const [key, value] = varString.split('=', 2);
       if (!key || value === undefined) {
-        throw new Error(`Invalid variable format: ${varString}. Use KEY=VALUE format.`);
+        throw new Error(
+          `Invalid variable format: ${varString}. Use KEY=VALUE format.`,
+        );
       }
-      
+
       // Try to parse as JSON, fallback to string
       try {
         variables[key] = JSON.parse(value);
@@ -203,28 +231,36 @@ class OperationRunner {
         variables[key] = value;
       }
     }
-    
+
     return variables;
   }
 
-  private displayOperationSummary(operation: Operation, environment: any, context: any): void {
+  private displayOperationSummary(
+    operation: Operation,
+    environment: any,
+    context: any,
+  ): void {
     console.log(`\n📋 Operation Summary:`);
     console.log(`   Name: ${operation.name} v${operation.version}`);
     console.log(`   Description: ${operation.description}`);
-    console.log(`   Environment: ${environment.name} (${environment.description})`);
+    console.log(
+      `   Environment: ${environment.name} (${environment.description})`,
+    );
     console.log(`   Steps: ${operation.steps.length}`);
     console.log(`   Preflight checks: ${operation.preflight?.length || 0}`);
-    console.log(`   Execution mode: ${context.autoMode ? 'Automatic' : 'Manual/Hybrid'}`);
+    console.log(
+      `   Execution mode: ${context.autoMode ? 'Automatic' : 'Manual/Hybrid'}`,
+    );
     console.log(`   Dry run: ${context.dryRun ? 'Yes' : 'No'}`);
-    
+
     if (environment.approval_required) {
       console.log(`   ⚠️  Approval required for this environment`);
     }
-    
+
     if (environment.validation_required) {
       console.log(`   ✅ Validation required for this environment`);
     }
-    
+
     console.log('');
   }
 
@@ -236,30 +272,36 @@ class OperationRunner {
           console.log(`    ${event.step.description}`);
         }
       });
-      
+
       executor.on('step_completed', (event) => {
-        console.log(`✅ [${event.stepIndex + 1}] Completed: ${event.step.name}`);
+        console.log(
+          `✅ [${event.stepIndex + 1}] Completed: ${event.step.name}`,
+        );
         if (event.result?.duration) {
           console.log(`    Duration: ${event.result.duration}ms`);
         }
       });
-      
+
       executor.on('step_failed', (event) => {
         console.log(`❌ [${event.stepIndex + 1}] Failed: ${event.step.name}`);
         console.log(`    Error: ${event.error}`);
       });
-      
+
       executor.on('step_skipped', (event) => {
         console.log(`⏭️  [${event.stepIndex + 1}] Skipped: ${event.step.name}`);
         console.log(`    Reason: ${event.reason}`);
       });
-      
+
       executor.on('approval_required', (event) => {
-        console.log(`⏸️  [${event.stepIndex + 1}] Approval required: ${event.step.name}`);
+        console.log(
+          `⏸️  [${event.stepIndex + 1}] Approval required: ${event.step.name}`,
+        );
       });
-      
+
       executor.on('evidence_collected', (event) => {
-        console.log(`📎 Evidence collected: ${event.evidence.type} for step ${event.stepIndex + 1}`);
+        console.log(
+          `📎 Evidence collected: ${event.evidence.type} for step ${event.stepIndex + 1}`,
+        );
       });
     }
 
@@ -272,22 +314,29 @@ class OperationRunner {
     });
 
     executor.on('operation_failed', (event) => {
-      console.log(`\n💥 Operation failed at step ${event.stepIndex + 1}: ${event.error}`);
+      console.log(
+        `\n💥 Operation failed at step ${event.stepIndex + 1}: ${event.error}`,
+      );
     });
   }
 
-  private async runPreflightChecks(preflight: any[], context: any): Promise<void> {
+  private async runPreflightChecks(
+    preflight: any[],
+    context: any,
+  ): Promise<void> {
     for (let i = 0; i < preflight.length; i++) {
       const check = preflight[i];
       console.log(`   ${i + 1}. ${check.name}: ${check.description}`);
-      
+
       if (check.type === 'command' && check.command && !context.dryRun) {
         // In a real implementation, you'd execute the command here
         console.log(`      Command: ${check.command}`);
         console.log(`      ✅ Passed`);
       } else if (check.type === 'manual') {
         console.log(`      Manual check - verify: ${check.description}`);
-        console.log(`      ✅ Assumed passed (interactive verification not implemented)`);
+        console.log(
+          `      ✅ Assumed passed (interactive verification not implemented)`,
+        );
       } else {
         console.log(`      ✅ Skipped (dry run)`);
       }
@@ -302,8 +351,16 @@ const runCommand = new Command('run')
   .requiredOption('-e, --env <environment>', 'Target environment')
   .option('--auto-approve', 'Auto-approve all manual steps and approvals')
   .option('--dry-run', 'Show what would be executed without running')
-  .option('-m, --mode <mode>', 'Execution mode (automatic, manual, hybrid)', 'hybrid')
-  .option('--var <key=value>', 'Override variable values', (value, previous: string[] = []) => [...previous, value])
+  .option(
+    '-m, --mode <mode>',
+    'Execution mode (automatic, manual, hybrid)',
+    'hybrid',
+  )
+  .option(
+    '--var <key=value>',
+    'Override variable values',
+    (value, previous: string[] = []) => [...previous, value],
+  )
   .option('-v, --verbose', 'Verbose output')
   .option('--with-ai', 'Enable AI assistance during execution')
   .option('--continue-on-error', 'Continue execution even if steps fail')
@@ -311,7 +368,6 @@ const runCommand = new Command('run')
     try {
       const runner = new OperationRunner();
       await runner.runOperation(operation, options);
-      
     } catch (error: any) {
       console.error(`❌ Execution failed: ${error.message}`);
       process.exit(1);
@@ -329,7 +385,6 @@ const resumeCommand = new Command('resume')
     try {
       const runner = new OperationRunner();
       await runner.resumeSession(sessionId, options);
-      
     } catch (error: any) {
       console.error(`❌ Resume failed: ${error.message}`);
       process.exit(1);

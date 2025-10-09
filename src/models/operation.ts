@@ -1,6 +1,17 @@
 // Supporting Types and Enums
-export type EvidenceType = 'screenshot' | 'file' | 'photo' | 'video' | 'log' | 'command_output';
-export type SessionStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type EvidenceType =
+  | 'screenshot'
+  | 'file'
+  | 'photo'
+  | 'video'
+  | 'log'
+  | 'command_output';
+export type SessionStatus =
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 export type ExecutionMode = 'automatic' | 'manual' | 'hybrid';
 export type StepType = 'automatic' | 'manual' | 'approval' | 'conditional';
 export type StepPhase = 'preflight' | 'flight' | 'postflight';
@@ -121,7 +132,7 @@ export interface Step {
   evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
   evidence_types?: EvidenceType[]; // DEPRECATED: Use evidence.types instead
   validation?: StepValidation;
-  verify?: { command: string; };
+  verify?: { command: string };
   continue_on_error?: boolean;
   retry?: RetryConfig;
   rollback?: RollbackStep;
