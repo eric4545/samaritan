@@ -39,15 +39,6 @@ npx github:eric4545/samaritan run my-deployment.yaml --env staging
 npx github:eric4545/samaritan run my-deployment.yaml --env production
 ```
 
-### Emergency Procedures
-
-```bash
-# Find emergency procedures
-npx github:eric4545/samaritan qrh --search "database"
-
-# Execute emergency operation
-npx github:eric4545/samaritan run emergency/restart-service.yaml --env production --mode manual
-```
 
 ### Development Setup (Optional)
 
@@ -113,10 +104,10 @@ npx github:eric4545/samaritan run my-operation.yaml --env staging
 
 - **No Installation**: Run directly with `npx`
 - **Operations as Code**: YAML-defined, Git-versioned procedures
-- **Complete Audit Trails**: Evidence collection and session tracking
+- **Documentation Generation**: Create manuals and Confluence pages
 - **Multi-Environment**: Same operation, different environments
-- **Approval Workflows**: Integrated approval gates
-- **Emergency Ready**: Quick Reference Handbook for incidents
+- **Validation**: Catch errors before execution
+- **Git Integration**: Track changes and maintain audit trails
 
 ## 📖 Full Documentation
 

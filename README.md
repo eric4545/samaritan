@@ -32,6 +32,7 @@ npx github:eric4545/samaritan#branch-name validate my-operation.yaml
 - [Operation Definition](#-operation-definition)
 - [Execution Workflows](#-execution-workflows)
 - [Examples](#-examples)
+- [Roadmap](#-roadmap)
 - [Development](#-development)
 
 ## 🎯 Core Concepts
@@ -39,20 +40,22 @@ npx github:eric4545/samaritan#branch-name validate my-operation.yaml
 ### Operations as Code
 - **YAML-defined procedures** stored in Git with version control
 - **Environment-specific variables** for preprod/production deployment
-- **Automatic and manual steps** with evidence collection
-- **Approval gates** integrated with Jira and team workflows
+- **Manual operation procedures** with evidence tracking
+- **Approval gates** for compliance workflows
 
-### Execution Modes
-- **Automatic**: Run commands and collect evidence automatically
-- **Manual**: Present instructions for operator execution
-- **Hybrid**: Mix of automatic and manual steps with mode switching
-- **Dry Run**: Validate without executing any commands
+### Key Features
+- **Manual Execution**: Present clear instructions for operator execution
+- **Documentation Generation**: Create comprehensive manuals from YAML definitions
+- **Validation**: Verify operation definitions and catch errors early
+- **Multi-Environment**: Support for staging, production, and custom environments
 
 ### Evidence & Audit
-- **Complete audit trails** with timestamps and execution logs
-- **Evidence collection** (screenshots, logs, command outputs)
-- **Session management** with pause/resume capabilities
-- **Release reports** with comprehensive execution summaries
+- **Evidence tracking** - Document required evidence for each step
+- **Git metadata** - Complete traceability with commit info
+- **Structured documentation** - Generate manuals with evidence requirements
+- **Audit-ready formats** - Markdown and Confluence outputs
+
+> **Note**: Automatic evidence collection (screenshots, log capture, video recording) is planned for v2.0. See [ROADMAP.md](ROADMAP.md) for details.
 
 ## 🛠 CLI Commands
 
@@ -65,22 +68,17 @@ npx github:eric4545/samaritan validate <operation.yaml> [options]
   --env <environment>   Validate for specific environment
   -v, --verbose         Verbose output
 
-# Execute operation
-npx github:eric4545/samaritan run <operation.yaml> [options]
-  --env <environment>   Target environment (required)
-  --mode <auto|manual>  Execution mode (default: auto)
-  --dry-run            Validate without executing
-  --session-id <id>    Resume existing session
-
-# Resume interrupted execution
-npx github:eric4545/samaritan resume <session-id>
-
 # Generate documentation
 npx github:eric4545/samaritan generate manual <operation.yaml> [options]
   --output <file>       Output file (default: stdout)
-  --format <md|html>    Output format (default: md)
+  --format <md|confluence>  Output format (default: md)
   --env <environment>   Generate for specific environment only
   --resolve-vars        Resolve variables to actual values (ready-to-execute commands)
+
+# Generate Confluence documentation
+npx github:eric4545/samaritan generate confluence <operation.yaml> [options]
+  --output <file>       Output Confluence storage format file
+  --env <environment>   Generate for specific environment only
 ```
 
 ### Project Management
@@ -95,15 +93,6 @@ npx github:eric4545/samaritan operation [options]
   --env <environments>  Target environments (comma-separated)
 ```
 
-### Emergency Procedures
-
-```bash
-# Quick Reference Handbook for emergencies
-npx github:eric4545/samaritan qrh [options]
-  --search <term>       Search for specific procedure
-  --service <name>      Filter by service name
-  --alert <code>        Find procedure for alert code
-```
 
 ## 📝 Operation Definition
 
@@ -134,37 +123,60 @@ environments:
     approval_required: true
     validation_required: true
 
-# Operation steps (unified format with phases)
+# Operation steps
 steps:
-  # Preflight checks (executed first)
+  # Preflight checks
   - name: Check Git Status
-    type: automatic
+    type: manual
     phase: preflight
-    command: git status --porcelain
-    description: Ensure no uncommitted changes
+    instruction: |
+      Check for uncommitted changes:
+      ```bash
+      git status --porcelain
+      ```
+      Ensure output is empty before proceeding.
 
   - name: Verify Database Connection
-    type: automatic
+    type: manual
     phase: preflight
-    command: pg_isready -h ${DB_HOST}
-    timeout: 30
+    instruction: |
+      Verify database connectivity:
+      ```bash
+      pg_isready -h ${DB_HOST}
+      ```
+      Confirm connection is ready.
 
   # Main operation steps
   - name: Database Migration
-    type: automatic
-    command: npm run migrate
-    timeout: 300
+    type: manual
+    instruction: |
+      Run database migrations:
+      ```bash
+      npm run migrate
+      ```
+      Verify migration completes successfully (timeout: 300s)
+      Capture screenshot and save migration logs.
     evidence:
       required: true
-      types: [log, command_output]
+      types: [screenshot, log]  # Types are documentation only (v1.0)
 
   - name: Deploy Application
-    type: automatic
-    command: kubectl apply -f k8s/
-    verify:
-      command: kubectl get pods -l app=webapp | grep Running
+    type: manual
+    instruction: |
+      Deploy application to Kubernetes:
+      ```bash
+      kubectl apply -f k8s/
+      ```
 
-  - name: Manual Health Check
+      Verify deployment:
+      ```bash
+      kubectl get pods -l app=webapp | grep Running
+      ```
+    evidence:
+      required: true
+      types: [screenshot]
+
+  - name: Health Check
     type: manual
     instruction: |
       1. Open application dashboard: https://dashboard.company.com
@@ -177,13 +189,12 @@ steps:
   - name: Production Approval
     type: approval
     description: Require manager approval for production
-    approval:
-      required: true
-      approvers: [manager@company.com]
-      timeout: "24h"
+    instruction: |
+      Request approval from manager@company.com before proceeding.
+      Document approval in evidence.
 ```
 
-> **Note:** The `preflight:` section is deprecated but still supported. The new unified `steps:` format with `phase: preflight` is recommended for better organization and consistency.
+> **Note:** Steps with `phase: preflight` are recommended for pre-execution validation checks.
 
 ### Advanced Features
 
@@ -295,9 +306,16 @@ environments:
 
 steps:
   - name: Deploy Application
-    type: automatic
-    command: kubectl apply -f k8s/ --namespace ${NAMESPACE}
-    timeout: 300
+    type: manual
+    instruction: |
+      Deploy application to Kubernetes:
+      ```bash
+      kubectl apply -f k8s/ --namespace ${NAMESPACE}
+      ```
+      Timeout: 300s (5 minutes)
+    evidence:
+      required: true
+      types: [screenshot]
 ```
 
 #### Reusable Step Libraries
@@ -315,8 +333,12 @@ steps:
     timeout: 600           # Override timeout
 
   - name: Custom Step
-    type: automatic
-    command: echo "Custom logic"
+    type: manual
+    instruction: |
+      Execute custom logic:
+      ```bash
+      echo "Custom logic"
+      ```
 
   - use: setup-monitoring   # From imported library
 ```
@@ -331,10 +353,17 @@ steps:
     command: npm run migrate
 
   - name: Rollback on Failure
-    type: automatic
-    command: kubectl rollout undo deployment/webapp
-    rollback:
-      command: kubectl rollout status deployment/webapp
+    type: manual
+    instruction: |
+      If deployment fails, rollback:
+      ```bash
+      kubectl rollout undo deployment/webapp
+      ```
+
+      Check rollback status:
+      ```bash
+      kubectl rollout status deployment/webapp
+      ```
 ```
 
 #### Sub-steps and Complex Workflows
@@ -342,18 +371,27 @@ steps:
 ```yaml
 steps:
   - name: Complex Deployment
-    type: automatic
-    command: deploy.sh
+    type: manual
+    instruction: |
+      Execute deployment script:
+      ```bash
+      ./deploy.sh
+      ```
     sub_steps:
       - name: Wait for Pods
-        type: automatic
-        command: kubectl wait --for=condition=ready pod -l app=webapp
-        timeout: 120
+        type: manual
+        instruction: |
+          Wait for pods to be ready:
+          ```bash
+          kubectl wait --for=condition=ready pod -l app=webapp --timeout=120s
+          ```
 
       - name: Verify Deployment
         type: manual
         instruction: Check application responds correctly
-        evidence_required: true
+        evidence:
+          required: true
+          types: [screenshot]
 ```
 
 ## 🔄 Execution Workflows
@@ -378,43 +416,29 @@ npx github:eric4545/samaritan run operations/deployment_*.yaml --env staging
 # 1. Validate operation
 npx github:eric4545/samaritan validate deployment.yaml --env production --strict
 
-# 2. Execute in staging first
-npx github:eric4545/samaritan run deployment.yaml --env staging
+# 2. Generate deployment manual for staging (with resolved variables)
+npx github:eric4545/samaritan generate manual deployment.yaml --env staging --resolve-vars
 
-# 3. Generate deployment manual for production (with resolved variables for operators)
+# 3. Test procedure in staging (follow generated manual)
+
+# 4. Generate deployment manual for production
 npx github:eric4545/samaritan generate manual deployment.yaml --env production --resolve-vars
 
-# 4. Execute in production with evidence collection
-npx github:eric4545/samaritan run deployment.yaml --env production
+# 5. Execute in production following the manual, collect evidence
 ```
 
 ### 3. Emergency Response Workflow
 
 ```bash
-# 1. Find relevant emergency procedure
-npx github:eric4545/samaritan qrh --alert P0 --service webapp
+# 1. Validate emergency operation
+npx github:eric4545/samaritan validate emergency/restart-service.yaml --env production
 
-# 2. Execute emergency operation
-npx github:eric4545/samaritan run emergency/restart-service.yaml --env production --mode manual
+# 2. Generate emergency manual with resolved variables
+npx github:eric4545/samaritan generate manual emergency/restart-service.yaml --env production --resolve-vars
 
-# 3. Generate incident report
-npx github:eric4545/samaritan generate report --session <session-id>
+# 3. Follow manual procedures, document all actions and evidence
 ```
 
-### 4. Session Management
-
-```bash
-# Start operation
-npx github:eric4545/samaritan run long-operation.yaml --env production
-# ... operation paused/interrupted ...
-
-# Resume from last checkpoint
-npx github:eric4545/samaritan resume <session-id>
-
-# Check session status
-npx github:eric4545/samaritan sessions list
-npx github:eric4545/samaritan sessions show <session-id>
-```
 
 ## 📚 Examples
 
@@ -433,14 +457,27 @@ environments:
 
 steps:
   - name: Create Backup
-    type: automatic
-    command: pg_dump ${DB_NAME} | gzip > backup_$(date +%Y%m%d).sql.gz
-    timeout: 1800
-    evidence_required: true
+    type: manual
+    instruction: |
+      Create database backup:
+      ```bash
+      pg_dump ${DB_NAME} | gzip > backup_$(date +%Y%m%d).sql.gz
+      ```
+      Timeout: 1800s (30 minutes)
+    evidence:
+      required: true
+      types: [screenshot, log]
 
   - name: Upload to S3
-    type: automatic
-    command: aws s3 cp backup_*.sql.gz ${BACKUP_BUCKET}/
+    type: manual
+    instruction: |
+      Upload backup to S3:
+      ```bash
+      aws s3 cp backup_*.sql.gz ${BACKUP_BUCKET}/
+      ```
+    evidence:
+      required: true
+      types: [screenshot]
 
   - name: Verify Backup
     type: manual
@@ -448,8 +485,9 @@ steps:
       1. Check backup file exists in S3: ${BACKUP_BUCKET}
       2. Verify file size is reasonable (>100MB)
       3. Download and test restore on test database
-    evidence_required: true
-    evidence_types: [screenshot, log]
+    evidence:
+      required: true
+      types: [screenshot, log]
 ```
 
 ### Incident Response
@@ -469,15 +507,29 @@ environments:
 
 steps:
   - name: Check Service Status
-    type: automatic
+    type: manual
     phase: preflight
-    command: kubectl get pods -n ${NAMESPACE} -l app=${SERVICE_NAME}
-
-  - name: Scale Down Service
-    type: automatic
-    command: kubectl scale deployment ${SERVICE_NAME} --replicas=0 -n ${NAMESPACE}
+    instruction: |
+      Check current pod status:
+      ```bash
+      kubectl get pods -n ${NAMESPACE} -l app=${SERVICE_NAME}
+      ```
+      Document current state before proceeding.
     evidence:
       required: true
+      types: [screenshot]
+
+  - name: Scale Down Service
+    type: manual
+    instruction: |
+      Scale service to zero replicas:
+      ```bash
+      kubectl scale deployment ${SERVICE_NAME} --replicas=0 -n ${NAMESPACE}
+      ```
+      Wait for all pods to terminate.
+    evidence:
+      required: true
+      types: [screenshot]
 
   - name: Clear Cache
     type: manual
@@ -486,13 +538,26 @@ steps:
       1. Connect to Redis: redis-cli -h cache.company.com
       2. Run: FLUSHALL
       3. Confirm with: INFO keyspace
-    evidence_required: true
+    evidence:
+      required: true
+      types: [screenshot, log]
 
   - name: Scale Up Service
-    type: automatic
-    command: kubectl scale deployment ${SERVICE_NAME} --replicas=3 -n ${NAMESPACE}
-    verify:
-      command: kubectl get pods -n ${NAMESPACE} -l app=${SERVICE_NAME} | grep Running | wc -l | grep 3
+    type: manual
+    instruction: |
+      Scale service back to 3 replicas:
+      ```bash
+      kubectl scale deployment ${SERVICE_NAME} --replicas=3 -n ${NAMESPACE}
+      ```
+
+      Verify all pods are running:
+      ```bash
+      kubectl get pods -n ${NAMESPACE} -l app=${SERVICE_NAME} | grep Running | wc -l
+      ```
+      Expected output: 3
+    evidence:
+      required: true
+      types: [screenshot]
 ```
 
 ## 🧪 Development
@@ -557,6 +622,15 @@ npm test -- tests/cli/
 # Test evidence collection
 npm test -- tests/evidence/
 ```
+
+## 🗺️ Roadmap
+
+SAMARITAN v1.0 focuses on documentation generation and validation. Future versions will add:
+- **v2.0**: Command execution and automatic evidence collection
+- **v3.0**: External integrations (Jira, Confluence, Slack)
+- **v4.0**: AI assistance and operation analytics
+
+See [ROADMAP.md](ROADMAP.md) for detailed feature plans and timelines.
 
 ## 📄 License
 
