@@ -36,6 +36,9 @@
   },
   "homepage": "https://github.com/eric4545/samaritan#readme",
   "description": "SAMARITAN - Operations as Code CLI for SRE teams. Define operations once, execute anywhere with complete audit trails.",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "dependencies": {
     "@atlaskit/adf-utils": "^19.24.0",
     "ajv": "^8.17.1",

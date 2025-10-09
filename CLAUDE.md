@@ -155,7 +155,7 @@ import { parseOperation } from '../operations/parser'
 
 ### CI Pipeline
 See `.github/workflows/ci.yml`:
-- **test**: Node 18/20/22 compatibility
+- **test**: Node 20/22/24 compatibility
 - **lint**: Biome checks
 - **validate-examples**: Validate all `examples/*.yaml`
 - **security**: npm audit
@@ -342,7 +342,7 @@ steps:
 ## 💡 Additional Notes
 
 - **Performance**: Operation parsing should be <100ms for typical files
-- **Compatibility**: Node 18+, tested on 18/20/22 in CI
+- **Compatibility**: Node 24 (main), supports 20+, tested on 20/22/24 in CI
 - **TypeScript**: Compile target ES2022, module resolution Node16
 - **Dependencies**: Keep minimal - currently just Commander, js-yaml, Ajv, atlaskit/adf-utils
 - **Breaking changes**: Follow semantic versioning, provide migration guides
