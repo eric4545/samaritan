@@ -38,8 +38,9 @@ export class EnvironmentLoader {
     manifestName: string,
   ): Promise<EnvironmentManifest> {
     // Check cache first
-    if (this.manifestCache.has(manifestName)) {
-      return this.manifestCache.get(manifestName)!;
+    const cached = this.manifestCache.get(manifestName);
+    if (cached) {
+      return cached;
     }
 
     // Try multiple possible locations for environment manifests

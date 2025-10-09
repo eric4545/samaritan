@@ -337,7 +337,9 @@ export class OperationExecutor {
   private emitEvent(event: ExecutionEvent): void {
     const handlers = this.eventHandlers.get(event.type);
     if (handlers) {
-      handlers.forEach((handler) => handler(event));
+      for (const handler of handlers) {
+        handler(event);
+      }
     }
   }
 

@@ -188,7 +188,9 @@ class QRHManager {
 
     if (entry.prerequisites && entry.prerequisites.length > 0) {
       console.log('📋 Prerequisites:');
-      entry.prerequisites.forEach((prereq) => console.log(`   - ${prereq}`));
+      for (const prereq of entry.prerequisites) {
+        console.log(`   - ${prereq}`);
+      }
       console.log('');
     }
 
@@ -243,14 +245,18 @@ class QRHManager {
 
       if (entry.troubleshooting_tips && entry.troubleshooting_tips.length > 0) {
         console.log('\n💡 Additional Troubleshooting Tips:');
-        entry.troubleshooting_tips.forEach((tip) => console.log(`   - ${tip}`));
+        for (const tip of entry.troubleshooting_tips) {
+          console.log(`   - ${tip}`);
+        }
       }
     } catch (error: any) {
       console.error(`\n❌ Emergency procedure failed: ${error.message}`);
 
       if (entry.troubleshooting_tips && entry.troubleshooting_tips.length > 0) {
         console.log('\n💡 Troubleshooting Tips:');
-        entry.troubleshooting_tips.forEach((tip) => console.log(`   - ${tip}`));
+        for (const tip of entry.troubleshooting_tips) {
+          console.log(`   - ${tip}`);
+        }
       }
 
       throw error;

@@ -2,7 +2,7 @@
 
 **Project**: Operations as Code CLI for SRE Teams
 **Version**: 1.0.0 (MVP - Documentation Generator)
-**Status**: ✅ Shipped (2025-10-08) | 154/154 tests passing
+**Status**: ✅ Shipped (2025-10-08) | 161/161 tests passing
 
 ---
 
@@ -98,10 +98,13 @@ npx @biomejs/biome check .
 
 ### General Guidelines
 - **TypeScript strict mode** - no `any` without good reason
-- **Single quotes**, no semicolons (Biome enforces this)
+- **Single quotes**, no semicolons (Biome v2.2.4 enforces this)
 - **Functional patterns** where possible (pure functions, immutability)
 - **Explicit over implicit** - clear types, no magic
 - **Avoid deep nesting** - extract functions instead
+- **Lint rules**: Two justified exceptions in `biome.json`:
+  - `noExplicitAny`: Disabled (180 instances in YAML parsing - type-safe alternatives overly complex)
+  - `noTemplateCurlyInString`: Disabled (23 test strings with intentional template syntax)
 
 ### Naming Conventions
 - Interfaces: `PascalCase` (e.g., `Operation`, `Step`)
@@ -349,7 +352,7 @@ steps:
 
 ---
 
-**Last Updated**: 2025-10-09
+**Last Updated**: 2025-10-10
 **Maintainer**: @eric4545
 
 For questions or clarifications, check:

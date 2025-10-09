@@ -106,7 +106,8 @@ test('SessionManager - createCheckpoint and resumeFromCheckpoint', () => {
   assert.ok(checkpoint.state_snapshot);
 
   // Modify session state
-  const modifiedSession = sessionManager.getSession(session.id)!;
+  const modifiedSession = sessionManager.getSession(session.id);
+  assert.ok(modifiedSession);
   modifiedSession.current_step_index = 10;
   modifiedSession.status = 'failed';
 
@@ -298,7 +299,8 @@ test('SessionManager - cleanupOldSessions', () => {
   const oldDate = new Date();
   oldDate.setDate(oldDate.getDate() - 40);
 
-  const completedSession1 = sessionManager.getSession(session1.id)!;
+  const completedSession1 = sessionManager.getSession(session1.id);
+  assert.ok(completedSession1);
   completedSession1.updated_at = oldDate;
 
   const cleaned = sessionManager.cleanupOldSessions(30);

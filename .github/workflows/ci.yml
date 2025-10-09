@@ -37,7 +37,7 @@ jobs:
       run: |
         npm start -- --help
         npm start -- validate examples/deployment.yaml
-        npm start -- generate:manual examples/deployment.yaml /tmp/test-manual.md
+        npm start -- generate manual examples/deployment.yaml -o /tmp/test-manual.md
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -94,7 +94,7 @@ jobs:
       run: |
         for file in examples/*.yaml; do
           echo "Generating manual for $file"
-          npm start -- generate:manual "$file" "/tmp/$(basename "$file" .yaml)-manual.md"
+          npm start -- generate manual "$file" -o "/tmp/$(basename "$file" .yaml)-manual.md"
         done
 
   security:

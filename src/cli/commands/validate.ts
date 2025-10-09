@@ -260,8 +260,9 @@ class OperationValidator {
       [step.command, step.instruction, JSON.stringify(step.env || {})]
         .filter(Boolean)
         .forEach((text) => {
-          let match;
-          while ((match = variableRegex.exec(text!)) !== null) {
+          let match: RegExpExecArray | null;
+          // biome-ignore lint/suspicious/noAssignInExpressions: regex.exec() pattern requires assignment in loop
+          while ((match = variableRegex.exec(text as string)) !== null) {
             usedVariables.add(match[1]);
           }
         });
@@ -402,14 +403,18 @@ const validateCommand = new Command('validate')
       // Display warnings
       if (result.warnings.length > 0) {
         console.log('⚠️  Warnings:');
-        result.warnings.forEach((warning) => console.log(`   ${warning}`));
+        for (const warning of result.warnings) {
+          console.log(`   ${warning}`);
+        }
         console.log('');
       }
 
       // Display errors
       if (result.errors.length > 0) {
         console.log('❌ Errors:');
-        result.errors.forEach((error) => console.log(`   ${error}`));
+        for (const error of result.errors) {
+          console.log(`   ${error}`);
+        }
         console.log('');
       }
 
