@@ -1,0 +1,277 @@
+name: Multi-Tier Application Deployment with Nested Steps
+version: 1.0.0
+description: Demonstrates nested sub-steps for organizing complex deployment workflows with multiple tiers
+author: SRE Team
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment for testing
+    variables:
+      DB_REPLICAS: 2
+      APP_REPLICAS: 3
+      NAMESPACE: staging
+      DOMAIN: staging.example.com
+    approval_required: false
+    validation_required: true
+
+  - name: production
+    description: Production environment
+    variables:
+      DB_REPLICAS: 5
+      APP_REPLICAS: 10
+      NAMESPACE: production
+      DOMAIN: example.com
+    approval_required: true
+    validation_required: true
+
+steps:
+  - name: Full Stack Deployment
+    type: manual
+    phase: flight
+    description: Deploy complete application stack with infrastructure, database, and application tiers
+    pic: Platform Team
+    timeline: 2024-10-10 14:00
+    sub_steps:
+      # First tier: Infrastructure
+      - name: Infrastructure Setup
+        type: manual
+        section_heading: true
+        description: Provision and configure infrastructure components
+        pic: Infrastructure Team
+        sub_steps:
+          - name: Setup Networking
+            type: automatic
+            description: Configure VPC, subnets, and security groups
+            command: terraform apply -target=module.networking -var="namespace=${NAMESPACE}"
+            sub_steps:
+              - name: Verify Network Configuration
+                type: manual
+                instruction: |
+                  Verify the following:
+                  1. VPC CIDR is correctly configured
+                  2. Subnets are created in multiple AZs
+                  3. Security groups allow required ports (80, 443, 5432)
+                evidence:
+                  required: true
+                  types: [screenshot]
+
+          - name: Setup Load Balancer
+            type: automatic
+            description: Configure application load balancer
+            command: kubectl apply -f k8s/load-balancer-${NAMESPACE}.yaml
+            sub_steps:
+              - name: Configure SSL Certificates
+                type: automatic
+                command: |
+                  kubectl create secret tls app-tls \
+                    --cert=certs/${DOMAIN}.crt \
+                    --key=certs/${DOMAIN}.key \
+                    -n ${NAMESPACE}
+              - name: Verify Load Balancer Health
+                type: manual
+                instruction: Check AWS console to verify load balancer is active and healthy
+                pic: DevOps Lead
+                evidence:
+                  required: true
+                  types: [screenshot]
+
+      # Second tier: Database
+      - name: Database Tier
+        type: manual
+        section_heading: true
+        description: Deploy and configure database systems
+        pic: DBA Team
+        sub_steps:
+          - name: Deploy PostgreSQL Primary
+            type: automatic
+            description: Deploy primary database instance
+            command: helm install postgres bitnami/postgresql --namespace ${NAMESPACE} --set replication.enabled=true --set replication.replicas=${DB_REPLICAS}
+            sub_steps:
+              - name: Initialize Database Schema
+                type: automatic
+                section_heading: true
+                description: Create tables and indexes
+                command: kubectl exec -n ${NAMESPACE} postgres-0 -- psql -U postgres -f /scripts/schema.sql
+                sub_steps:
+                  - name: Create User Tables
+                    type: automatic
+                    command: kubectl exec -n ${NAMESPACE} postgres-0 -- psql -U postgres -c "CREATE TABLE users (id SERIAL PRIMARY KEY, email VARCHAR(255), created_at TIMESTAMP)"
+
+                  - name: Create Session Tables
+                    type: automatic
+                    command: kubectl exec -n ${NAMESPACE} postgres-0 -- psql -U postgres -c "CREATE TABLE sessions (id UUID PRIMARY KEY, user_id INTEGER, expires_at TIMESTAMP)"
+
+                  - name: Create Indexes
+                    type: automatic
+                    command: kubectl exec -n ${NAMESPACE} postgres-0 -- psql -U postgres -f /scripts/indexes.sql
+
+              - name: Load Seed Data
+                type: automatic
+                description: Load initial reference data
+                command: kubectl exec -n ${NAMESPACE} postgres-0 -- psql -U postgres -f /scripts/seed-data.sql
+
+              - name: Verify Database Setup
+                type: manual
+                instruction: |
+                  Connect to database and verify:
+                  1. All tables are created
+                  2. Indexes are properly configured
+                  3. Seed data is loaded (run: SELECT COUNT(*) FROM users;)
+                pic: Senior DBA
+                evidence:
+                  required: true
+                  types: [screenshot, log]
+
+          - name: Deploy Redis Cache
+            type: automatic
+            description: Deploy Redis for session management
+            command: helm install redis bitnami/redis --namespace ${NAMESPACE} --set cluster.enabled=true
+            sub_steps:
+              - name: Configure Redis Cluster
+                type: automatic
+                command: kubectl exec -n ${NAMESPACE} redis-0 -- redis-cli --cluster create --cluster-replicas 1 $(kubectl get pods -n ${NAMESPACE} -l app=redis -o jsonpath='{range.items[*]}{.status.podIP}:6379 {end}')
+
+              - name: Verify Redis Connectivity
+                type: manual
+                instruction: Test Redis connection with redis-cli PING command
+                evidence:
+                  required: true
+                  types: [screenshot]
+
+      # Third tier: Application
+      - name: Application Tier
+        type: manual
+        section_heading: true
+        description: Deploy application services
+        pic: Backend Team
+        sub_steps:
+          - name: Deploy Backend API
+            type: automatic
+            description: Deploy main API service
+            command: kubectl apply -f k8s/backend-deployment.yaml -n ${NAMESPACE}
+            sub_steps:
+              - name: Scale Backend Replicas
+                type: automatic
+                command: kubectl scale deployment/backend --replicas=${APP_REPLICAS} -n ${NAMESPACE}
+
+              - name: Wait for Backend Pods
+                type: automatic
+                description: Wait for all pods to be ready
+                command: kubectl wait --for=condition=ready pod -l app=backend -n ${NAMESPACE} --timeout=300s
+
+              - name: Run Health Checks
+                type: automatic
+                section_heading: true
+                description: Verify backend service health
+                command: curl -f https://${DOMAIN}/api/health
+                sub_steps:
+                  - name: Check Database Connectivity
+                    type: automatic
+                    command: curl -f https://${DOMAIN}/api/health/db
+
+                  - name: Check Redis Connectivity
+                    type: automatic
+                    command: curl -f https://${DOMAIN}/api/health/redis
+
+                  - name: Verify API Endpoints
+                    type: manual
+                    instruction: |
+                      Test the following endpoints manually:
+                      - GET https://${DOMAIN}/api/users (should return 200)
+                      - POST https://${DOMAIN}/api/auth/login (with test credentials)
+                      - GET https://${DOMAIN}/api/health (should return healthy status)
+                    pic: QA Lead
+                    evidence:
+                      required: true
+                      types: [screenshot]
+
+              - name: Run Integration Tests
+                type: automatic
+                description: Execute automated integration test suite
+                command: kubectl exec -n ${NAMESPACE} deploy/backend -- npm run test:integration
+
+          - name: Deploy Frontend Application
+            type: automatic
+            description: Deploy web frontend
+            command: kubectl apply -f k8s/frontend-deployment.yaml -n ${NAMESPACE}
+            sub_steps:
+              - name: Update Frontend Configuration
+                type: automatic
+                description: Configure frontend to point to backend API
+                command: |
+                  kubectl create configmap frontend-config \
+                    --from-literal=API_URL=https://${DOMAIN}/api \
+                    -n ${NAMESPACE} \
+                    --dry-run=client -o yaml | kubectl apply -f -
+
+              - name: Wait for Frontend Pods
+                type: automatic
+                command: kubectl wait --for=condition=ready pod -l app=frontend -n ${NAMESPACE} --timeout=180s
+
+              - name: Verify Frontend Accessibility
+                type: manual
+                instruction: |
+                  Open browser and verify:
+                  1. Homepage loads correctly at https://${DOMAIN}
+                  2. Login page is accessible
+                  3. Static assets (CSS, JS, images) load properly
+                  4. No console errors in browser developer tools
+                pic: Frontend Lead
+                evidence:
+                  required: true
+                  types: [screenshot]
+
+  - name: Post-Deployment Verification
+    type: manual
+    phase: postflight
+    description: Final verification and monitoring setup
+    pic: SRE Team
+    sub_steps:
+      - name: Configure Monitoring
+        type: automatic
+        description: Setup Prometheus and Grafana dashboards
+        command: kubectl apply -f monitoring/prometheus-config.yaml -n ${NAMESPACE}
+        sub_steps:
+          - name: Verify Metrics Collection
+            type: manual
+            instruction: Check Grafana dashboards show metrics for all services
+            evidence:
+              required: true
+              types: [screenshot]
+
+      - name: Setup Alerting
+        type: automatic
+        description: Configure alert rules
+        command: kubectl apply -f monitoring/alert-rules.yaml -n ${NAMESPACE}
+
+      - name: Final Smoke Test
+        type: manual
+        description: End-to-end user journey test
+        instruction: |
+          Perform complete user flow:
+          1. Register new user account
+          2. Login with credentials
+          3. Create sample data
+          4. Verify data persistence
+          5. Logout and login again
+          6. Verify session management works
+        pic: QA Team
+        evidence:
+          required: true
+          types: [screenshot, log]
+
+rollback:
+  automatic: false
+  conditions:
+    - health_check_failure
+    - integration_test_failure
+  steps:
+    - command: helm rollback backend -n ${NAMESPACE}
+    - command: helm rollback frontend -n ${NAMESPACE}
+    - command: kubectl delete configmap frontend-config -n ${NAMESPACE}
+    - instruction: |
+        Manual rollback steps:
+        1. Verify old version is restored
+        2. Check database migrations haven't broken compatibility
+        3. Notify stakeholders of rollback

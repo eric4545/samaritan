@@ -938,106 +938,21 @@ ${filteredOperation.environments
       // Construct complete row with all cells
       content += `| ${stepInfo} | ${commandCells.join(' | ')} |\n`;
 
-      // Add sub-steps in table format
+      // Add sub-steps in table format (recursive)
       if (step.sub_steps && step.sub_steps.length > 0) {
-        step.sub_steps.forEach((subStep: any, subIndex: number) => {
-          const subStepLetter = String.fromCharCode(97 + subIndex);
-          const subStepId = `${globalStepNumber}${subStepLetter}`;
-          const subTypeIcon = typeIcons[subStep.type] || '';
-
-          // Handle section heading for sub-steps
-          if (subStep.section_heading) {
-            // Close current table
-            content += '\n';
-
-            // Add section heading (h4 for sub-step sections)
-            content += `h4. ${escapeConfluenceMacros(subStep.name)}\n\n`;
-            if (subStep.description) {
-              content += `${escapeConfluenceMacros(subStep.description)}\n\n`;
-            }
-
-            // Add PIC and timeline if present
-            if (subStep.pic || subStep.timeline) {
-              const metadata = [];
-              if (subStep.pic)
-                metadata.push(
-                  `(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`,
-                );
-              if (subStep.timeline)
-                metadata.push(
-                  `(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`,
-                );
-              content += `_${metadata.join(' • ')}_\n\n`;
-            }
-
-            // Reopen table
-            content += `|| Step ||`;
-            filteredOperation.environments.forEach((env: any) => {
-              content += ` ${env.name} ||`;
-            });
-            content += '\n';
-          }
-
-          let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${escapeConfluenceMacros(subStep.name)}`;
-          if (subStep.description)
-            subStepInfo += `\n${escapeConfluenceMacros(subStep.description)}`;
-          if (subStep.pic)
-            subStepInfo += `\n(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`;
-          if (subStep.timeline)
-            subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`;
-          if (subStep.needs && subStep.needs.length > 0)
-            subStepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(subStep.needs.join(', '))}`;
-          if (subStep.ticket)
-            subStepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket)}`;
-          if (subStep.if)
-            subStepInfo += `\n(?) Condition: ${escapeConfluenceMacros(subStep.if)}`;
-
-          // Build all command cells for sub-step
-          const subCommandCells: string[] = [];
-          filteredOperation.environments.forEach((env: any) => {
-            const rawCommand = subStep.command || subStep.instruction || '';
-            let displayCommand = rawCommand;
-
-            if (resolveVars && rawCommand) {
-              displayCommand = substituteVariables(
-                rawCommand,
-                env.variables || {},
-                subStep.variables,
-              );
-            }
-
-            let cellContent = '';
-            if (displayCommand) {
-              const trimmedCommand = displayCommand.replace(/\n+$/, '');
-              const hasMultipleLines = trimmedCommand.includes('\n');
-
-              if (hasMultipleLines) {
-                // Multi-line: use code block with line breaks
-                const formattedCommand = formatForTableCell(
-                  trimmedCommand,
-                  true,
-                );
-                cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
-              } else {
-                // Single-line: apply smart breaking
-                const withBreaks = addSmartLineBreaks(trimmedCommand);
-                cellContent = `{code:bash}\n${withBreaks}\n{code}`;
-              }
-            } else {
-              cellContent = `_(${subStep.type} step)_`;
-            }
-
-            // Add evidence area if required
-            if (subStep.evidence) {
-              cellContent += formatEvidenceArea(subStep.evidence);
-            }
-
-            subCommandCells.push(cellContent);
-          });
-
-          // Construct complete row with all cells
-          content += `| ${subStepInfo} | ${subCommandCells.join(' | ')} |\n`;
-        });
+        content += addConfluenceSubStepRows(
+          step.sub_steps,
+          filteredOperation.environments,
+          `${globalStepNumber}`,
+          1,
+          resolveVars,
+          typeIcons,
+          escapeConfluenceMacros,
+          substituteVariables,
+          formatForTableCell,
+          addSmartLineBreaks,
+          formatEvidenceArea,
+        );
       }
 
       globalStepNumber++;
@@ -1202,6 +1117,171 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
 *Generated by:* SAMARITAN CLI
 {panel}
 `;
+
+  return content;
+}
+
+/**
+ * Recursively add sub-step rows to Confluence Wiki Markup content
+ * @param subSteps - Array of sub-steps to render
+ * @param environments - Environments for command columns
+ * @param stepPrefix - Current step numbering prefix (e.g., "1" or "1a")
+ * @param depth - Current nesting depth (1 = first level, 2 = second level, etc.)
+ * @param resolveVars - Whether to resolve variables
+ * @param typeIcons - Map of step types to Confluence emoticons
+ * @param escapeConfluenceMacros - Helper function to escape macros
+ * @param substituteVariables - Helper function to substitute variables
+ * @param formatForTableCell - Helper function to format table cells
+ * @param addSmartLineBreaks - Helper function to add line breaks
+ * @param formatEvidenceArea - Helper function to format evidence areas
+ * @returns Confluence Wiki Markup string for sub-steps
+ */
+function addConfluenceSubStepRows(
+  subSteps: any[],
+  environments: any[],
+  stepPrefix: string,
+  depth: number,
+  resolveVars: boolean,
+  typeIcons: Record<string, string>,
+  escapeConfluenceMacros: (text: string) => string,
+  substituteVariables: (
+    command: string,
+    envVariables: Record<string, any>,
+    stepVariables?: Record<string, any>,
+  ) => string,
+  formatForTableCell: (text: string, useCodeBlock?: boolean) => string,
+  addSmartLineBreaks: (command: string, maxLength?: number) => string,
+  formatEvidenceArea: (evidence: any) => string,
+): string {
+  let content = '';
+
+  subSteps.forEach((subStep: any, subIndex: number) => {
+    // Determine numbering based on depth
+    // Odd depths (1, 3, 5): use letters (a, b, c)
+    // Even depths (2, 4, 6): use numbers (1, 2, 3)
+    let subStepId: string;
+    if (depth % 2 === 1) {
+      // Odd depth: use letters
+      const letter = String.fromCharCode(97 + subIndex); // 97 = 'a'
+      subStepId = `${stepPrefix}${letter}`;
+    } else {
+      // Even depth: use numbers
+      subStepId = `${stepPrefix}${subIndex + 1}`;
+    }
+
+    const subTypeIcon = typeIcons[subStep.type] || '';
+
+    // Handle section heading for sub-steps
+    if (subStep.section_heading) {
+      // Close current table
+      content += '\n';
+
+      // Add section heading with appropriate level based on depth
+      // h4 for depth 1, h5 for depth 2-3, h6 for depth 4+
+      // Formula: h4 + ceil((depth-1)/2), capped at h6
+      const headingLevel = Math.min(4 + Math.ceil((depth - 1) / 2), 6);
+      const headingPrefix = `h${headingLevel}.`;
+      content += `${headingPrefix} ${escapeConfluenceMacros(subStep.name)}\n\n`;
+      if (subStep.description) {
+        content += `${escapeConfluenceMacros(subStep.description)}\n\n`;
+      }
+
+      // Add PIC and timeline if present
+      if (subStep.pic || subStep.timeline) {
+        const metadata = [];
+        if (subStep.pic)
+          metadata.push(`(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`);
+        if (subStep.timeline)
+          metadata.push(
+            `(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`,
+          );
+        content += `_${metadata.join(' • ')}_\n\n`;
+      }
+
+      // Reopen table
+      content += `|| Step ||`;
+      environments.forEach((env: any) => {
+        content += ` ${env.name} ||`;
+      });
+      content += '\n';
+    }
+
+    let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${escapeConfluenceMacros(subStep.name)}`;
+    if (subStep.description)
+      subStepInfo += `\n${escapeConfluenceMacros(subStep.description)}`;
+    if (subStep.pic)
+      subStepInfo += `\n(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`;
+    if (subStep.timeline)
+      subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`;
+    if (subStep.needs && subStep.needs.length > 0)
+      subStepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(subStep.needs.join(', '))}`;
+    if (subStep.ticket)
+      subStepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket)}`;
+    if (subStep.if)
+      subStepInfo += `\n(?) Condition: ${escapeConfluenceMacros(subStep.if)}`;
+
+    // Build all command cells for sub-step
+    const subCommandCells: string[] = [];
+    environments.forEach((env: any) => {
+      const rawCommand = subStep.command || subStep.instruction || '';
+      let displayCommand = rawCommand;
+
+      if (resolveVars && rawCommand) {
+        displayCommand = substituteVariables(
+          rawCommand,
+          env.variables || {},
+          subStep.variables,
+        );
+      }
+
+      let cellContent = '';
+      if (displayCommand) {
+        const trimmedCommand = displayCommand.replace(/\n+$/, '');
+        const hasMultipleLines = trimmedCommand.includes('\n');
+
+        if (hasMultipleLines) {
+          // Multi-line: use code block with line breaks
+          const formattedCommand = formatForTableCell(trimmedCommand, true);
+          cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
+        } else {
+          // Single-line: apply smart breaking
+          const withBreaks = addSmartLineBreaks(trimmedCommand);
+          cellContent = `{code:bash}\n${withBreaks}\n{code}`;
+        }
+      } else if (subStep.sub_steps && subStep.sub_steps.length > 0) {
+        cellContent = '_(see substeps below)_';
+      } else {
+        cellContent = `_(${subStep.type} step)_`;
+      }
+
+      // Add evidence area if required
+      if (subStep.evidence) {
+        cellContent += formatEvidenceArea(subStep.evidence);
+      }
+
+      subCommandCells.push(cellContent);
+    });
+
+    // Construct complete row with all cells
+    content += `| ${subStepInfo} | ${subCommandCells.join(' | ')} |\n`;
+
+    // Recursively add nested sub-steps
+    if (subStep.sub_steps && subStep.sub_steps.length > 0) {
+      content += addConfluenceSubStepRows(
+        subStep.sub_steps,
+        environments,
+        subStepId,
+        depth + 1,
+        resolveVars,
+        typeIcons,
+        escapeConfluenceMacros,
+        substituteVariables,
+        formatForTableCell,
+        addSmartLineBreaks,
+        formatEvidenceArea,
+      );
+    }
+  });
 
   return content;
 }

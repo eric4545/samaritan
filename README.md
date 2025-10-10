@@ -368,17 +368,16 @@ steps:
 
 #### Sub-steps and Complex Workflows
 
+Organize complex procedures into hierarchical sub-steps with automatic numbering (1a, 1b, 1a1, 1a2, etc.):
+
+**Basic Sub-steps:**
 ```yaml
 steps:
   - name: Complex Deployment
     type: manual
-    instruction: |
-      Execute deployment script:
-      ```bash
-      ./deploy.sh
-      ```
+    instruction: Deploy all components
     sub_steps:
-      - name: Wait for Pods
+      - name: Wait for Pods          # Numbered as 1a
         type: manual
         instruction: |
           Wait for pods to be ready:
@@ -386,13 +385,83 @@ steps:
           kubectl wait --for=condition=ready pod -l app=webapp --timeout=120s
           ```
 
-      - name: Verify Deployment
+      - name: Verify Deployment      # Numbered as 1b
         type: manual
         instruction: Check application responds correctly
         evidence:
           required: true
           types: [screenshot]
 ```
+
+**Nested Sub-steps (Multi-level):**
+
+Sub-steps can be nested up to 4 levels deep for organizing complex multi-tier deployments:
+
+```yaml
+steps:
+  - name: Full Stack Deployment
+    type: manual
+    instruction: Deploy complete application stack
+    sub_steps:
+      # First level: Infrastructure (1a, 1b)
+      - name: Infrastructure Setup
+        type: manual
+        section_heading: true  # Renders as section heading in manuals
+        description: Provision infrastructure components
+        pic: Infrastructure Team
+        sub_steps:
+          # Second level: Network components (1a1, 1a2)
+          - name: Setup Networking
+            type: automatic
+            command: terraform apply -target=module.networking
+            sub_steps:
+              # Third level: Network verification (1a1a, 1a1b)
+              - name: Verify Network Configuration
+                type: manual
+                instruction: Verify VPC, subnets, and security groups
+                evidence:
+                  required: true
+                  types: [screenshot]
+
+              - name: Test Connectivity
+                type: automatic
+                command: ping -c 3 ${GATEWAY_IP}
+
+      # Another first level section (1b)
+      - name: Database Tier
+        type: manual
+        section_heading: true
+        description: Deploy database systems
+        pic: DBA Team
+        sub_steps:
+          - name: Deploy PostgreSQL
+            type: automatic
+            command: helm install postgres bitnami/postgresql
+            sub_steps:
+              - name: Initialize Schema
+                type: automatic
+                section_heading: true  # Nested section heading
+                description: Create tables and indexes
+                command: psql -f schema.sql
+```
+
+**Step Numbering Pattern:**
+- Level 0 (top-level): `1, 2, 3`
+- Level 1 (first sub-steps): `1a, 1b, 1c`
+- Level 2 (nested sub-steps): `1a1, 1a2, 1a3`
+- Level 3 (deeply nested): `1a1a, 1a1b, 1a1c`
+- Level 4 (maximum depth): `1a1a1, 1a1a2, 1a1a3`
+
+**Section Headings:**
+
+Use `section_heading: true` to break up long operations into logical sections. Section headings:
+- Render as headings (h3, h4, h5) in generated manuals
+- Close and reopen procedure tables for visual clarity
+- Support PIC (Person In Charge) and timeline metadata
+- Can be used at any nesting level
+
+See `examples/nested-deployment.yaml` for a complete multi-tier deployment example.
+
 
 ## 🔄 Execution Workflows
 

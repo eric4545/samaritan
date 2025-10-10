@@ -436,110 +436,155 @@ function createStepsTable(
 
     dataRows.push(tableRow(cells));
 
-    // Add sub-steps if present
+    // Add sub-steps if present (recursive)
     if (step.sub_steps && step.sub_steps.length > 0) {
-      step.sub_steps.forEach((subStep, subIndex) => {
-        const subStepLetter = String.fromCharCode(97 + subIndex);
-        const subStepId = `${stepNumber}${subStepLetter}`;
-
-        const subStepCellContent = [];
-        const subTypeIcon =
-          subStep.type === 'automatic'
-            ? '⚙️'
-            : subStep.type === 'manual'
-              ? '👤'
-              : subStep.type === 'conditional'
-                ? '🔀'
-                : '✋';
-
-        subStepCellContent.push(
-          paragraph(
-            strong(text(`Step ${subStepId}: ${subStep.name} ${subTypeIcon}`)),
-          ),
-        );
-
-        if (
-          subStep.description &&
-          typeof subStep.description === 'string' &&
-          subStep.description.trim().length > 0
-        ) {
-          subStepCellContent.push(paragraph(text(subStep.description)));
-        }
-
-        if (subStep.needs && subStep.needs.length > 0) {
-          subStepCellContent.push(
-            paragraph(text(`📋 Depends on: ${subStep.needs.join(', ')}`)),
-          );
-        }
-
-        if (subStep.ticket) {
-          const tickets = Array.isArray(subStep.ticket)
-            ? subStep.ticket
-            : [subStep.ticket];
-          subStepCellContent.push(
-            paragraph(text(`🎫 Tickets: ${tickets.join(', ')}`)),
-          );
-        }
-
-        if (subStep.pic) {
-          subStepCellContent.push(paragraph(text(`👤 PIC: ${subStep.pic}`)));
-        }
-
-        if (subStep.timeline) {
-          subStepCellContent.push(
-            paragraph(text(`⏱️ Timeline: ${subStep.timeline}`)),
-          );
-        }
-
-        if (subStep.if) {
-          subStepCellContent.push(
-            paragraph(text(`🔀 Condition: ${subStep.if}`)),
-          );
-        }
-
-        // Evidence requirements for sub-steps
-        const subEvidenceInfo = formatEvidenceInfo(subStep.evidence);
-        if (subEvidenceInfo) {
-          subStepCellContent.push(subEvidenceInfo);
-        }
-
-        const subCells = [tableCell()(...subStepCellContent)];
-
-        environments.forEach((env) => {
-          const rawCommand = subStep.command || subStep.instruction || '';
-          let displayCommand = rawCommand;
-
-          if (resolveVariables && rawCommand) {
-            displayCommand = substituteVariables(
-              rawCommand,
-              env.variables || {},
-              subStep.variables,
-            );
-          }
-
-          if (displayCommand) {
-            subCells.push(
-              tableCell()(
-                codeBlock({ language: 'bash' })(text(displayCommand)),
-              ),
-            );
-          } else if (subStep.sub_steps && subStep.sub_steps.length > 0) {
-            subCells.push(
-              tableCell()(paragraph(em(text('(see substeps below)')))),
-            );
-          } else {
-            subCells.push(
-              tableCell()(paragraph(em(text(`(${subStep.type} step)`)))),
-            );
-          }
-        });
-
-        dataRows.push(tableRow(subCells));
-      });
+      addSubStepRows(
+        step.sub_steps,
+        environments,
+        `${stepNumber}`,
+        1,
+        resolveVariables,
+        dataRows,
+      );
     }
   });
 
   return table(headerRow, ...dataRows);
+}
+
+/**
+ * Recursively add sub-step rows to the table
+ * @param subSteps - Array of sub-steps to render
+ * @param environments - Environments for command columns
+ * @param stepPrefix - Current step numbering prefix (e.g., "1" or "1a")
+ * @param depth - Current nesting depth (1 = first level, 2 = second level, etc.)
+ * @param resolveVariables - Whether to resolve variables
+ * @param dataRows - Array to append rows to
+ */
+function addSubStepRows(
+  subSteps: Step[],
+  environments: Environment[],
+  stepPrefix: string,
+  depth: number,
+  resolveVariables: boolean | undefined,
+  dataRows: any[],
+): void {
+  subSteps.forEach((subStep, subIndex) => {
+    // Determine numbering based on depth
+    // Odd depths (1, 3, 5): use letters (a, b, c)
+    // Even depths (2, 4, 6): use numbers (1, 2, 3)
+    let subStepId: string;
+    if (depth % 2 === 1) {
+      // Odd depth: use letters
+      const letter = String.fromCharCode(97 + subIndex); // 97 = 'a'
+      subStepId = `${stepPrefix}${letter}`;
+    } else {
+      // Even depth: use numbers
+      subStepId = `${stepPrefix}${subIndex + 1}`;
+    }
+
+    const subStepCellContent = [];
+    const subTypeIcon =
+      subStep.type === 'automatic'
+        ? '⚙️'
+        : subStep.type === 'manual'
+          ? '👤'
+          : subStep.type === 'conditional'
+            ? '🔀'
+            : '✋';
+
+    subStepCellContent.push(
+      paragraph(
+        strong(text(`Step ${subStepId}: ${subStep.name} ${subTypeIcon}`)),
+      ),
+    );
+
+    if (
+      subStep.description &&
+      typeof subStep.description === 'string' &&
+      subStep.description.trim().length > 0
+    ) {
+      subStepCellContent.push(paragraph(text(subStep.description)));
+    }
+
+    if (subStep.needs && subStep.needs.length > 0) {
+      subStepCellContent.push(
+        paragraph(text(`📋 Depends on: ${subStep.needs.join(', ')}`)),
+      );
+    }
+
+    if (subStep.ticket) {
+      const tickets = Array.isArray(subStep.ticket)
+        ? subStep.ticket
+        : [subStep.ticket];
+      subStepCellContent.push(
+        paragraph(text(`🎫 Tickets: ${tickets.join(', ')}`)),
+      );
+    }
+
+    if (subStep.pic) {
+      subStepCellContent.push(paragraph(text(`👤 PIC: ${subStep.pic}`)));
+    }
+
+    if (subStep.timeline) {
+      subStepCellContent.push(
+        paragraph(text(`⏱️ Timeline: ${subStep.timeline}`)),
+      );
+    }
+
+    if (subStep.if) {
+      subStepCellContent.push(
+        paragraph(text(`🔀 Condition: ${subStep.if}`)),
+      );
+    }
+
+    // Evidence requirements for sub-steps
+    const subEvidenceInfo = formatEvidenceInfo(subStep.evidence);
+    if (subEvidenceInfo) {
+      subStepCellContent.push(subEvidenceInfo);
+    }
+
+    const subCells = [tableCell()(...subStepCellContent)];
+
+    environments.forEach((env) => {
+      const rawCommand = subStep.command || subStep.instruction || '';
+      let displayCommand = rawCommand;
+
+      if (resolveVariables && rawCommand) {
+        displayCommand = substituteVariables(
+          rawCommand,
+          env.variables || {},
+          subStep.variables,
+        );
+      }
+
+      if (displayCommand) {
+        subCells.push(
+          tableCell()(codeBlock({ language: 'bash' })(text(displayCommand))),
+        );
+      } else if (subStep.sub_steps && subStep.sub_steps.length > 0) {
+        subCells.push(tableCell()(paragraph(em(text('(see substeps below)')))));
+      } else {
+        subCells.push(
+          tableCell()(paragraph(em(text(`(${subStep.type} step)`)))),
+        );
+      }
+    });
+
+    dataRows.push(tableRow(subCells));
+
+    // Recursively add nested sub-steps
+    if (subStep.sub_steps && subStep.sub_steps.length > 0) {
+      addSubStepRows(
+        subStep.sub_steps,
+        environments,
+        subStepId,
+        depth + 1,
+        resolveVariables,
+        dataRows,
+      );
+    }
+  });
 }
 
 /**
