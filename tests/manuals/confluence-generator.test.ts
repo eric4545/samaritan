@@ -420,9 +420,10 @@ steps:
     const content = generateConfluence(evidenceRequiredYaml);
 
     // Should have evidence expand macro for Deploy Application step (required, multiple types)
+    // with code block for command_output evidence type
     assert.match(
       content,
-      /\{expand:title=📎 Evidence \(Required - screenshot, command_output\)\}Paste evidence here\{expand\}/,
+      /\{expand:title=📎 Evidence \(Required - screenshot, command_output\)\}\{code:bash\}\n# Paste command output here\n\{code\}\{expand\}/,
     );
 
     // Should have evidence expand macro for Manual Verification step (required, single type)
@@ -472,5 +473,21 @@ steps:
     // Should show evidence types in the title
     assert.match(content, /Evidence \(Required - screenshot, command_output\)/);
     assert.match(content, /Evidence \(Optional - screenshot, log\)/);
+  });
+
+  it('should include code block for command_output evidence type', () => {
+    const content = generateConfluence(evidenceRequiredYaml);
+
+    // Should have code block for command_output evidence type
+    assert.match(
+      content,
+      /\{code:bash\}\n# Paste command output here\n\{code\}/,
+    );
+
+    // Should have regular "Paste evidence here" for evidence without command_output
+    assert.match(
+      content,
+      /\{expand:title=📎 Evidence \(Required - screenshot\)\}Paste evidence here\{expand\}/,
+    );
   });
 });

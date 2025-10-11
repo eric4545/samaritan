@@ -8,6 +8,7 @@ import {
 import type { Operation } from '../../src/models/operation';
 import {
   deploymentOperation,
+  evidenceRequiredYaml,
   operationWithSectionHeadingFirstYaml,
 } from '../fixtures/operations';
 
@@ -1720,5 +1721,34 @@ kubectl apply -f worker.yaml`,
     assert(markdown.includes('☐ Step 1: Initial Setup'), 'Should have step 1');
     assert(markdown.includes('☐ Step 2: Deploy App'), 'Should have step 2');
     assert(markdown.includes('☐ Step 3: Verify'), 'Should have step 3');
+  });
+
+  it('should include code block for command_output evidence type', () => {
+    const operation = yaml.load(evidenceRequiredYaml) as Operation;
+    const markdown = generateManual(operation);
+
+    // Should include code block for command_output evidence type (Deploy Application step)
+    assert(
+      markdown.includes('📎 <em>Evidence Required: screenshot, command_output</em>'),
+      'Should show evidence types with command_output',
+    );
+    assert(
+      markdown.includes('```bash<br># Paste command output here<br>```'),
+      'Should include code block for command_output evidence type',
+    );
+
+    // Should NOT include code block when command_output is not in types (Manual Verification step)
+    assert(
+      markdown.includes('📎 <em>Evidence Required: screenshot</em>'),
+      'Should show evidence types without command_output',
+    );
+
+    // Count occurrences of the code block - should be exactly 1 (Deploy Application step only)
+    // Evidence is in the step cell (first column), not repeated per environment
+    const codeBlockMatches = markdown.match(/```bash<br># Paste command output here<br>```/g);
+    assert(
+      codeBlockMatches && codeBlockMatches.length === 1,
+      'Should have one code block for Deploy Application step with command_output evidence',
+    );
   });
 });

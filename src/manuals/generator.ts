@@ -34,7 +34,14 @@ function formatEvidenceInfo(evidence?: {
   const typesText = types.length > 0 ? `: ${types.join(', ')}` : '';
   const status = evidence.required ? 'Required' : 'Optional';
 
-  return `<br>📎 <em>Evidence ${status}${typesText}</em>`;
+  let result = `<br>📎 <em>Evidence ${status}${typesText}</em>`;
+
+  // Add code block for command_output evidence type
+  if (types.includes('command_output')) {
+    result += '<br>```bash<br># Paste command output here<br>```';
+  }
+
+  return result;
 }
 
 function generateGanttChart(operation: Operation): string {

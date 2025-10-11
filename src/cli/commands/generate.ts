@@ -611,7 +611,13 @@ export function generateConfluenceContent(
     const typesText = types.length > 0 ? ` - ${types.join(', ')}` : '';
     const status = evidence.required ? 'Required' : 'Optional';
 
-    return `\n{expand:title=📎 Evidence (${status}${typesText})}Paste evidence here{expand}`;
+    // Add code block for command_output evidence type
+    let content = 'Paste evidence here';
+    if (types.includes('command_output')) {
+      content = '{code:bash}\n# Paste command output here\n{code}';
+    }
+
+    return `\n{expand:title=📎 Evidence (${status}${typesText})}${content}{expand}`;
   };
 
   // Helper to format multi-line text for Confluence table cells
