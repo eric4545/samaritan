@@ -1,0 +1,27 @@
+name: Section Heading Test
+version: 1.0.0
+description: Test section heading feature
+
+environments:
+  - name: staging
+  - name: production
+
+steps:
+  - name: Step Before Section
+    type: automatic
+    phase: flight
+    command: echo "before"
+
+  - name: Database Migration
+    type: manual
+    phase: flight
+    section_heading: true
+    description: Migrate database schema
+    pic: DBA Team
+    timeline: 2024-01-15 10:00
+    command: run migrations
+
+  - name: Step After Section
+    type: automatic
+    phase: flight
+    command: echo "after"

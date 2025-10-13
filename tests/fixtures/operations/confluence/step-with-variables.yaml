@@ -1,0 +1,14 @@
+name: Escaping Test
+version: 1.0.0
+description: Test variable escaping
+
+environments:
+  - name: staging
+
+steps:
+  - name: Deploy ${SERVICE_NAME} to cluster
+    description: Deploys using ${DEPLOY_METHOD}
+    type: automatic
+    phase: flight
+    if: ${ENVIRONMENT} == 'production'
+    command: echo "deploy"

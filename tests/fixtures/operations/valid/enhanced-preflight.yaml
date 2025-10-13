@@ -1,0 +1,17 @@
+name: Preflight Test
+version: 1.0.0
+environments:
+  - name: default
+steps:
+  - name: Enhanced Preflight
+    type: automatic
+    phase: preflight
+    command: systemctl is-active docker
+    condition: active
+    description: Verify Docker service is running
+    timeout: 10
+    evidence:
+      required: true
+  - name: Simple Step
+    type: automatic
+    command: echo done

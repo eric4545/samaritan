@@ -1,0 +1,65 @@
+name: Nested Sub-Steps (3 Levels)
+version: 1.0.0
+description: Test 3 levels of nested sub-steps
+
+environments:
+  - name: production
+    variables:
+      CLUSTER: prod-cluster
+
+steps:
+  - name: Complex Deployment
+    type: manual
+    phase: flight
+    description: Multi-tier application deployment
+    pic: DevOps Team
+    timeline: 2024-01-15 10:00
+    sub_steps:
+      - name: Database Tier
+        type: manual
+        instruction: Deploy database components
+        section_heading: true
+        pic: DBA Team
+        sub_steps:
+          - name: Deploy PostgreSQL
+            type: automatic
+            command: helm install postgres bitnami/postgresql
+            sub_steps:
+              - name: Create Database Schema
+                type: automatic
+                command: psql -f schema.sql
+              - name: Load Initial Data
+                type: automatic
+                command: psql -f seed-data.sql
+              - name: Verify Database Connection
+                type: manual
+                instruction: Test connection from app pod
+          - name: Deploy Redis Cache
+            type: automatic
+            command: helm install redis bitnami/redis
+            sub_steps:
+              - name: Configure Redis Cluster
+                type: automatic
+                command: redis-cli cluster init
+              - name: Verify Redis Connection
+                type: manual
+                instruction: Test Redis connectivity
+      - name: Application Tier
+        type: manual
+        instruction: Deploy application services
+        section_heading: true
+        pic: Backend Team
+        sub_steps:
+          - name: Deploy API Service
+            type: automatic
+            command: kubectl apply -f api-service.yaml
+            sub_steps:
+              - name: Wait for API Pods
+                type: automatic
+                command: kubectl wait --for=condition=ready pod -l app=api
+              - name: Run API Health Check
+                type: manual
+                instruction: Verify /health endpoint returns 200
+              - name: Run Integration Tests
+                type: automatic
+                command: npm run test:integration

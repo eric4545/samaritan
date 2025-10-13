@@ -2,22 +2,23 @@ import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import * as yaml from 'js-yaml';
 import { generateConfluenceContent } from '../../src/cli/commands/generate';
-import {
-  conditionalConfluenceYaml,
-  dependenciesYaml,
-  deploymentOperationYaml,
-  evidenceRequiredYaml,
-  ganttTimelineYaml,
-  globalRollbackYaml,
-  markdownInstructionsYaml,
-  markdownLinksYaml,
-  markdownWithVariablesYaml,
-  multiLineCommandYaml,
-  operationWithSectionHeadingFirstYaml,
-  operationWithSectionHeadingsYaml,
-  stepWithVariablesYaml,
-  subStepsYaml,
-} from '../fixtures/operations';
+import { loadYaml } from '../fixtures/fixtures';
+
+// Load YAML fixtures
+const deploymentOperationYaml = loadYaml('deploymentTest');
+const multiLineCommandYaml = loadYaml('multiLineCommand');
+const subStepsYaml = loadYaml('subSteps');
+const dependenciesYaml = loadYaml('dependencies');
+const conditionalConfluenceYaml = loadYaml('conditionalConfluence');
+const markdownInstructionsYaml = loadYaml('markdownInstructions');
+const markdownWithVariablesYaml = loadYaml('markdownWithVariables');
+const stepWithVariablesYaml = loadYaml('stepWithVariables');
+const markdownLinksYaml = loadYaml('markdownLinks');
+const globalRollbackYaml = loadYaml('globalRollback');
+const operationWithSectionHeadingsYaml = loadYaml('sectionHeading');
+const operationWithSectionHeadingFirstYaml = loadYaml('sectionHeadingFirst');
+const ganttTimelineYaml = loadYaml('ganttTimeline');
+const evidenceRequiredYaml = loadYaml('evidenceRequired');
 
 // Helper to generate Confluence content from YAML string
 function generateConfluence(

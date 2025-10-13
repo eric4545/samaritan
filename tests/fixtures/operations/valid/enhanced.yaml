@@ -1,0 +1,29 @@
+name: Enhanced Operation
+version: 2.0.0
+description: Full-featured operation
+author: test-author
+category: deployment
+tags: [test, enhanced]
+emergency: true
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      REPLICAS: 2
+    restrictions: [business-hours]
+    approval_required: false
+    validation_required: true
+preflight:
+  - name: Check prerequisites
+    type: command
+    command: echo "checking"
+    description: Verify system state
+steps:
+  - name: Deploy
+    type: automatic
+    description: Deploy the application
+    command: kubectl apply -f deployment.yaml
+    timeout: 300
+    evidence:
+      required: true
+      types: [screenshot, log]

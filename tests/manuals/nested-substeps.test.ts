@@ -1,27 +1,16 @@
 import assert from 'node:assert';
 import { test } from 'node:test';
-import { writeFile } from 'node:fs/promises';
 import { generateADFString } from '../../src/manuals/adf-generator';
 import { generateManual } from '../../src/manuals/generator';
 import { generateConfluenceContent } from '../../src/cli/commands/generate';
-import { parseOperation } from '../../src/operations/parser';
-import {
-  nestedSubSteps2LevelsYaml,
-  nestedSubSteps3LevelsYaml,
-  nestedSubSteps4LevelsYaml,
-  nestedSubStepsWithSectionsYaml,
-} from '../fixtures/operations';
+import { parseFixture } from '../fixtures/fixtures';
 
 /**
  * Test nested sub-steps support across all generator formats
  */
 
 test('Markdown generator should handle 2 levels of nested sub-steps', async () => {
-  // Write YAML to temp file for parsing
-  const tempFile = '/tmp/samaritan-test-nested-2-levels.yaml';
-  await writeFile(tempFile, nestedSubSteps2LevelsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubSteps2Levels');
   const markdown = generateManual(operation);
 
   // Should contain all step numbering levels
@@ -39,10 +28,7 @@ test('Markdown generator should handle 2 levels of nested sub-steps', async () =
 });
 
 test('Markdown generator should handle 3 levels of nested sub-steps', async () => {
-  const tempFile = '/tmp/samaritan-test-nested-3-levels.yaml';
-  await writeFile(tempFile, nestedSubSteps3LevelsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubSteps3Levels');
   const markdown = generateManual(operation);
 
   // Should contain all step numbering levels
@@ -62,10 +48,7 @@ test('Markdown generator should handle 3 levels of nested sub-steps', async () =
 });
 
 test('Markdown generator should handle 4 levels of nested sub-steps', async () => {
-  const tempFile = '/tmp/samaritan-test-nested-4-levels.yaml';
-  await writeFile(tempFile, nestedSubSteps4LevelsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubSteps4Levels');
   const markdown = generateManual(operation);
 
   // Should contain all 4 levels of numbering
@@ -81,10 +64,7 @@ test('Markdown generator should handle 4 levels of nested sub-steps', async () =
 });
 
 test('Markdown generator should handle section headings at multiple nesting levels', async () => {
-  const tempFile = '/tmp/samaritan-test-nested-sections.yaml';
-  await writeFile(tempFile, nestedSubStepsWithSectionsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubStepsWithSections');
   const markdown = generateManual(operation);
 
   // Verify section headings at different depths
@@ -100,10 +80,7 @@ test('Markdown generator should handle section headings at multiple nesting leve
 });
 
 test('ADF generator should handle 2 levels of nested sub-steps', async () => {
-  const tempFile = '/tmp/samaritan-test-adf-nested-2.yaml';
-  await writeFile(tempFile, nestedSubSteps2LevelsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubSteps2Levels');
   const adfString = generateADFString(operation);
   const adf = JSON.parse(adfString);
 
@@ -121,10 +98,7 @@ test('ADF generator should handle 2 levels of nested sub-steps', async () => {
 });
 
 test('ADF generator should handle 3 levels of nested sub-steps', async () => {
-  const tempFile = '/tmp/samaritan-test-adf-nested-3.yaml';
-  await writeFile(tempFile, nestedSubSteps3LevelsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubSteps3Levels');
   const adfString = generateADFString(operation);
   const adf = JSON.parse(adfString);
 
@@ -138,10 +112,7 @@ test('ADF generator should handle 3 levels of nested sub-steps', async () => {
 });
 
 test('ADF generator should handle 4 levels of nested sub-steps', async () => {
-  const tempFile = '/tmp/samaritan-test-adf-nested-4.yaml';
-  await writeFile(tempFile, nestedSubSteps4LevelsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubSteps4Levels');
   const adfString = generateADFString(operation);
   const adf = JSON.parse(adfString);
 
@@ -151,10 +122,7 @@ test('ADF generator should handle 4 levels of nested sub-steps', async () => {
 });
 
 test('Confluence Wiki Markup should handle 2 levels of nested sub-steps', async () => {
-  const tempFile = '/tmp/samaritan-test-confluence-nested-2.yaml';
-  await writeFile(tempFile, nestedSubSteps2LevelsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubSteps2Levels');
   const confluence = generateConfluenceContent(operation);
 
   // Verify all step numbering levels
@@ -170,10 +138,7 @@ test('Confluence Wiki Markup should handle 2 levels of nested sub-steps', async 
 });
 
 test('Confluence Wiki Markup should handle 3 levels of nested sub-steps', async () => {
-  const tempFile = '/tmp/samaritan-test-confluence-nested-3.yaml';
-  await writeFile(tempFile, nestedSubSteps3LevelsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubSteps3Levels');
   const confluence = generateConfluenceContent(operation);
 
   // Verify all levels
@@ -192,10 +157,7 @@ test('Confluence Wiki Markup should handle 3 levels of nested sub-steps', async 
 });
 
 test('Confluence Wiki Markup should handle 4 levels of nested sub-steps', async () => {
-  const tempFile = '/tmp/samaritan-test-confluence-nested-4.yaml';
-  await writeFile(tempFile, nestedSubSteps4LevelsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubSteps4Levels');
   const confluence = generateConfluenceContent(operation);
 
   // Verify all 4 levels of numbering
@@ -211,10 +173,7 @@ test('Confluence Wiki Markup should handle 4 levels of nested sub-steps', async 
 });
 
 test('Confluence Wiki Markup should handle section headings at multiple nesting levels', async () => {
-  const tempFile = '/tmp/samaritan-test-confluence-sections.yaml';
-  await writeFile(tempFile, nestedSubStepsWithSectionsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubStepsWithSections');
   const confluence = generateConfluenceContent(operation);
 
   // Verify section headings with appropriate h-levels
@@ -228,10 +187,7 @@ test('Confluence Wiki Markup should handle section headings at multiple nesting 
 });
 
 test('All generators should produce consistent numbering for nested sub-steps', async () => {
-  const tempFile = '/tmp/samaritan-test-consistency.yaml';
-  await writeFile(tempFile, nestedSubSteps3LevelsYaml);
-
-  const operation = await parseOperation(tempFile);
+  const operation = await parseFixture('nestedSubSteps3Levels');
   const markdown = generateManual(operation);
   const adfString = generateADFString(operation);
   const confluence = generateConfluenceContent(operation);

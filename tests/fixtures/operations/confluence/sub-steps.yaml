@@ -1,0 +1,19 @@
+name: Sub-steps Test
+version: 1.0.0
+description: Test sub-steps
+
+environments:
+  - name: staging
+
+steps:
+  - name: Parent Step
+    type: manual
+    phase: flight
+    instruction: Main task
+    sub_steps:
+      - name: Sub Task A
+        type: automatic
+        command: echo "A"
+      - name: Sub Task B
+        type: automatic
+        command: echo "B"

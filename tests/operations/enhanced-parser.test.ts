@@ -5,19 +5,11 @@ import {
   OperationParseError,
   parseOperation,
 } from '../../src/operations/parser';
-import {
-  conditionalStepYaml,
-  enhancedPreflightYaml,
-  enhancedStepFieldsYaml,
-} from '../fixtures/operations';
+import { parseFixture } from '../fixtures/fixtures';
 
 describe('Enhanced Operation Parser', () => {
   it('should parse operation with new Step fields including instructions', async () => {
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-enhanced-operation.yaml`;
-    fs.writeFileSync(tempFile, enhancedStepFieldsYaml);
-
-    try {
-      const operation = await parseOperation(tempFile);
+    const operation = await parseFixture('enhancedStepFields');
 
       // Test basic fields
       assert.strictEqual(operation.name, 'Enhanced Operation');
@@ -88,9 +80,6 @@ describe('Enhanced Operation Parser', () => {
       assert.strictEqual(approvalStep.type, 'approval');
       assert.ok(approvalStep.approval);
       assert.strictEqual(approvalStep.approval.required, true);
-    } finally {
-      fs.unlinkSync(tempFile);
-    }
   });
 
   it('should validate step types and evidence types', async () => {
@@ -207,38 +196,24 @@ steps:
   });
 
   it('should handle conditional steps', async () => {
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-conditional-test.yaml`;
-    fs.writeFileSync(tempFile, conditionalStepYaml);
+    const operation = await parseFixture('conditional');
+    const conditionalStep = operation.steps[0];
 
-    try {
-      const operation = await parseOperation(tempFile);
-      const conditionalStep = operation.steps[0];
-
-      assert.strictEqual(conditionalStep.type, 'conditional');
-      assert.strictEqual(conditionalStep.if, '${{ success() }}');
-    } finally {
-      fs.unlinkSync(tempFile);
-    }
+    assert.strictEqual(conditionalStep.type, 'conditional');
+    assert.strictEqual(conditionalStep.if, '${{ success() }}');
   });
 
   it('should preserve all enhanced preflight fields', async () => {
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-preflight-test.yaml`;
-    fs.writeFileSync(tempFile, enhancedPreflightYaml);
+    const operation = await parseFixture('enhancedPreflight');
+    // After unified steps, find step with phase: 'preflight'
+    const preflightStep = operation.steps.find(
+      (step) => step.phase === 'preflight',
+    );
+    assert.ok(preflightStep, 'Should have preflight step');
 
-    try {
-      const operation = await parseOperation(tempFile);
-      // After unified steps, find step with phase: 'preflight'
-      const preflightStep = operation.steps.find(
-        (step) => step.phase === 'preflight',
-      );
-      assert.ok(preflightStep, 'Should have preflight step');
-
-      assert.strictEqual(preflightStep.type, 'automatic');
-      assert.strictEqual(preflightStep.condition, 'active');
-      assert.strictEqual(preflightStep.timeout, 10);
-      assert.strictEqual(preflightStep.evidence?.required, true);
-    } finally {
-      fs.unlinkSync(tempFile);
-    }
+    assert.strictEqual(preflightStep.type, 'automatic');
+    assert.strictEqual(preflightStep.condition, 'active');
+    assert.strictEqual(preflightStep.timeout, 10);
+    assert.strictEqual(preflightStep.evidence?.required, true);
   });
 });

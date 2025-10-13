@@ -1,0 +1,25 @@
+name: Rollback Test
+version: 1.0.0
+description: Test global rollback
+
+environments:
+  - name: staging
+  - name: production
+
+steps:
+  - name: Deploy
+    type: automatic
+    phase: flight
+    command: kubectl apply -f app.yaml
+
+rollback:
+  automatic: false
+  conditions:
+    - health_check_failure
+    - error_rate_spike
+  steps:
+    - command: kubectl rollout undo deployment/app
+    - instruction: |
+        Verify rollback completed:
+        1. Check pods are running
+        2. Test API endpoints

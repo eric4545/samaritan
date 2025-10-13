@@ -1,0 +1,10 @@
+name: Conditional Test
+version: 1.0.0
+environments:
+  - name: default
+steps:
+  - name: Conditional Step
+    type: conditional
+    if: "${{ success() }}"
+    command: echo "Previous steps succeeded"
+    description: Only run if previous steps passed

@@ -2,29 +2,20 @@ import assert from 'node:assert';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import { after, describe, it } from 'node:test';
-import { deploymentOperationYaml } from '../fixtures/operations';
+import { getFixturePath } from '../fixtures/fixtures';
 
 describe('Manual Generation CLI Command', () => {
-  const testInputFilePath = `/tmp/samaritan-test-${Date.now()}-test-deployment.yaml`;
   const outputFilePath = `/tmp/samaritan-test-${Date.now()}-temp-test-manual.md`;
-
-  // Use shared test YAML from fixtures
-  const testYamlContent = deploymentOperationYaml;
+  const testInputFilePath = getFixturePath('deploymentTest');
 
   after(() => {
-    // Clean up all generated files
+    // Clean up generated files
     if (fs.existsSync(outputFilePath)) {
       fs.unlinkSync(outputFilePath);
-    }
-    if (fs.existsSync(testInputFilePath)) {
-      fs.unlinkSync(testInputFilePath);
     }
   });
 
   it('should generate a Markdown manual with environment-specific details and substituted variables', (_t) => {
-    // Create self-contained test input file
-    fs.writeFileSync(testInputFilePath, testYamlContent);
-
     // Run the CLI command with --resolve-vars to match test expectations
     const command = `npx tsx src/cli/index.ts generate manual ${testInputFilePath} --output ${outputFilePath} --resolve-vars`;
     try {

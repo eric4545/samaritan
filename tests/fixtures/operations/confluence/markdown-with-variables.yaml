@@ -1,0 +1,19 @@
+name: Escaping Test
+version: 1.0.0
+description: Test variable handling in markdown
+
+environments:
+  - name: staging
+    variables:
+      API_ENDPOINT: "https://api.staging.com"
+      DB_HOST: "db.staging.com"
+
+steps:
+  - name: Manual Step with Variables
+    type: manual
+    phase: flight
+    instruction: |
+      # Check health endpoints
+      1. Verify API: curl ${API_ENDPOINT}/health
+      2. Check database: ping ${DB_HOST}
+      **Important**: Variables like ${FOO} should be preserved

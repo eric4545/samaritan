@@ -1,0 +1,43 @@
+name: Nested Sub-Steps with Sections
+version: 1.0.0
+description: Test nested sub-steps with section headings at different depths
+
+environments:
+  - name: staging
+
+steps:
+  - name: Deployment Pipeline
+    type: manual
+    phase: flight
+    sub_steps:
+      - name: Build Phase
+        type: manual
+        section_heading: true
+        description: Build all components
+        pic: Build Team
+        sub_steps:
+          - name: Build Backend
+            type: automatic
+            command: docker build -t backend:latest ./backend
+            sub_steps:
+              - name: Backend Unit Tests
+                type: automatic
+                section_heading: true
+                description: Run backend test suite
+                command: npm test
+                sub_steps:
+                  - name: Run API Tests
+                    type: automatic
+                    command: npm run test:api
+                  - name: Run Database Tests
+                    type: automatic
+                    command: npm run test:db
+      - name: Deploy Phase
+        type: manual
+        section_heading: true
+        description: Deploy to cluster
+        pic: DevOps Team
+        sub_steps:
+          - name: Deploy to Staging
+            type: automatic
+            command: kubectl apply -f staging/

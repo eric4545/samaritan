@@ -1,0 +1,16 @@
+name: Links Test
+version: 1.0.0
+description: Test link conversion
+
+environments:
+  - name: staging
+
+steps:
+  - name: Check Documentation
+    type: manual
+    phase: flight
+    instruction: |
+      Review the following:
+      - [API Docs](https://api.example.com/docs)
+      - [Dashboard](https://dashboard.example.com)
+      - Contact [Support](mailto:support@example.com)

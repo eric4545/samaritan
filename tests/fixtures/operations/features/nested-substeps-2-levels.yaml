@@ -1,0 +1,35 @@
+name: Nested Sub-Steps (2 Levels)
+version: 1.0.0
+description: Test 2 levels of nested sub-steps
+
+environments:
+  - name: staging
+    variables:
+      ENV: staging
+
+steps:
+  - name: Deploy Services
+    type: manual
+    phase: flight
+    instruction: Deploy all microservices
+    sub_steps:
+      - name: Deploy Backend
+        type: automatic
+        command: kubectl apply -f backend.yaml
+        sub_steps:
+          - name: Wait for Backend Pods
+            type: automatic
+            command: kubectl wait --for=condition=ready pod -l app=backend
+          - name: Verify Backend Health
+            type: manual
+            instruction: Check backend /health endpoint returns 200
+      - name: Deploy Frontend
+        type: automatic
+        command: kubectl apply -f frontend.yaml
+        sub_steps:
+          - name: Wait for Frontend Pods
+            type: automatic
+            command: kubectl wait --for=condition=ready pod -l app=frontend
+          - name: Verify Frontend Health
+            type: manual
+            instruction: Check frontend is accessible

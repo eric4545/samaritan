@@ -1,0 +1,20 @@
+name: Matrix Foreach Test
+version: 1.0.0
+description: Test matrix expansion with multiple variables (cartesian product)
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      CLUSTER: prod-cluster
+
+steps:
+  - name: Deploy to ${REGION} for ${TIER}
+    type: automatic
+    phase: flight
+    description: Deploy service to specific region and tier
+    command: kubectl apply -f ${TIER}-service.yaml --context ${REGION}
+    foreach:
+      matrix:
+        REGION: [us-east-1, eu-west-1]
+        TIER: [web, api]

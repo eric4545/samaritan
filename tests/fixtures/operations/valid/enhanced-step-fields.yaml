@@ -1,0 +1,73 @@
+name: Enhanced Operation
+version: 2.1.0
+description: Testing all new fields
+author: test-engineer
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      REPLICAS: 2
+      TIMEOUT: 30
+    restrictions: [business-hours]
+    approval_required: false
+
+steps:
+  - name: Check cluster access
+    type: automatic
+    phase: preflight
+    command: kubectl cluster-info
+    description: Verify cluster connectivity
+    timeout: 30
+
+  - name: Automatic Deployment
+    type: automatic
+    description: Deploy automatically
+    command: kubectl apply -f deployment.yaml
+    timeout: 300
+    estimated_duration: 180
+    evidence:
+      required: true
+      types: [log, screenshot]
+    continue_on_error: false
+
+  - name: Manual Configuration
+    type: manual
+    description: Manual configuration step
+    instruction: "Navigate to admin panel and configure the following settings..."
+    estimated_duration: 600
+    evidence:
+      required: true
+      types: [screenshot]
+
+  - name: Manual with Command
+    type: manual
+    description: Manual step with command reference
+    command: curl -X POST http://admin/configure
+    instruction: "Execute the command and verify the response contains 'success'"
+
+  - name: Complex Step with Sub-steps
+    type: automatic
+    description: Complex deployment with verification
+    command: kubectl apply -f complex-deployment.yaml
+    verify:
+      command: kubectl get pods -l app=myapp | grep Running
+    sub_steps:
+      - name: Wait for pods
+        type: automatic
+        command: kubectl wait --for=condition=ready pod -l app=myapp
+        timeout: 120
+      - name: Manual health check
+        type: manual
+        instruction: "Check application dashboard shows green status"
+        evidence:
+          required: true
+          types: [screenshot]
+
+  - name: Approval Step
+    type: approval
+    description: Require manager approval
+    approval:
+      required: true
+      approvers: [manager@company.com]
+      timeout: "24h"

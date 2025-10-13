@@ -138,12 +138,37 @@ import { parseOperation } from '../operations/parser'
 ## 🧪 Testing Instructions
 
 ### Test Organization
-- **Fixtures**: Create operation YAML as TypeScript objects in `tests/fixtures/operations.ts`
-  - NOT as separate `.yaml` files (easier to maintain and type-safe)
-  - Export as `const operationFixtures = { ... }`
+- **YAML Fixtures**: Stored as separate `.yaml` files in `tests/fixtures/operations/`
+  - **Loading**: Use `parseFixture('fixtureName')` from `tests/fixtures/fixtures.ts`
+  - **Raw YAML**: Use `loadYaml('fixtureName')` to get YAML string content
+  - **File paths**: Use `getFixturePath('fixtureName')` for CLI tests
+  - **Type-safe**: Fixture names autocomplete via `FIXTURES` constant
+- **TypeScript Objects**: Use pre-parsed `Operation` objects from `tests/fixtures/operations.ts`
+  - For testing generators without parsing (e.g., `deploymentOperation`)
+  - Only 2 objects maintained (reduced from 1,141 lines)
 - **Snapshot tests**: `tests/manuals/*.test.ts` for manual generation
 - **Unit tests**: Test pure functions in isolation
 - **Integration tests**: Test full workflows (parse → validate → generate)
+
+### Using Fixtures in Tests
+```typescript
+// Parser tests - use parseFixture()
+import { parseFixture } from '../fixtures/fixtures'
+const operation = await parseFixture('minimal')
+
+// Generator tests - use TypeScript Operation objects
+import { deploymentOperation } from '../fixtures/operations'
+const manual = generateManual(deploymentOperation)
+
+// CLI tests - use getFixturePath()
+import { getFixturePath } from '../fixtures/fixtures'
+const inputPath = getFixturePath('deployment')
+execSync(`npx tsx src/cli/index.ts validate ${inputPath}`)
+
+// Tests needing YAML strings - use loadYaml()
+import { loadYaml } from '../fixtures/fixtures'
+const yamlContent = loadYaml('enhanced')
+```
 
 ### TDD Approach (NON-NEGOTIABLE)
 1. **RED**: Write failing test first
@@ -173,9 +198,16 @@ See `.github/workflows/ci.yml`:
 - **Naming**: `{purpose}-{type}.yaml` (e.g., `deployment-production.yaml`)
 
 ### Test Fixtures
-- **Location**: `tests/fixtures/operations.ts` (TypeScript, not YAML!)
-- **Format**: Export TypeScript objects with operation definitions
-- **Why TypeScript**: Type safety, easier to maintain, can share fragments
+- **Location**: `tests/fixtures/`
+  - **`fixtures.ts`**: Centralized fixture mapping and loader utilities
+  - **`operations.ts`**: TypeScript `Operation` objects for generator-only tests (2 objects)
+  - **`operations/`**: YAML fixture files organized by category
+    - `valid/`: Valid operation YAML files
+    - `invalid/`: Invalid YAML for error handling tests
+    - `features/`: Feature-specific fixtures (foreach, matrix, nesting, etc.)
+    - `confluence/`: Confluence generator-specific fixtures
+- **Why separate YAML files**: Realistic testing, better organization, eliminates temp file writes
+- **Fixture mapping**: Type-safe with autocomplete via `FIXTURES` constant in `fixtures.ts`
 
 ### JSON Schemas
 - **Location**: `src/schemas/*.json`
@@ -330,9 +362,10 @@ steps:
 2. Update JSON schema in `src/schemas/`
 3. Update parser in `src/operations/parser.ts`
 4. Update manual generator in `src/manuals/generator.ts`
-5. Add test fixture in `tests/fixtures/operations.ts`
-6. Add snapshot test in `tests/manuals/`
-7. Update README.md examples
+5. Add test YAML fixture in `tests/fixtures/operations/features/`
+6. Add fixture mapping entry in `tests/fixtures/fixtures.ts`
+7. Add snapshot test in `tests/manuals/`
+8. Update README.md examples
 
 ### Updating Manual Format
 1. Modify generator in `src/manuals/generator.ts` or `adf-generator.ts`
@@ -352,7 +385,7 @@ steps:
 
 ---
 
-**Last Updated**: 2025-10-10
+**Last Updated**: 2025-10-13
 **Maintainer**: @eric4545
 
 For questions or clarifications, check:

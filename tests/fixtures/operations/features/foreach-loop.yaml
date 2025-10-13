@@ -1,0 +1,19 @@
+name: Foreach Loop Test
+version: 1.0.0
+description: Test foreach loop expansion for repeatable steps
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      CLUSTER: prod-cluster
+
+steps:
+  - name: Deploy Service
+    type: automatic
+    phase: flight
+    description: Deploy microservice to cluster
+    command: kubectl apply -f ${SERVICE}.yaml -n production
+    foreach:
+      var: SERVICE
+      values: [backend, frontend, worker]

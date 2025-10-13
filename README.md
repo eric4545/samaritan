@@ -462,6 +462,133 @@ Use `section_heading: true` to break up long operations into logical sections. S
 
 See `examples/nested-deployment.yaml` for a complete multi-tier deployment example.
 
+#### Foreach Loops (Repeatable Steps)
+
+Eliminate repetitive step definitions with `foreach` loops. Perfect for progressive rollouts, multi-service deployments, or any pattern where you repeat the same operation with different parameters.
+
+##### Single Variable Foreach
+
+**Basic Example:**
+```yaml
+steps:
+  - name: Deploy Service
+    type: automatic
+    description: Deploy microservice to cluster
+    command: kubectl apply -f ${SERVICE}.yaml
+    foreach:
+      var: SERVICE
+      values: [backend, frontend, worker]
+```
+
+This expands to 3 separate steps at parse time:
+- Step 1: Deploy Service (backend) with `SERVICE=backend`
+- Step 2: Deploy Service (frontend) with `SERVICE=frontend`
+- Step 3: Deploy Service (worker) with `SERVICE=worker`
+
+**Progressive Rollout Example:**
+
+See `examples/progressive-rollout.yaml` for a complete example demonstrating progressive canary deployment:
+
+```yaml
+steps:
+  - name: Deploy to ${TRAFFIC_PERCENT}% of traffic
+    type: manual
+    instruction: |
+      **Canary Deployment: ${TRAFFIC_PERCENT}% Traffic**
+
+      1. Update traffic split:
+      ```bash
+      kubectl set traffic ${APP_NAME} \
+        --stable=v1 --canary=v2 \
+        --split ${TRAFFIC_PERCENT}:$((100-${TRAFFIC_PERCENT}))
+      ```
+
+      2. Monitor metrics for 15 minutes:
+         - Error rate should remain < 1%
+         - P99 latency should remain < 500ms
+
+      **Wait for metrics to stabilize before proceeding!**
+    foreach:
+      var: TRAFFIC_PERCENT
+      values: [10, 25, 50, 100]
+    evidence:
+      required: true
+      types: [screenshot, command_output]
+```
+
+This creates 4 deployment steps (10% → 25% → 50% → 100%).
+
+##### Matrix Expansion (Multiple Variables)
+
+For operations that need multiple variables, use matrix expansion to create a cartesian product of all combinations:
+
+**Basic Matrix Example:**
+```yaml
+steps:
+  - name: Deploy ${TIER} to ${REGION}
+    type: manual
+    instruction: |
+      Deploy ${TIER} service to ${REGION}:
+      ```bash
+      kubectl apply -f ${TIER}-service.yaml --context ${REGION}
+      ```
+    foreach:
+      matrix:
+        REGION: [us-east-1, us-west-2, eu-west-1]
+        TIER: [web, api, worker]
+    evidence:
+      required: true
+      types: [screenshot]
+```
+
+This creates **9 steps** (3 regions × 3 tiers):
+- Deploy web to us-east-1
+- Deploy api to us-east-1
+- Deploy worker to us-east-1
+- Deploy web to us-west-2
+- ... (and so on for all combinations)
+
+**Matrix with Include/Exclude Filters:**
+
+Add or remove specific combinations from the matrix:
+
+```yaml
+steps:
+  - name: Deploy ${SERVICE} to ${REGION}
+    type: manual
+    instruction: |
+      Deploy ${SERVICE} to ${REGION} region
+    foreach:
+      matrix:
+        REGION: [us-east-1, eu-west-1]
+        TIER: [web, api]
+      include:
+        # Add specific combination not in matrix
+        - REGION: ap-south-1
+          TIER: web
+      exclude:
+        # Remove specific combination from matrix
+        - REGION: eu-west-1
+          TIER: api
+```
+
+This expands to 4 steps:
+- us-east-1/web, us-east-1/api, eu-west-1/web (from matrix)
+- ap-south-1/web (from include)
+- eu-west-1/api is excluded
+
+**Real-World Multi-Region Example:**
+
+See `examples/multi-region-deployment.yaml` for a complete example deploying across 3 regions and 3 tiers (9 total deployments).
+
+**Key Features:**
+- **Automatic Expansion**: Parser expands loops at parse time into separate steps
+- **Variable Injection**: Loop variables are added to `step.variables` for each iteration
+- **Cartesian Product**: Matrix creates all possible combinations of variables
+- **Include/Exclude**: Fine-tune which combinations are deployed
+- **Full Integration**: Works with all step features (evidence, rollback, approval, etc.)
+- **Clean Manuals**: Generated manuals show expanded steps with values in parentheses
+
 
 ## 🔄 Execution Workflows
 

@@ -1,0 +1,19 @@
+name: Dependencies Test
+version: 1.0.0
+description: Test dependencies
+
+environments:
+  - name: staging
+
+steps:
+  - name: Step One
+    type: automatic
+    phase: flight
+    command: echo "one"
+
+  - name: Step Two
+    type: automatic
+    phase: flight
+    command: echo "two"
+    needs:
+      - Step One

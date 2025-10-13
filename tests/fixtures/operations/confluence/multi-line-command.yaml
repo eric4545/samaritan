@@ -1,0 +1,17 @@
+name: Multi-line Test
+version: 1.0.0
+description: Test multi-line commands
+
+environments:
+  - name: staging
+    variables:
+      ENV: staging
+
+steps:
+  - name: Multi-line Command
+    type: automatic
+    phase: flight
+    command: |
+      echo "line 1"
+      echo "line 2"
+      echo "line 3"

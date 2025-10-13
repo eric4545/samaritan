@@ -1,0 +1,83 @@
+name: Deploy Web Server
+version: 1.1.0
+description: Deploys the main web server application to staging and production environments.
+
+environments:
+  - name: staging
+    description: Staging environment for testing
+    variables:
+      REPLICAS: 2
+      DB_HOST: staging-db.example.com
+      PORT: 8080
+    targets:
+      - cluster-staging-us-east-1
+      - cluster-staging-eu-west-1
+    approval_required: false
+    validation_required: false
+
+  - name: production
+    description: Live production environment
+    variables:
+      REPLICAS: 5
+      DB_HOST: prod-db.example.com
+      PORT: 80
+    targets:
+      - cluster-prod-us-east-1
+      - cluster-prod-eu-west-1
+      - cluster-prod-asia-south-1
+    approval_required: true
+    validation_required: true
+
+preflight:
+  - name: Check Git status
+    description: Ensure no uncommitted changes exist in the current branch
+    command: git status --porcelain
+    expect_empty: true
+    type: command
+
+  - name: Check Docker daemon
+    description: Verify that the Docker daemon is running and accessible
+    command: docker info
+    type: command
+
+steps:
+  - name: Build Docker Image
+    type: automatic
+    phase: preflight
+    description: Build the application's Docker image
+    command: docker build -t web-server:latest .
+
+  - name: Push Docker Image
+    type: automatic
+    phase: flight
+    description: Push the image to the container registry
+    command: docker push my-registry/web-server:latest
+
+  - name: Deploy to Kubernetes
+    type: automatic
+    phase: flight
+    description: Deploy the application to Kubernetes
+    command: kubectl apply -f k8s/deployment.yaml
+    rollback:
+      command: kubectl rollout undo deployment/web-server
+
+  - name: Scale Deployment
+    type: automatic
+    phase: flight
+    description: Scale the Kubernetes deployment to the specified replica count
+    command: kubectl scale deployment web-server --replicas=${REPLICAS}
+
+  - name: Health Check
+    type: manual
+    phase: postflight
+    description: Manually verify deployment health
+    instruction: Check the application health endpoint at http://localhost:${PORT}/health
+    pic: john.doe
+    timeline: 2024-01-15 10:00
+    ticket: JIRA-123
+
+  - name: Verify Services
+    type: manual
+    phase: postflight
+    description: Verify all services are running correctly
+    command: curl https://web-server.example.com/health

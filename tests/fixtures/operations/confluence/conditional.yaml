@@ -1,0 +1,14 @@
+name: Conditional Test
+version: 1.0.0
+description: Test conditional steps
+
+environments:
+  - name: staging
+  - name: production
+
+steps:
+  - name: Production Only Step
+    type: conditional
+    phase: flight
+    command: echo "prod only"
+    if: "${ENVIRONMENT} == 'production'"

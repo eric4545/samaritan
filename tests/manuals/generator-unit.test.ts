@@ -6,11 +6,8 @@ import {
   generateManualWithMetadata,
 } from '../../src/manuals/generator';
 import type { Operation } from '../../src/models/operation';
-import {
-  deploymentOperation,
-  evidenceRequiredYaml,
-  operationWithSectionHeadingFirstYaml,
-} from '../fixtures/operations';
+import { deploymentOperation } from '../fixtures/operations';
+import { loadYaml } from '../fixtures/fixtures';
 
 describe('Manual Generator Unit Tests', () => {
   it('should generate proper table format for multi-environment operations', (t) => {
@@ -1678,7 +1675,7 @@ kubectl apply -f worker.yaml`,
 
   it('should not generate empty table when section_heading is first step', () => {
     const operation = yaml.load(
-      operationWithSectionHeadingFirstYaml,
+      loadYaml('sectionHeadingFirst'),
     ) as Operation;
     const markdown = generateManual(operation);
 
@@ -1724,7 +1721,7 @@ kubectl apply -f worker.yaml`,
   });
 
   it('should include code block for command_output evidence type', () => {
-    const operation = yaml.load(evidenceRequiredYaml) as Operation;
+    const operation = yaml.load(loadYaml('evidenceRequired')) as Operation;
     const markdown = generateManual(operation);
 
     // Should include code block for command_output evidence type (Deploy Application step)

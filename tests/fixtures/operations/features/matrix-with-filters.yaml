@@ -1,0 +1,26 @@
+name: Matrix with Filters Test
+version: 1.0.0
+description: Test matrix expansion with include/exclude filters
+
+environments:
+  - name: production
+
+steps:
+  - name: Deploy ${SERVICE}
+    type: manual
+    phase: flight
+    description: Deploy to ${REGION} in ${TIER} tier
+    instruction: |
+      Deploy service to:
+      - Region: ${REGION}
+      - Tier: ${TIER}
+    foreach:
+      matrix:
+        REGION: [us-east-1, eu-west-1]
+        TIER: [web, api]
+      include:
+        - REGION: ap-south-1
+          TIER: web
+      exclude:
+        - REGION: eu-west-1
+          TIER: api

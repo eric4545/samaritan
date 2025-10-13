@@ -1,0 +1,16 @@
+name: Markdown Test
+version: 1.0.0
+description: Test markdown instructions
+
+environments:
+  - name: staging
+
+steps:
+  - name: Manual Step
+    type: manual
+    phase: flight
+    instruction: |
+      # Instructions
+      1. First thing
+      2. Second thing
+      **Important note**
