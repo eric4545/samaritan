@@ -109,8 +109,16 @@ export interface RollbackPlan {
 }
 
 export interface StepForeach {
-  var: string; // Variable name to use in iteration
-  values: any[]; // Array of values to iterate over
+  // Option 1: Single variable iteration (original syntax)
+  var?: string; // Variable name to use in iteration
+  values?: any[]; // Array of values to iterate over
+
+  // Option 2: Matrix expansion (multiple variables, cartesian product)
+  matrix?: {
+    [key: string]: any[]; // Multiple variables with their value arrays
+  };
+  include?: Array<Record<string, any>>; // Add specific variable combinations
+  exclude?: Array<Record<string, any>>; // Remove specific variable combinations
 }
 
 export interface Step {

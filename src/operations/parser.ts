@@ -255,6 +255,88 @@ function processImports(
 }
 
 /**
+ * Generate cartesian product of matrix variables
+ * Example: { region: ['us', 'eu'], tier: ['web', 'api'] }
+ * Returns: [
+ *   { region: 'us', tier: 'web' },
+ *   { region: 'us', tier: 'api' },
+ *   { region: 'eu', tier: 'web' },
+ *   { region: 'eu', tier: 'api' }
+ * ]
+ */
+function generateMatrixCombinations(
+  matrix: Record<string, any[]>,
+): Array<Record<string, any>> {
+  const keys = Object.keys(matrix);
+  if (keys.length === 0) return [];
+
+  // Start with the first variable
+  let combinations: Array<Record<string, any>> = matrix[keys[0]].map(
+    (value) => ({ [keys[0]]: value }),
+  );
+
+  // Add each subsequent variable
+  for (let i = 1; i < keys.length; i++) {
+    const key = keys[i];
+    const values = matrix[key];
+    const newCombinations: Array<Record<string, any>> = [];
+
+    for (const combination of combinations) {
+      for (const value of values) {
+        newCombinations.push({ ...combination, [key]: value });
+      }
+    }
+
+    combinations = newCombinations;
+  }
+
+  return combinations;
+}
+
+/**
+ * Apply include/exclude filters to matrix combinations
+ */
+function filterMatrixCombinations(
+  combinations: Array<Record<string, any>>,
+  include?: Array<Record<string, any>>,
+  exclude?: Array<Record<string, any>>,
+): Array<Record<string, any>> {
+  let filtered = [...combinations];
+
+  // Add specific combinations from include
+  if (include && include.length > 0) {
+    for (const inc of include) {
+      // Only add if not already present
+      const exists = filtered.some((combo) => {
+        return Object.keys(inc).every((key) => combo[key] === inc[key]);
+      });
+      if (!exists) {
+        filtered.push(inc);
+      }
+    }
+  }
+
+  // Remove combinations from exclude
+  if (exclude && exclude.length > 0) {
+    filtered = filtered.filter((combo) => {
+      return !exclude.some((exc) => {
+        return Object.keys(exc).every((key) => combo[key] === exc[key]);
+      });
+    });
+  }
+
+  return filtered;
+}
+
+/**
+ * Format variable combination for step name
+ * Example: { region: 'us-east-1', tier: 'web' } => "us-east-1, web"
+ */
+function formatVariableCombination(vars: Record<string, any>): string {
+  return Object.values(vars).join(', ');
+}
+
+/**
  * Resolve step references (use: step-name) to actual step definitions
  */
 function resolveStepReferences(
@@ -317,22 +399,54 @@ function resolveStepReferences(
           step.phase = 'flight';
         }
 
-        // Expand foreach loops
+        // Expand foreach loops (supports both single var and matrix)
         if (step.foreach) {
-          const foreachVar = step.foreach.var;
-          const foreachValues = step.foreach.values;
+          let combinations: Array<Record<string, any>> = [];
 
-          for (let j = 0; j < foreachValues.length; j++) {
-            const value = foreachValues[j];
+          // Check which syntax is used
+          if (step.foreach.matrix) {
+            // Matrix expansion: cartesian product of multiple variables
+            combinations = generateMatrixCombinations(step.foreach.matrix);
 
-            // Clone step for this iteration
+            // Apply include/exclude filters if present
+            combinations = filterMatrixCombinations(
+              combinations,
+              step.foreach.include,
+              step.foreach.exclude,
+            );
+          } else if (step.foreach.var && step.foreach.values) {
+            // Single variable syntax (backward compatible)
+            const foreachVar = step.foreach.var;
+            const foreachValues = step.foreach.values;
+            combinations = foreachValues.map((value) => ({
+              [foreachVar]: value,
+            }));
+          } else {
+            throw new OperationParseError(
+              `Invalid foreach syntax in step "${step.name}"`,
+              [
+                {
+                  field: `steps[${i}].foreach`,
+                  message:
+                    'foreach must have either (var + values) or (matrix)',
+                },
+              ],
+            );
+          }
+
+          // Create an expanded step for each combination
+          for (let j = 0; j < combinations.length; j++) {
+            const combo = combinations[j];
+            const varSuffix = formatVariableCombination(combo);
+
+            // Clone step for this combination
             const expandedStep: Step = {
               ...step,
               id: step.id ? `${step.id}-${j}` : undefined,
-              name: `${step.name} (${value})`,
+              name: `${step.name} (${varSuffix})`,
               variables: {
                 ...(step.variables || {}),
-                [foreachVar]: value,
+                ...combo, // Inject all matrix variables
               },
               foreach: undefined, // Remove foreach from expanded step
             };

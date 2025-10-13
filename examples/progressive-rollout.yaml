@@ -1,0 +1,112 @@
+name: Progressive Canary Deployment
+version: 1.0.0
+description: |
+  Progressive rollout demonstrating foreach loop feature.
+  Deploys to increasing percentages of traffic: 10% → 25% → 50% → 100%
+
+author: DevOps Team
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment for canary testing
+    variables:
+      CLUSTER: staging-us-east-1
+      NAMESPACE: staging
+      APP_NAME: myapp
+      REPLICAS: 3
+    approval_required: false
+    validation_required: true
+
+  - name: production
+    description: Production environment with progressive rollout
+    variables:
+      CLUSTER: prod-us-east-1
+      NAMESPACE: prod
+      APP_NAME: myapp
+      REPLICAS: 10
+    approval_required: true
+    validation_required: true
+
+steps:
+  # Preflight Checks
+  - name: Verify Cluster Health
+    type: automatic
+    phase: preflight
+    command: kubectl cluster-info --context ${CLUSTER}
+    description: Check cluster is healthy before deployment
+
+  - name: Check Current Deployment
+    type: automatic
+    phase: preflight
+    command: kubectl get deployment ${APP_NAME} -n ${NAMESPACE}
+    description: Verify current deployment status
+
+  # Progressive Rollout with foreach loop
+  - name: Deploy to ${TRAFFIC_PERCENT}% of traffic
+    type: manual
+    phase: flight
+    description: |
+      Progressive canary deployment to ${TRAFFIC_PERCENT}% of user traffic.
+      Monitor metrics before proceeding to next percentage.
+    instruction: |
+      **Canary Deployment: ${TRAFFIC_PERCENT}% Traffic**
+
+      1. Update traffic split:
+      ```bash
+      kubectl set traffic ${APP_NAME} \
+        --stable=v1 --canary=v2 \
+        --split ${TRAFFIC_PERCENT}:$((100-${TRAFFIC_PERCENT})) \
+        -n ${NAMESPACE}
+      ```
+
+      2. Verify traffic distribution:
+      ```bash
+      kubectl get vs ${APP_NAME}-traffic -n ${NAMESPACE} -o yaml
+      ```
+
+      3. Monitor metrics for **15 minutes**:
+         - Error rate should remain < 1%
+         - P99 latency should remain < 500ms
+         - No increase in 5xx errors
+
+      4. Check canary metrics:
+      ```bash
+      kubectl logs -l version=v2 -n ${NAMESPACE} --tail=100
+      ```
+
+      **Wait for metrics to stabilize before proceeding!**
+    foreach:
+      var: TRAFFIC_PERCENT
+      values: [10, 25, 50, 100]
+    pic: SRE Team
+    timeline: 20 minutes per step
+    evidence:
+      required: true
+      types: [screenshot, command_output]
+    rollback:
+      instruction: |
+        Immediately rollback to stable version:
+        kubectl set traffic ${APP_NAME} --stable=v1 --canary=v2 --split 0:100 -n ${NAMESPACE}
+
+  # Post-deployment Verification
+  - name: Verify Final Deployment
+    type: automatic
+    phase: postflight
+    command: |
+      kubectl get deployment ${APP_NAME} -n ${NAMESPACE} &&
+      kubectl get pods -l app=${APP_NAME} -n ${NAMESPACE}
+    description: Confirm all pods are running with new version
+
+  - name: Run Smoke Tests
+    type: manual
+    phase: postflight
+    instruction: |
+      Execute smoke test suite:
+      1. Health check: `curl https://${APP_NAME}.${NAMESPACE}.svc/health`
+      2. API tests: Run integration test suite
+      3. Load test: Verify system handles expected load
+    pic: QA Team
+    evidence:
+      required: true
+      types: [screenshot, command_output]

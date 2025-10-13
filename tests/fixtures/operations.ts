@@ -1054,3 +1054,88 @@ steps:
             type: automatic
             command: kubectl apply -f staging/
 `;
+
+/**
+ * Foreach loop test YAML
+ * Tests step expansion with loop variables
+ */
+export const foreachLoopYaml = `name: Foreach Loop Test
+version: 1.0.0
+description: Test foreach loop expansion for repeatable steps
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      CLUSTER: prod-cluster
+
+steps:
+  - name: Deploy Service
+    type: automatic
+    phase: flight
+    description: Deploy microservice to cluster
+    command: kubectl apply -f \${SERVICE}.yaml -n production
+    foreach:
+      var: SERVICE
+      values: [backend, frontend, worker]
+`;
+
+/**
+ * Matrix foreach test YAML (multiple variables with cartesian product)
+ * Tests matrix expansion with 2 variables: 2 regions × 2 tiers = 4 steps
+ */
+export const matrixForeachYaml = `name: Matrix Foreach Test
+version: 1.0.0
+description: Test matrix expansion with multiple variables (cartesian product)
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      CLUSTER: prod-cluster
+
+steps:
+  - name: Deploy to \${REGION} for \${TIER}
+    type: automatic
+    phase: flight
+    description: Deploy service to specific region and tier
+    command: kubectl apply -f \${TIER}-service.yaml --context \${REGION}
+    foreach:
+      matrix:
+        REGION: [us-east-1, eu-west-1]
+        TIER: [web, api]
+`;
+
+/**
+ * Matrix foreach with include/exclude filters
+ * Tests: 2 regions × 2 tiers = 4 base combinations
+ *   + 1 include (ap-south-1, web) = 5 total
+ *   - 1 exclude (eu-west-1, api) = 4 final combinations
+ */
+export const matrixWithFiltersYaml = `name: Matrix with Filters Test
+version: 1.0.0
+description: Test matrix expansion with include/exclude filters
+
+environments:
+  - name: production
+
+steps:
+  - name: Deploy \${SERVICE}
+    type: manual
+    phase: flight
+    description: Deploy to \${REGION} in \${TIER} tier
+    instruction: |
+      Deploy service to:
+      - Region: \${REGION}
+      - Tier: \${TIER}
+    foreach:
+      matrix:
+        REGION: [us-east-1, eu-west-1]
+        TIER: [web, api]
+      include:
+        - REGION: ap-south-1
+          TIER: web
+      exclude:
+        - REGION: eu-west-1
+          TIER: api
+`;

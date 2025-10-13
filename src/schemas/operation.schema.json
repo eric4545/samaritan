@@ -355,20 +355,57 @@
                 "description": "Bug/issue ticket references"
               },
               "foreach": {
-                "type": "object",
-                "required": ["var", "values"],
-                "properties": {
-                  "var": {
-                    "type": "string",
-                    "minLength": 1,
-                    "description": "Variable name to use in iteration"
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": ["var", "values"],
+                    "properties": {
+                      "var": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Variable name to use in iteration"
+                      },
+                      "values": {
+                        "type": "array",
+                        "minItems": 1,
+                        "description": "Array of values to iterate over"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "Single variable foreach loop"
                   },
-                  "values": {
-                    "type": "array",
-                    "minItems": 1,
-                    "description": "Array of values to iterate over"
+                  {
+                    "type": "object",
+                    "required": ["matrix"],
+                    "properties": {
+                      "matrix": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": {
+                          "type": "array",
+                          "minItems": 1
+                        },
+                        "description": "Matrix of variables for cartesian product expansion"
+                      },
+                      "include": {
+                        "type": "array",
+                        "items": {
+                          "type": "object"
+                        },
+                        "description": "Additional specific variable combinations to include"
+                      },
+                      "exclude": {
+                        "type": "array",
+                        "items": {
+                          "type": "object"
+                        },
+                        "description": "Specific variable combinations to exclude"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "Matrix expansion with multiple variables (cartesian product)"
                   }
-                },
+                ],
                 "description": "Loop/matrix support for repeatable steps"
               },
               "section_heading": {

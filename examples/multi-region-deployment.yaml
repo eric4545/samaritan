@@ -1,0 +1,106 @@
+name: Multi-Region Service Deployment
+version: 1.0.0
+description: |
+  Deploy microservices across multiple regions and tiers using matrix expansion.
+  Demonstrates foreach with matrix for deploying to 3 regions × 3 tiers = 9 deployments.
+
+author: DevOps Team
+category: deployment
+
+environments:
+  - name: production
+    description: Production multi-region deployment
+    variables:
+      IMAGE_TAG: v2.1.0
+      HEALTH_CHECK_TIMEOUT: 300
+    approval_required: true
+    validation_required: true
+
+steps:
+  # Preflight checks
+  - name: Verify Cluster Access
+    type: automatic
+    phase: preflight
+    description: Verify kubectl access to all clusters
+    command: |
+      kubectl cluster-info --context us-east-1
+      kubectl cluster-info --context us-west-2
+      kubectl cluster-info --context eu-west-1
+
+  - name: Check Docker Image
+    type: automatic
+    phase: preflight
+    description: Verify Docker image exists in registry
+    command: docker manifest inspect myregistry/myapp:${IMAGE_TAG}
+
+  # Matrix deployment: 3 regions × 3 tiers = 9 deployments
+  - name: Deploy ${TIER} to ${REGION}
+    type: manual
+    phase: flight
+    description: |
+      Deploy ${TIER} tier service to ${REGION} region.
+      Monitor metrics before proceeding to next deployment.
+    instruction: |
+      **Deploy ${TIER} Service to ${REGION}**
+
+      1. Switch to cluster context:
+      ```bash
+      kubectl config use-context ${REGION}
+      ```
+
+      2. Deploy service:
+      ```bash
+      kubectl apply -f manifests/${TIER}-service.yaml
+      kubectl set image deployment/${TIER} ${TIER}=myregistry/myapp:${IMAGE_TAG}
+      ```
+
+      3. Wait for rollout:
+      ```bash
+      kubectl rollout status deployment/${TIER} --timeout=${HEALTH_CHECK_TIMEOUT}s
+      ```
+
+      4. Verify pods are running:
+      ```bash
+      kubectl get pods -l tier=${TIER} -n default
+      ```
+
+      5. Run health check:
+      ```bash
+      kubectl exec -it deployment/${TIER} -- curl localhost:8080/health
+      ```
+
+      **Monitor for 5 minutes before proceeding!**
+    foreach:
+      matrix:
+        REGION: [us-east-1, us-west-2, eu-west-1]
+        TIER: [web, api, worker]
+    pic: DevOps Team
+    timeline: 15 minutes per deployment
+    evidence:
+      required: true
+      types: [screenshot, command_output]
+    rollback:
+      instruction: |
+        Rollback ${TIER} in ${REGION}:
+        kubectl rollout undo deployment/${TIER} --context ${REGION}
+
+  # Post-deployment verification
+  - name: Run Integration Tests
+    type: automatic
+    phase: postflight
+    description: Run full integration test suite across all regions
+    command: npm run test:integration:all-regions
+
+  - name: Verify Global Load Balancer
+    type: manual
+    phase: postflight
+    description: Verify global load balancer is routing traffic correctly
+    instruction: |
+      Check traffic distribution across regions:
+      1. Monitor CloudFront/Global LB metrics
+      2. Verify all regions receiving traffic
+      3. Check latency is within acceptable range (< 200ms p99)
+    pic: SRE Team
+    evidence:
+      required: true
+      types: [screenshot]
