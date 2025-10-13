@@ -1,8 +1,8 @@
 import assert from 'node:assert';
 import { test } from 'node:test';
+import { generateConfluenceContent } from '../../src/cli/commands/generate';
 import { generateADFString } from '../../src/manuals/adf-generator';
 import { generateManual } from '../../src/manuals/generator';
-import { generateConfluenceContent } from '../../src/cli/commands/generate';
 import { parseFixture } from '../fixtures/fixtures';
 
 /**
@@ -17,9 +17,18 @@ test('Markdown generator should handle 2 levels of nested sub-steps', async () =
   assert.ok(markdown.includes('Step 1:'), 'Should have top-level step');
   assert.ok(markdown.includes('Step 1a:'), 'Should have first sub-step');
   assert.ok(markdown.includes('Step 1b:'), 'Should have second sub-step');
-  assert.ok(markdown.includes('Step 1a1:'), 'Should have nested sub-step (numbers)');
-  assert.ok(markdown.includes('Step 1a2:'), 'Should have second nested sub-step');
-  assert.ok(markdown.includes('Step 1b1:'), 'Should have nested sub-step under 1b');
+  assert.ok(
+    markdown.includes('Step 1a1:'),
+    'Should have nested sub-step (numbers)',
+  );
+  assert.ok(
+    markdown.includes('Step 1a2:'),
+    'Should have second nested sub-step',
+  );
+  assert.ok(
+    markdown.includes('Step 1b1:'),
+    'Should have nested sub-step under 1b',
+  );
 
   // Verify content
   assert.ok(markdown.includes('Deploy Backend'));
@@ -33,14 +42,32 @@ test('Markdown generator should handle 3 levels of nested sub-steps', async () =
 
   // Should contain all step numbering levels
   assert.ok(markdown.includes('Step 1:'), 'Should have top-level step');
-  assert.ok(markdown.includes('Step 1a:'), 'Should have level 1 sub-step (letters)');
-  assert.ok(markdown.includes('Step 1a1:'), 'Should have level 2 sub-step (numbers)');
-  assert.ok(markdown.includes('Step 1a1a:'), 'Should have level 3 sub-step (letters again)');
-  assert.ok(markdown.includes('Step 1a1b:'), 'Should have second level 3 sub-step');
+  assert.ok(
+    markdown.includes('Step 1a:'),
+    'Should have level 1 sub-step (letters)',
+  );
+  assert.ok(
+    markdown.includes('Step 1a1:'),
+    'Should have level 2 sub-step (numbers)',
+  );
+  assert.ok(
+    markdown.includes('Step 1a1a:'),
+    'Should have level 3 sub-step (letters again)',
+  );
+  assert.ok(
+    markdown.includes('Step 1a1b:'),
+    'Should have second level 3 sub-step',
+  );
 
   // Verify section headings work at different levels
-  assert.ok(markdown.includes('### Database Tier'), 'Should have section heading for Database Tier');
-  assert.ok(markdown.includes('### Application Tier'), 'Should have section heading for Application Tier');
+  assert.ok(
+    markdown.includes('### Database Tier'),
+    'Should have section heading for Database Tier',
+  );
+  assert.ok(
+    markdown.includes('### Application Tier'),
+    'Should have section heading for Application Tier',
+  );
 
   // Verify PIC information
   assert.ok(markdown.includes('DBA Team'));
@@ -68,9 +95,18 @@ test('Markdown generator should handle section headings at multiple nesting leve
   const markdown = generateManual(operation);
 
   // Verify section headings at different depths
-  assert.ok(markdown.includes('### Build Phase'), 'Should have h3 for first level section');
-  assert.ok(markdown.includes('#### Backend Unit Tests'), 'Should have h4 for nested section');
-  assert.ok(markdown.includes('### Deploy Phase'), 'Should have another h3 section');
+  assert.ok(
+    markdown.includes('### Build Phase'),
+    'Should have h3 for first level section',
+  );
+  assert.ok(
+    markdown.includes('#### Backend Unit Tests'),
+    'Should have h4 for nested section',
+  );
+  assert.ok(
+    markdown.includes('### Deploy Phase'),
+    'Should have another h3 section',
+  );
 
   // Verify step numbering continues correctly
   assert.ok(markdown.includes('Step 1:'));
@@ -130,11 +166,18 @@ test('Confluence Wiki Markup should handle 2 levels of nested sub-steps', async 
   assert.ok(confluence.includes('Step 1a:'), 'Should have first sub-step');
   assert.ok(confluence.includes('Step 1b:'), 'Should have second sub-step');
   assert.ok(confluence.includes('Step 1a1:'), 'Should have nested sub-step');
-  assert.ok(confluence.includes('Step 1a2:'), 'Should have second nested sub-step');
+  assert.ok(
+    confluence.includes('Step 1a2:'),
+    'Should have second nested sub-step',
+  );
 
   // Verify Confluence markup format
   assert.ok(confluence.includes('|| Step ||'), 'Should have table header');
-  assert.ok(confluence.includes('| (*) Step 1a:') || confluence.includes('| (i) Step 1a:'), 'Should have step with icon');
+  assert.ok(
+    confluence.includes('| (*) Step 1a:') ||
+      confluence.includes('| (i) Step 1a:'),
+    'Should have step with icon',
+  );
 });
 
 test('Confluence Wiki Markup should handle 3 levels of nested sub-steps', async () => {
@@ -148,8 +191,14 @@ test('Confluence Wiki Markup should handle 3 levels of nested sub-steps', async 
   assert.ok(confluence.includes('Step 1a1a:'));
 
   // Verify section headings in Confluence format
-  assert.ok(confluence.includes('h4. Database Tier'), 'Should have h4 section heading');
-  assert.ok(confluence.includes('h4. Application Tier'), 'Should have h4 section heading');
+  assert.ok(
+    confluence.includes('h4. Database Tier'),
+    'Should have h4 section heading',
+  );
+  assert.ok(
+    confluence.includes('h4. Application Tier'),
+    'Should have h4 section heading',
+  );
 
   // Verify PIC information
   assert.ok(confluence.includes('(i) PIC: DBA Team'));
@@ -165,7 +214,10 @@ test('Confluence Wiki Markup should handle 4 levels of nested sub-steps', async 
   assert.ok(confluence.includes('Step 1a:'));
   assert.ok(confluence.includes('Step 1a1:'));
   assert.ok(confluence.includes('Step 1a1a:'));
-  assert.ok(confluence.includes('Step 1a1a1:'), 'Should have 4th level numbering');
+  assert.ok(
+    confluence.includes('Step 1a1a1:'),
+    'Should have 4th level numbering',
+  );
 
   // Verify deep content
   assert.ok(confluence.includes('Configure Health Checks'));
@@ -177,9 +229,18 @@ test('Confluence Wiki Markup should handle section headings at multiple nesting 
   const confluence = generateConfluenceContent(operation);
 
   // Verify section headings with appropriate h-levels
-  assert.ok(confluence.includes('h4. Build Phase'), 'Should have h4 for first level section');
-  assert.ok(confluence.includes('h5. Backend Unit Tests'), 'Should have h5 for nested section');
-  assert.ok(confluence.includes('h4. Deploy Phase'), 'Should have another h4 section');
+  assert.ok(
+    confluence.includes('h4. Build Phase'),
+    'Should have h4 for first level section',
+  );
+  assert.ok(
+    confluence.includes('h5. Backend Unit Tests'),
+    'Should have h5 for nested section',
+  );
+  assert.ok(
+    confluence.includes('h4. Deploy Phase'),
+    'Should have another h4 section',
+  );
 
   // Verify PIC in sections
   assert.ok(confluence.includes('(i) PIC: Build Team'));
@@ -198,6 +259,9 @@ test('All generators should produce consistent numbering for nested sub-steps', 
   for (const stepNum of stepNumbers) {
     assert.ok(markdown.includes(stepNum), `Markdown should have ${stepNum}`);
     assert.ok(adfString.includes(stepNum), `ADF should have ${stepNum}`);
-    assert.ok(confluence.includes(stepNum), `Confluence should have ${stepNum}`);
+    assert.ok(
+      confluence.includes(stepNum),
+      `Confluence should have ${stepNum}`,
+    );
   }
 });

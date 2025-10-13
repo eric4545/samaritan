@@ -11,75 +11,75 @@ describe('Enhanced Operation Parser', () => {
   it('should parse operation with new Step fields including instructions', async () => {
     const operation = await parseFixture('enhancedStepFields');
 
-      // Test basic fields
-      assert.strictEqual(operation.name, 'Enhanced Operation');
-      assert.strictEqual(operation.version, '2.1.0');
-      assert.strictEqual(operation.author, 'test-engineer');
+    // Test basic fields
+    assert.strictEqual(operation.name, 'Enhanced Operation');
+    assert.strictEqual(operation.version, '2.1.0');
+    assert.strictEqual(operation.author, 'test-engineer');
 
-      // Test steps with new fields - now includes migrated preflight step
-      assert.strictEqual(operation.steps.length, 6);
+    // Test steps with new fields - now includes migrated preflight step
+    assert.strictEqual(operation.steps.length, 6);
 
-      // Test automatic step with new fields (index 1 after preflight migration)
-      const automaticStep = operation.steps[1];
-      assert.strictEqual(automaticStep.type, 'automatic');
-      assert.strictEqual(automaticStep.estimated_duration, 180);
-      assert.strictEqual(automaticStep.evidence?.required, true);
-      assert.ok(automaticStep.evidence?.types?.includes('log'));
-      assert.ok(automaticStep.evidence?.types?.includes('screenshot'));
-      assert.strictEqual(automaticStep.continue_on_error, false);
+    // Test automatic step with new fields (index 1 after preflight migration)
+    const automaticStep = operation.steps[1];
+    assert.strictEqual(automaticStep.type, 'automatic');
+    assert.strictEqual(automaticStep.estimated_duration, 180);
+    assert.strictEqual(automaticStep.evidence?.required, true);
+    assert.ok(automaticStep.evidence?.types?.includes('log'));
+    assert.ok(automaticStep.evidence?.types?.includes('screenshot'));
+    assert.strictEqual(automaticStep.continue_on_error, false);
 
-      // Test manual step with instruction
-      const manualStep = operation.steps[2];
-      assert.strictEqual(manualStep.type, 'manual');
-      assert.strictEqual(
-        manualStep.instruction,
-        'Navigate to admin panel and configure the following settings...',
-      );
-      assert.strictEqual(manualStep.estimated_duration, 600);
-      assert.strictEqual(manualStep.evidence?.required, true);
+    // Test manual step with instruction
+    const manualStep = operation.steps[2];
+    assert.strictEqual(manualStep.type, 'manual');
+    assert.strictEqual(
+      manualStep.instruction,
+      'Navigate to admin panel and configure the following settings...',
+    );
+    assert.strictEqual(manualStep.estimated_duration, 600);
+    assert.strictEqual(manualStep.evidence?.required, true);
 
-      // Test manual step with both command and instruction
-      const manualWithCommand = operation.steps[3];
-      assert.strictEqual(manualWithCommand.type, 'manual');
-      assert.strictEqual(
-        manualWithCommand.command,
-        'curl -X POST http://admin/configure',
-      );
-      assert.strictEqual(
-        manualWithCommand.instruction,
-        "Execute the command and verify the response contains 'success'",
-      );
+    // Test manual step with both command and instruction
+    const manualWithCommand = operation.steps[3];
+    assert.strictEqual(manualWithCommand.type, 'manual');
+    assert.strictEqual(
+      manualWithCommand.command,
+      'curl -X POST http://admin/configure',
+    );
+    assert.strictEqual(
+      manualWithCommand.instruction,
+      "Execute the command and verify the response contains 'success'",
+    );
 
-      // Test step with verify and sub_steps
-      const complexStep = operation.steps[4];
-      assert.strictEqual(complexStep.type, 'automatic');
-      assert.ok(complexStep.verify);
-      assert.strictEqual(
-        complexStep.verify.command,
-        'kubectl get pods -l app=myapp | grep Running',
-      );
-      assert.ok(complexStep.sub_steps);
-      assert.strictEqual(complexStep.sub_steps.length, 2);
+    // Test step with verify and sub_steps
+    const complexStep = operation.steps[4];
+    assert.strictEqual(complexStep.type, 'automatic');
+    assert.ok(complexStep.verify);
+    assert.strictEqual(
+      complexStep.verify.command,
+      'kubectl get pods -l app=myapp | grep Running',
+    );
+    assert.ok(complexStep.sub_steps);
+    assert.strictEqual(complexStep.sub_steps.length, 2);
 
-      // Test sub-steps
-      const subStep1 = complexStep.sub_steps[0];
-      assert.strictEqual(subStep1.name, 'Wait for pods');
-      assert.strictEqual(subStep1.type, 'automatic');
-      assert.strictEqual(subStep1.timeout, 120);
+    // Test sub-steps
+    const subStep1 = complexStep.sub_steps[0];
+    assert.strictEqual(subStep1.name, 'Wait for pods');
+    assert.strictEqual(subStep1.type, 'automatic');
+    assert.strictEqual(subStep1.timeout, 120);
 
-      const subStep2 = complexStep.sub_steps[1];
-      assert.strictEqual(subStep2.type, 'manual');
-      assert.strictEqual(
-        subStep2.instruction,
-        'Check application dashboard shows green status',
-      );
-      assert.strictEqual(subStep2.evidence?.required, true);
+    const subStep2 = complexStep.sub_steps[1];
+    assert.strictEqual(subStep2.type, 'manual');
+    assert.strictEqual(
+      subStep2.instruction,
+      'Check application dashboard shows green status',
+    );
+    assert.strictEqual(subStep2.evidence?.required, true);
 
-      // Test approval step
-      const approvalStep = operation.steps[5];
-      assert.strictEqual(approvalStep.type, 'approval');
-      assert.ok(approvalStep.approval);
-      assert.strictEqual(approvalStep.approval.required, true);
+    // Test approval step
+    const approvalStep = operation.steps[5];
+    assert.strictEqual(approvalStep.type, 'approval');
+    assert.ok(approvalStep.approval);
+    assert.strictEqual(approvalStep.approval.required, true);
   });
 
   it('should validate step types and evidence types', async () => {

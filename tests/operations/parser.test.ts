@@ -139,20 +139,37 @@ describe('Enhanced Operation Parser', () => {
     const operation = await parseFixture('foreachLoop');
 
     // Verify foreach was expanded to 3 separate steps
-    assert.strictEqual(operation.steps.length, 3, 'Should have 3 expanded steps');
+    assert.strictEqual(
+      operation.steps.length,
+      3,
+      'Should have 3 expanded steps',
+    );
 
     // Verify each expanded step
     assert.strictEqual(operation.steps[0].name, 'Deploy Service (backend)');
-    assert.strictEqual(operation.steps[0].command, 'kubectl apply -f ${SERVICE}.yaml -n production');
+    assert.strictEqual(
+      operation.steps[0].command,
+      'kubectl apply -f ${SERVICE}.yaml -n production',
+    );
     assert.strictEqual(operation.steps[0].variables?.SERVICE, 'backend');
-    assert.strictEqual(operation.steps[0].foreach, undefined, 'foreach should be removed after expansion');
+    assert.strictEqual(
+      operation.steps[0].foreach,
+      undefined,
+      'foreach should be removed after expansion',
+    );
 
     assert.strictEqual(operation.steps[1].name, 'Deploy Service (frontend)');
-    assert.strictEqual(operation.steps[1].command, 'kubectl apply -f ${SERVICE}.yaml -n production');
+    assert.strictEqual(
+      operation.steps[1].command,
+      'kubectl apply -f ${SERVICE}.yaml -n production',
+    );
     assert.strictEqual(operation.steps[1].variables?.SERVICE, 'frontend');
 
     assert.strictEqual(operation.steps[2].name, 'Deploy Service (worker)');
-    assert.strictEqual(operation.steps[2].command, 'kubectl apply -f ${SERVICE}.yaml -n production');
+    assert.strictEqual(
+      operation.steps[2].command,
+      'kubectl apply -f ${SERVICE}.yaml -n production',
+    );
     assert.strictEqual(operation.steps[2].variables?.SERVICE, 'worker');
 
     // Verify all steps have the same type
@@ -166,23 +183,53 @@ describe('Enhanced Operation Parser', () => {
     const operation = await parseOperation('examples/progressive-rollout.yaml');
 
     // Should have preflight steps (2) + expanded foreach steps (4) + postflight steps (2) = 8 total
-    const preflightSteps = operation.steps.filter(step => step.phase === 'preflight');
-    const flightSteps = operation.steps.filter(step => step.phase === 'flight');
-    const postflightSteps = operation.steps.filter(step => step.phase === 'postflight');
+    const preflightSteps = operation.steps.filter(
+      (step) => step.phase === 'preflight',
+    );
+    const flightSteps = operation.steps.filter(
+      (step) => step.phase === 'flight',
+    );
+    const postflightSteps = operation.steps.filter(
+      (step) => step.phase === 'postflight',
+    );
 
-    assert.strictEqual(preflightSteps.length, 2, 'Should have 2 preflight steps');
-    assert.strictEqual(flightSteps.length, 4, 'Should have 4 flight steps (foreach expanded)');
-    assert.strictEqual(postflightSteps.length, 2, 'Should have 2 postflight steps');
+    assert.strictEqual(
+      preflightSteps.length,
+      2,
+      'Should have 2 preflight steps',
+    );
+    assert.strictEqual(
+      flightSteps.length,
+      4,
+      'Should have 4 flight steps (foreach expanded)',
+    );
+    assert.strictEqual(
+      postflightSteps.length,
+      2,
+      'Should have 2 postflight steps',
+    );
 
     // Verify foreach expansion in flight phase
-    assert.ok(flightSteps[0].name.includes('10%') || flightSteps[0].name.includes('(10)'),
-              'First step should reference 10%');
-    assert.ok(flightSteps[1].name.includes('25%') || flightSteps[1].name.includes('(25)'),
-              'Second step should reference 25%');
-    assert.ok(flightSteps[2].name.includes('50%') || flightSteps[2].name.includes('(50)'),
-              'Third step should reference 50%');
-    assert.ok(flightSteps[3].name.includes('100%') || flightSteps[3].name.includes('(100)'),
-              'Fourth step should reference 100%');
+    assert.ok(
+      flightSteps[0].name.includes('10%') ||
+        flightSteps[0].name.includes('(10)'),
+      'First step should reference 10%',
+    );
+    assert.ok(
+      flightSteps[1].name.includes('25%') ||
+        flightSteps[1].name.includes('(25)'),
+      'Second step should reference 25%',
+    );
+    assert.ok(
+      flightSteps[2].name.includes('50%') ||
+        flightSteps[2].name.includes('(50)'),
+      'Third step should reference 50%',
+    );
+    assert.ok(
+      flightSteps[3].name.includes('100%') ||
+        flightSteps[3].name.includes('(100)'),
+      'Fourth step should reference 100%',
+    );
 
     // Verify variables are injected
     assert.strictEqual(flightSteps[0].variables?.TRAFFIC_PERCENT, 10);
@@ -195,13 +242,29 @@ describe('Enhanced Operation Parser', () => {
     const operation = await parseFixture('matrixForeach');
 
     // 2 regions × 2 tiers = 4 expanded steps
-    assert.strictEqual(operation.steps.length, 4, 'Should have 4 expanded steps (2×2 matrix)');
+    assert.strictEqual(
+      operation.steps.length,
+      4,
+      'Should have 4 expanded steps (2×2 matrix)',
+    );
 
     // Verify expanded step names contain both variables
-    assert.strictEqual(operation.steps[0].name, 'Deploy to ${REGION} for ${TIER} (us-east-1, web)');
-    assert.strictEqual(operation.steps[1].name, 'Deploy to ${REGION} for ${TIER} (us-east-1, api)');
-    assert.strictEqual(operation.steps[2].name, 'Deploy to ${REGION} for ${TIER} (eu-west-1, web)');
-    assert.strictEqual(operation.steps[3].name, 'Deploy to ${REGION} for ${TIER} (eu-west-1, api)');
+    assert.strictEqual(
+      operation.steps[0].name,
+      'Deploy to ${REGION} for ${TIER} (us-east-1, web)',
+    );
+    assert.strictEqual(
+      operation.steps[1].name,
+      'Deploy to ${REGION} for ${TIER} (us-east-1, api)',
+    );
+    assert.strictEqual(
+      operation.steps[2].name,
+      'Deploy to ${REGION} for ${TIER} (eu-west-1, web)',
+    );
+    assert.strictEqual(
+      operation.steps[3].name,
+      'Deploy to ${REGION} for ${TIER} (eu-west-1, api)',
+    );
 
     // Verify variables are injected for each combination
     assert.strictEqual(operation.steps[0].variables?.REGION, 'us-east-1');
@@ -229,23 +292,37 @@ describe('Enhanced Operation Parser', () => {
     // Base: 2 regions × 2 tiers = 4 combinations
     // + 1 include (ap-south-1, web) = 5 total
     // - 1 exclude (eu-west-1, api) = 4 final combinations
-    assert.strictEqual(operation.steps.length, 4, 'Should have 4 steps after include/exclude filters');
+    assert.strictEqual(
+      operation.steps.length,
+      4,
+      'Should have 4 steps after include/exclude filters',
+    );
 
     // Verify the combinations that should exist
-    const combinations = operation.steps.map(step => ({
+    const combinations = operation.steps.map((step) => ({
       region: step.variables?.REGION,
-      tier: step.variables?.TIER
+      tier: step.variables?.TIER,
     }));
 
     // Should include: us-east-1/web, us-east-1/api, eu-west-1/web, ap-south-1/web
     // Should NOT include: eu-west-1/api (excluded)
-    assert.ok(combinations.some(c => c.region === 'us-east-1' && c.tier === 'web'));
-    assert.ok(combinations.some(c => c.region === 'us-east-1' && c.tier === 'api'));
-    assert.ok(combinations.some(c => c.region === 'eu-west-1' && c.tier === 'web'));
-    assert.ok(combinations.some(c => c.region === 'ap-south-1' && c.tier === 'web'));
+    assert.ok(
+      combinations.some((c) => c.region === 'us-east-1' && c.tier === 'web'),
+    );
+    assert.ok(
+      combinations.some((c) => c.region === 'us-east-1' && c.tier === 'api'),
+    );
+    assert.ok(
+      combinations.some((c) => c.region === 'eu-west-1' && c.tier === 'web'),
+    );
+    assert.ok(
+      combinations.some((c) => c.region === 'ap-south-1' && c.tier === 'web'),
+    );
 
     // eu-west-1/api should be excluded
-    assert.ok(!combinations.some(c => c.region === 'eu-west-1' && c.tier === 'api'),
-              'eu-west-1/api combination should be excluded');
+    assert.ok(
+      !combinations.some((c) => c.region === 'eu-west-1' && c.tier === 'api'),
+      'eu-west-1/api combination should be excluded',
+    );
   });
 });

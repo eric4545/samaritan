@@ -24,7 +24,8 @@ export const FIXTURES = {
   // Test-specific valid fixtures
   minimal: 'tests/fixtures/operations/valid/minimal.yaml',
   enhanced: 'tests/fixtures/operations/valid/enhanced.yaml',
-  enhancedStepFields: 'tests/fixtures/operations/valid/enhanced-step-fields.yaml',
+  enhancedStepFields:
+    'tests/fixtures/operations/valid/enhanced-step-fields.yaml',
   enhancedPreflight: 'tests/fixtures/operations/valid/enhanced-preflight.yaml',
   deploymentTest: 'tests/fixtures/operations/valid/deployment-test.yaml',
 
@@ -35,33 +36,45 @@ export const FIXTURES = {
   // Foreach & Matrix
   foreachLoop: 'tests/fixtures/operations/features/foreach-loop.yaml',
   matrixForeach: 'tests/fixtures/operations/features/matrix-foreach.yaml',
-  matrixWithFilters: 'tests/fixtures/operations/features/matrix-with-filters.yaml',
+  matrixWithFilters:
+    'tests/fixtures/operations/features/matrix-with-filters.yaml',
 
   // Conditional steps
   conditional: 'tests/fixtures/operations/features/conditional.yaml',
 
   // Section headings
   sectionHeading: 'tests/fixtures/operations/features/section-heading.yaml',
-  sectionHeadingFirst: 'tests/fixtures/operations/features/section-heading-first.yaml',
+  sectionHeadingFirst:
+    'tests/fixtures/operations/features/section-heading-first.yaml',
 
   // Nested sub-steps
-  nestedSubSteps2Levels: 'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',
-  nestedSubSteps3Levels: 'tests/fixtures/operations/features/nested-substeps-3-levels.yaml',
-  nestedSubSteps4Levels: 'tests/fixtures/operations/features/nested-substeps-4-levels.yaml',
-  nestedSubStepsWithSections: 'tests/fixtures/operations/features/nested-substeps-with-sections.yaml',
+  nestedSubSteps2Levels:
+    'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',
+  nestedSubSteps3Levels:
+    'tests/fixtures/operations/features/nested-substeps-3-levels.yaml',
+  nestedSubSteps4Levels:
+    'tests/fixtures/operations/features/nested-substeps-4-levels.yaml',
+  nestedSubStepsWithSections:
+    'tests/fixtures/operations/features/nested-substeps-with-sections.yaml',
 
   // ===== Confluence Generator Tests =====
-  multiLineCommand: 'tests/fixtures/operations/confluence/multi-line-command.yaml',
+  multiLineCommand:
+    'tests/fixtures/operations/confluence/multi-line-command.yaml',
   subSteps: 'tests/fixtures/operations/confluence/sub-steps.yaml',
   dependencies: 'tests/fixtures/operations/confluence/dependencies.yaml',
-  conditionalConfluence: 'tests/fixtures/operations/confluence/conditional.yaml',
-  markdownInstructions: 'tests/fixtures/operations/confluence/markdown-instructions.yaml',
-  markdownWithVariables: 'tests/fixtures/operations/confluence/markdown-with-variables.yaml',
-  stepWithVariables: 'tests/fixtures/operations/confluence/step-with-variables.yaml',
+  conditionalConfluence:
+    'tests/fixtures/operations/confluence/conditional.yaml',
+  markdownInstructions:
+    'tests/fixtures/operations/confluence/markdown-instructions.yaml',
+  markdownWithVariables:
+    'tests/fixtures/operations/confluence/markdown-with-variables.yaml',
+  stepWithVariables:
+    'tests/fixtures/operations/confluence/step-with-variables.yaml',
   markdownLinks: 'tests/fixtures/operations/confluence/markdown-links.yaml',
   globalRollback: 'tests/fixtures/operations/confluence/global-rollback.yaml',
   ganttTimeline: 'tests/fixtures/operations/confluence/gantt-timeline.yaml',
-  evidenceRequired: 'tests/fixtures/operations/confluence/evidence-required.yaml',
+  evidenceRequired:
+    'tests/fixtures/operations/confluence/evidence-required.yaml',
 } as const;
 
 /**
@@ -82,7 +95,7 @@ export function loadYaml(key: keyof typeof FIXTURES): string {
     return readFileSync(absolutePath, 'utf-8');
   } catch (error) {
     throw new Error(
-      `Failed to load fixture "${key}" from ${fixturePath}: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to load fixture "${key}" from ${fixturePath}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
@@ -97,7 +110,9 @@ export function loadYaml(key: keyof typeof FIXTURES): string {
  * const operation = await parseFixture('deployment');
  * assert.strictEqual(operation.name, 'Deploy Web Server');
  */
-export async function parseFixture(key: keyof typeof FIXTURES): Promise<Operation> {
+export async function parseFixture(
+  key: keyof typeof FIXTURES,
+): Promise<Operation> {
   const fixturePath = FIXTURES[key];
   const absolutePath = join(process.cwd(), fixturePath);
 
@@ -105,7 +120,7 @@ export async function parseFixture(key: keyof typeof FIXTURES): Promise<Operatio
     return await parseOperation(absolutePath);
   } catch (error) {
     throw new Error(
-      `Failed to parse fixture "${key}" from ${fixturePath}: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to parse fixture "${key}" from ${fixturePath}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

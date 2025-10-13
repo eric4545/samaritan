@@ -6,8 +6,8 @@ import {
   generateManualWithMetadata,
 } from '../../src/manuals/generator';
 import type { Operation } from '../../src/models/operation';
-import { deploymentOperation } from '../fixtures/operations';
 import { loadYaml } from '../fixtures/fixtures';
+import { deploymentOperation } from '../fixtures/operations';
 
 describe('Manual Generator Unit Tests', () => {
   it('should generate proper table format for multi-environment operations', (t) => {
@@ -1674,9 +1674,7 @@ kubectl apply -f worker.yaml`,
   });
 
   it('should not generate empty table when section_heading is first step', () => {
-    const operation = yaml.load(
-      loadYaml('sectionHeadingFirst'),
-    ) as Operation;
+    const operation = yaml.load(loadYaml('sectionHeadingFirst')) as Operation;
     const markdown = generateManual(operation);
 
     // Should have phase header
@@ -1726,7 +1724,9 @@ kubectl apply -f worker.yaml`,
 
     // Should include code block for command_output evidence type (Deploy Application step)
     assert(
-      markdown.includes('📎 <em>Evidence Required: screenshot, command_output</em>'),
+      markdown.includes(
+        '📎 <em>Evidence Required: screenshot, command_output</em>',
+      ),
       'Should show evidence types with command_output',
     );
     assert(
@@ -1742,7 +1742,9 @@ kubectl apply -f worker.yaml`,
 
     // Count occurrences of the code block - should be exactly 1 (Deploy Application step only)
     // Evidence is in the step cell (first column), not repeated per environment
-    const codeBlockMatches = markdown.match(/```bash<br># Paste command output here<br>```/g);
+    const codeBlockMatches = markdown.match(
+      /```bash<br># Paste command output here<br>```/g,
+    );
     assert(
       codeBlockMatches && codeBlockMatches.length === 1,
       'Should have one code block for Deploy Application step with command_output evidence',

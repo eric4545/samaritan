@@ -533,9 +533,7 @@ function addSubStepRows(
     }
 
     if (subStep.if) {
-      subStepCellContent.push(
-        paragraph(text(`🔀 Condition: ${subStep.if}`)),
-      );
+      subStepCellContent.push(paragraph(text(`🔀 Condition: ${subStep.if}`)));
     }
 
     // Evidence requirements for sub-steps
