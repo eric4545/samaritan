@@ -1831,7 +1831,8 @@ kubectl apply -f worker.yaml`,
 
     // Count how many times the timestamp command appears in code blocks
     // It should appear only in variable definitions, not in echo statements
-    const timestampInCodeBlocks = codeBlocks.join('').split(yamlTimestampValue).length - 1;
+    const timestampInCodeBlocks =
+      codeBlocks.join('').split(yamlTimestampValue).length - 1;
     assert(
       timestampInCodeBlocks >= 2 && timestampInCodeBlocks <= 3,
       `Should have 2-3 occurrences of timestamp command in code blocks (definitions only), got ${timestampInCodeBlocks}`,
@@ -1881,9 +1882,7 @@ kubectl apply -f worker.yaml`,
       'Should show Manual Status field',
     );
     assert(
-      markdown.includes(
-        '| War Room | https://zoom.us/j/warroom-rehearsal |',
-      ),
+      markdown.includes('| War Room | https://zoom.us/j/warroom-rehearsal |'),
       'Should show War Room field',
     );
     assert(
@@ -1895,7 +1894,7 @@ kubectl apply -f worker.yaml`,
 
     // Overview should appear after description but before other sections
     const overviewIndex = markdown.indexOf('## Overview');
-    const dependenciesIndex = markdown.indexOf('## Dependencies');
+    const _dependenciesIndex = markdown.indexOf('## Dependencies');
     const environmentsIndex = markdown.indexOf('## Environments Overview');
 
     assert(

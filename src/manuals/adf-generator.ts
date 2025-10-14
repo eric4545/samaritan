@@ -652,7 +652,7 @@ function substituteVariables(
 
   // Restore code blocks
   return result.replace(/__CODE_BLOCK_(\d+)__/g, (_, index) => {
-    return codeBlocks[Number.parseInt(index)];
+    return codeBlocks[Number.parseInt(index, 10)];
   });
 }
 
