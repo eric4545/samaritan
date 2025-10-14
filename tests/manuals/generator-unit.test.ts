@@ -6,7 +6,7 @@ import {
   generateManualWithMetadata,
 } from '../../src/manuals/generator';
 import type { Operation } from '../../src/models/operation';
-import { loadYaml } from '../fixtures/fixtures';
+import { loadYaml, parseFixture } from '../fixtures/fixtures';
 import { deploymentOperation } from '../fixtures/operations';
 
 describe('Manual Generator Unit Tests', () => {
@@ -1748,6 +1748,93 @@ kubectl apply -f worker.yaml`,
     assert(
       codeBlockMatches && codeBlockMatches.length === 1,
       'Should have one code block for Deploy Application step with command_output evidence',
+    );
+  });
+
+  it('should NOT expand variables inside code blocks when resolveVariables is enabled (Bug Fix)', async () => {
+    const operation = await parseFixture('variableInCodeBlock');
+
+    // Test with variable resolution enabled
+    const markdown = generateManualWithMetadata(
+      operation,
+      undefined,
+      undefined,
+      true,
+    );
+
+    // Variables OUTSIDE code blocks should be expanded
+    assert(
+      markdown.includes('Deploy to cluster prod-cluster'),
+      'Should expand ${CLUSTER} outside code block',
+    );
+
+    // Variables INSIDE code blocks should NOT be expanded
+    // Test 1: Bash function with local TIMESTAMP variable
+    assert(
+      markdown.includes('local TIMESTAMP=$(date +%Y%m%d_%H%M%S)'),
+      'Should preserve local TIMESTAMP definition inside code block',
+    );
+    assert(
+      markdown.includes('echo "Deploying at: ${TIMESTAMP}"'),
+      'Should preserve ${TIMESTAMP} reference inside bash function',
+    );
+    assert(
+      markdown.includes('echo "App: ${APP_NAME}"'),
+      'Should preserve ${APP_NAME} reference inside bash function (not expand to YAML var)',
+    );
+
+    // Test 2: Script with environment variables
+    assert(
+      markdown.includes('TIMESTAMP=$(date +%Y%m%d_%H%M%S)'),
+      'Should preserve TIMESTAMP definition in script',
+    );
+    assert(
+      markdown.includes('CLUSTER="local-cluster"'),
+      'Should preserve CLUSTER definition in script',
+    );
+    assert(
+      markdown.includes('echo "Script started at: ${TIMESTAMP}"'),
+      'Should preserve ${TIMESTAMP} in echo statement inside code block',
+    );
+    assert(
+      markdown.includes('echo "Target cluster: ${CLUSTER}"'),
+      'Should preserve ${CLUSTER} in echo statement inside code block',
+    );
+
+    // Test 3: Mixed scenario - outside vars expand, inside vars don't
+    assert(
+      markdown.includes('Deploy to cluster prod-cluster'),
+      'Should expand ${CLUSTER} outside code block',
+    );
+    assert(
+      markdown.includes('export TIMESTAMP=$(date +%Y%m%d_%H%M%S)'),
+      'Should preserve TIMESTAMP export in code block',
+    );
+    assert(
+      markdown.includes('export APP_NAME="my-app"'),
+      'Should preserve APP_NAME export in code block',
+    );
+    assert(
+      markdown.includes('kubectl apply -f ${APP_NAME}-deployment.yaml'),
+      'Should preserve ${APP_NAME} reference inside code block',
+    );
+    assert(
+      markdown.includes('echo "Deployed at ${TIMESTAMP}"'),
+      'Should preserve ${TIMESTAMP} in code block',
+    );
+
+    // Verify the YAML variable TIMESTAMP value is NOT inside code blocks
+    // (If it was expanded, we'd see the YAML value "$(date +%Y%m%d_%H%M%S)" appear multiple times)
+    const yamlTimestampValue = '$(date +%Y%m%d_%H%M%S)';
+    const codeBlockPattern = /```bash[\s\S]*?```/g;
+    const codeBlocks = markdown.match(codeBlockPattern) || [];
+
+    // Count how many times the timestamp command appears in code blocks
+    // It should appear only in variable definitions, not in echo statements
+    const timestampInCodeBlocks = codeBlocks.join('').split(yamlTimestampValue).length - 1;
+    assert(
+      timestampInCodeBlocks >= 2 && timestampInCodeBlocks <= 3,
+      `Should have 2-3 occurrences of timestamp command in code blocks (definitions only), got ${timestampInCodeBlocks}`,
     );
   });
 });

@@ -244,6 +244,28 @@ With `--resolve-vars` (ready-to-execute):
 kubectl scale deployment web-server --replicas=5
 ```
 
+**Code Block Protection:**
+
+Variables inside fenced code blocks (` ``` `) are **protected from expansion** to preserve shell scripts and bash functions:
+
+```yaml
+common_variables:
+  TIMESTAMP: $(date +%Y%m%d_%H%M%S)
+
+steps:
+  - name: Deploy with Timestamp Function
+    instruction: |
+      Use this bash function to capture deployment time:
+      ```bash
+      deploy() {
+        local TIMESTAMP=$(date +%Y%m%d_%H%M%S)  # Stays literal
+        echo "Deployed at ${TIMESTAMP}"          # Stays literal
+      }
+      ```
+```
+
+Even with `--resolve-vars`, the `${TIMESTAMP}` inside the code block remains as `${TIMESTAMP}` (not expanded to the YAML variable value). This prevents conflicts between YAML variables and bash/shell variables with the same name.
+
 **Benefits:**
 - **Audit Trail**: Know exactly which code version generated each manual
 - **Environment Focus**: Production manuals show only production procedures

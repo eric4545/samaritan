@@ -587,25 +587,34 @@ function addSubStepRows(
 
 /**
  * Substitute variables in command string
+ * Protects code blocks (```...```) from variable substitution
  */
 function substituteVariables(
   command: string,
   envVariables: Record<string, any>,
   stepVariables?: Record<string, any>,
 ): string {
-  let substitutedCommand = command;
+  // Extract code blocks (```...```) and replace with placeholders
+  // This prevents variable substitution inside code blocks
+  const codeBlocks: string[] = [];
+  let result = command.replace(/```[\s\S]*?```/g, (match) => {
+    codeBlocks.push(match);
+    return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
+  });
 
   // Merge variables with priority: step > env
   const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
 
+  // Perform variable substitution on text outside code blocks
   for (const key in mergedVariables) {
     const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
-    substitutedCommand = substitutedCommand.replace(
-      regex,
-      mergedVariables[key],
-    );
+    result = result.replace(regex, mergedVariables[key]);
   }
-  return substitutedCommand;
+
+  // Restore code blocks
+  return result.replace(/__CODE_BLOCK_(\d+)__/g, (_, index) => {
+    return codeBlocks[Number.parseInt(index)];
+  });
 }
 
 /**

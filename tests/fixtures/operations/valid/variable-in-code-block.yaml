@@ -1,0 +1,71 @@
+name: Variable Resolution in Code Blocks Test
+version: 1.0.0
+description: Test that variables inside code blocks are not expanded
+author: Test
+common_variables:
+  TIMESTAMP: $(date +%Y%m%d_%H%M%S)
+  APP_NAME: myapp
+  CLUSTER: prod-cluster
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: prod
+      REPLICAS: 5
+    approval_required: false
+    validation_required: false
+
+steps:
+  - name: Define Bash Function
+    type: manual
+    instruction: |
+      Create a bash function that uses local variables:
+
+      ```bash
+      deploy_with_timestamp() {
+        local TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        local APP_NAME="local-app"
+        echo "Deploying at: ${TIMESTAMP}"
+        echo "App: ${APP_NAME}"
+        kubectl apply -f deployment.yaml
+      }
+      ```
+
+      The function should capture its own timestamp, not use the YAML variable.
+
+  - name: Script with Environment Variables
+    type: manual
+    instruction: |
+      Run the following script:
+
+      ```bash
+      #!/bin/bash
+      # This script uses shell variables that should NOT be expanded
+      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      CLUSTER="local-cluster"
+
+      echo "Script started at: ${TIMESTAMP}"
+      echo "Target cluster: ${CLUSTER}"
+
+      # Backup before deployment
+      kubectl get all -n ${NAMESPACE} > backup-${TIMESTAMP}.yaml
+      ```
+
+      Note: ${NAMESPACE} should be expanded (from YAML), but ${TIMESTAMP} and ${CLUSTER}
+      inside the code block should remain literal.
+
+  - name: Mixed Variables
+    type: manual
+    instruction: |
+      Deploy to cluster ${CLUSTER} with the following commands:
+
+      ```bash
+      export TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      export APP_NAME="my-app"
+      kubectl apply -f ${APP_NAME}-deployment.yaml
+      echo "Deployed at ${TIMESTAMP}"
+      ```
+
+      Note: ${CLUSTER} outside code block should be expanded to prod-cluster.
+      All variables inside code blocks (${APP_NAME}, ${TIMESTAMP}) should remain literal.

@@ -42,6 +42,10 @@ export const FIXTURES = {
   // Conditional steps
   conditional: 'tests/fixtures/operations/features/conditional.yaml',
 
+  // Variable resolution
+  variableInCodeBlock:
+    'tests/fixtures/operations/valid/variable-in-code-block.yaml',
+
   // Section headings
   sectionHeading: 'tests/fixtures/operations/features/section-heading.yaml',
   sectionHeadingFirst:
