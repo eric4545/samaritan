@@ -828,6 +828,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     category: rawOperation.category,
     tags: rawOperation.tags || [],
     emergency: Boolean(rawOperation.emergency),
+    overview: rawOperation.overview,
     environments,
     variables,
     common_variables: commonVariables,

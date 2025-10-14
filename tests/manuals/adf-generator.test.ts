@@ -260,4 +260,64 @@ describe('ADF Generator', () => {
     assert.ok(adfString.includes('Sub Step 1'), 'Should include substep 1');
     assert.ok(adfString.includes('Sub Step 2'), 'Should include substep 2');
   });
+
+  it('should render overview section with flexible metadata fields', async () => {
+    const { parseFixture } = await import('../fixtures/fixtures');
+    const operation = await parseFixture('withOverview');
+
+    const adf = generateADF(operation);
+    const content = (adf as any).content;
+
+    // Find Overview heading
+    const overviewHeading = content.find(
+      (node: any) =>
+        node.type === 'heading' &&
+        node.attrs?.level === 2 &&
+        node.content?.[0]?.text === 'Overview',
+    );
+
+    assert.ok(overviewHeading, 'Should have Overview section heading');
+
+    // Find overview table (should be right after the heading)
+    const overviewHeadingIndex = content.indexOf(overviewHeading);
+    const overviewTable = content[overviewHeadingIndex + 1];
+
+    assert.strictEqual(
+      overviewTable?.type,
+      'table',
+      'Should have overview table after heading',
+    );
+
+    // Verify table has 2 columns (Item | Specification)
+    const headerRow = overviewTable.content[0];
+    assert.strictEqual(
+      headerRow.content.length,
+      2,
+      'Overview table should have 2 columns',
+    );
+
+    // Verify overview data is present
+    const adfString = generateADFString(operation);
+    assert.ok(
+      adfString.includes('Release Date'),
+      'Should include Release Date',
+    );
+    assert.ok(
+      adfString.includes('23 Jul 2025'),
+      'Should include Release Date value',
+    );
+    assert.ok(
+      adfString.includes('Release Notes'),
+      'Should include Release Notes',
+    );
+    assert.ok(
+      adfString.includes('INPDRP-2489'),
+      'Should include Release Ticket value',
+    );
+    assert.ok(
+      adfString.includes('Manual Status'),
+      'Should include Manual Status',
+    );
+    assert.ok(adfString.includes('APPROVED'), 'Should include APPROVED status');
+  });
 });

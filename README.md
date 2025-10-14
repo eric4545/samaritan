@@ -196,6 +196,82 @@ steps:
 
 > **Note:** Steps with `phase: preflight` are recommended for pre-execution validation checks.
 
+#### Operation Overview Metadata
+
+Add flexible overview/metadata fields to operations for release coordination and compliance tracking. The `overview` field accepts any custom key-value pairs that render as a 2-column table in generated manuals:
+
+```yaml
+name: Production Release - Q1 2025
+version: 2.5.0
+description: Major production release with new features
+
+# Flexible overview section - add any fields your team needs
+overview:
+  Release Date: "2025-01-15"
+  Release Manager: "Jane Smith"
+  Release Notes: "https://confluence.example.com/releases/v2.5.0"
+  Release Ticket: "JIRA-1234"
+  EPIC Tickets: "EPIC-567, EPIC-890"
+  Manual Status: "APPROVED"
+  War Room (Rehearsal): "https://zoom.us/j/rehearsal-room"
+  War Room (Production): "https://zoom.us/j/production-room"
+  Rollback Window: "4 hours"
+  Compliance Review: "Completed - 2025-01-10"
+
+environments:
+  - name: production
+    variables:
+      REPLICAS: 10
+    approval_required: true
+
+steps:
+  - name: Deploy Application
+    type: manual
+    instruction: |
+      Deploy the application following release procedures
+```
+
+**Generated Manual Output:**
+
+The overview section renders as a clean table in both Markdown and Confluence formats:
+
+```markdown
+## Overview
+
+| Item | Specification |
+| ---- | ------------- |
+| Release Date | 2025-01-15 |
+| Release Manager | Jane Smith |
+| Release Notes | https://confluence.example.com/releases/v2.5.0 |
+| Release Ticket | JIRA-1234 |
+| EPIC Tickets | EPIC-567, EPIC-890 |
+| Manual Status | APPROVED |
+| War Room (Rehearsal) | https://zoom.us/j/rehearsal-room |
+| War Room (Production) | https://zoom.us/j/production-room |
+| Rollback Window | 4 hours |
+| Compliance Review | Completed - 2025-01-10 |
+```
+
+**Key Features:**
+- **Flexible Fields**: Add any metadata fields your team needs - no hardcoded structure
+- **No Field Limits**: Include as many or as few fields as required
+- **Multiple Formats**: Renders consistently in Markdown, HTML, and Confluence/ADF
+- **Clean Layout**: Positioned at the top of the manual, right after the description
+- **Value Types Supported**:
+  - Strings: Rendered as-is
+  - Numbers: Converted to strings
+  - Arrays: Joined with commas in ADF, line breaks in Markdown
+  - Objects: JSON stringified
+
+**Common Use Cases:**
+- Release coordination (dates, managers, war rooms)
+- Compliance tracking (approval status, review dates)
+- Reference links (release notes, tickets, EPICs, runbooks)
+- Timeline planning (rollback windows, estimated duration)
+- Team coordination (PICs, contact channels)
+
+See `examples/deployment-with-overview.yaml` for a complete example with realistic release metadata.
+
 ### Advanced Features
 
 #### Enhanced Manual Generation with Metadata

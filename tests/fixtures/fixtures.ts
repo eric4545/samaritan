@@ -28,6 +28,7 @@ export const FIXTURES = {
     'tests/fixtures/operations/valid/enhanced-step-fields.yaml',
   enhancedPreflight: 'tests/fixtures/operations/valid/enhanced-preflight.yaml',
   deploymentTest: 'tests/fixtures/operations/valid/deployment-test.yaml',
+  withOverview: 'tests/fixtures/operations/valid/with-overview.yaml',
 
   // ===== Invalid Operations =====
   invalid: 'tests/fixtures/operations/invalid/missing-fields.yaml',

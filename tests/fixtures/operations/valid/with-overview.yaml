@@ -1,0 +1,25 @@
+name: Deployment with Overview
+version: 1.0.0
+description: Sample deployment operation with overview metadata
+
+overview:
+  Release Date: "23 Jul 2025"
+  Release Notes: "https://confluence.example.com/release-notes/v1.0.0"
+  Release Ticket: "INPDRP-2489"
+  EPIC Tickets: "https://github.com/project/issues/152"
+  Manual Status: "APPROVED"
+  War Room: "https://zoom.us/j/warroom-rehearsal"
+  Production Release War Room: "https://zoom.us/j/warroom-prod"
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      REPLICAS: 3
+      DB_HOST: prod-db.example.com
+    approval_required: true
+
+steps:
+  - name: Deploy Application
+    type: manual
+    instruction: Deploy the application to production

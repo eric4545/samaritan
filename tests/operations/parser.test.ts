@@ -325,4 +325,57 @@ describe('Enhanced Operation Parser', () => {
       'eu-west-1/api combination should be excluded',
     );
   });
+
+  it('should parse overview field with flexible metadata', async () => {
+    const operation = await parseFixture('withOverview');
+
+    // Verify overview field is parsed
+    assert.ok(operation.overview, 'Overview field should exist');
+    assert.strictEqual(typeof operation.overview, 'object');
+
+    // Verify overview contains expected fields
+    assert.strictEqual(
+      operation.overview['Release Date'],
+      '23 Jul 2025',
+      'Should have Release Date',
+    );
+    assert.strictEqual(
+      operation.overview['Release Notes'],
+      'https://confluence.example.com/release-notes/v1.0.0',
+      'Should have Release Notes URL',
+    );
+    assert.strictEqual(
+      operation.overview['Release Ticket'],
+      'INPDRP-2489',
+      'Should have Release Ticket',
+    );
+    assert.strictEqual(
+      operation.overview['EPIC Tickets'],
+      'https://github.com/project/issues/152',
+      'Should have EPIC Tickets URL',
+    );
+    assert.strictEqual(
+      operation.overview['Manual Status'],
+      'APPROVED',
+      'Should have Manual Status',
+    );
+    assert.strictEqual(
+      operation.overview['War Room'],
+      'https://zoom.us/j/warroom-rehearsal',
+      'Should have War Room link',
+    );
+    assert.strictEqual(
+      operation.overview['Production Release War Room'],
+      'https://zoom.us/j/warroom-prod',
+      'Should have Production Release War Room link',
+    );
+
+    // Verify order is preserved (first key should be "Release Date")
+    const keys = Object.keys(operation.overview);
+    assert.strictEqual(
+      keys[0],
+      'Release Date',
+      'First key should be Release Date',
+    );
+  });
 });

@@ -1837,4 +1837,73 @@ kubectl apply -f worker.yaml`,
       `Should have 2-3 occurrences of timestamp command in code blocks (definitions only), got ${timestampInCodeBlocks}`,
     );
   });
+
+  it('should render overview section with flexible metadata fields', async (t) => {
+    const operation = await parseFixture('withOverview');
+    const markdown = generateManual(operation);
+
+    // Should have Overview section
+    assert(markdown.includes('## Overview'), 'Should have Overview section');
+
+    // Should have table structure
+    assert(
+      markdown.includes('| Item | Specification |'),
+      'Should have overview table header',
+    );
+    assert(
+      markdown.includes('| ---- | ------------- |'),
+      'Should have overview table separator',
+    );
+
+    // Should render all overview fields
+    assert(
+      markdown.includes('| Release Date | 23 Jul 2025 |'),
+      'Should show Release Date field',
+    );
+    assert(
+      markdown.includes(
+        '| Release Notes | https://confluence.example.com/release-notes/v1.0.0 |',
+      ),
+      'Should show Release Notes field',
+    );
+    assert(
+      markdown.includes('| Release Ticket | INPDRP-2489 |'),
+      'Should show Release Ticket field',
+    );
+    assert(
+      markdown.includes(
+        '| EPIC Tickets | https://github.com/project/issues/152 |',
+      ),
+      'Should show EPIC Tickets field',
+    );
+    assert(
+      markdown.includes('| Manual Status | APPROVED |'),
+      'Should show Manual Status field',
+    );
+    assert(
+      markdown.includes(
+        '| War Room | https://zoom.us/j/warroom-rehearsal |',
+      ),
+      'Should show War Room field',
+    );
+    assert(
+      markdown.includes(
+        '| Production Release War Room | https://zoom.us/j/warroom-prod |',
+      ),
+      'Should show Production Release War Room field',
+    );
+
+    // Overview should appear after description but before other sections
+    const overviewIndex = markdown.indexOf('## Overview');
+    const dependenciesIndex = markdown.indexOf('## Dependencies');
+    const environmentsIndex = markdown.indexOf('## Environments Overview');
+
+    assert(
+      overviewIndex < environmentsIndex || environmentsIndex === -1,
+      'Overview should appear before Environments section',
+    );
+
+    // Snapshot the complete manual
+    t.assert.snapshot(markdown);
+  });
 });

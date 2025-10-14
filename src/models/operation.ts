@@ -189,6 +189,7 @@ export interface Operation {
   category?: string;
   tags?: string[];
   emergency?: boolean;
+  overview?: Record<string, any>; // Flexible overview/metadata section with custom fields
   environments: Environment[];
   variables: VariableMatrix;
   common_variables?: Record<string, any>; // Common variables shared across all environments

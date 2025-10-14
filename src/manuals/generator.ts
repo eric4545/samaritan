@@ -523,6 +523,39 @@ export function generateManual(operation: Operation): string {
 }
 
 /**
+ * Generate overview section table
+ */
+function generateOverviewSection(overview: Record<string, any>): string {
+  let markdown = '## Overview\n\n';
+  markdown += '| Item | Specification |\n';
+  markdown += '| ---- | ------------- |\n';
+
+  Object.entries(overview).forEach(([key, value]) => {
+    // Format value based on type
+    let formattedValue: string;
+
+    if (Array.isArray(value)) {
+      // Array values: join with line breaks
+      formattedValue = value.join('<br>');
+    } else if (typeof value === 'object' && value !== null) {
+      // Object values: convert to JSON
+      formattedValue = JSON.stringify(value);
+    } else {
+      // Primitive values: convert to string
+      formattedValue = String(value);
+    }
+
+    // Escape pipes in value to prevent table breakage
+    formattedValue = formattedValue.replace(/\|/g, '\\|');
+
+    markdown += `| ${key} | ${formattedValue} |\n`;
+  });
+
+  markdown += '\n';
+  return markdown;
+}
+
+/**
  * Core manual content generation (without frontmatter)
  */
 function generateManualContent(
@@ -532,6 +565,11 @@ function generateManualContent(
   let markdown = `# Manual for: ${operation.name} (v${operation.version})\n\n`;
   if (operation.description) {
     markdown += `_${operation.description}_\n\n`;
+  }
+
+  // Overview section (if present)
+  if (operation.overview && Object.keys(operation.overview).length > 0) {
+    markdown += generateOverviewSection(operation.overview);
   }
 
   // Operation Dependencies

@@ -29,6 +29,10 @@
       "type": "string",
       "description": "Operation category"
     },
+    "overview": {
+      "type": "object",
+      "description": "Flexible overview/metadata section with custom fields (e.g., Release Date, Release Notes, etc.)"
+    },
     "imports": {
       "type": "array",
       "items": {

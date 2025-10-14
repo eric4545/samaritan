@@ -59,6 +59,12 @@ export function generateADF(
     content.push(paragraph(em(text(operation.description))));
   }
 
+  // Overview section (if present)
+  if (operation.overview && Object.keys(operation.overview).length > 0) {
+    content.push(heading({ level: 2 })(text('Overview')));
+    content.push(createOverviewTable(operation.overview));
+  }
+
   // Metadata panel if available
   if (metadata) {
     content.push(createMetadataPanel(metadata));
@@ -265,6 +271,39 @@ function createMetadataPanel(metadata: GenerationMetadata): any {
   }
 
   return panel({ panelType: PanelType.INFO })(...panelContent);
+}
+
+/**
+ * Create overview table with flexible metadata fields
+ */
+function createOverviewTable(overview: Record<string, any>): any {
+  const headerRow = tableRow([
+    tableHeader()(paragraph(text('Item'))),
+    tableHeader()(paragraph(text('Specification'))),
+  ]);
+
+  const dataRows = Object.entries(overview).map(([key, value]) => {
+    // Format value based on type
+    let formattedValue: string;
+
+    if (Array.isArray(value)) {
+      // Array values: join with line breaks
+      formattedValue = value.join(', ');
+    } else if (typeof value === 'object' && value !== null) {
+      // Object values: convert to JSON
+      formattedValue = JSON.stringify(value);
+    } else {
+      // Primitive values: convert to string
+      formattedValue = String(value);
+    }
+
+    return tableRow([
+      tableCell()(paragraph(text(key))),
+      tableCell()(paragraph(text(formattedValue))),
+    ]);
+  });
+
+  return table(headerRow, ...dataRows);
 }
 
 /**
