@@ -424,6 +424,23 @@
                 "type": "string",
                 "description": "Expected date/time or duration for this step"
               },
+              "options": {
+                "type": "object",
+                "properties": {
+                  "substitute_vars": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Substitute ${VAR} in instruction and command (default: true)"
+                  },
+                  "show_command_separately": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Show command in separate section from instruction (default: false)"
+                  }
+                },
+                "additionalProperties": false,
+                "description": "Step-level rendering and substitution options"
+              },
               "rollback": {
                 "type": "object",
                 "properties": {
@@ -436,6 +453,22 @@
                   "timeout": {
                     "type": "number",
                     "minimum": 0
+                  },
+                  "options": {
+                    "type": "object",
+                    "properties": {
+                      "substitute_vars": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Substitute ${VAR} in instruction and command (default: true)"
+                      },
+                      "show_command_separately": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Show command in separate section from instruction (default: false)"
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 }
               },
@@ -504,6 +537,22 @@
               "timeout": {
                 "type": "number",
                 "minimum": 0
+              },
+              "options": {
+                "type": "object",
+                "properties": {
+                  "substitute_vars": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Substitute ${VAR} in instruction and command (default: true)"
+                  },
+                  "show_command_separately": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Show command in separate section from instruction (default: false)"
+                  }
+                },
+                "additionalProperties": false
               }
             }
           }

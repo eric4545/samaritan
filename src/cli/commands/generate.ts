@@ -578,33 +578,22 @@ export function generateConfluenceContent(
   };
 
   // Helper function to substitute variables (inline version)
-  // Protects code blocks (```...```) from variable substitution
   const substituteVariables = (
     command: string,
     envVariables: Record<string, any>,
     stepVariables?: Record<string, any>,
   ): string => {
-    // Extract code blocks (```...```) and replace with placeholders
-    // This prevents variable substitution inside code blocks
-    const codeBlocks: string[] = [];
-    let result = command.replace(/```[\s\S]*?```/g, (match) => {
-      codeBlocks.push(match);
-      return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
-    });
-
     // Merge variables with priority: step > env
     const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
 
-    // Perform variable substitution on text outside code blocks
+    // Perform variable substitution on ENTIRE content
+    let result = command;
     for (const key in mergedVariables) {
       const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
       result = result.replace(regex, mergedVariables[key]);
     }
 
-    // Restore code blocks
-    return result.replace(/__CODE_BLOCK_(\d+)__/g, (_, index) => {
-      return codeBlocks[Number.parseInt(index, 10)];
-    });
+    return result;
   };
 
   // Helper to escape Confluence macro syntax in text (for variables like ${VAR})
@@ -896,53 +885,65 @@ ${filteredOperation.environments
       // Build all command cells for each environment
       const commandCells: string[] = [];
       filteredOperation.environments.forEach((env: any) => {
-        const rawCommand = step.command || step.instruction || '';
-        let displayCommand = rawCommand;
+        let cellContent = '';
 
-        // Resolve variables if flag is enabled
-        if (resolveVars && rawCommand) {
-          displayCommand = substituteVariables(
-            rawCommand,
-            env.variables || {},
-            step.variables,
-          );
+        // Get step-level options (defaults)
+        const substituteVars = step.options?.substitute_vars ?? true;
+        const showCommandSeparately =
+          step.options?.show_command_separately ?? false;
+
+        // Process instruction (always render as markdown)
+        if (step.instruction) {
+          let displayInstruction = step.instruction;
+
+          // Apply variable substitution if enabled
+          if (resolveVars && substituteVars) {
+            displayInstruction = substituteVariables(
+              displayInstruction,
+              env.variables || {},
+              step.variables,
+            );
+          }
+
+          const trimmed = displayInstruction.replace(/\s+$/, '');
+          cellContent += `{markdown}\n${trimmed}\n{markdown}`;
         }
 
-        // Check if content is markdown
-        const isMarkdown =
-          step.instruction &&
-          (displayCommand.includes('\n#') ||
-            displayCommand.includes('\n-') ||
-            displayCommand.includes('\n*') ||
-            displayCommand.includes('\n1.') ||
-            displayCommand.includes('```') ||
-            displayCommand.includes('**'));
+        // Process command (always render as code block)
+        if (step.command) {
+          let displayCommand = step.command;
 
-        let cellContent = '';
-        if (displayCommand) {
-          if (isMarkdown) {
-            // For markdown instructions, wrap in {markdown} to preserve formatting and links
-            const trimmed = displayCommand.replace(/\s+$/, '');
-            cellContent = `{markdown}\n${trimmed}\n{markdown}`;
-          } else {
-            // Trim trailing newlines from command (YAML literal blocks add them)
-            const trimmedCommand = displayCommand.replace(/\n+$/, '');
-            const hasMultipleLines = trimmedCommand.includes('\n');
-
-            if (hasMultipleLines) {
-              // Multi-line: use code block with line breaks (newline after opening tag)
-              const formattedCommand = formatForTableCell(trimmedCommand, true);
-              cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
-            } else {
-              // Single-line: apply smart line breaking if needed, then wrap in code block
-              const withBreaks = addSmartLineBreaks(trimmedCommand);
-              cellContent = `{code:bash}\n${withBreaks}\n{code}`;
-            }
+          // Apply variable substitution if enabled
+          if (resolveVars && substituteVars) {
+            displayCommand = substituteVariables(
+              displayCommand,
+              env.variables || {},
+              step.variables,
+            );
           }
-        } else if (step.sub_steps && step.sub_steps.length > 0) {
-          cellContent = '_(see substeps below)_';
-        } else {
-          cellContent = `_(${step.type} step)_`;
+
+          const trimmedCommand = displayCommand.replace(/\n+$/, '');
+
+          // Show command separately or inline
+          if (showCommandSeparately && step.instruction) {
+            // Show command in separate labeled section
+            cellContent += `\n\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+          } else if (!step.instruction) {
+            // No instruction, just show command
+            cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
+          } else {
+            // Both present, inline mode: show command after instruction
+            cellContent += `\n\n{code:bash}\n${trimmedCommand}\n{code}`;
+          }
+        }
+
+        // Fallback for steps with neither
+        if (!cellContent) {
+          if (step.sub_steps && step.sub_steps.length > 0) {
+            cellContent = '_(see substeps below)_';
+          } else {
+            cellContent = `_(${step.type} step)_`;
+          }
         }
 
         // Add evidence area if required
@@ -995,39 +996,60 @@ ${filteredOperation.environments
       // Build all rollback cells
       const rollbackCells: string[] = [];
       filteredOperation.environments.forEach((env: any) => {
-        const rollbackCommand =
-          step.rollback?.command || step.rollback?.instruction || '';
-        let displayCommand = rollbackCommand;
+        let cellContent = '';
 
-        if (resolveVars && rollbackCommand) {
-          displayCommand = substituteVariables(
-            rollbackCommand,
-            env.variables || {},
-            step.variables,
-          );
+        // Get rollback options (defaults)
+        const substituteVars = step.rollback?.options?.substitute_vars ?? true;
+        const showCommandSeparately =
+          step.rollback?.options?.show_command_separately ?? false;
+
+        // Process rollback instruction (always markdown)
+        if (step.rollback?.instruction) {
+          let displayInstruction = step.rollback.instruction;
+
+          if (resolveVars && substituteVars) {
+            displayInstruction = substituteVariables(
+              displayInstruction,
+              env.variables || {},
+              step.variables,
+            );
+          }
+
+          const trimmed = displayInstruction.replace(/\s+$/, '');
+          cellContent += `{markdown}\n${trimmed}\n{markdown}`;
         }
 
-        let cellContent = '';
-        if (displayCommand) {
-          const trimmedCommand = displayCommand.replace(/\n+$/, '');
-          const hasMultipleLines = trimmedCommand.includes('\n');
+        // Process rollback command (always code block)
+        if (step.rollback?.command) {
+          let displayCommand = step.rollback.command;
 
-          if (hasMultipleLines) {
-            // Multi-line rollback command
-            const formattedCommand = formatForTableCell(trimmedCommand, true);
-            cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
-          } else {
-            // Single-line rollback command
-            const withBreaks = addSmartLineBreaks(trimmedCommand);
-            cellContent = `{code:bash}\n${withBreaks}\n{code}`;
+          if (resolveVars && substituteVars) {
+            displayCommand = substituteVariables(
+              displayCommand,
+              env.variables || {},
+              step.variables,
+            );
           }
-        } else {
+
+          const trimmedCommand = displayCommand.replace(/\n+$/, '');
+
+          if (showCommandSeparately && step.rollback.instruction) {
+            cellContent += `\n\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+          } else if (!step.rollback.instruction) {
+            cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
+          } else {
+            cellContent += `\n\n{code:bash}\n${trimmedCommand}\n{code}`;
+          }
+        }
+
+        // Fallback
+        if (!cellContent) {
           cellContent = '-';
         }
 
         // Add evidence area if required for rollback
         if (step.rollback?.evidence) {
-          cellContent += formatEvidenceArea(step.rollback?.evidence);
+          cellContent += formatEvidenceArea(step.rollback.evidence);
         }
 
         rollbackCells.push(cellContent);
@@ -1067,47 +1089,54 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
         const rollbackCells: string[] = [];
 
         filteredOperation.environments.forEach((env: any) => {
-          const rollbackCommand =
-            rollbackStep.command || rollbackStep.instruction || '';
-          let displayCommand = rollbackCommand;
+          let cellContent = '';
 
-          if (resolveVars && rollbackCommand) {
-            displayCommand = substituteVariables(
-              rollbackCommand,
-              env.variables || {},
-              {},
-            );
+          // Get rollback options (defaults)
+          const substituteVars = rollbackStep.options?.substitute_vars ?? true;
+          const showCommandSeparately =
+            rollbackStep.options?.show_command_separately ?? false;
+
+          // Process rollback instruction (always markdown)
+          if (rollbackStep.instruction) {
+            let displayInstruction = rollbackStep.instruction;
+
+            if (resolveVars && substituteVars) {
+              displayInstruction = substituteVariables(
+                displayInstruction,
+                env.variables || {},
+                {},
+              );
+            }
+
+            const trimmed = displayInstruction.replace(/\s+$/, '');
+            cellContent += `{markdown}\n${trimmed}\n{markdown}`;
           }
 
-          let cellContent = '';
-          if (displayCommand) {
-            // Check if it's markdown-style instruction
-            const isMarkdown =
-              rollbackStep.instruction &&
-              (displayCommand.includes('\n#') ||
-                displayCommand.includes('\n-') ||
-                displayCommand.includes('\n*') ||
-                displayCommand.includes('\n1.'));
+          // Process rollback command (always code block)
+          if (rollbackStep.command) {
+            let displayCommand = rollbackStep.command;
 
-            if (isMarkdown) {
-              // For markdown instructions, wrap in {markdown} to preserve formatting and links
-              const trimmed = displayCommand.replace(/\s+$/, '');
-              cellContent = `{markdown}\n${trimmed}\n{markdown}`;
-            } else {
-              const trimmedCommand = displayCommand.replace(/\n+$/, '');
-              const hasMultipleLines = trimmedCommand.includes('\n');
-              if (hasMultipleLines) {
-                const formattedCommand = formatForTableCell(
-                  trimmedCommand,
-                  true,
-                );
-                cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
-              } else {
-                const withBreaks = addSmartLineBreaks(trimmedCommand);
-                cellContent = `{code:bash}\n${withBreaks}\n{code}`;
-              }
+            if (resolveVars && substituteVars) {
+              displayCommand = substituteVariables(
+                displayCommand,
+                env.variables || {},
+                {},
+              );
             }
-          } else {
+
+            const trimmedCommand = displayCommand.replace(/\n+$/, '');
+
+            if (showCommandSeparately && rollbackStep.instruction) {
+              cellContent += `\n\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+            } else if (!rollbackStep.instruction) {
+              cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
+            } else {
+              cellContent += `\n\n{code:bash}\n${trimmedCommand}\n{code}`;
+            }
+          }
+
+          // Fallback
+          if (!cellContent) {
             cellContent = '-';
           }
 
@@ -1241,35 +1270,59 @@ function addConfluenceSubStepRows(
     // Build all command cells for sub-step
     const subCommandCells: string[] = [];
     environments.forEach((env: any) => {
-      const rawCommand = subStep.command || subStep.instruction || '';
-      let displayCommand = rawCommand;
+      let cellContent = '';
 
-      if (resolveVars && rawCommand) {
-        displayCommand = substituteVariables(
-          rawCommand,
-          env.variables || {},
-          subStep.variables,
-        );
+      // Get sub-step options (defaults)
+      const substituteVars = subStep.options?.substitute_vars ?? true;
+      const showCommandSeparately =
+        subStep.options?.show_command_separately ?? false;
+
+      // Process instruction (always render as markdown)
+      if (subStep.instruction) {
+        let displayInstruction = subStep.instruction;
+
+        if (resolveVars && substituteVars) {
+          displayInstruction = substituteVariables(
+            displayInstruction,
+            env.variables || {},
+            subStep.variables,
+          );
+        }
+
+        const trimmed = displayInstruction.replace(/\s+$/, '');
+        cellContent += `{markdown}\n${trimmed}\n{markdown}`;
       }
 
-      let cellContent = '';
-      if (displayCommand) {
-        const trimmedCommand = displayCommand.replace(/\n+$/, '');
-        const hasMultipleLines = trimmedCommand.includes('\n');
+      // Process command (always render as code block)
+      if (subStep.command) {
+        let displayCommand = subStep.command;
 
-        if (hasMultipleLines) {
-          // Multi-line: use code block with line breaks
-          const formattedCommand = formatForTableCell(trimmedCommand, true);
-          cellContent = `{code:bash}\n${formattedCommand}\n{code}`;
-        } else {
-          // Single-line: apply smart breaking
-          const withBreaks = addSmartLineBreaks(trimmedCommand);
-          cellContent = `{code:bash}\n${withBreaks}\n{code}`;
+        if (resolveVars && substituteVars) {
+          displayCommand = substituteVariables(
+            displayCommand,
+            env.variables || {},
+            subStep.variables,
+          );
         }
-      } else if (subStep.sub_steps && subStep.sub_steps.length > 0) {
-        cellContent = '_(see substeps below)_';
-      } else {
-        cellContent = `_(${subStep.type} step)_`;
+
+        const trimmedCommand = displayCommand.replace(/\n+$/, '');
+
+        if (showCommandSeparately && subStep.instruction) {
+          cellContent += `\n\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+        } else if (!subStep.instruction) {
+          cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
+        } else {
+          cellContent += `\n\n{code:bash}\n${trimmedCommand}\n{code}`;
+        }
+      }
+
+      // Fallback for sub-steps with neither
+      if (!cellContent) {
+        if (subStep.sub_steps && subStep.sub_steps.length > 0) {
+          cellContent = '_(see substeps below)_';
+        } else {
+          cellContent = `_(${subStep.type} step)_`;
+        }
       }
 
       // Add evidence area if required

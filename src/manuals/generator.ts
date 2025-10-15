@@ -9,27 +9,17 @@ function substituteVariables(
   envVariables: Record<string, any>,
   stepVariables?: Record<string, any>,
 ): string {
-  // Extract code blocks (```...```) and replace with placeholders
-  // This prevents variable substitution inside code blocks
-  const codeBlocks: string[] = [];
-  let result = command.replace(/```[\s\S]*?```/g, (match) => {
-    codeBlocks.push(match);
-    return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
-  });
-
   // Merge variables with priority: step > env
   const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
 
-  // Perform variable substitution on text outside code blocks
+  // Perform variable substitution on ENTIRE content
+  let result = command;
   for (const key in mergedVariables) {
     const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
     result = result.replace(regex, mergedVariables[key]);
   }
 
-  // Restore code blocks
-  return result.replace(/__CODE_BLOCK_(\d+)__/g, (_, index) => {
-    return codeBlocks[Number.parseInt(index, 10)];
-  });
+  return result;
 }
 
 function formatEvidenceInfo(evidence?: {
@@ -184,39 +174,46 @@ function generateStepRow(
 
   // Subsequent columns: Commands for each environment
   environments.forEach((env) => {
-    const rawCommand = step.command || step.instruction || '';
-    let displayCommand = rawCommand;
+    let cellContent = '';
 
-    // Resolve variables if flag is enabled
-    if (resolveVariables && rawCommand) {
-      displayCommand = substituteVariables(
-        rawCommand,
-        env.variables || {},
-        step.variables,
-      );
-    }
+    // Get step-level options (defaults)
+    const substituteVars = step.options?.substitute_vars ?? true;
+    const showCommandSeparately =
+      step.options?.show_command_separately ?? false;
 
-    // Check if content appears to be markdown (contains markdown indicators)
-    const isMarkdown =
-      step.instruction &&
-      (displayCommand.includes('\n#') || // Headers
-        displayCommand.includes('\n-') || // Lists
-        displayCommand.includes('\n*') || // Lists
-        displayCommand.includes('\n1.') || // Ordered lists
-        displayCommand.includes('```') || // Code blocks
-        displayCommand.includes('**') || // Bold
-        displayCommand.match(/\n\s{2,}/)); // Indented blocks
+    // Process instruction (markdown content)
+    if (step.instruction) {
+      let displayInstruction = step.instruction;
 
-    // Clean up command for table format
-    if (isMarkdown) {
-      // For markdown instructions, preserve formatting and escape only pipes
-      const cleanCommand = displayCommand
+      if (resolveVariables && substituteVars) {
+        displayInstruction = substituteVariables(
+          displayInstruction,
+          env.variables || {},
+          step.variables,
+        );
+      }
+
+      // Preserve markdown formatting and escape only pipes
+      const cleanInstruction = displayInstruction
         .trim()
         .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
         .replace(/\n/g, '<br>');
-      rows += ` ${cleanCommand} |`;
-    } else {
-      // For simple commands, wrap in backticks and escape special characters
+      cellContent += cleanInstruction;
+    }
+
+    // Process command (code content)
+    if (step.command) {
+      let displayCommand = step.command;
+
+      if (resolveVariables && substituteVars) {
+        displayCommand = substituteVariables(
+          displayCommand,
+          env.variables || {},
+          step.variables,
+        );
+      }
+
+      // Wrap in backticks and escape special characters
       const cleanCommand = displayCommand
         .trim()
         .replace(/\n/g, '<br>')
@@ -224,15 +221,28 @@ function generateStepRow(
         .replace(/`/g, '\\`')
         .replace(/<br>$/, ''); // Remove trailing <br> tag
 
-      if (cleanCommand) {
-        rows += ` \`${cleanCommand}\` |`;
-      } else if (step.sub_steps && step.sub_steps.length > 0) {
-        // If step has sub_steps but no command, indicate to see substeps
-        rows += ` _(see substeps below)_ |`;
+      if (showCommandSeparately && step.instruction) {
+        // Show command separately with label
+        cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+      } else if (!step.instruction) {
+        // No instruction, just show command
+        cellContent += `\`${cleanCommand}\``;
       } else {
-        rows += ` _(${step.type} step)_ |`;
+        // Both present, inline mode
+        cellContent += `<br><br>\`${cleanCommand}\``;
       }
     }
+
+    // Fallback for steps with neither
+    if (!cellContent) {
+      if (step.sub_steps && step.sub_steps.length > 0) {
+        cellContent = '_(see substeps below)_';
+      } else {
+        cellContent = `_(${step.type} step)_`;
+      }
+    }
+
+    rows += ` ${cellContent} |`;
   });
 
   rows += '\n';
@@ -354,39 +364,46 @@ function generateSubStepRow(
 
   // Subsequent columns: Commands for each environment
   environments.forEach((env) => {
-    const rawCommand = step.command || step.instruction || '';
-    let displayCommand = rawCommand;
+    let cellContent = '';
 
-    // Resolve variables if flag is enabled
-    if (resolveVariables && rawCommand) {
-      displayCommand = substituteVariables(
-        rawCommand,
-        env.variables || {},
-        step.variables,
-      );
-    }
+    // Get sub-step options (defaults)
+    const substituteVars = step.options?.substitute_vars ?? true;
+    const showCommandSeparately =
+      step.options?.show_command_separately ?? false;
 
-    // Check if content appears to be markdown (contains markdown indicators)
-    const isMarkdown =
-      step.instruction &&
-      (displayCommand.includes('\n#') || // Headers
-        displayCommand.includes('\n-') || // Lists
-        displayCommand.includes('\n*') || // Lists
-        displayCommand.includes('\n1.') || // Ordered lists
-        displayCommand.includes('```') || // Code blocks
-        displayCommand.includes('**') || // Bold
-        displayCommand.match(/\n\s{2,}/)); // Indented blocks
+    // Process instruction (markdown content)
+    if (step.instruction) {
+      let displayInstruction = step.instruction;
 
-    // Clean up command for table format
-    if (isMarkdown) {
-      // For markdown instructions, preserve formatting and escape only pipes
-      const cleanCommand = displayCommand
+      if (resolveVariables && substituteVars) {
+        displayInstruction = substituteVariables(
+          displayInstruction,
+          env.variables || {},
+          step.variables,
+        );
+      }
+
+      // Preserve markdown formatting and escape only pipes
+      const cleanInstruction = displayInstruction
         .trim()
         .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
         .replace(/\n/g, '<br>');
-      rows += ` ${cleanCommand} |`;
-    } else {
-      // For simple commands, wrap in backticks and escape special characters
+      cellContent += cleanInstruction;
+    }
+
+    // Process command (code content)
+    if (step.command) {
+      let displayCommand = step.command;
+
+      if (resolveVariables && substituteVars) {
+        displayCommand = substituteVariables(
+          displayCommand,
+          env.variables || {},
+          step.variables,
+        );
+      }
+
+      // Wrap in backticks and escape special characters
       const cleanCommand = displayCommand
         .trim()
         .replace(/\n/g, '<br>')
@@ -394,15 +411,28 @@ function generateSubStepRow(
         .replace(/`/g, '\\`')
         .replace(/<br>$/, ''); // Remove trailing <br> tag
 
-      if (cleanCommand) {
-        rows += ` \`${cleanCommand}\` |`;
-      } else if (step.sub_steps && step.sub_steps.length > 0) {
-        // If step has sub_steps but no command, indicate to see substeps
-        rows += ` _(see substeps below)_ |`;
+      if (showCommandSeparately && step.instruction) {
+        // Show command separately with label
+        cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+      } else if (!step.instruction) {
+        // No instruction, just show command
+        cellContent += `\`${cleanCommand}\``;
       } else {
-        rows += ` _(${step.type} step)_ |`;
+        // Both present, inline mode
+        cellContent += `<br><br>\`${cleanCommand}\``;
       }
     }
+
+    // Fallback for sub-steps with neither
+    if (!cellContent) {
+      if (step.sub_steps && step.sub_steps.length > 0) {
+        cellContent = '_(see substeps below)_';
+      } else {
+        cellContent = `_(${step.type} step)_`;
+      }
+    }
+
+    rows += ` ${cellContent} |`;
   });
 
   rows += '\n';
@@ -756,28 +786,69 @@ function generateManualContent(
         markdown += '|-------------|----------------|\n';
 
         operation.environments.forEach((env) => {
-          const rollbackCommand =
-            step.rollback?.command || step.rollback?.instruction || '';
-          let displayCommand = rollbackCommand;
+          let cellContent = '';
 
-          // Resolve variables if flag is enabled
-          if (resolveVariables && rollbackCommand) {
-            displayCommand = substituteVariables(
-              rollbackCommand,
-              env.variables || {},
-              step.variables,
-            );
+          // Get rollback options (defaults)
+          const substituteVars =
+            step.rollback?.options?.substitute_vars ?? true;
+          const showCommandSeparately =
+            step.rollback?.options?.show_command_separately ?? false;
+
+          // Process rollback instruction (markdown content)
+          if (step.rollback?.instruction) {
+            let displayInstruction = step.rollback.instruction;
+
+            if (resolveVariables && substituteVars) {
+              displayInstruction = substituteVariables(
+                displayInstruction,
+                env.variables || {},
+                step.variables,
+              );
+            }
+
+            // Preserve markdown formatting and escape only pipes
+            const cleanInstruction = displayInstruction
+              .trim()
+              .replace(/\|/g, '\\|')
+              .replace(/\n/g, '<br>');
+            cellContent += cleanInstruction;
           }
 
-          // Clean up command
-          const cleanCommand = displayCommand
-            .trim()
-            .replace(/\n/g, '<br>')
-            .replace(/\|/g, '\\|')
-            .replace(/`/g, '\\`')
-            .replace(/<br>$/, '');
+          // Process rollback command (code content)
+          if (step.rollback?.command) {
+            let displayCommand = step.rollback.command;
 
-          markdown += `| ${env.name} | \`${cleanCommand}\` |\n`;
+            if (resolveVariables && substituteVars) {
+              displayCommand = substituteVariables(
+                displayCommand,
+                env.variables || {},
+                step.variables,
+              );
+            }
+
+            // Wrap in backticks and escape special characters
+            const cleanCommand = displayCommand
+              .trim()
+              .replace(/\n/g, '<br>')
+              .replace(/\|/g, '\\|')
+              .replace(/`/g, '\\`')
+              .replace(/<br>$/, '');
+
+            if (showCommandSeparately && step.rollback.instruction) {
+              cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+            } else if (!step.rollback.instruction) {
+              cellContent += `\`${cleanCommand}\``;
+            } else {
+              cellContent += `<br><br>\`${cleanCommand}\``;
+            }
+          }
+
+          // Fallback
+          if (!cellContent) {
+            cellContent = '-';
+          }
+
+          markdown += `| ${env.name} | ${cellContent} |\n`;
         });
 
         markdown += '\n';

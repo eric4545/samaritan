@@ -188,21 +188,58 @@ export function generateADF(
 
       if (step.rollback.command || step.rollback.instruction) {
         const rollbackRows = environments.map((env) => {
-          const rollbackCommand =
-            step.rollback?.command || step.rollback?.instruction || '';
-          let displayCommand = rollbackCommand;
+          const cellContent = [];
 
-          if (resolveVariables && rollbackCommand) {
-            displayCommand = substituteVariables(
-              rollbackCommand,
-              env.variables || {},
-              step.variables,
+          // Get rollback options (defaults)
+          const substituteVars =
+            step.rollback?.options?.substitute_vars ?? true;
+          const showCommandSeparately =
+            step.rollback?.options?.show_command_separately ?? false;
+
+          // Process rollback instruction (paragraph/text content)
+          if (step.rollback?.instruction) {
+            let displayInstruction = step.rollback.instruction;
+
+            if (resolveVariables && substituteVars) {
+              displayInstruction = substituteVariables(
+                displayInstruction,
+                env.variables || {},
+                step.variables,
+              );
+            }
+
+            cellContent.push(paragraph(text(displayInstruction)));
+          }
+
+          // Process rollback command (code block)
+          if (step.rollback?.command) {
+            let displayCommand = step.rollback.command;
+
+            if (resolveVariables && substituteVars) {
+              displayCommand = substituteVariables(
+                displayCommand,
+                env.variables || {},
+                step.variables,
+              );
+            }
+
+            if (showCommandSeparately && step.rollback.instruction) {
+              cellContent.push(paragraph(strong(text('Command:'))));
+            }
+
+            cellContent.push(
+              codeBlock({ language: 'bash' })(text(displayCommand)),
             );
+          }
+
+          // Fallback
+          if (cellContent.length === 0) {
+            cellContent.push(paragraph(text('-')));
           }
 
           return tableRow([
             tableCell()(paragraph(text(env.name))),
-            tableCell()(codeBlock({ language: 'bash' })(text(displayCommand))),
+            tableCell()(...cellContent),
           ]);
         });
 
@@ -451,26 +488,57 @@ function createStepsTable(
     const cells = [tableCell()(...stepCellContent)];
 
     environments.forEach((env) => {
-      const rawCommand = step.command || step.instruction || '';
-      let displayCommand = rawCommand;
+      const cellContent = [];
 
-      if (resolveVariables && rawCommand) {
-        displayCommand = substituteVariables(
-          rawCommand,
-          env.variables || {},
-          step.variables,
-        );
+      // Get step-level options (defaults)
+      const substituteVars = step.options?.substitute_vars ?? true;
+      const showCommandSeparately =
+        step.options?.show_command_separately ?? false;
+
+      // Process instruction (paragraph/text content)
+      if (step.instruction) {
+        let displayInstruction = step.instruction;
+
+        if (resolveVariables && substituteVars) {
+          displayInstruction = substituteVariables(
+            displayInstruction,
+            env.variables || {},
+            step.variables,
+          );
+        }
+
+        cellContent.push(paragraph(text(displayInstruction)));
       }
 
-      if (displayCommand) {
-        cells.push(
-          tableCell()(codeBlock({ language: 'bash' })(text(displayCommand))),
-        );
-      } else if (step.sub_steps && step.sub_steps.length > 0) {
-        cells.push(tableCell()(paragraph(em(text('(see substeps below)')))));
-      } else {
-        cells.push(tableCell()(paragraph(em(text(`(${step.type} step)`)))));
+      // Process command (code block)
+      if (step.command) {
+        let displayCommand = step.command;
+
+        if (resolveVariables && substituteVars) {
+          displayCommand = substituteVariables(
+            displayCommand,
+            env.variables || {},
+            step.variables,
+          );
+        }
+
+        if (showCommandSeparately && step.instruction) {
+          cellContent.push(paragraph(strong(text('Command:'))));
+        }
+
+        cellContent.push(codeBlock({ language: 'bash' })(text(displayCommand)));
       }
+
+      // Fallback for steps with neither
+      if (cellContent.length === 0) {
+        if (step.sub_steps && step.sub_steps.length > 0) {
+          cellContent.push(paragraph(em(text('(see substeps below)'))));
+        } else {
+          cellContent.push(paragraph(em(text(`(${step.type} step)`))));
+        }
+      }
+
+      cells.push(tableCell()(...cellContent));
     });
 
     dataRows.push(tableRow(cells));
@@ -584,28 +652,57 @@ function addSubStepRows(
     const subCells = [tableCell()(...subStepCellContent)];
 
     environments.forEach((env) => {
-      const rawCommand = subStep.command || subStep.instruction || '';
-      let displayCommand = rawCommand;
+      const cellContent = [];
 
-      if (resolveVariables && rawCommand) {
-        displayCommand = substituteVariables(
-          rawCommand,
-          env.variables || {},
-          subStep.variables,
-        );
+      // Get sub-step options (defaults)
+      const substituteVars = subStep.options?.substitute_vars ?? true;
+      const showCommandSeparately =
+        subStep.options?.show_command_separately ?? false;
+
+      // Process instruction (paragraph/text content)
+      if (subStep.instruction) {
+        let displayInstruction = subStep.instruction;
+
+        if (resolveVariables && substituteVars) {
+          displayInstruction = substituteVariables(
+            displayInstruction,
+            env.variables || {},
+            subStep.variables,
+          );
+        }
+
+        cellContent.push(paragraph(text(displayInstruction)));
       }
 
-      if (displayCommand) {
-        subCells.push(
-          tableCell()(codeBlock({ language: 'bash' })(text(displayCommand))),
-        );
-      } else if (subStep.sub_steps && subStep.sub_steps.length > 0) {
-        subCells.push(tableCell()(paragraph(em(text('(see substeps below)')))));
-      } else {
-        subCells.push(
-          tableCell()(paragraph(em(text(`(${subStep.type} step)`)))),
-        );
+      // Process command (code block)
+      if (subStep.command) {
+        let displayCommand = subStep.command;
+
+        if (resolveVariables && substituteVars) {
+          displayCommand = substituteVariables(
+            displayCommand,
+            env.variables || {},
+            subStep.variables,
+          );
+        }
+
+        if (showCommandSeparately && subStep.instruction) {
+          cellContent.push(paragraph(strong(text('Command:'))));
+        }
+
+        cellContent.push(codeBlock({ language: 'bash' })(text(displayCommand)));
       }
+
+      // Fallback for sub-steps with neither
+      if (cellContent.length === 0) {
+        if (subStep.sub_steps && subStep.sub_steps.length > 0) {
+          cellContent.push(paragraph(em(text('(see substeps below)'))));
+        } else {
+          cellContent.push(paragraph(em(text(`(${subStep.type} step)`))));
+        }
+      }
+
+      subCells.push(tableCell()(...cellContent));
     });
 
     dataRows.push(tableRow(subCells));
@@ -626,34 +723,23 @@ function addSubStepRows(
 
 /**
  * Substitute variables in command string
- * Protects code blocks (```...```) from variable substitution
  */
 function substituteVariables(
   command: string,
   envVariables: Record<string, any>,
   stepVariables?: Record<string, any>,
 ): string {
-  // Extract code blocks (```...```) and replace with placeholders
-  // This prevents variable substitution inside code blocks
-  const codeBlocks: string[] = [];
-  let result = command.replace(/```[\s\S]*?```/g, (match) => {
-    codeBlocks.push(match);
-    return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
-  });
-
   // Merge variables with priority: step > env
   const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
 
-  // Perform variable substitution on text outside code blocks
+  // Perform variable substitution on ENTIRE content
+  let result = command;
   for (const key in mergedVariables) {
     const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
     result = result.replace(regex, mergedVariables[key]);
   }
 
-  // Restore code blocks
-  return result.replace(/__CODE_BLOCK_(\d+)__/g, (_, index) => {
-    return codeBlocks[Number.parseInt(index, 10)];
-  });
+  return result;
 }
 
 /**

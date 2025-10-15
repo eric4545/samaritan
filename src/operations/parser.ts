@@ -479,6 +479,34 @@ function parseStep(stepData: any, _stepIndex: number): Step {
     );
   }
 
+  // Parse options
+  const options = stepData.options
+    ? {
+        substitute_vars: stepData.options.substitute_vars ?? true,
+        show_command_separately:
+          stepData.options.show_command_separately ?? false,
+      }
+    : undefined;
+
+  // Parse rollback with options
+  const rollback = stepData.rollback
+    ? {
+        command: stepData.rollback.command,
+        instruction: stepData.rollback.instruction,
+        timeout: stepData.rollback.timeout,
+        evidence: parseEvidence(stepData.rollback),
+        evidence_required: Boolean(stepData.rollback.evidence_required),
+        options: stepData.rollback.options
+          ? {
+              substitute_vars:
+                stepData.rollback.options.substitute_vars ?? true,
+              show_command_separately:
+                stepData.rollback.options.show_command_separately ?? false,
+            }
+          : undefined,
+      }
+    : undefined;
+
   return {
     id: stepData.id,
     name: stepData.name,
@@ -501,7 +529,7 @@ function parseStep(stepData: any, _stepIndex: number): Step {
     verify: stepData.verify,
     continue_on_error: Boolean(stepData.continue_on_error),
     retry: stepData.retry,
-    rollback: stepData.rollback,
+    rollback: rollback,
     needs: stepData.needs,
     sub_steps: subSteps,
     manual_override: Boolean(stepData.manual_override),
@@ -512,6 +540,7 @@ function parseStep(stepData: any, _stepIndex: number): Step {
     section_heading: Boolean(stepData.section_heading),
     pic: stepData.pic,
     timeline: stepData.timeline,
+    options: options,
   };
 }
 

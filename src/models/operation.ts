@@ -43,6 +43,11 @@ export interface EvidenceConfig {
   types?: EvidenceType[];
 }
 
+export interface StepOptions {
+  substitute_vars?: boolean; // Default: true - substitute ${VAR} in instruction and command
+  show_command_separately?: boolean; // Default: false - show command inline with instruction
+}
+
 export interface StepValidation {
   expect?: string;
   contains?: string;
@@ -100,6 +105,7 @@ export interface RollbackStep {
   timeout?: number;
   evidence?: EvidenceConfig;
   evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
+  options?: StepOptions;
 }
 
 export interface RollbackPlan {
@@ -154,6 +160,7 @@ export interface Step {
   section_heading?: boolean; // If true, render as a new markdown heading instead of table row
   pic?: string; // Person In Charge for this step
   timeline?: string; // Expected date/time or duration for this step
+  options?: StepOptions; // Step-level rendering and substitution options
 }
 
 export interface Environment {

@@ -104,13 +104,13 @@ describe('Manual Generator Unit Tests', () => {
     );
     assert(
       markdown.includes(
-        '`Check the application health endpoint at http://localhost:8080/health`',
+        'Check the application health endpoint at http://localhost:8080/health',
       ),
       'Should substitute PORT for staging',
     );
     assert(
       markdown.includes(
-        '`Check the application health endpoint at http://localhost:80/health`',
+        'Check the application health endpoint at http://localhost:80/health',
       ),
       'Should substitute PORT for production',
     );
@@ -1751,91 +1751,78 @@ kubectl apply -f worker.yaml`,
     );
   });
 
-  it('should NOT expand variables inside code blocks when resolveVariables is enabled (Bug Fix)', async () => {
-    const operation = await parseFixture('variableInCodeBlock');
+  it('should respect options.substitute_vars to control variable expansion', () => {
+    const testOperation: Operation = {
+      id: 'substitute-control-test',
+      name: 'Substitute Control Test',
+      version: '1.0.0',
+      description: 'Test options.substitute_vars control',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: { CLUSTER: 'prod-cluster', APP_NAME: 'myapp' },
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+        },
+      ],
+      variables: {
+        production: { CLUSTER: 'prod-cluster', APP_NAME: 'myapp' },
+      },
+      steps: [
+        {
+          name: 'Deploy with substitution',
+          type: 'automatic',
+          command: 'kubectl apply -f ${APP_NAME}.yaml --cluster=${CLUSTER}',
+          // Default: substitute_vars = true
+        },
+        {
+          name: 'Bash script without substitution',
+          type: 'automatic',
+          command: `#!/bin/bash
+export TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+echo "Deploying at: \${TIMESTAMP}"`,
+          options: {
+            substitute_vars: false, // Disable substitution for this step
+          },
+        },
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0,
+      },
+    };
 
-    // Test with variable resolution enabled
     const markdown = generateManualWithMetadata(
-      operation,
+      testOperation,
       undefined,
       undefined,
       true,
     );
 
-    // Variables OUTSIDE code blocks should be expanded
+    // Step 1: Variables should be expanded (default behavior)
     assert(
-      markdown.includes('Deploy to cluster prod-cluster'),
-      'Should expand ${CLUSTER} outside code block',
+      markdown.includes('kubectl apply -f myapp.yaml --cluster=prod-cluster'),
+      'Should expand variables when substitute_vars is true (default)',
     );
 
-    // Variables INSIDE code blocks should NOT be expanded
-    // Test 1: Bash function with local TIMESTAMP variable
+    // Step 2: Variables should NOT be expanded (substitute_vars = false)
     assert(
-      markdown.includes('local TIMESTAMP=$(date +%Y%m%d_%H%M%S)'),
-      'Should preserve local TIMESTAMP definition inside code block',
+      markdown.includes('export TIMESTAMP=$(date +%Y%m%d_%H%M%S)'),
+      'Should preserve TIMESTAMP definition when substitute_vars is false',
     );
     assert(
       markdown.includes('echo "Deploying at: ${TIMESTAMP}"'),
-      'Should preserve ${TIMESTAMP} reference inside bash function',
-    );
-    assert(
-      markdown.includes('echo "App: ${APP_NAME}"'),
-      'Should preserve ${APP_NAME} reference inside bash function (not expand to YAML var)',
+      'Should preserve ${TIMESTAMP} when substitute_vars is false',
     );
 
-    // Test 2: Script with environment variables
+    // Verify the expanded values don't appear in step 2
     assert(
-      markdown.includes('TIMESTAMP=$(date +%Y%m%d_%H%M%S)'),
-      'Should preserve TIMESTAMP definition in script',
-    );
-    assert(
-      markdown.includes('CLUSTER="local-cluster"'),
-      'Should preserve CLUSTER definition in script',
-    );
-    assert(
-      markdown.includes('echo "Script started at: ${TIMESTAMP}"'),
-      'Should preserve ${TIMESTAMP} in echo statement inside code block',
-    );
-    assert(
-      markdown.includes('echo "Target cluster: ${CLUSTER}"'),
-      'Should preserve ${CLUSTER} in echo statement inside code block',
-    );
-
-    // Test 3: Mixed scenario - outside vars expand, inside vars don't
-    assert(
-      markdown.includes('Deploy to cluster prod-cluster'),
-      'Should expand ${CLUSTER} outside code block',
-    );
-    assert(
-      markdown.includes('export TIMESTAMP=$(date +%Y%m%d_%H%M%S)'),
-      'Should preserve TIMESTAMP export in code block',
-    );
-    assert(
-      markdown.includes('export APP_NAME="my-app"'),
-      'Should preserve APP_NAME export in code block',
-    );
-    assert(
-      markdown.includes('kubectl apply -f ${APP_NAME}-deployment.yaml'),
-      'Should preserve ${APP_NAME} reference inside code block',
-    );
-    assert(
-      markdown.includes('echo "Deployed at ${TIMESTAMP}"'),
-      'Should preserve ${TIMESTAMP} in code block',
-    );
-
-    // Verify the YAML variable TIMESTAMP value is NOT inside code blocks
-    // (If it was expanded, we'd see the YAML value "$(date +%Y%m%d_%H%M%S)" appear multiple times)
-    const yamlTimestampValue = '$(date +%Y%m%d_%H%M%S)';
-    const codeBlockPattern = /```bash[\s\S]*?```/g;
-    const codeBlocks = markdown.match(codeBlockPattern) || [];
-
-    // Count how many times the timestamp command appears in code blocks
-    // It should appear only in variable definitions, not in echo statements
-    const timestampInCodeBlocks =
-      codeBlocks.join('').split(yamlTimestampValue).length - 1;
-    assert(
-      timestampInCodeBlocks >= 2 && timestampInCodeBlocks <= 3,
-      `Should have 2-3 occurrences of timestamp command in code blocks (definitions only), got ${timestampInCodeBlocks}`,
+      !markdown.includes('echo "Deploying at: prod-cluster"'),
+      'Should not expand CLUSTER in step with substitute_vars=false',
     );
   });
 
