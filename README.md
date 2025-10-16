@@ -51,11 +51,103 @@ npx github:eric4545/samaritan#branch-name validate my-operation.yaml
 
 ### Evidence & Audit
 - **Evidence tracking** - Document required evidence for each step
+- **Evidence results** - Embed pre-captured evidence directly in generated manuals
 - **Git metadata** - Complete traceability with commit info
 - **Structured documentation** - Generate manuals with evidence requirements
 - **Audit-ready formats** - Markdown and Confluence outputs
 
-> **Note**: Automatic evidence collection (screenshots, log capture, video recording) is planned for v2.0. See [ROADMAP.md](ROADMAP.md) for details.
+> **Note**: Automatic evidence collection (screenshots, log capture, video recording) is planned for v2.0. See [ROADMAP.md](ROADMAP.md) for details. Current v1.0 supports embedding pre-captured evidence via the `evidence.results` field.
+
+#### Evidence Results (Pre-captured Evidence)
+
+You can embed pre-captured evidence directly into generated manuals using the `evidence.results` field. This is useful for:
+- **Pre-approved procedures**: Include evidence from rehearsal/staging runs
+- **Template manuals**: Show expected outcomes with screenshots
+- **Post-execution documentation**: Update manuals with actual results
+- **Audit compliance**: Maintain complete evidence trail in version control
+
+**Example with file references:**
+```yaml
+steps:
+  - name: Deploy Application
+    type: manual
+    instruction: |
+      Deploy application to Kubernetes:
+      ```bash
+      kubectl apply -f deployment.yaml -n ${NAMESPACE}
+      ```
+    evidence:
+      required: true
+      types: [screenshot, command_output]
+      results:
+        - type: screenshot
+          file: ./evidence/deployment-dashboard.png
+          description: Kubernetes dashboard showing 3 pods running
+        - type: command_output
+          file: ./evidence/deployment-logs.txt
+          description: Deployment output from kubectl
+```
+
+**Example with inline content:**
+```yaml
+steps:
+  - name: Verify Database Connection
+    type: manual
+    instruction: Check database connectivity
+    evidence:
+      required: true
+      types: [command_output, log]
+      results:
+        - type: command_output
+          content: |
+            deployment.apps/web-server created
+            service/web-server created
+            NAME         READY   STATUS    RESTARTS   AGE
+            pod/web-0    1/1     Running   0          10s
+            pod/web-1    1/1     Running   0          10s
+          description: Successful deployment output
+        - type: log
+          content: |
+            [2025-10-16 10:30:00] INFO: Application started
+            [2025-10-16 10:30:05] INFO: Database connection established
+            [2025-10-16 10:30:10] INFO: Ready to accept connections
+          description: Application startup logs
+```
+
+**Generated Manual Rendering:**
+
+Evidence results are automatically rendered in generated manuals:
+- **Screenshots/Photos** (file): Rendered as embedded images
+- **Other files**: Rendered as download links
+- **Inline content**: Rendered as code blocks (bash for command_output, text for others)
+- **Descriptions**: Displayed above the evidence content
+
+**Evidence Result Schema:**
+```yaml
+evidence:
+  required: true              # Optional: whether evidence is required
+  types: [screenshot, log]    # Optional: expected evidence types
+  results:                    # Optional: pre-captured evidence
+    - type: screenshot        # Required: evidence type
+      file: ./path/to/file    # Either 'file' OR 'content' required
+      description: Description text  # Optional
+    - type: command_output
+      content: |              # Inline content (alternative to 'file')
+        Command output here
+      description: Description text  # Optional
+```
+
+**Supported Evidence Types:**
+- `screenshot` - UI screenshots (renders as image if file path provided)
+- `photo` - Photos (renders as image if file path provided)
+- `log` - Log files or log content
+- `command_output` - Shell command output
+- `video` - Video recordings
+- `document` - PDF or document files
+- `config` - Configuration file snapshots
+- `custom` - Custom evidence types
+
+See `tests/fixtures/operations/features/evidence-with-results.yaml` for a complete example.
 
 ## 🛠 CLI Commands
 
@@ -79,6 +171,11 @@ npx github:eric4545/samaritan generate manual <operation.yaml> [options]
 npx github:eric4545/samaritan generate confluence <operation.yaml> [options]
   --output <file>       Output Confluence storage format file
   --env <environment>   Generate for specific environment only
+
+# Export JSON schema for operations
+npx github:eric4545/samaritan schema [options]
+  -o, --output <file>   Output file (default: stdout)
+  -f, --format <format> Output format: json or yaml (default: json)
 ```
 
 ### Project Management
@@ -93,6 +190,43 @@ npx github:eric4545/samaritan operation [options]
   --env <environments>  Target environments (comma-separated)
 ```
 
+
+### Schema Inspection
+
+SAMARITAN provides commands to export the operation JSON schema for documentation, integration, and validation purposes:
+
+```bash
+# Export schema to stdout (JSON format)
+npx github:eric4545/samaritan schema
+
+# Export schema to file
+npx github:eric4545/samaritan schema --output operation-schema.json
+
+# Export schema in YAML format
+npx github:eric4545/samaritan schema --format yaml --output operation-schema.yaml
+```
+
+**Use cases:**
+- **IDE Integration**: Configure your editor to use the schema for autocomplete and validation
+- **Custom Tools**: Build custom validation or generation tools using the schema
+- **Documentation**: Reference the schema to understand available operation fields
+- **CI/CD Validation**: Use the schema in automated validation pipelines
+
+**Example: VSCode Integration**
+
+Add to your operation YAML files for autocomplete and validation:
+
+```yaml
+# yaml-language-server: $schema=./operation-schema.json
+
+name: My Operation
+version: 1.0.0
+steps:
+  # IDE will now provide autocomplete for step fields
+  - name: Deploy
+    type: manual  # IDE shows available types
+    instruction: Deploy the application
+```
 
 ## 📝 Operation Definition
 
