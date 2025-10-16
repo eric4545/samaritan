@@ -302,8 +302,8 @@ describe('Confluence Generator Tests', () => {
     assert.match(content, /\{markdown\} ```mermaid/);
     assert.match(content, /gantt/);
     assert.match(content, /title Deployment with Timeline Timeline/);
-    // Closing ``` and {markdown} must be on the same line with a space
-    assert.match(content, /``` \{markdown\}/);
+    // Closing ``` and {markdown} must be on separate lines (newline between them)
+    assert.match(content, /```\n\{markdown\}/);
 
     // Should include phase sections
     assert.match(content, /section 🛫 Pre-Flight Phase/);

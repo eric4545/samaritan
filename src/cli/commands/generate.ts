@@ -725,6 +725,7 @@ gantt
     axisFormat %m-%d %H:%M
 
 `;
+      // Note: Opening {markdown} tag must be on same line as ```mermaid for Confluence rendering
 
       // Group steps by phase
       const ganttPhases: { [key: string]: any[] } = {
@@ -761,7 +762,9 @@ gantt
         content += '\n';
       });
 
-      content += `\`\`\` {markdown}
+      // Note: Closing ``` and {markdown} must be on separate lines for Confluence rendering
+      content += `\`\`\`
+{markdown}
 
 `;
     }
