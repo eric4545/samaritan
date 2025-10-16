@@ -42,9 +42,28 @@ function formatEvidenceInfo(evidence?: {
   return result;
 }
 
+/**
+ * Recursively collect all steps with timeline information, including nested sub-steps
+ */
+function collectAllStepsWithTimeline(steps: Step[]): Step[] {
+  const result: Step[] = [];
+
+  function traverse(step: Step) {
+    if (step.timeline) {
+      result.push(step);
+    }
+    if (step.sub_steps && step.sub_steps.length > 0) {
+      step.sub_steps.forEach(traverse);
+    }
+  }
+
+  steps.forEach(traverse);
+  return result;
+}
+
 function generateGanttChart(operation: Operation): string {
-  // Filter steps that have timeline information
-  const stepsWithTimeline = operation.steps.filter((step) => step.timeline);
+  // Filter steps that have timeline information (including sub-steps)
+  const stepsWithTimeline = collectAllStepsWithTimeline(operation.steps);
 
   if (stepsWithTimeline.length === 0) {
     return '';
@@ -518,7 +537,14 @@ export function generateManualWithMetadata(
 
   // Add Gantt chart if requested and steps have timeline data
   if (includeGantt) {
-    markdown += generateGanttChart(operation);
+    const ganttChart = generateGanttChart(operation);
+    if (ganttChart === '') {
+      console.warn(
+        '⚠️  --gantt flag provided but no timeline data found in steps. Gantt chart will not be generated.',
+      );
+    } else {
+      markdown += ganttChart;
+    }
   }
 
   // Filter environments if specified

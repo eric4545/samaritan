@@ -513,6 +513,25 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
   }
 }
 
+/**
+ * Recursively collect all steps with timeline information, including nested sub-steps
+ */
+function collectAllStepsWithTimelineForConfluence(steps: any[]): any[] {
+  const result: any[] = [];
+
+  function traverse(step: any) {
+    if (step.timeline) {
+      result.push(step);
+    }
+    if (step.sub_steps && step.sub_steps.length > 0) {
+      step.sub_steps.forEach(traverse);
+    }
+  }
+
+  steps.forEach(traverse);
+  return result;
+}
+
 // Export as standalone function for testing
 export function generateConfluenceContent(
   operation: any,
@@ -688,11 +707,15 @@ ${filteredOperation.emergency ? '*Emergency Operation:* {status:colour=Red|title
 
   // Add Gantt chart if requested and steps have timeline data
   if (includeGantt) {
-    const stepsWithTimeline = filteredOperation.steps.filter(
-      (step: any) => step.timeline,
+    const stepsWithTimeline = collectAllStepsWithTimelineForConfluence(
+      filteredOperation.steps,
     );
 
-    if (stepsWithTimeline.length > 0) {
+    if (stepsWithTimeline.length === 0) {
+      console.warn(
+        '⚠️  --gantt flag provided but no timeline data found in steps. Gantt chart will not be generated.',
+      );
+    } else {
       content += `h2. Timeline Schedule
 
 {markdown}
@@ -927,13 +950,13 @@ ${filteredOperation.environments
           // Show command separately or inline
           if (showCommandSeparately && step.instruction) {
             // Show command in separate labeled section
-            cellContent += `\n\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+            cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
           } else if (!step.instruction) {
             // No instruction, just show command
             cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
           } else {
             // Both present, inline mode: show command after instruction
-            cellContent += `\n\n{code:bash}\n${trimmedCommand}\n{code}`;
+            cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
           }
         }
 
@@ -1034,11 +1057,11 @@ ${filteredOperation.environments
           const trimmedCommand = displayCommand.replace(/\n+$/, '');
 
           if (showCommandSeparately && step.rollback.instruction) {
-            cellContent += `\n\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+            cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
           } else if (!step.rollback.instruction) {
             cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
           } else {
-            cellContent += `\n\n{code:bash}\n${trimmedCommand}\n{code}`;
+            cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
           }
         }
 
@@ -1127,11 +1150,11 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
             const trimmedCommand = displayCommand.replace(/\n+$/, '');
 
             if (showCommandSeparately && rollbackStep.instruction) {
-              cellContent += `\n\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+              cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
             } else if (!rollbackStep.instruction) {
               cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
             } else {
-              cellContent += `\n\n{code:bash}\n${trimmedCommand}\n{code}`;
+              cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
             }
           }
 
@@ -1308,11 +1331,11 @@ function addConfluenceSubStepRows(
         const trimmedCommand = displayCommand.replace(/\n+$/, '');
 
         if (showCommandSeparately && subStep.instruction) {
-          cellContent += `\n\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+          cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
         } else if (!subStep.instruction) {
           cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
         } else {
-          cellContent += `\n\n{code:bash}\n${trimmedCommand}\n{code}`;
+          cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
         }
       }
 
