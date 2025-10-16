@@ -1,0 +1,72 @@
+name: Evidence with Results Test
+version: 1.0.0
+description: Test evidence with pre-captured results
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: production
+
+steps:
+  - name: Deploy Application
+    type: automatic
+    phase: flight
+    command: kubectl apply -f deployment.yaml -n ${NAMESPACE}
+    evidence:
+      required: true
+      types: [screenshot, command_output]
+      results:
+        - type: screenshot
+          file: ./evidence/deployment-dashboard.png
+          description: Kubernetes dashboard showing 3 pods running
+        - type: command_output
+          content: |
+            deployment.apps/web-server created
+            service/web-server created
+            NAME         READY   STATUS    RESTARTS   AGE
+            pod/web-0    1/1     Running   0          10s
+            pod/web-1    1/1     Running   0          10s
+            pod/web-2    1/1     Running   0          10s
+
+  - name: Manual Verification
+    type: manual
+    phase: postflight
+    instruction: |
+      Verify deployment is successful:
+      1. Check application homepage
+      2. Test login functionality
+    evidence:
+      required: true
+      types: [screenshot]
+      results:
+        - type: screenshot
+          file: ./evidence/homepage-screenshot.png
+          description: Homepage showing "Welcome" message
+
+  - name: Log Collection
+    type: manual
+    phase: postflight
+    instruction: Check application logs
+    evidence:
+      required: false
+      types: [log]
+      results:
+        - type: log
+          content: |
+            [2025-10-16 10:30:00] INFO: Application started
+            [2025-10-16 10:30:05] INFO: Database connection established
+            [2025-10-16 10:30:10] INFO: Ready to accept connections
+          description: Application startup logs
+
+  - name: No Evidence Results
+    type: automatic
+    phase: postflight
+    command: echo "Done"
+    evidence:
+      required: true
+      types: [command_output]

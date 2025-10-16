@@ -25,6 +25,12 @@ function substituteVariables(
 function formatEvidenceInfo(evidence?: {
   required?: boolean;
   types?: string[];
+  results?: Array<{
+    type: string;
+    file?: string;
+    content?: string;
+    description?: string;
+  }>;
 }): string {
   if (!evidence) return '';
 
@@ -37,6 +43,40 @@ function formatEvidenceInfo(evidence?: {
   // Add code block for command_output evidence type
   if (types.includes('command_output')) {
     result += '<br>```bash<br># Paste command output here<br>```';
+  }
+
+  // Render evidence results if present
+  if (evidence.results && evidence.results.length > 0) {
+    result += '<br><br>**Captured Evidence:**';
+
+    for (const evidenceResult of evidence.results) {
+      result += '<br>';
+
+      // Add description if present
+      if (evidenceResult.description) {
+        result += `<br>**${evidenceResult.type}**: ${evidenceResult.description}`;
+      } else {
+        result += `<br>**${evidenceResult.type}**:`;
+      }
+
+      // Render based on storage type
+      if (evidenceResult.file) {
+        // File reference - render as image for screenshots/photos, or link for others
+        if (evidenceResult.type === 'screenshot' || evidenceResult.type === 'photo') {
+          result += `<br>![Evidence](${evidenceResult.file})`;
+        } else {
+          result += `<br>[View ${evidenceResult.type}](${evidenceResult.file})`;
+        }
+      } else if (evidenceResult.content) {
+        // Inline content - render in code block
+        const language = evidenceResult.type === 'command_output' ? 'bash' : 'text';
+        // Escape pipe characters and convert newlines
+        const escapedContent = evidenceResult.content
+          .replace(/\|/g, '\\|')
+          .replace(/\n/g, '<br>');
+        result += `<br>\`\`\`${language}<br>${escapedContent}<br>\`\`\``;
+      }
+    }
   }
 
   return result;

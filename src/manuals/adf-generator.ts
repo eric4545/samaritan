@@ -481,7 +481,12 @@ function createStepsTable(
     // Evidence requirements
     const evidenceInfo = formatEvidenceInfo(step.evidence);
     if (evidenceInfo) {
-      stepCellContent.push(evidenceInfo);
+      // Handle both single node and array of nodes
+      if (Array.isArray(evidenceInfo)) {
+        stepCellContent.push(...evidenceInfo);
+      } else {
+        stepCellContent.push(evidenceInfo);
+      }
     }
 
     // Build command cells for each environment
@@ -646,7 +651,12 @@ function addSubStepRows(
     // Evidence requirements for sub-steps
     const subEvidenceInfo = formatEvidenceInfo(subStep.evidence);
     if (subEvidenceInfo) {
-      subStepCellContent.push(subEvidenceInfo);
+      // Handle both single node and array of nodes
+      if (Array.isArray(subEvidenceInfo)) {
+        subStepCellContent.push(...subEvidenceInfo);
+      } else {
+        subStepCellContent.push(subEvidenceInfo);
+      }
     }
 
     const subCells = [tableCell()(...subStepCellContent)];
@@ -748,6 +758,12 @@ function substituteVariables(
 function formatEvidenceInfo(evidence?: {
   required?: boolean;
   types?: string[];
+  results?: Array<{
+    type: string;
+    file?: string;
+    content?: string;
+    description?: string;
+  }>;
 }): any {
   if (!evidence) return null;
 
@@ -755,7 +771,41 @@ function formatEvidenceInfo(evidence?: {
   const typesText = types.length > 0 ? `: ${types.join(', ')}` : '';
   const status = evidence.required ? 'Required' : 'Optional';
 
-  return paragraph(em(text(`📎 Evidence ${status}${typesText}`)));
+  const nodes = [paragraph(em(text(`📎 Evidence ${status}${typesText}`)))];
+
+  // Render evidence results if present
+  if (evidence.results && evidence.results.length > 0) {
+    nodes.push(paragraph(strong(text('Captured Evidence:'))));
+
+    for (const evidenceResult of evidence.results) {
+      // Add description or type label
+      if (evidenceResult.description) {
+        nodes.push(
+          paragraph(
+            strong(text(`${evidenceResult.type}: `)),
+            text(evidenceResult.description),
+          ),
+        );
+      } else {
+        nodes.push(paragraph(strong(text(`${evidenceResult.type}:`))));
+      }
+
+      // Render based on storage type
+      if (evidenceResult.file) {
+        // File reference - for Confluence, we can only show the path
+        // Actual image embedding would require upload via Confluence API
+        nodes.push(paragraph(text(`File: ${evidenceResult.file}`)));
+      } else if (evidenceResult.content) {
+        // Inline content - render in code block
+        const language =
+          evidenceResult.type === 'command_output' ? 'bash' : 'text';
+        nodes.push(codeBlock({ language })(text(evidenceResult.content)));
+      }
+    }
+  }
+
+  // Return array of nodes if multiple, otherwise single node
+  return nodes.length === 1 ? nodes[0] : nodes;
 }
 
 /**

@@ -1892,4 +1892,163 @@ echo "Deploying at: \${TIMESTAMP}"`,
     // Snapshot the complete manual
     t.assert.snapshot(markdown);
   });
+
+  it('should render evidence results (file references and inline content)', async (t) => {
+    const operation = await parseFixture('evidenceWithResults');
+    const markdown = generateManual(operation);
+
+    // Should include evidence types
+    assert(
+      markdown.includes('📎 <em>Evidence Required: screenshot, command_output</em>'),
+      'Should show evidence types',
+    );
+
+    // Should include "Captured Evidence" section
+    assert(
+      markdown.includes('**Captured Evidence:**'),
+      'Should have Captured Evidence section',
+    );
+
+    // Should render screenshot as image with description
+    assert(
+      markdown.includes('**screenshot**: Kubernetes dashboard showing 3 pods running'),
+      'Should show screenshot description',
+    );
+    assert(
+      markdown.includes('![Evidence](./evidence/deployment-dashboard.png)'),
+      'Should render screenshot as image',
+    );
+
+    // Should render command_output in code block
+    assert(
+      markdown.includes('**command_output**:'),
+      'Should show command_output label',
+    );
+    assert(
+      markdown.includes('```bash'),
+      'Should use bash code block for command_output',
+    );
+    assert(
+      markdown.includes('deployment.apps/web-server created'),
+      'Should include command output content',
+    );
+    assert(
+      markdown.includes('pod/web-0    1/1     Running'),
+      'Should include pod status output',
+    );
+
+    // Should render log content
+    assert(
+      markdown.includes('**log**: Application startup logs'),
+      'Should show log description',
+    );
+    assert(
+      markdown.includes('[2025-10-16 10:30:00] INFO: Application started'),
+      'Should include log content',
+    );
+
+    // Should render file reference for non-image types
+    assert(
+      markdown.includes('[View screenshot](./evidence/homepage-screenshot.png)') ||
+        markdown.includes('![Evidence](./evidence/homepage-screenshot.png)'),
+      'Should render screenshot file reference',
+    );
+
+    // Step without results should only show placeholder
+    assert(
+      markdown.includes('📎 <em>Evidence Required: command_output</em>'),
+      'Should show evidence requirement without results',
+    );
+
+    // Count "Captured Evidence" sections - should have 3 (steps with results)
+    const capturedEvidenceCount = (markdown.match(/\*\*Captured Evidence:\*\*/g) || []).length;
+    assert(
+      capturedEvidenceCount === 3,
+      'Should have 3 Captured Evidence sections (3 steps with results)',
+    );
+
+    // Snapshot test
+    t.assert.snapshot(markdown);
+  });
+
+  it('should handle evidence results with file-only and content-only', () => {
+    const testOperation: Operation = {
+      id: 'evidence-test',
+      name: 'Evidence Test',
+      version: '1.0.0',
+      description: 'Test evidence results',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+        },
+      ],
+      variables: { production: {} },
+      steps: [
+        {
+          name: 'Screenshot Only',
+          type: 'manual',
+          command: 'Take screenshot',
+          evidence: {
+            required: true,
+            types: ['screenshot'],
+            results: [
+              {
+                type: 'screenshot',
+                file: './evidence/screen.png',
+                description: 'Application homepage',
+              },
+            ],
+          },
+        },
+        {
+          name: 'Log Only',
+          type: 'manual',
+          command: 'Check logs',
+          evidence: {
+            required: true,
+            types: ['log'],
+            results: [
+              {
+                type: 'log',
+                content: 'Log line 1\nLog line 2\nLog line 3',
+              },
+            ],
+          },
+        },
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0,
+      },
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // File reference should render as image
+    assert(
+      markdown.includes('![Evidence](./evidence/screen.png)'),
+      'Should render file as image',
+    );
+    assert(
+      markdown.includes('**screenshot**: Application homepage'),
+      'Should show description',
+    );
+
+    // Content should render in code block
+    assert(
+      markdown.includes('```text'),
+      'Should use text code block for log',
+    );
+    assert(
+      markdown.includes('Log line 1<br>Log line 2<br>Log line 3'),
+      'Should convert newlines to <br> in log content',
+    );
+  });
 });

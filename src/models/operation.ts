@@ -38,9 +38,17 @@ export interface ApprovalConfig {
   auto_approve_on_success?: boolean;
 }
 
+export interface EvidenceResult {
+  type: EvidenceType;
+  file?: string; // File path reference (relative to operation file)
+  content?: string; // Inline content (for text-based evidence)
+  description?: string; // Optional description/context
+}
+
 export interface EvidenceConfig {
   required?: boolean;
   types?: EvidenceType[];
+  results?: EvidenceResult[]; // Optional pre-captured evidence
 }
 
 export interface StepOptions {

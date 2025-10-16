@@ -93,6 +93,7 @@ function parseEvidence(data: any): EvidenceConfig | undefined {
     return {
       required: Boolean(data.evidence.required),
       types: data.evidence.types as EvidenceType[],
+      results: data.evidence.results, // Pass through results array if present
     };
   }
 

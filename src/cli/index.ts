@@ -5,6 +5,7 @@ import { generateCommand } from './commands/generate';
 import { projectCommands } from './commands/project';
 import { qrhCommand } from './commands/qrh';
 import { resumeCommand, runCommand } from './commands/run';
+import { schemaCommand } from './commands/schema';
 import { validateCommand } from './commands/validate';
 
 const program = new Command();
@@ -25,6 +26,9 @@ program.addCommand(validateCommand);
 program.addCommand(generateCommand);
 program.addCommand(runCommand);
 program.addCommand(resumeCommand);
+
+// Schema inspection
+program.addCommand(schemaCommand);
 
 // Emergency procedures
 program.addCommand(qrhCommand);

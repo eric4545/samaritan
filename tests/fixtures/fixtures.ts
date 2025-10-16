@@ -62,6 +62,10 @@ export const FIXTURES = {
   nestedSubStepsWithSections:
     'tests/fixtures/operations/features/nested-substeps-with-sections.yaml',
 
+  // Evidence with results
+  evidenceWithResults:
+    'tests/fixtures/operations/features/evidence-with-results.yaml',
+
   // ===== Confluence Generator Tests =====
   multiLineCommand:
     'tests/fixtures/operations/confluence/multi-line-command.yaml',

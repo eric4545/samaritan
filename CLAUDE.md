@@ -16,6 +16,7 @@ SAMARITAN converts YAML operation definitions into comprehensive manuals (Markdo
 - Validate operations with JSON Schema
 - Include Git metadata for audit trails
 - Track evidence requirements (as documentation)
+- Embed pre-captured evidence in generated manuals via `evidence.results`
 
 **See [ROADMAP.md](ROADMAP.md) for future features** - don't implement them unless explicitly requested!
 
@@ -50,7 +51,9 @@ tests/
 - JSON Schema validation with strict mode
 - Git metadata integration (commit hash, branch, author)
 - Evidence requirement models (`evidence.types` is documentation-only)
-- CLI commands: `validate`, `generate manual`, `generate confluence`, `init`, `create operation`
+- Evidence results (`evidence.results`) for embedding pre-captured evidence in manuals
+- Schema export command for IDE integration and custom tooling
+- CLI commands: `validate`, `generate manual`, `generate confluence`, `schema`, `init`, `create operation`
 
 ### 🚧 NOT Implemented (Roadmap)
 These features are **documented but not functional**:
@@ -247,15 +250,36 @@ function generateManual(operation: Operation, options: GeneratorOptions): string
 
 ### Evidence Configuration
 ```yaml
-# ✅ Current format (v1.0 - documentation only)
+# ✅ Current format (v1.0)
 evidence:
   required: true
   types: [screenshot, log]  # Types are for docs, not collected automatically
+  results:                  # Optional: pre-captured evidence (NEW in v1.0)
+    - type: screenshot
+      file: ./evidence/dashboard.png        # Either 'file' OR 'content' required
+      description: Dashboard showing 3 pods  # Optional description
+    - type: command_output
+      content: |                            # Inline content alternative
+        deployment.apps/web-server created
+        pod/web-0    1/1     Running   0    10s
+      description: Deployment output        # Optional description
 
 # ⚠️ Deprecated (still supported for backward compatibility)
 evidence_required: true
 evidence_types: [screenshot, log]
 ```
+
+**Evidence Results Details:**
+- **Purpose**: Embed pre-captured evidence directly in generated manuals
+- **Storage Options**:
+  - `file`: Path to evidence file (relative to operation file)
+  - `content`: Inline evidence content (for text-based evidence)
+- **Validation**: JSON Schema enforces `oneOf` constraint (must have either file OR content, not both)
+- **Rendering**:
+  - Screenshots/photos with `file`: Rendered as embedded images
+  - Other files: Rendered as download links
+  - Inline `content`: Rendered as code blocks (bash for command_output, text for others)
+- **Test Fixture**: See `tests/fixtures/operations/features/evidence-with-results.yaml`
 
 ### Step Types
 ```yaml
@@ -308,11 +332,20 @@ steps:
     Run: kubectl apply -f deployment.yaml
 ```
 
-### 2. Evidence Types Are Documentation-Only
+### 2. Evidence Types vs Evidence Results
 ```typescript
 // evidence.types is parsed and included in generated manuals
 // BUT: No actual screenshot capture, log reading, or file collection in v1.0
 // Phase 2.2 (ROADMAP) will implement automatic collection
+
+// ✅ evidence.results IS implemented (v1.0)
+// You CAN embed pre-captured evidence directly in manuals
+evidence:
+  required: true
+  types: [screenshot]      // Documentation-only (what's expected)
+  results:                 // Actual evidence (embedded in generated manuals)
+    - type: screenshot
+      file: ./evidence/deployment.png
 ```
 
 ### 3. Commands with No Implementation
@@ -357,6 +390,12 @@ steps:
 4. Add tests in `tests/cli/`
 5. Update README.md with command docs
 
+**Example: Schema Export Command**
+- Created `src/cli/commands/schema.ts` with `schemaCommand`
+- Registered in `src/cli/index.ts` with `program.addCommand(schemaCommand)`
+- Tests in `tests/cli/schema.test.ts` verify JSON/YAML export
+- Documented in README.md under "Schema Inspection" section
+
 ### Adding a New Step Feature
 1. Update `src/models/operation.ts` interfaces
 2. Update JSON schema in `src/schemas/`
@@ -385,7 +424,7 @@ steps:
 
 ---
 
-**Last Updated**: 2025-10-13
+**Last Updated**: 2025-10-17
 **Maintainer**: @eric4545
 
 For questions or clarifications, check:
