@@ -298,10 +298,12 @@ describe('Confluence Generator Tests', () => {
 
     // Should include Mermaid Gantt chart wrapped in {markdown}
     assert.match(content, /h2\. Timeline Schedule/);
-    assert.match(content, /\{markdown\}/);
-    assert.match(content, /```mermaid/);
+    // {markdown} and ```mermaid must be on the same line with a space for Confluence rendering
+    assert.match(content, /\{markdown\} ```mermaid/);
     assert.match(content, /gantt/);
     assert.match(content, /title Deployment with Timeline Timeline/);
+    // Closing ``` and {markdown} must be on the same line with a space
+    assert.match(content, /``` \{markdown\}/);
 
     // Should include phase sections
     assert.match(content, /section 🛫 Pre-Flight Phase/);

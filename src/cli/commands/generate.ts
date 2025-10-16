@@ -718,8 +718,7 @@ ${filteredOperation.emergency ? '*Emergency Operation:* {status:colour=Red|title
     } else {
       content += `h2. Timeline Schedule
 
-{markdown}
-\`\`\`mermaid
+{markdown} \`\`\`mermaid
 gantt
     title ${filteredOperation.name} Timeline
     dateFormat YYYY-MM-DD HH:mm
@@ -762,8 +761,7 @@ gantt
         content += '\n';
       });
 
-      content += `\`\`\`
-{markdown}
+      content += `\`\`\` {markdown}
 
 `;
     }
