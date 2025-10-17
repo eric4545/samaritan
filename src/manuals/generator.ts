@@ -22,6 +22,45 @@ function substituteVariables(
   return result;
 }
 
+function formatTimelineForDisplay(timeline: any): string {
+  if (typeof timeline === 'string') {
+    return timeline;
+  }
+
+  // Structured format - convert to natural, readable format
+  const parts: string[] = [];
+
+  // Start time or dependency
+  if (timeline.start) {
+    parts.push(timeline.start);
+  } else if (timeline.after) {
+    parts.push(`(after ${timeline.after})`);
+  }
+
+  // Duration with "for" prefix if we have a start time
+  if (timeline.duration) {
+    if (timeline.start) {
+      parts.push(`for ${timeline.duration}`);
+    } else {
+      parts.push(timeline.duration);
+    }
+  }
+
+  // Status with emoji indicators
+  if (timeline.status) {
+    const statusEmoji = {
+      active: '🟢',
+      done: '✅',
+      crit: '⚠️',
+    }[timeline.status] || '';
+
+    const statusText = timeline.status.charAt(0).toUpperCase() + timeline.status.slice(1);
+    parts.push(`${statusEmoji} ${statusText}`);
+  }
+
+  return parts.join(' ');
+}
+
 function formatEvidenceInfo(evidence?: {
   required?: boolean;
   types?: string[];
@@ -130,11 +169,15 @@ function generateGanttChart(operation: Operation): string {
   });
 
   // Generate sections for each phase
+  // Note: Emojis removed from section names as Mermaid doesn't render them correctly
   const phaseNames = {
-    preflight: '🛫 Pre-Flight Phase',
-    flight: '✈️ Flight Phase',
-    postflight: '🛬 Post-Flight Phase',
+    preflight: 'Pre-Flight Phase',
+    flight: 'Flight Phase',
+    postflight: 'Post-Flight Phase',
   };
+
+  // Track previous step name across all phases for auto-dependency
+  let previousStepName: string | null = null;
 
   Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
     if (phaseSteps.length === 0) return;
@@ -144,11 +187,48 @@ function generateGanttChart(operation: Operation): string {
     phaseSteps.forEach((step, _index) => {
       const taskName = step.name.replace(/:/g, ''); // Remove colons as they break Mermaid syntax
       const pic = step.pic ? ` (${step.pic})` : '';
-      const timeline = step.timeline || '';
+
+      // Convert timeline to Mermaid syntax
+      let timelineSyntax = '';
+      if (step.timeline) {
+        if (typeof step.timeline === 'string') {
+          // Legacy string format - use as-is
+          timelineSyntax = step.timeline;
+        } else {
+          // Structured format - convert to Mermaid syntax
+          const parts: string[] = [];
+
+          // Add status if specified
+          if (step.timeline.status) {
+            parts.push(step.timeline.status);
+          }
+
+          // Determine start point
+          if (step.timeline.start) {
+            // Absolute start time
+            parts.push(step.timeline.start);
+          } else if (step.timeline.after) {
+            // Explicit dependency
+            parts.push(`after ${step.timeline.after.replace(/:/g, '')}`);
+          } else if (previousStepName) {
+            // Auto-dependency on previous step
+            parts.push(`after ${previousStepName}`);
+          }
+
+          // Add duration
+          if (step.timeline.duration) {
+            parts.push(step.timeline.duration);
+          }
+
+          timelineSyntax = parts.join(', ');
+        }
+      }
 
       // Format: Task name :status, start, duration or end
-      // Since we might not have structured dates, we'll use a simple format
-      gantt += `    ${taskName}${pic} :${timeline}\n`;
+      gantt += `    ${taskName}${pic} :${timelineSyntax}\n`;
+
+      // Track previous step name for auto-dependency
+      previousStepName = taskName;
     });
     gantt += '\n';
   });
@@ -218,7 +298,7 @@ function generateStepRow(
 
   // Add timeline
   if (step.timeline) {
-    stepCell += `<br>⏱️ <em>Timeline: ${step.timeline}</em>`;
+    stepCell += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
   }
 
   // Add conditional expression if present
@@ -408,7 +488,7 @@ function generateSubStepRow(
 
   // Add timeline
   if (step.timeline) {
-    stepCell += `<br>⏱️ <em>Timeline: ${step.timeline}</em>`;
+    stepCell += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
   }
 
   // Add conditional expression if present (for sub-steps)
@@ -528,7 +608,7 @@ function generateSubStepRow(
           const metadata = [];
           if (nestedSubStep.pic) metadata.push(`👤 PIC: ${nestedSubStep.pic}`);
           if (nestedSubStep.timeline)
-            metadata.push(`⏱️ Timeline: ${nestedSubStep.timeline}`);
+            metadata.push(`⏱️ Timeline: ${formatTimelineForDisplay(nestedSubStep.timeline)}`);
           rows += `_${metadata.join(' • ')}_\n\n`;
         }
 
@@ -800,7 +880,7 @@ function generateManualContent(
           if (step.pic || step.timeline) {
             const metadata = [];
             if (step.pic) metadata.push(`👤 PIC: ${step.pic}`);
-            if (step.timeline) metadata.push(`⏱️ Timeline: ${step.timeline}`);
+            if (step.timeline) metadata.push(`⏱️ Timeline: ${formatTimelineForDisplay(step.timeline)}`);
             markdown += `_${metadata.join(' • ')}_\n\n`;
           }
 

@@ -18,25 +18,33 @@ steps:
     phase: preflight
     command: kubectl get nodes
     pic: DevOps Team
-    timeline: 2024-01-15 09:00, 30m
+    timeline:
+      start: 2024-01-15 09:00
+      duration: 30m
 
   - name: Deploy Backend
     type: automatic
     phase: flight
     command: kubectl apply -f backend.yaml
     pic: Backend Team
-    timeline: active, 15m
+    timeline:
+      status: active
+      duration: 15m
 
   - name: Deploy Frontend
     type: automatic
     phase: flight
     command: kubectl apply -f frontend.yaml
     pic: Frontend Team
-    timeline: after Deploy Backend, 10m
+    timeline:
+      after: Deploy Backend
+      duration: 10m
 
   - name: Post-deployment Verification
     type: manual
     phase: postflight
     command: curl https://example.com/health
     pic: QA Team
-    timeline: after Deploy Frontend, 20m
+    timeline:
+      after: Deploy Frontend
+      duration: 20m

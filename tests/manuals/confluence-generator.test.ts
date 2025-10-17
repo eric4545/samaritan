@@ -305,10 +305,10 @@ describe('Confluence Generator Tests', () => {
     // Closing ``` and {markdown} must be on separate lines (newline between them)
     assert.match(content, /```\n\{markdown\}/);
 
-    // Should include phase sections
-    assert.match(content, /section 🛫 Pre-Flight Phase/);
-    assert.match(content, /section ✈️ Flight Phase/);
-    assert.match(content, /section 🛬 Post-Flight Phase/);
+    // Should include phase sections (without emojis as Mermaid doesn't render them correctly)
+    assert.match(content, /section Pre-Flight Phase/);
+    assert.match(content, /section Flight Phase/);
+    assert.match(content, /section Post-Flight Phase/);
 
     // Should include step names with PICs
     assert.match(content, /Pre-deployment Check \(DevOps Team\)/);
@@ -316,9 +316,10 @@ describe('Confluence Generator Tests', () => {
     assert.match(content, /Deploy Frontend \(Frontend Team\)/);
     assert.match(content, /Post-deployment Verification \(QA Team\)/);
 
-    // Should include timeline data
+    // Should include timeline data (with structured format and auto-dependency)
     assert.match(content, /:2024-01-15 09:00, 30m/);
-    assert.match(content, /:active, 15m/);
+    // Second step has status but no start/after, so auto-depends on previous step
+    assert.match(content, /:active, after Pre-deployment Check, 15m/);
     assert.match(content, /:after Deploy Backend, 10m/);
     assert.match(content, /:after Deploy Frontend, 20m/);
   });

@@ -529,8 +529,37 @@
                 "description": "Person In Charge for this step"
               },
               "timeline": {
-                "type": "string",
-                "description": "Expected date/time or duration for this step"
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "description": "Legacy format: raw Mermaid timeline syntax (e.g., '2024-01-15 09:00, 30m')"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "start": {
+                        "type": "string",
+                        "description": "Absolute start time (e.g., '2024-01-15 09:00')"
+                      },
+                      "duration": {
+                        "type": "string",
+                        "description": "Duration (e.g., '30m', '2h', '1d')"
+                      },
+                      "after": {
+                        "type": "string",
+                        "description": "Dependency on another step name"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": ["active", "done", "crit"],
+                        "description": "Mermaid status"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "Structured timeline configuration (auto-converts to Mermaid syntax)"
+                  }
+                ],
+                "description": "Expected date/time or duration for this step (string or structured format)"
               },
               "options": {
                 "type": "object",

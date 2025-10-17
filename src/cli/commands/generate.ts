@@ -623,6 +623,46 @@ export function generateConfluenceContent(
     return result.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
   };
 
+  // Helper to format timeline for display (handles both string and structured format)
+  const formatTimelineForDisplay = (timeline: any): string => {
+    if (typeof timeline === 'string') {
+      return timeline;
+    }
+
+    // Structured format - convert to natural, readable format
+    const parts: string[] = [];
+
+    // Start time or dependency
+    if (timeline.start) {
+      parts.push(timeline.start);
+    } else if (timeline.after) {
+      parts.push(`(after ${timeline.after})`);
+    }
+
+    // Duration with "for" prefix if we have a start time
+    if (timeline.duration) {
+      if (timeline.start) {
+        parts.push(`for ${timeline.duration}`);
+      } else {
+        parts.push(timeline.duration);
+      }
+    }
+
+    // Status with emoji indicators
+    if (timeline.status) {
+      const statusEmoji = {
+        active: '🟢',
+        done: '✅',
+        crit: '⚠️',
+      }[timeline.status] || '';
+
+      const statusText = timeline.status.charAt(0).toUpperCase() + timeline.status.slice(1);
+      parts.push(`${statusEmoji} ${statusText}`);
+    }
+
+    return parts.join(' ');
+  };
+
   // Helper to format evidence area
   const formatEvidenceArea = (evidence: any): string => {
     if (!evidence) return '';
@@ -742,11 +782,14 @@ gantt
       });
 
       // Generate sections for each phase
+      // Note: Emojis removed from section names as Mermaid doesn't render them correctly in Confluence
       const ganttPhaseNames = {
-        preflight: '🛫 Pre-Flight Phase',
-        flight: '✈️ Flight Phase',
-        postflight: '🛬 Post-Flight Phase',
+        preflight: 'Pre-Flight Phase',
+        flight: 'Flight Phase',
+        postflight: 'Post-Flight Phase',
       };
+
+      let previousStepName: string | null = null;
 
       Object.entries(ganttPhases).forEach(([phaseName, phaseSteps]) => {
         if (phaseSteps.length === 0) return;
@@ -756,8 +799,47 @@ gantt
         phaseSteps.forEach((step: any) => {
           const taskName = step.name.replace(/:/g, ''); // Remove colons as they break Mermaid syntax
           const pic = step.pic ? ` (${step.pic})` : '';
-          const timeline = step.timeline || '';
-          content += `    ${taskName}${pic} :${timeline}\n`;
+
+          // Convert timeline to Mermaid syntax
+          let timelineSyntax = '';
+          if (step.timeline) {
+            if (typeof step.timeline === 'string') {
+              // Legacy string format - use as-is
+              timelineSyntax = step.timeline;
+            } else {
+              // Structured format - convert to Mermaid syntax
+              const parts: string[] = [];
+
+              // Add status if specified
+              if (step.timeline.status) {
+                parts.push(step.timeline.status);
+              }
+
+              // Determine start point
+              if (step.timeline.start) {
+                // Absolute start time
+                parts.push(step.timeline.start);
+              } else if (step.timeline.after) {
+                // Explicit dependency
+                parts.push(`after ${step.timeline.after.replace(/:/g, '')}`);
+              } else if (previousStepName) {
+                // Auto-dependency on previous step
+                parts.push(`after ${previousStepName}`);
+              }
+
+              // Add duration
+              if (step.timeline.duration) {
+                parts.push(step.timeline.duration);
+              }
+
+              timelineSyntax = parts.join(', ');
+            }
+          }
+
+          content += `    ${taskName}${pic} :${timelineSyntax}\n`;
+
+          // Track previous step name for auto-dependency
+          previousStepName = taskName;
         });
         content += '\n';
       });
@@ -871,7 +953,7 @@ ${filteredOperation.environments
             metadata.push(`(i) PIC: ${escapeConfluenceMacros(step.pic)}`);
           if (step.timeline)
             metadata.push(
-              `(time) Timeline: ${escapeConfluenceMacros(step.timeline)}`,
+              `(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`,
             );
           content += `_${metadata.join(' • ')}_\n\n`;
         }
@@ -898,7 +980,7 @@ ${filteredOperation.environments
       if (step.pic)
         stepInfo += `\n(i) PIC: ${escapeConfluenceMacros(step.pic)}`;
       if (step.timeline)
-        stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(step.timeline)}`;
+        stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`;
       if (step.needs && step.needs.length > 0)
         stepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(step.needs.join(', '))}`;
       if (step.ticket)
@@ -1264,7 +1346,7 @@ function addConfluenceSubStepRows(
           metadata.push(`(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`);
         if (subStep.timeline)
           metadata.push(
-            `(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`,
+            `(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(subStep.timeline))}`,
           );
         content += `_${metadata.join(' • ')}_\n\n`;
       }
@@ -1283,7 +1365,7 @@ function addConfluenceSubStepRows(
     if (subStep.pic)
       subStepInfo += `\n(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`;
     if (subStep.timeline)
-      subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(subStep.timeline)}`;
+      subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(subStep.timeline))}`;
     if (subStep.needs && subStep.needs.length > 0)
       subStepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(subStep.needs.join(', '))}`;
     if (subStep.ticket)

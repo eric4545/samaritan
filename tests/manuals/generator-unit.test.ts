@@ -1295,6 +1295,138 @@ kubectl apply -f worker.yaml`,
     );
   });
 
+  it('should format structured timeline with natural language (Option 4)', () => {
+    const testOperation: Operation = {
+      id: 'structured-timeline-test',
+      name: 'Structured Timeline Test',
+      version: '1.0.0',
+      description: 'Test structured timeline format with natural language',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+        },
+      ],
+      variables: { production: {} },
+      steps: [
+        {
+          name: 'Pre-deployment Check',
+          type: 'automatic',
+          command: 'kubectl get nodes',
+          pic: 'DevOps Team',
+          timeline: {
+            start: '2024-01-15 09:00',
+            duration: '30m',
+          },
+        },
+        {
+          name: 'Deploy Backend',
+          type: 'automatic',
+          command: 'kubectl apply -f backend.yaml',
+          pic: 'Backend Team',
+          timeline: {
+            status: 'active',
+            duration: '15m',
+          },
+        },
+        {
+          name: 'Deploy Frontend',
+          type: 'automatic',
+          command: 'kubectl apply -f frontend.yaml',
+          pic: 'Frontend Team',
+          timeline: {
+            after: 'Deploy Backend',
+            duration: '10m',
+          },
+        },
+        {
+          name: 'Critical Hotfix',
+          type: 'manual',
+          command: 'apply hotfix',
+          pic: 'SRE Team',
+          timeline: {
+            start: '2024-01-15 14:00',
+            duration: '2h',
+            status: 'crit',
+          },
+        },
+        {
+          name: 'Simple Task',
+          type: 'automatic',
+          command: 'run task',
+          timeline: {
+            duration: '5m',
+          },
+        },
+      ],
+      preflight: [],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0,
+      },
+    };
+
+    const markdown = generateManual(testOperation);
+
+    // Test Format 1: Absolute start with duration -> "2024-01-15 09:00 for 30m"
+    assert(
+      markdown.includes('⏱️ <em>Timeline: 2024-01-15 09:00 for 30m</em>'),
+      'Should format absolute start with duration using "for"',
+    );
+
+    // Test Format 2: Duration with status -> "15m 🟢 Active"
+    assert(
+      markdown.includes('⏱️ <em>Timeline: 15m 🟢 Active</em>'),
+      'Should format duration with active status and green emoji',
+    );
+
+    // Test Format 3: Dependency with duration -> "(after Deploy Backend) 10m"
+    assert(
+      markdown.includes('⏱️ <em>Timeline: (after Deploy Backend) 10m</em>'),
+      'Should format dependency with duration using parentheses',
+    );
+
+    // Test Format 4: Complete with critical status -> "2024-01-15 14:00 for 2h ⚠️ Critical"
+    assert(
+      markdown.includes('⏱️ <em>Timeline: 2024-01-15 14:00 for 2h ⚠️ Crit</em>'),
+      'Should format complete timeline with critical status and warning emoji',
+    );
+
+    // Test Format 5: Just duration -> "5m"
+    assert(
+      markdown.includes('⏱️ <em>Timeline: 5m</em>'),
+      'Should format simple duration without extra text',
+    );
+
+    // Verify status emojis are used
+    assert(
+      markdown.includes('🟢 Active'),
+      'Should use green circle emoji for active status',
+    );
+    assert(
+      markdown.includes('⚠️ Crit'),
+      'Should use warning emoji for critical status',
+    );
+
+    // Verify "for" is only used with start times
+    const forCount = (markdown.match(/ for /g) || []).length;
+    assert(
+      forCount === 2,
+      'Should use "for" only with absolute start times (2 occurrences)',
+    );
+
+    // Verify parentheses are used for dependencies
+    assert(
+      markdown.includes('(after Deploy Backend)'),
+      'Should wrap dependency in parentheses',
+    );
+  });
+
   it('should display rollback procedures', () => {
     const testOperation: Operation = {
       id: 'rollback-test',
@@ -1531,17 +1663,17 @@ kubectl apply -f worker.yaml`,
       'Should have operation title',
     );
 
-    // Should include phase sections
+    // Should include phase sections (without emojis as Mermaid doesn't render them correctly)
     assert(
-      markdown.includes('section 🛫 Pre-Flight Phase'),
+      markdown.includes('section Pre-Flight Phase'),
       'Should have preflight section',
     );
     assert(
-      markdown.includes('section ✈️ Flight Phase'),
+      markdown.includes('section Flight Phase'),
       'Should have flight section',
     );
     assert(
-      markdown.includes('section 🛬 Post-Flight Phase'),
+      markdown.includes('section Post-Flight Phase'),
       'Should have postflight section',
     );
 
