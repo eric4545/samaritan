@@ -623,45 +623,44 @@ export function generateConfluenceContent(
     return result.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
   };
 
-  // Helper to format timeline for display (handles both string and structured format)
-  const formatTimelineForDisplay = (timeline: any): string => {
-    if (typeof timeline === 'string') {
-      return timeline;
-    }
+function formatTimelineForDisplay(timeline: any): string {
+  if (typeof timeline === 'string') {
+    return timeline;
+  }
 
-    // Structured format - convert to natural, readable format
-    const parts: string[] = [];
+  // Structured format - convert to natural, readable format
+  const parts: string[] = [];
 
-    // Start time or dependency
+  // Start time or dependency
+  if (timeline.start) {
+    parts.push(timeline.start);
+  } else if (timeline.after) {
+    parts.push(`(after ${timeline.after})`);
+  }
+
+  // Duration with "for" prefix if we have a start time
+  if (timeline.duration) {
     if (timeline.start) {
-      parts.push(timeline.start);
-    } else if (timeline.after) {
-      parts.push(`(after ${timeline.after})`);
+      parts.push(`for ${timeline.duration}`);
+    } else {
+      parts.push(timeline.duration);
     }
+  }
 
-    // Duration with "for" prefix if we have a start time
-    if (timeline.duration) {
-      if (timeline.start) {
-        parts.push(`for ${timeline.duration}`);
-      } else {
-        parts.push(timeline.duration);
-      }
-    }
+  // Status with emoji indicators
+  if (timeline.status) {
+    const statusEmoji = {
+      active: '🟢',
+      done: '✅',
+      crit: '⚠️',
+    }[timeline.status] || '';
 
-    // Status with emoji indicators
-    if (timeline.status) {
-      const statusEmoji = {
-        active: '🟢',
-        done: '✅',
-        crit: '⚠️',
-      }[timeline.status] || '';
+    const statusText = timeline.status.charAt(0).toUpperCase() + timeline.status.slice(1);
+    parts.push(`${statusEmoji} ${statusText}`);
+  }
 
-      const statusText = timeline.status.charAt(0).toUpperCase() + timeline.status.slice(1);
-      parts.push(`${statusEmoji} ${statusText}`);
-    }
-
-    return parts.join(' ');
-  };
+  return parts.join(' ');
+}
 
   // Helper to format evidence area
   const formatEvidenceArea = (evidence: any): string => {
@@ -1077,6 +1076,7 @@ ${filteredOperation.environments
           formatForTableCell,
           addSmartLineBreaks,
           formatEvidenceArea,
+          formatTimelineForDisplay,
         );
       }
 
@@ -1305,6 +1305,7 @@ function addConfluenceSubStepRows(
   formatForTableCell: (text: string, useCodeBlock?: boolean) => string,
   addSmartLineBreaks: (command: string, maxLength?: number) => string,
   formatEvidenceArea: (evidence: any) => string,
+  formatTimelineForDisplay: (timeline: any) => string,
 ): string {
   let content = '';
 
@@ -1456,6 +1457,7 @@ function addConfluenceSubStepRows(
         formatForTableCell,
         addSmartLineBreaks,
         formatEvidenceArea,
+        formatTimelineForDisplay,
       );
     }
   });
