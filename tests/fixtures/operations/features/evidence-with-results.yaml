@@ -21,17 +21,30 @@ steps:
       required: true
       types: [screenshot, command_output]
       results:
-        - type: screenshot
-          file: ./evidence/deployment-dashboard.png
-          description: Kubernetes dashboard showing 3 pods running
-        - type: command_output
-          content: |
-            deployment.apps/web-server created
-            service/web-server created
-            NAME         READY   STATUS    RESTARTS   AGE
-            pod/web-0    1/1     Running   0          10s
-            pod/web-1    1/1     Running   0          10s
-            pod/web-2    1/1     Running   0          10s
+        staging:
+          - type: screenshot
+            file: ./evidence/deployment-dashboard.png
+            description: Kubernetes dashboard showing 3 pods running
+          - type: command_output
+            content: |
+              deployment.apps/web-server created
+              service/web-server created
+              NAME         READY   STATUS    RESTARTS   AGE
+              pod/web-0    1/1     Running   0          10s
+              pod/web-1    1/1     Running   0          10s
+              pod/web-2    1/1     Running   0          10s
+        production:
+          - type: screenshot
+            file: ./evidence/production-dashboard.png
+            description: Kubernetes dashboard showing all pods healthy
+          - type: command_output
+            content: |
+              deployment.apps/web-server created
+              service/web-server created
+              NAME         READY   STATUS    RESTARTS   AGE
+              pod/web-0    1/1     Running   0          15s
+              pod/web-1    1/1     Running   0          15s
+              pod/web-2    1/1     Running   0          15s
 
   - name: Manual Verification
     type: manual
@@ -44,9 +57,14 @@ steps:
       required: true
       types: [screenshot]
       results:
-        - type: screenshot
-          file: ./evidence/homepage-screenshot.png
-          description: Homepage showing "Welcome" message
+        staging:
+          - type: screenshot
+            file: ./evidence/homepage-screenshot.png
+            description: Homepage showing "Welcome" message
+        production:
+          - type: screenshot
+            file: ./evidence/prod-homepage-screenshot.png
+            description: Production homepage verified
 
   - name: Log Collection
     type: manual
@@ -56,12 +74,20 @@ steps:
       required: false
       types: [log]
       results:
-        - type: log
-          content: |
-            [2025-10-16 10:30:00] INFO: Application started
-            [2025-10-16 10:30:05] INFO: Database connection established
-            [2025-10-16 10:30:10] INFO: Ready to accept connections
-          description: Application startup logs
+        staging:
+          - type: log
+            content: |
+              [2025-10-16 10:30:00] INFO: Application started
+              [2025-10-16 10:30:05] INFO: Database connection established
+              [2025-10-16 10:30:10] INFO: Ready to accept connections
+            description: Application startup logs
+        production:
+          - type: log
+            content: |
+              [2025-10-16 14:00:00] INFO: Application started
+              [2025-10-16 14:00:02] INFO: Database connection established
+              [2025-10-16 14:00:03] INFO: Ready to accept connections
+            description: Production startup logs
 
   - name: No Evidence Results
     type: automatic

@@ -540,6 +540,7 @@ function parseStep(stepData: any, _stepIndex: number): Step {
     foreach: stepData.foreach,
     section_heading: Boolean(stepData.section_heading),
     pic: stepData.pic,
+    reviewer: stepData.reviewer,
     timeline: stepData.timeline,
     options: options,
   };

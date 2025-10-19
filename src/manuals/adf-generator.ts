@@ -468,6 +468,19 @@ function createStepsTable(
       stepCellContent.push(paragraph(text(`👤 PIC: ${step.pic}`)));
     }
 
+    // Reviewer
+    if (step.reviewer) {
+      stepCellContent.push(paragraph(text(`👥 Reviewer: ${step.reviewer}`)));
+    }
+
+    // Sign-off checkboxes
+    if (step.pic || step.reviewer) {
+      const signOffText = ['Sign-off:'];
+      if (step.pic) signOffText.push(' ☐ PIC');
+      if (step.reviewer) signOffText.push(' ☐ Reviewer');
+      stepCellContent.push(paragraph(em(text(signOffText.join('')))));
+    }
+
     // Timeline
     if (step.timeline) {
       stepCellContent.push(paragraph(text(`⏱️ Timeline: ${step.timeline}`)));
@@ -478,7 +491,7 @@ function createStepsTable(
       stepCellContent.push(paragraph(text(`🔀 Condition: ${step.if}`)));
     }
 
-    // Evidence requirements
+    // Evidence requirements (metadata only, no env-specific results here)
     const evidenceInfo = formatEvidenceInfo(step.evidence);
     if (evidenceInfo) {
       // Handle both single node and array of nodes
@@ -540,6 +553,16 @@ function createStepsTable(
           cellContent.push(paragraph(em(text('(see substeps below)'))));
         } else {
           cellContent.push(paragraph(em(text(`(${step.type} step)`))));
+        }
+      }
+
+      // Add environment-specific evidence results
+      const envEvidenceInfo = formatEvidenceInfo(step.evidence, env.name);
+      if (envEvidenceInfo) {
+        if (Array.isArray(envEvidenceInfo)) {
+          cellContent.push(...envEvidenceInfo);
+        } else {
+          cellContent.push(envEvidenceInfo);
         }
       }
 
@@ -638,6 +661,20 @@ function addSubStepRows(
       subStepCellContent.push(paragraph(text(`👤 PIC: ${subStep.pic}`)));
     }
 
+    if (subStep.reviewer) {
+      subStepCellContent.push(
+        paragraph(text(`👥 Reviewer: ${subStep.reviewer}`)),
+      );
+    }
+
+    // Sign-off checkboxes
+    if (subStep.pic || subStep.reviewer) {
+      const signOffText = ['Sign-off:'];
+      if (subStep.pic) signOffText.push(' ☐ PIC');
+      if (subStep.reviewer) signOffText.push(' ☐ Reviewer');
+      subStepCellContent.push(paragraph(em(text(signOffText.join('')))));
+    }
+
     if (subStep.timeline) {
       subStepCellContent.push(
         paragraph(text(`⏱️ Timeline: ${subStep.timeline}`)),
@@ -648,7 +685,7 @@ function addSubStepRows(
       subStepCellContent.push(paragraph(text(`🔀 Condition: ${subStep.if}`)));
     }
 
-    // Evidence requirements for sub-steps
+    // Evidence requirements for sub-steps (metadata only)
     const subEvidenceInfo = formatEvidenceInfo(subStep.evidence);
     if (subEvidenceInfo) {
       // Handle both single node and array of nodes
@@ -712,6 +749,16 @@ function addSubStepRows(
         }
       }
 
+      // Add environment-specific evidence results
+      const envEvidenceInfo = formatEvidenceInfo(subStep.evidence, env.name);
+      if (envEvidenceInfo) {
+        if (Array.isArray(envEvidenceInfo)) {
+          cellContent.push(...envEvidenceInfo);
+        } else {
+          cellContent.push(envEvidenceInfo);
+        }
+      }
+
       subCells.push(tableCell()(...cellContent));
     });
 
@@ -755,53 +802,65 @@ function substituteVariables(
 /**
  * Format evidence requirements as ADF paragraph
  */
-function formatEvidenceInfo(evidence?: {
-  required?: boolean;
-  types?: string[];
-  results?: Array<{
-    type: string;
-    file?: string;
-    content?: string;
-    description?: string;
-  }>;
-}): any {
+function formatEvidenceInfo(
+  evidence?: {
+    required?: boolean;
+    types?: string[];
+    results?: Record<
+      string,
+      Array<{
+        type: string;
+        file?: string;
+        content?: string;
+        description?: string;
+      }>
+    >;
+  },
+  environmentName?: string,
+): any {
   if (!evidence) return null;
 
   const types = evidence.types || [];
   const typesText = types.length > 0 ? `: ${types.join(', ')}` : '';
   const status = evidence.required ? 'Required' : 'Optional';
 
-  const nodes: any[] = [
-    paragraph(em(text(`📎 Evidence ${status}${typesText}`))),
-  ];
+  const nodes: any[] = [];
 
-  // Render evidence results if present
-  if (evidence.results && evidence.results.length > 0) {
-    nodes.push(paragraph(strong(text('Captured Evidence:'))));
+  // Only show evidence metadata in step column (when environmentName is undefined)
+  if (!environmentName) {
+    nodes.push(paragraph(em(text(`📎 Evidence ${status}${typesText}`))));
+  }
 
-    for (const evidenceResult of evidence.results) {
-      // Add description or type label
-      if (evidenceResult.description) {
-        nodes.push(
-          paragraph(
-            strong(text(`${evidenceResult.type}: `)),
-            text(evidenceResult.description),
-          ),
-        );
-      } else {
-        nodes.push(paragraph(strong(text(`${evidenceResult.type}:`))));
-      }
+  // Render evidence results for specific environment
+  if (evidence.results && environmentName) {
+    const envResults = evidence.results[environmentName];
+    if (envResults && envResults.length > 0) {
+      nodes.push(paragraph(strong(text('Captured Evidence:'))));
 
-      // Render based on storage type
-      if (evidenceResult.file) {
-        // File reference - for Confluence, we can only show the path
-        // Actual image embedding would require upload via Confluence API
-        nodes.push(paragraph(text(`File: ${evidenceResult.file}`)));
-      } else if (evidenceResult.content) {
-        // Inline content - render in code block
-        const language =
-          evidenceResult.type === 'command_output' ? 'bash' : 'text';
-        nodes.push(codeBlock({ language })(text(evidenceResult.content)));
+      for (const evidenceResult of envResults) {
+        // Add description or type label
+        if (evidenceResult.description) {
+          nodes.push(
+            paragraph(
+              strong(text(`${evidenceResult.type}: `)),
+              text(evidenceResult.description),
+            ),
+          );
+        } else {
+          nodes.push(paragraph(strong(text(`${evidenceResult.type}:`))));
+        }
+
+        // Render based on storage type
+        if (evidenceResult.file) {
+          // File reference - for Confluence, we can only show the path
+          // Actual image embedding would require upload via Confluence API
+          nodes.push(paragraph(text(`File: ${evidenceResult.file}`)));
+        } else if (evidenceResult.content) {
+          // Inline content - render in code block
+          const language =
+            evidenceResult.type === 'command_output' ? 'bash' : 'text';
+          nodes.push(codeBlock({ language })(text(evidenceResult.content)));
+        }
       }
     }
   }

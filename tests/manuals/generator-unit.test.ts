@@ -2087,13 +2087,14 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should show evidence requirement without results',
     );
 
-    // Count "Captured Evidence" sections - should have 3 (steps with results)
+    // Count "Captured Evidence" sections - with environment-keyed evidence,
+    // we have 3 steps with results × 2 environments = 6 sections
     const capturedEvidenceCount = (
       markdown.match(/\*\*Captured Evidence:\*\*/g) || []
     ).length;
     assert(
-      capturedEvidenceCount === 3,
-      'Should have 3 Captured Evidence sections (3 steps with results)',
+      capturedEvidenceCount === 6,
+      'Should have 6 Captured Evidence sections (3 steps with results × 2 environments)',
     );
 
     // Snapshot test
@@ -2125,13 +2126,15 @@ echo "Deploying at: \${TIMESTAMP}"`,
           evidence: {
             required: true,
             types: ['screenshot'],
-            results: [
-              {
-                type: 'screenshot',
-                file: './evidence/screen.png',
-                description: 'Application homepage',
-              },
-            ],
+            results: {
+              production: [
+                {
+                  type: 'screenshot',
+                  file: './evidence/screen.png',
+                  description: 'Application homepage',
+                },
+              ],
+            },
           },
         },
         {
@@ -2141,12 +2144,14 @@ echo "Deploying at: \${TIMESTAMP}"`,
           evidence: {
             required: true,
             types: ['log'],
-            results: [
-              {
-                type: 'log',
-                content: 'Log line 1\nLog line 2\nLog line 3',
-              },
-            ],
+            results: {
+              production: [
+                {
+                  type: 'log',
+                  content: 'Log line 1\nLog line 2\nLog line 3',
+                },
+              ],
+            },
           },
         },
       ],

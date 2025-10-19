@@ -1,0 +1,117 @@
+name: Reviewer and Environment-Specific Evidence Test
+version: 1.0.0
+description: Test reviewer field and environment-keyed evidence results
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+      REPLICAS: 2
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: production
+      REPLICAS: 5
+
+steps:
+  - name: Deploy Application
+    type: manual
+    phase: flight
+    instruction: |
+      Deploy the application to Kubernetes:
+      ```bash
+      kubectl apply -f deployment.yaml -n ${NAMESPACE}
+      kubectl scale deployment/app --replicas=${REPLICAS}
+      ```
+    pic: ops-team@example.com
+    reviewer: sre-lead@example.com
+    evidence:
+      required: true
+      types: [screenshot, command_output]
+      results:
+        staging:
+          - type: command_output
+            content: |
+              deployment.apps/app created
+              deployment.apps/app scaled
+              NAME      READY   STATUS    RESTARTS   AGE
+              app-0     1/1     Running   0          10s
+              app-1     1/1     Running   0          10s
+            description: Staging deployment output showing 2 pods
+        production:
+          - type: screenshot
+            file: ./evidence/prod-dashboard.png
+            description: Production dashboard showing 5 healthy pods
+          - type: command_output
+            content: |
+              deployment.apps/app created
+              deployment.apps/app scaled
+              NAME      READY   STATUS    RESTARTS   AGE
+              app-0     1/1     Running   0          15s
+              app-1     1/1     Running   0          15s
+              app-2     1/1     Running   0          15s
+              app-3     1/1     Running   0          15s
+              app-4     1/1     Running   0          15s
+            description: Production deployment output showing 5 pods
+
+  - name: Verify Health Checks
+    type: manual
+    phase: postflight
+    instruction: |
+      Check application health endpoints:
+      ```bash
+      curl https://app-${NAMESPACE}.example.com/health
+      ```
+    pic: ops-team@example.com
+    reviewer: qa-team@example.com
+    evidence:
+      required: true
+      types: [command_output, screenshot]
+      results:
+        staging:
+          - type: command_output
+            content: |
+              {
+                "status": "healthy",
+                "version": "1.0.0",
+                "environment": "staging"
+              }
+        production:
+          - type: command_output
+            content: |
+              {
+                "status": "healthy",
+                "version": "1.0.0",
+                "environment": "production"
+              }
+          - type: screenshot
+            file: ./evidence/prod-health-dashboard.png
+            description: Health check dashboard
+
+  - name: Monitor Error Rates
+    type: manual
+    phase: postflight
+    instruction: Monitor error rates for 15 minutes
+    pic: sre-team@example.com
+    evidence:
+      required: true
+      types: [screenshot]
+      results:
+        staging:
+          - type: screenshot
+            file: ./evidence/staging-metrics.png
+            description: Error rate below 0.1% in staging
+        production:
+          - type: screenshot
+            file: ./evidence/prod-metrics.png
+            description: Error rate below 0.05% in production
+
+  - name: No Reviewer Step
+    type: automatic
+    phase: postflight
+    command: kubectl get pods -n ${NAMESPACE}
+    pic: ops-team@example.com
+    evidence:
+      required: false
+      types: [command_output]

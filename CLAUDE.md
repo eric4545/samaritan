@@ -250,19 +250,26 @@ function generateManual(operation: Operation, options: GeneratorOptions): string
 
 ### Evidence Configuration
 ```yaml
-# ✅ Current format (v1.0)
+# ✅ Current format (v1.0+) - Environment-specific evidence
 evidence:
   required: true
-  types: [screenshot, log]  # Types are for docs, not collected automatically
-  results:                  # Optional: pre-captured evidence (NEW in v1.0)
-    - type: screenshot
-      file: ./evidence/dashboard.png        # Either 'file' OR 'content' required
-      description: Dashboard showing 3 pods  # Optional description
-    - type: command_output
-      content: |                            # Inline content alternative
-        deployment.apps/web-server created
-        pod/web-0    1/1     Running   0    10s
-      description: Deployment output        # Optional description
+  types: [screenshot, log, command_output]  # Types are for docs, not collected automatically
+  results:                                  # Environment-keyed evidence results
+    staging:
+      - type: screenshot
+        file: ./evidence/staging-dashboard.png
+        description: Dashboard showing 3 pods
+      - type: command_output
+        file: ./evidence/staging-deploy.log  # NEW: Read from file and embed
+        description: Deployment output
+    production:
+      - type: screenshot
+        file: ./evidence/prod-dashboard.png
+      - type: command_output
+        content: |                           # Inline content still supported
+          deployment.apps/web-server created
+          pod/web-0    1/1     Running   0    10s
+        description: Production deployment output
 
 # ⚠️ Deprecated (still supported for backward compatibility)
 evidence_required: true
@@ -271,29 +278,50 @@ evidence_types: [screenshot, log]
 
 **Evidence Results Details:**
 - **Purpose**: Embed pre-captured evidence directly in generated manuals
+- **Environment-Specific**: Results are keyed by environment name (e.g., `staging`, `production`)
 - **Storage Options**:
   - `file`: Path to evidence file (relative to operation file)
   - `content`: Inline evidence content (for text-based evidence)
+- **File Reading (BONUS)**:
+  - For `command_output` and `log` types with `file`, generator reads file content and embeds it as code block
+  - Screenshots/photos: Rendered as embedded images
+  - Other file types: Rendered as download links
 - **Validation**: JSON Schema enforces `oneOf` constraint (must have either file OR content, not both)
 - **Rendering**:
-  - Screenshots/photos with `file`: Rendered as embedded images
-  - Other files: Rendered as download links
-  - Inline `content`: Rendered as code blocks (bash for command_output, text for others)
-- **Test Fixture**: See `tests/fixtures/operations/features/evidence-with-results.yaml`
+  - Evidence results appear in the corresponding environment column in generated manuals
+  - Each environment shows only its own evidence
+- **Test Fixtures**: See `tests/fixtures/operations/features/evidence-with-results.yaml` and `reviewer-and-env-evidence.yaml`
 
-### Step Types
+### Step Types & Aviation-Inspired Fields
 ```yaml
 # In v1.0, ALL steps are effectively "manual" (just documentation)
 # type: automatic doesn't execute commands - parsed but not run
 steps:
   - name: Deploy App
     type: manual  # ✅ Accurate in v1.0
+    pic: ops-team@example.com        # Person In Charge (executor)
+    reviewer: sre-lead@example.com   # Reviewer/buddy (monitoring)
     instruction: |
       Run deployment:
       ```bash
       kubectl apply -f deployment.yaml
       ```
+    evidence:
+      required: true
+      types: [command_output]
+      results:
+        staging:
+          - type: command_output
+            file: ./evidence/staging-deploy.log
+        production:
+          - type: command_output
+            file: ./evidence/prod-deploy.log
 ```
+
+**Aviation-Inspired Fields:**
+- **`pic`** (Person In Charge): The person responsible for executing the step
+- **`reviewer`** (Reviewer/Buddy): The person who monitors and verifies the PIC's work
+- **Sign-off Checkboxes**: Generated manuals include checkboxes for PIC and Reviewer sign-off when these fields are set
 
 ---
 
@@ -338,14 +366,18 @@ steps:
 // BUT: No actual screenshot capture, log reading, or file collection in v1.0
 // Phase 2.2 (ROADMAP) will implement automatic collection
 
-// ✅ evidence.results IS implemented (v1.0)
+// ✅ evidence.results IS implemented (v1.0+) with environment-specific structure
 // You CAN embed pre-captured evidence directly in manuals
 evidence:
   required: true
-  types: [screenshot]      // Documentation-only (what's expected)
-  results:                 // Actual evidence (embedded in generated manuals)
-    - type: screenshot
-      file: ./evidence/deployment.png
+  types: [screenshot, command_output]      // Documentation-only (what's expected)
+  results:                                 // Actual evidence (embedded in generated manuals)
+    staging:
+      - type: screenshot
+        file: ./evidence/staging-deployment.png
+    production:
+      - type: command_output
+        file: ./evidence/prod-deploy.log  // File content will be read and embedded
 ```
 
 ### 3. Commands with No Implementation

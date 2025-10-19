@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   type GenerationMetadata,
   generateYamlFrontmatter,
@@ -49,63 +51,100 @@ function formatTimelineForDisplay(timeline: any): string {
   return parts.join(' ');
 }
 
-function formatEvidenceInfo(evidence?: {
-  required?: boolean;
-  types?: string[];
-  results?: Array<{
-    type: string;
-    file?: string;
-    content?: string;
-    description?: string;
-  }>;
-}): string {
+function formatEvidenceInfo(
+  evidence?: {
+    required?: boolean;
+    types?: string[];
+    results?: Record<
+      string,
+      Array<{
+        type: string;
+        file?: string;
+        content?: string;
+        description?: string;
+      }>
+    >;
+  },
+  environmentName?: string,
+  operationDir?: string,
+): string {
   if (!evidence) return '';
 
   const types = evidence.types || [];
   const typesText = types.length > 0 ? `: ${types.join(', ')}` : '';
   const status = evidence.required ? 'Required' : 'Optional';
 
-  let result = `<br>📎 <em>Evidence ${status}${typesText}</em>`;
+  let result = '';
 
-  // Add code block for command_output evidence type
-  if (types.includes('command_output')) {
-    result += '<br>```bash<br># Paste command output here<br>```';
+  // Only show evidence metadata in step column (when environmentName is undefined)
+  if (!environmentName) {
+    result = `<br>📎 <em>Evidence ${status}${typesText}</em>`;
+
+    // Add code block placeholder for command_output evidence type
+    if (types.includes('command_output')) {
+      result += '<br>```bash<br># Paste command output here<br>```';
+    }
   }
 
-  // Render evidence results if present
-  if (evidence.results && evidence.results.length > 0) {
-    result += '<br><br>**Captured Evidence:**';
+  // Render evidence results for specific environment
+  if (evidence.results && environmentName) {
+    const envResults = evidence.results[environmentName];
+    if (envResults && envResults.length > 0) {
+      result += '<br><br>**Captured Evidence:**';
 
-    for (const evidenceResult of evidence.results) {
-      result += '<br>';
+      for (const evidenceResult of envResults) {
+        result += '<br>';
 
-      // Add description if present
-      if (evidenceResult.description) {
-        result += `<br>**${evidenceResult.type}**: ${evidenceResult.description}`;
-      } else {
-        result += `<br>**${evidenceResult.type}**:`;
-      }
-
-      // Render based on storage type
-      if (evidenceResult.file) {
-        // File reference - render as image for screenshots/photos, or link for others
-        if (
-          evidenceResult.type === 'screenshot' ||
-          evidenceResult.type === 'photo'
-        ) {
-          result += `<br>![Evidence](${evidenceResult.file})`;
+        // Add description if present
+        if (evidenceResult.description) {
+          result += `<br>**${evidenceResult.type}**: ${evidenceResult.description}`;
         } else {
-          result += `<br>[View ${evidenceResult.type}](${evidenceResult.file})`;
+          result += `<br>**${evidenceResult.type}**:`;
         }
-      } else if (evidenceResult.content) {
-        // Inline content - render in code block
-        const language =
-          evidenceResult.type === 'command_output' ? 'bash' : 'text';
-        // Escape pipe characters and convert newlines
-        const escapedContent = evidenceResult.content
-          .replace(/\|/g, '\\|')
-          .replace(/\n/g, '<br>');
-        result += `<br>\`\`\`${language}<br>${escapedContent}<br>\`\`\``;
+
+        // Render based on storage type
+        if (evidenceResult.file) {
+          // For text-based evidence (command_output, log), read and embed file content
+          if (
+            (evidenceResult.type === 'command_output' ||
+              evidenceResult.type === 'log') &&
+            operationDir
+          ) {
+            try {
+              const filePath = path.resolve(operationDir, evidenceResult.file);
+              const fileContent = fs.readFileSync(filePath, 'utf-8');
+              const language =
+                evidenceResult.type === 'command_output' ? 'bash' : 'text';
+              const escapedContent = fileContent
+                .replace(/\|/g, '\\|')
+                .replace(/\n/g, '<br>');
+              result += `<br>\`\`\`${language}<br>${escapedContent}<br>\`\`\``;
+            } catch (_error) {
+              // Fallback to link if file can't be read
+              result += `<br>[View ${evidenceResult.type}](${evidenceResult.file}) <em>(error reading file)</em>`;
+            }
+          }
+          // For screenshots/photos, render as image
+          else if (
+            evidenceResult.type === 'screenshot' ||
+            evidenceResult.type === 'photo'
+          ) {
+            result += `<br>![Evidence](${evidenceResult.file})`;
+          }
+          // For other file types, render as link
+          else {
+            result += `<br>[View ${evidenceResult.type}](${evidenceResult.file})`;
+          }
+        } else if (evidenceResult.content) {
+          // Inline content - render in code block
+          const language =
+            evidenceResult.type === 'command_output' ? 'bash' : 'text';
+          // Escape pipe characters and convert newlines
+          const escapedContent = evidenceResult.content
+            .replace(/\|/g, '\\|')
+            .replace(/\n/g, '<br>');
+          result += `<br>\`\`\`${language}<br>${escapedContent}<br>\`\`\``;
+        }
       }
     }
   }
@@ -288,6 +327,22 @@ function generateStepRow(
     stepCell += `<br>👤 <em>PIC: ${step.pic}</em>`;
   }
 
+  // Add Reviewer (monitoring/buddy)
+  if (step.reviewer) {
+    stepCell += `<br>👥 <em>Reviewer: ${step.reviewer}</em>`;
+  }
+
+  // Add sign-off checkboxes if PIC or Reviewer is set
+  if (step.pic || step.reviewer) {
+    stepCell += '<br><em>Sign-off:</em>';
+    if (step.pic) {
+      stepCell += ' ☐ PIC';
+    }
+    if (step.reviewer) {
+      stepCell += ' ☐ Reviewer';
+    }
+  }
+
   // Add timeline
   if (step.timeline) {
     stepCell += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
@@ -298,7 +353,7 @@ function generateStepRow(
     stepCell += `<br>🔀 <em>Condition: ${step.if}</em>`;
   }
 
-  // Add evidence requirements if present
+  // Add evidence requirements if present (metadata only, no env-specific results here)
   stepCell += formatEvidenceInfo(step.evidence);
 
   rows += `| ${stepCell} |`;
@@ -372,6 +427,9 @@ function generateStepRow(
         cellContent = `_(${step.type} step)_`;
       }
     }
+
+    // Add environment-specific evidence results
+    cellContent += formatEvidenceInfo(step.evidence, env.name);
 
     rows += ` ${cellContent} |`;
   });
@@ -478,6 +536,22 @@ function generateSubStepRow(
     stepCell += `<br>👤 <em>PIC: ${step.pic}</em>`;
   }
 
+  // Add Reviewer (monitoring/buddy)
+  if (step.reviewer) {
+    stepCell += `<br>👥 <em>Reviewer: ${step.reviewer}</em>`;
+  }
+
+  // Add sign-off checkboxes if PIC or Reviewer is set
+  if (step.pic || step.reviewer) {
+    stepCell += '<br><em>Sign-off:</em>';
+    if (step.pic) {
+      stepCell += ' ☐ PIC';
+    }
+    if (step.reviewer) {
+      stepCell += ' ☐ Reviewer';
+    }
+  }
+
   // Add timeline
   if (step.timeline) {
     stepCell += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
@@ -488,7 +562,7 @@ function generateSubStepRow(
     stepCell += `<br>🔀 <em>Condition: ${step.if}</em>`;
   }
 
-  // Add evidence requirements if present
+  // Add evidence requirements if present (metadata only)
   stepCell += formatEvidenceInfo(step.evidence);
 
   rows += `| ${stepCell} |`;
@@ -562,6 +636,9 @@ function generateSubStepRow(
         cellContent = `_(${step.type} step)_`;
       }
     }
+
+    // Add environment-specific evidence results
+    cellContent += formatEvidenceInfo(step.evidence, env.name);
 
     rows += ` ${cellContent} |`;
   });

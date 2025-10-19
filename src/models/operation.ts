@@ -48,7 +48,7 @@ export interface EvidenceResult {
 export interface EvidenceConfig {
   required?: boolean;
   types?: EvidenceType[];
-  results?: EvidenceResult[]; // Optional pre-captured evidence
+  results?: Record<string, EvidenceResult[]>; // Environment-keyed evidence results (e.g., { staging: [...], production: [...] })
 }
 
 export interface StepOptions {
@@ -174,6 +174,7 @@ export interface Step {
   foreach?: StepForeach; // Loop/matrix support for repeatable steps
   section_heading?: boolean; // If true, render as a new markdown heading instead of table row
   pic?: string; // Person In Charge for this step
+  reviewer?: string; // Reviewer/buddy who monitors and verifies the PIC's work
   timeline?: string | TimelineConfig; // Expected date/time or duration for this step
   options?: StepOptions; // Step-level rendering and substitution options
 }
