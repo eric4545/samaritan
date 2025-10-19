@@ -119,8 +119,8 @@ jobs:
     - name: Check for vulnerabilities
       run: npx audit-ci --moderate
 
-  github-install:
-    name: Test GitHub Installation (npx github:)
+  build-test:
+    name: Test Build Process
     runs-on: ubuntu-latest
 
     steps:
@@ -132,15 +132,11 @@ jobs:
       with:
         node-version: ${{ env.DEFAULT_NODE_VERSION }}
 
-    - name: Simulate GitHub install (production deps only)
-      run: |
-        echo "Installing production dependencies only (simulating npx github: install)"
-        npm install --production --no-save
+    - name: Install dependencies
+      run: npm ci
 
-    - name: Run prepare script (build)
-      run: |
-        echo "Running prepare script (this runs automatically during npx github: install)"
-        npm run prepare
+    - name: Run build
+      run: npm run build
 
     - name: Test built CLI works
       run: |
@@ -149,7 +145,7 @@ jobs:
         node dist/cli/index.js validate examples/deployment.yaml
         node dist/cli/index.js schema --help
         node dist/cli/index.js schema -o /tmp/schema.json
-        echo "✅ All commands work after GitHub install simulation"
+        echo "✅ All commands work after build"
 
     - name: Verify dist folder was created
       run: |
