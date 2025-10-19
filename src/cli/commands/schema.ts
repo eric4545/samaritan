@@ -13,19 +13,21 @@ interface SchemaExportOptions {
 const schemaCommand = new Command('schema')
   .description('Export operation JSON schema')
   .option('-o, --output <file>', 'Output file (default: stdout)')
-  .option(
-    '-f, --format <format>',
-    'Output format: json or yaml',
-    'json',
-  )
+  .option('-f, --format <format>', 'Output format: json or yaml', 'json')
   .action(async (options: SchemaExportOptions) => {
     try {
       // Locate schema file (works in both dev and built environments)
       let schemaPath: string;
 
       // Try built version first (dist/schemas/)
-      const builtSchemaPath = join(__dirname, '../../schemas/operation.schema.json');
-      const srcSchemaPath = join(process.cwd(), 'src/schemas/operation.schema.json');
+      const builtSchemaPath = join(
+        __dirname,
+        '../../schemas/operation.schema.json',
+      );
+      const srcSchemaPath = join(
+        process.cwd(),
+        'src/schemas/operation.schema.json',
+      );
 
       try {
         readFileSync(builtSchemaPath, 'utf-8');

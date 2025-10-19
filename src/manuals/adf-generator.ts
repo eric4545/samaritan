@@ -771,7 +771,9 @@ function formatEvidenceInfo(evidence?: {
   const typesText = types.length > 0 ? `: ${types.join(', ')}` : '';
   const status = evidence.required ? 'Required' : 'Optional';
 
-  const nodes: any[] = [paragraph(em(text(`📎 Evidence ${status}${typesText}`)))];
+  const nodes: any[] = [
+    paragraph(em(text(`📎 Evidence ${status}${typesText}`))),
+  ];
 
   // Render evidence results if present
   if (evidence.results && evidence.results.length > 0) {

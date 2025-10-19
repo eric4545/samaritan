@@ -1379,10 +1379,10 @@ kubectl apply -f worker.yaml`,
       'Should format absolute start with duration using "for"',
     );
 
-    // Test Format 2: Duration with status -> "15m 🟢 Active"
+    // Test Format 2: Duration only (status ignored) -> "15m"
     assert(
-      markdown.includes('⏱️ <em>Timeline: 15m 🟢 Active</em>'),
-      'Should format duration with active status and green emoji',
+      markdown.includes('⏱️ <em>Timeline: 15m</em>'),
+      'Should format duration (status field ignored)',
     );
 
     // Test Format 3: Dependency with duration -> "(after Deploy Backend) 10m"
@@ -1391,26 +1391,16 @@ kubectl apply -f worker.yaml`,
       'Should format dependency with duration using parentheses',
     );
 
-    // Test Format 4: Complete with critical status -> "2024-01-15 14:00 for 2h ⚠️ Critical"
+    // Test Format 4: Complete without status -> "2024-01-15 14:00 for 2h"
     assert(
-      markdown.includes('⏱️ <em>Timeline: 2024-01-15 14:00 for 2h ⚠️ Crit</em>'),
-      'Should format complete timeline with critical status and warning emoji',
+      markdown.includes('⏱️ <em>Timeline: 2024-01-15 14:00 for 2h</em>'),
+      'Should format complete timeline (status field ignored)',
     );
 
     // Test Format 5: Just duration -> "5m"
     assert(
       markdown.includes('⏱️ <em>Timeline: 5m</em>'),
       'Should format simple duration without extra text',
-    );
-
-    // Verify status emojis are used
-    assert(
-      markdown.includes('🟢 Active'),
-      'Should use green circle emoji for active status',
-    );
-    assert(
-      markdown.includes('⚠️ Crit'),
-      'Should use warning emoji for critical status',
     );
 
     // Verify "for" is only used with start times
@@ -2031,7 +2021,9 @@ echo "Deploying at: \${TIMESTAMP}"`,
 
     // Should include evidence types
     assert(
-      markdown.includes('📎 <em>Evidence Required: screenshot, command_output</em>'),
+      markdown.includes(
+        '📎 <em>Evidence Required: screenshot, command_output</em>',
+      ),
       'Should show evidence types',
     );
 
@@ -2043,7 +2035,9 @@ echo "Deploying at: \${TIMESTAMP}"`,
 
     // Should render screenshot as image with description
     assert(
-      markdown.includes('**screenshot**: Kubernetes dashboard showing 3 pods running'),
+      markdown.includes(
+        '**screenshot**: Kubernetes dashboard showing 3 pods running',
+      ),
       'Should show screenshot description',
     );
     assert(
@@ -2081,8 +2075,9 @@ echo "Deploying at: \${TIMESTAMP}"`,
 
     // Should render file reference for non-image types
     assert(
-      markdown.includes('[View screenshot](./evidence/homepage-screenshot.png)') ||
-        markdown.includes('![Evidence](./evidence/homepage-screenshot.png)'),
+      markdown.includes(
+        '[View screenshot](./evidence/homepage-screenshot.png)',
+      ) || markdown.includes('![Evidence](./evidence/homepage-screenshot.png)'),
       'Should render screenshot file reference',
     );
 
@@ -2093,7 +2088,9 @@ echo "Deploying at: \${TIMESTAMP}"`,
     );
 
     // Count "Captured Evidence" sections - should have 3 (steps with results)
-    const capturedEvidenceCount = (markdown.match(/\*\*Captured Evidence:\*\*/g) || []).length;
+    const capturedEvidenceCount = (
+      markdown.match(/\*\*Captured Evidence:\*\*/g) || []
+    ).length;
     assert(
       capturedEvidenceCount === 3,
       'Should have 3 Captured Evidence sections (3 steps with results)',
@@ -2174,10 +2171,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
     );
 
     // Content should render in code block
-    assert(
-      markdown.includes('```text'),
-      'Should use text code block for log',
-    );
+    assert(markdown.includes('```text'), 'Should use text code block for log');
     assert(
       markdown.includes('Log line 1<br>Log line 2<br>Log line 3'),
       'Should convert newlines to <br> in log content',

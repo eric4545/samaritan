@@ -46,18 +46,6 @@ function formatTimelineForDisplay(timeline: any): string {
     }
   }
 
-  // Status with emoji indicators
-  if (timeline.status) {
-    const statusEmoji = {
-      active: '🟢',
-      done: '✅',
-      crit: '⚠️',
-    }[timeline.status] || '';
-
-    const statusText = timeline.status.charAt(0).toUpperCase() + timeline.status.slice(1);
-    parts.push(`${statusEmoji} ${statusText}`);
-  }
-
   return parts.join(' ');
 }
 
@@ -101,14 +89,18 @@ function formatEvidenceInfo(evidence?: {
       // Render based on storage type
       if (evidenceResult.file) {
         // File reference - render as image for screenshots/photos, or link for others
-        if (evidenceResult.type === 'screenshot' || evidenceResult.type === 'photo') {
+        if (
+          evidenceResult.type === 'screenshot' ||
+          evidenceResult.type === 'photo'
+        ) {
           result += `<br>![Evidence](${evidenceResult.file})`;
         } else {
           result += `<br>[View ${evidenceResult.type}](${evidenceResult.file})`;
         }
       } else if (evidenceResult.content) {
         // Inline content - render in code block
-        const language = evidenceResult.type === 'command_output' ? 'bash' : 'text';
+        const language =
+          evidenceResult.type === 'command_output' ? 'bash' : 'text';
         // Escape pipe characters and convert newlines
         const escapedContent = evidenceResult.content
           .replace(/\|/g, '\\|')
@@ -608,7 +600,9 @@ function generateSubStepRow(
           const metadata = [];
           if (nestedSubStep.pic) metadata.push(`👤 PIC: ${nestedSubStep.pic}`);
           if (nestedSubStep.timeline)
-            metadata.push(`⏱️ Timeline: ${formatTimelineForDisplay(nestedSubStep.timeline)}`);
+            metadata.push(
+              `⏱️ Timeline: ${formatTimelineForDisplay(nestedSubStep.timeline)}`,
+            );
           rows += `_${metadata.join(' • ')}_\n\n`;
         }
 
@@ -880,7 +874,10 @@ function generateManualContent(
           if (step.pic || step.timeline) {
             const metadata = [];
             if (step.pic) metadata.push(`👤 PIC: ${step.pic}`);
-            if (step.timeline) metadata.push(`⏱️ Timeline: ${formatTimelineForDisplay(step.timeline)}`);
+            if (step.timeline)
+              metadata.push(
+                `⏱️ Timeline: ${formatTimelineForDisplay(step.timeline)}`,
+              );
             markdown += `_${metadata.join(' • ')}_\n\n`;
           }
 

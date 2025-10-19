@@ -15,7 +15,9 @@
     "test:snapshots:update": "tsx --test --test-update-snapshots tests/manuals/*.test.ts",
     "build": "tsc && cp -r src/schemas dist/",
     "start": "tsx src/cli/index.ts",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "lint": "npx @biomejs/biome check .",
+    "lint:fix": "npx @biomejs/biome check --write ."
   },
   "repository": {
     "type": "git",
