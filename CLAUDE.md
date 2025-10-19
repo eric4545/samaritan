@@ -136,6 +136,24 @@ import { parseOperation } from '../operations/parser'
 - Provide context in error messages
 - Don't swallow errors silently
 
+### NPM Lifecycle Scripts
+- **CRITICAL**: Use `prepublishOnly` (NOT `prepare`) for build scripts
+- `prepublishOnly` runs only before `npm publish` (not on user installs)
+- `prepare` runs on every install, including production installs without dev dependencies
+- This prevents TypeScript compilation errors when users install the package
+- CI workflows should explicitly run `npm run build` when needed
+
+**Current configuration (package.json:18)**:
+```json
+"prepublishOnly": "npm run build"
+```
+
+**Why this matters**:
+- Users installing the package get pre-built `dist/` folder
+- They don't need TypeScript or `@types/node` installed
+- Prevents "Cannot find module 'node:fs'" errors in production installs
+- Build only happens before publishing, not on every install
+
 ---
 
 ## 🧪 Testing Instructions
