@@ -17,6 +17,7 @@ import {
   text,
 } from '@atlaskit/adf-utils/builders';
 import type { GenerationMetadata } from '../lib/git-metadata';
+import { indexToLetters } from '../lib/letter-sequence';
 import type { Environment, Operation, Step } from '../models/operation';
 
 /**
@@ -610,8 +611,8 @@ function addSubStepRows(
     // Even depths (2, 4, 6): use numbers (1, 2, 3)
     let subStepId: string;
     if (depth % 2 === 1) {
-      // Odd depth: use letters
-      const letter = String.fromCharCode(97 + subIndex); // 97 = 'a'
+      // Odd depth: use letters (supports unlimited with aa, ab, etc.)
+      const letter = indexToLetters(subIndex);
       subStepId = `${stepPrefix}${letter}`;
     } else {
       // Even depth: use numbers

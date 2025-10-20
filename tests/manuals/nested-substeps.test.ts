@@ -265,3 +265,43 @@ test('All generators should produce consistent numbering for nested sub-steps', 
     );
   }
 });
+
+test('All generators should support 30+ substeps with Excel-style lettering (a-z, aa-ad)', async () => {
+  const operation = await parseFixture('manySubSteps');
+  const markdown = generateManual(operation);
+  const adfString = generateADFString(operation);
+  const confluence = generateConfluenceContent(operation);
+
+  // Verify single letters a-z are rendered correctly
+  for (let i = 0; i < 26; i++) {
+    const letter = String.fromCharCode(97 + i); // a-z
+    const stepNum = `Step 1${letter}:`;
+    assert.ok(markdown.includes(stepNum), `Markdown should have ${stepNum}`);
+    assert.ok(adfString.includes(stepNum), `ADF should have ${stepNum}`);
+    assert.ok(
+      confluence.includes(stepNum),
+      `Confluence should have ${stepNum}`,
+    );
+  }
+
+  // Verify double letters aa-ad are rendered correctly (27-30)
+  const doubleLetters = ['aa', 'ab', 'ac', 'ad'];
+  for (const letters of doubleLetters) {
+    const stepNum = `Step 1${letters}:`;
+    assert.ok(markdown.includes(stepNum), `Markdown should have ${stepNum}`);
+    assert.ok(adfString.includes(stepNum), `ADF should have ${stepNum}`);
+    assert.ok(
+      confluence.includes(stepNum),
+      `Confluence should have ${stepNum}`,
+    );
+  }
+
+  // Verify the transition from z to aa doesn't produce invalid characters
+  assert.ok(!markdown.includes('Step 1{:'), 'Markdown should not have Step 1{:');
+  assert.ok(!markdown.includes('Step 1|:'), 'Markdown should not have Step 1|:');
+  assert.ok(
+    !adfString.includes('Step 1{:'),
+    'ADF should not have Step 1{:',
+  );
+  assert.ok(!confluence.includes('Step 1{:'), 'Confluence should not have Step 1{:');
+});

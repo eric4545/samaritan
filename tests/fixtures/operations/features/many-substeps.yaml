@@ -1,0 +1,106 @@
+name: Operation with 30+ Substeps
+version: 1.0.0
+id: test-many-substeps
+description: Test operation to verify substep labeling handles all 26+ letters correctly
+author: SRE Team
+
+environments:
+  - name: staging
+    description: Staging environment
+    approval_required: false
+
+steps:
+  - name: Deploy with Many Substeps
+    type: manual
+    instruction: Deploy the application through all 30 substeps
+    sub_steps:
+      - name: Substep 1  (a)
+        type: manual
+        instruction: First substep
+      - name: Substep 2  (b)
+        type: manual
+        instruction: Second substep
+      - name: Substep 3  (c)
+        type: manual
+        instruction: Third substep
+      - name: Substep 4  (d)
+        type: manual
+        instruction: Fourth substep
+      - name: Substep 5  (e)
+        type: manual
+        instruction: Fifth substep
+      - name: Substep 6  (f)
+        type: manual
+        instruction: Sixth substep
+      - name: Substep 7  (g)
+        type: manual
+        instruction: Seventh substep
+      - name: Substep 8  (h)
+        type: manual
+        instruction: Eighth substep
+      - name: Substep 9  (i)
+        type: manual
+        instruction: Ninth substep
+      - name: Substep 10 (j)
+        type: manual
+        instruction: Tenth substep
+      - name: Substep 11 (k)
+        type: manual
+        instruction: Eleventh substep
+      - name: Substep 12 (l)
+        type: manual
+        instruction: Twelfth substep
+      - name: Substep 13 (m)
+        type: manual
+        instruction: Thirteenth substep
+      - name: Substep 14 (n)
+        type: manual
+        instruction: Fourteenth substep
+      - name: Substep 15 (o)
+        type: manual
+        instruction: Fifteenth substep
+      - name: Substep 16 (p)
+        type: manual
+        instruction: Sixteenth substep
+      - name: Substep 17 (q)
+        type: manual
+        instruction: Seventeenth substep
+      - name: Substep 18 (r)
+        type: manual
+        instruction: Eighteenth substep
+      - name: Substep 19 (s)
+        type: manual
+        instruction: Nineteenth substep
+      - name: Substep 20 (t)
+        type: manual
+        instruction: Twentieth substep
+      - name: Substep 21 (u)
+        type: manual
+        instruction: Twenty-first substep
+      - name: Substep 22 (v)
+        type: manual
+        instruction: Twenty-second substep
+      - name: Substep 23 (w)
+        type: manual
+        instruction: Twenty-third substep
+      - name: Substep 24 (x)
+        type: manual
+        instruction: Twenty-fourth substep
+      - name: Substep 25 (y)
+        type: manual
+        instruction: Twenty-fifth substep
+      - name: Substep 26 (z)
+        type: manual
+        instruction: Twenty-sixth substep (last single letter)
+      - name: Substep 27 (aa)
+        type: manual
+        instruction: Twenty-seventh substep (double letters begin)
+      - name: Substep 28 (ab)
+        type: manual
+        instruction: Twenty-eighth substep
+      - name: Substep 29 (ac)
+        type: manual
+        instruction: Twenty-ninth substep
+      - name: Substep 30 (ad)
+        type: manual
+        instruction: Thirtieth substep

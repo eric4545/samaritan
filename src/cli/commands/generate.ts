@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
 import { Command } from 'commander';
 import { createGenerationMetadata } from '../../lib/git-metadata';
+import { indexToLetters } from '../../lib/letter-sequence';
 import { generateADFString } from '../../manuals/adf-generator';
 import { generateManualWithMetadata } from '../../manuals/generator';
 import { parseOperation } from '../../operations/parser';
@@ -1306,8 +1307,8 @@ function addConfluenceSubStepRows(
     // Even depths (2, 4, 6): use numbers (1, 2, 3)
     let subStepId: string;
     if (depth % 2 === 1) {
-      // Odd depth: use letters
-      const letter = String.fromCharCode(97 + subIndex); // 97 = 'a'
+      // Odd depth: use letters (supports unlimited with aa, ab, etc.)
+      const letter = indexToLetters(subIndex);
       subStepId = `${stepPrefix}${letter}`;
     } else {
       // Even depth: use numbers

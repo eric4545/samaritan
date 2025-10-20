@@ -61,6 +61,7 @@ export const FIXTURES = {
     'tests/fixtures/operations/features/nested-substeps-4-levels.yaml',
   nestedSubStepsWithSections:
     'tests/fixtures/operations/features/nested-substeps-with-sections.yaml',
+  manySubSteps: 'tests/fixtures/operations/features/many-substeps.yaml',
 
   // Evidence with results
   evidenceWithResults:

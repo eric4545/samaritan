@@ -4,6 +4,7 @@ import {
   type GenerationMetadata,
   generateYamlFrontmatter,
 } from '../lib/git-metadata';
+import { indexToLetters } from '../lib/letter-sequence';
 import type { Environment, Operation, Step } from '../models/operation';
 
 function substituteVariables(
@@ -439,8 +440,8 @@ function generateStepRow(
   // Add sub-steps if present with section_heading support
   if (step.sub_steps && step.sub_steps.length > 0) {
     step.sub_steps.forEach((subStep, subIndex) => {
-      // Use letters for sub-steps: 1a, 1b, 1c, etc.
-      const subStepLetter = String.fromCharCode(97 + subIndex); // 97 = 'a'
+      // Use letters for sub-steps: 1a, 1b, 1c, etc. (supports unlimited with aa, ab, etc.)
+      const subStepLetter = indexToLetters(subIndex);
       const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
 
       // Handle section headings for sub-steps
@@ -655,8 +656,8 @@ function generateSubStepRow(
         // Odd depth: use numbers (1a1, 1a2, 1a3)
         nestedStepId = `${stepId}${nestedIndex + 1}`;
       } else {
-        // Even depth: use letters (1a1a, 1a1b, 1a1c)
-        const letter = String.fromCharCode(97 + nestedIndex);
+        // Even depth: use letters (1a1a, 1a1b, 1a1c) - supports unlimited with aa, ab, etc.
+        const letter = indexToLetters(nestedIndex);
         nestedStepId = `${stepId}${letter}`;
       }
 
