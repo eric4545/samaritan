@@ -2182,4 +2182,94 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should convert newlines to <br> in log content',
     );
   });
+
+  it('should render evidence override from use: directive correctly', async () => {
+    const operation = await parseFixture('evidenceOverrideInUse');
+
+    const markdown = generateManual(operation);
+
+    // Check that title is rendered
+    assert(
+      markdown.includes(
+        '# Manual for: Service Migration with Evidence Override',
+      ),
+      'Should have correct title',
+    );
+
+    // Check environments
+    assert(
+      markdown.includes('## Environments Overview'),
+      'Should have environments section',
+    );
+    assert(markdown.includes('| preprod |'), 'Should have preprod environment');
+    assert(markdown.includes('| prod |'), 'Should have prod environment');
+
+    // Check steps table has both environments
+    assert(
+      markdown.includes('| Step | preprod | prod |'),
+      'Should have steps table with both environments',
+    );
+
+    // Step 1: check-afd-health (with evidence override)
+    // Should show evidence in both environment columns
+    assert(
+      markdown.includes('☐ Step 1: check-afd-health'),
+      'Should include first step',
+    );
+
+    // Check preprod evidence for step 1
+    assert(
+      markdown.includes('![Evidence](./evidence/preprod/afd-health.png)'),
+      'Should render preprod screenshot',
+    );
+    assert(
+      markdown.includes('Preprod AFD health dashboard (2025-10-10)'),
+      'Should show preprod screenshot description',
+    );
+    assert(
+      markdown.includes('HTTP/1.1 200 OK'),
+      'Should show preprod command output',
+    );
+
+    // Check prod evidence for step 1
+    assert(
+      markdown.includes('![Evidence](./evidence/prod/afd-health.png)'),
+      'Should render prod screenshot',
+    );
+    assert(
+      markdown.includes('Production AFD health dashboard (2025-10-20)'),
+      'Should show prod screenshot description',
+    );
+    assert(
+      markdown.includes('us-east-1, us-west-2'),
+      'Should show prod-specific content',
+    );
+
+    // Step 2: verify-dns (with evidence override)
+    assert(
+      markdown.includes('☐ Step 2: verify-dns'),
+      'Should include second step',
+    );
+
+    // Check preprod DNS evidence
+    assert(
+      markdown.includes('preprod.example.com'),
+      'Should show preprod DNS in evidence',
+    );
+    assert(markdown.includes('10.0.1.100'), 'Should show preprod IP address');
+
+    // Check prod DNS evidence
+    assert(
+      markdown.includes('example.com'),
+      'Should show prod domain in evidence',
+    );
+    assert(markdown.includes('10.0.2.100'), 'Should show prod IP addresses');
+    assert(markdown.includes('10.0.2.101'), 'Should show second prod IP');
+
+    // Step 3: Regular step (no evidence override)
+    assert(
+      markdown.includes('☐ Step 3: Deploy Application'),
+      'Should include third step',
+    );
+  });
 });

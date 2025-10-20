@@ -384,6 +384,20 @@ function resolveStepReferences(
       if (stepData.continue_on_error !== undefined)
         clonedStep.continue_on_error = stepData.continue_on_error;
 
+      // Allow overriding evidence (new format)
+      if (stepData.evidence !== undefined) {
+        const evidenceData = stepData.evidence;
+        clonedStep.evidence = {
+          required:
+            evidenceData.required !== undefined
+              ? Boolean(evidenceData.required)
+              : (clonedStep.evidence?.required ?? false),
+          types: evidenceData.types ?? clonedStep.evidence?.types ?? [],
+          // Override results if provided, otherwise keep original
+          results: evidenceData.results ?? clonedStep.evidence?.results,
+        };
+      }
+
       // Set default phase if not specified
       if (!clonedStep.phase) {
         clonedStep.phase = 'flight';

@@ -297,11 +297,17 @@ test('All generators should support 30+ substeps with Excel-style lettering (a-z
   }
 
   // Verify the transition from z to aa doesn't produce invalid characters
-  assert.ok(!markdown.includes('Step 1{:'), 'Markdown should not have Step 1{:');
-  assert.ok(!markdown.includes('Step 1|:'), 'Markdown should not have Step 1|:');
   assert.ok(
-    !adfString.includes('Step 1{:'),
-    'ADF should not have Step 1{:',
+    !markdown.includes('Step 1{:'),
+    'Markdown should not have Step 1{:',
   );
-  assert.ok(!confluence.includes('Step 1{:'), 'Confluence should not have Step 1{:');
+  assert.ok(
+    !markdown.includes('Step 1|:'),
+    'Markdown should not have Step 1|:',
+  );
+  assert.ok(!adfString.includes('Step 1{:'), 'ADF should not have Step 1{:');
+  assert.ok(
+    !confluence.includes('Step 1{:'),
+    'Confluence should not have Step 1{:',
+  );
 });

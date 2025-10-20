@@ -1,0 +1,28 @@
+# Reusable health check steps (for testing evidence override)
+steps:
+  - name: check-afd-health
+    type: manual
+    description: Check Azure Front Door health status
+    instruction: |
+      Check AFD health status:
+      ```bash
+      curl https://${AFD_ENDPOINT}/health
+      ```
+    evidence:
+      required: true
+      types: ["command_output", "screenshot"]
+      # NO results - this is a template
+
+  - name: verify-dns
+    type: manual
+    description: Verify DNS configuration
+    instruction: |
+      Verify DNS is resolving correctly:
+      ```bash
+      nslookup ${DOMAIN_NAME}
+      dig ${DOMAIN_NAME}
+      ```
+    evidence:
+      required: true
+      types: ["command_output"]
+      # NO results - this is a template

@@ -1,0 +1,92 @@
+name: Service Migration with Evidence Override
+version: 1.0.0
+description: "Demonstrates evidence override in use: directive for environment-specific evidence"
+author: SRE Team
+category: migration
+
+# Import reusable step library
+imports:
+  - "./common/health-checks.yaml"
+
+environments:
+  - name: preprod
+    description: Preprod rehearsal environment
+    variables:
+      AFD_ENDPOINT: preprod-afd.example.com
+      DOMAIN_NAME: preprod.example.com
+      ENV: preprod
+    approval_required: false
+
+  - name: prod
+    description: Production environment
+    variables:
+      AFD_ENDPOINT: prod-afd.example.com
+      DOMAIN_NAME: example.com
+      ENV: prod
+    approval_required: true
+
+steps:
+  # Step 1: AFD Health Check with environment-specific evidence override
+  - use: check-afd-health
+    phase: preflight
+    evidence:
+      types: ["command_output", "screenshot"]  # Can override types
+      results:  # ✅ Add environment-specific evidence results
+        preprod:
+          - type: screenshot
+            file: ./evidence/preprod/afd-health.png
+            description: "Preprod AFD health dashboard (2025-10-10)"
+          - type: command_output
+            content: |
+              HTTP/1.1 200 OK
+              Status: healthy
+              Region: us-east-1
+            description: "Preprod AFD health check output"
+        prod:
+          - type: screenshot
+            file: ./evidence/prod/afd-health.png
+            description: "Production AFD health dashboard (2025-10-20)"
+          - type: command_output
+            content: |
+              HTTP/1.1 200 OK
+              Status: healthy
+              Region: us-east-1, us-west-2
+            description: "Production AFD health check output"
+
+  # Step 2: DNS Verification with environment-specific evidence override
+  - use: verify-dns
+    phase: preflight
+    evidence:
+      results:
+        preprod:
+          - type: command_output
+            content: |
+              Server:  8.8.8.8
+              Address: 8.8.8.8#53
+
+              Name:    preprod.example.com
+              Address: 10.0.1.100
+            description: "Preprod DNS verification (2025-10-10)"
+        prod:
+          - type: command_output
+            content: |
+              Server:  8.8.8.8
+              Address: 8.8.8.8#53
+
+              Name:    example.com
+              Address: 10.0.2.100
+              Address: 10.0.2.101
+            description: "Production DNS verification (2025-10-20)"
+
+  # Step 3: Regular step (no evidence override)
+  - name: Deploy Application
+    type: manual
+    phase: flight
+    instruction: |
+      Deploy the application to ${ENV}:
+      ```bash
+      ./deploy.sh --env ${ENV}
+      ```
+    evidence:
+      required: true
+      types: ["command_output"]

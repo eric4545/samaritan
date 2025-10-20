@@ -66,6 +66,8 @@ export const FIXTURES = {
   // Evidence with results
   evidenceWithResults:
     'tests/fixtures/operations/features/evidence-with-results.yaml',
+  evidenceOverrideInUse:
+    'tests/fixtures/operations/features/evidence-override-in-use.yaml',
 
   // ===== Confluence Generator Tests =====
   multiLineCommand:
