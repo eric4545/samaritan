@@ -378,4 +378,152 @@ describe('Enhanced Operation Parser', () => {
       'First key should be Release Date',
     );
   });
+
+  describe('Template Import (uses)', () => {
+    it('should load and expand template steps with variable substitution', async () => {
+      const operation = await parseOperation(
+        'tests/fixtures/operations/valid/with-template-import.yaml',
+      );
+
+      // Should have:
+      // - 2 steps from first health-checks template
+      // - 1 deploy step
+      // - 2 steps from second health-checks template
+      // - 2 steps from notification template
+      // Total: 7 steps
+      assert.strictEqual(operation.steps.length, 7, 'Should have 7 total steps');
+
+      // Check first template expansion (health-checks)
+      assert.strictEqual(operation.steps[0].name, 'Check API Health');
+      assert.strictEqual(operation.steps[0].type, 'automatic');
+      assert.strictEqual(
+        operation.steps[0].command,
+        'curl -f ${ENDPOINT}/health',
+      );
+      assert.strictEqual(operation.steps[0].timeout, 60); // From with: TIMEOUT: 60
+      assert.strictEqual(operation.steps[0].retry?.attempts, 5); // From with: RETRIES: 5
+
+      assert.strictEqual(
+        operation.steps[1].name,
+        'Verify Database Connection',
+      );
+      assert.strictEqual(operation.steps[1].type, 'automatic');
+      assert.strictEqual(
+        operation.steps[1].command,
+        'kubectl exec deployment/${SERVICE_NAME} -- nc -zv ${DB_HOST} 5432',
+      );
+
+      // Check regular step (not from template)
+      assert.strictEqual(operation.steps[2].name, 'Deploy Application');
+      assert.strictEqual(operation.steps[2].type, 'manual');
+
+      // Check second template expansion (health-checks with different params)
+      assert.strictEqual(operation.steps[3].name, 'Check API Health');
+      assert.strictEqual(operation.steps[3].timeout, 120); // Different timeout
+      assert.strictEqual(operation.steps[3].retry?.attempts, 10); // Different retries
+
+      assert.strictEqual(
+        operation.steps[4].name,
+        'Verify Database Connection',
+      );
+
+      // Check notification template expansion
+      assert.strictEqual(operation.steps[5].name, 'Send Slack Notification');
+      assert.strictEqual(operation.steps[5].type, 'automatic');
+      assert.ok(
+        operation.steps[5].command?.includes('${SLACK_WEBHOOK}'),
+        'Should preserve ${SLACK_WEBHOOK} variable',
+      );
+
+      assert.strictEqual(operation.steps[6].name, 'Send Email Notification');
+      assert.strictEqual(operation.steps[6].type, 'manual');
+    });
+
+    it('should throw error when template file not found', async () => {
+      // Create a test operation that references non-existent template
+      const testYaml = `
+name: Test Missing Template
+version: 1.0.0
+steps:
+  - name: Regular Step
+    type: manual
+    instruction: Do something
+  - uses: ./non-existent-template.yaml
+    with:
+      VAR: value
+`;
+
+      // Write to temp file
+      const tmpFile = '/tmp/test-missing-template.yaml';
+      const fs = await import('node:fs');
+      fs.writeFileSync(tmpFile, testYaml);
+
+      // Should throw an error (OperationParseError)
+      await assert.rejects(
+        async () => {
+          await parseOperation(tmpFile);
+        },
+        (err: any) => {
+          return err.message.includes('Template file not found') ||
+                 err.message.includes('Operation validation failed');
+        },
+        'Should throw error for missing template',
+      );
+
+      // Cleanup
+      fs.unlinkSync(tmpFile);
+    });
+
+    it('should throw error when required template variables are missing', async () => {
+      // Create a test operation that doesn't provide all required variables
+      const testYaml = `
+name: Test Missing Variables
+version: 1.0.0
+steps:
+  - uses: ../templates/health-checks.yaml
+    with:
+      ENDPOINT: https://api.com
+      # Missing: DB_HOST, SERVICE_NAME, TIMEOUT, RETRIES
+`;
+
+      // Write to temp file
+      const tmpFile = '/tmp/test-missing-vars.yaml';
+      const fs = await import('node:fs');
+      fs.writeFileSync(tmpFile, testYaml);
+
+      // Should throw an error (OperationParseError)
+      await assert.rejects(
+        async () => {
+          await parseOperation(tmpFile);
+        },
+        (err: any) => {
+          return err.message.includes('Missing template variables') ||
+                 err.message.includes('Operation validation failed');
+        },
+        'Should throw error for missing variables',
+      );
+
+      // Cleanup
+      fs.unlinkSync(tmpFile);
+    });
+
+    it('should support both array and operation format templates', async () => {
+      // health-checks.yaml is array format
+      // notification.yaml is operation format
+      // Both should work in the same operation
+      const operation = await parseOperation(
+        'tests/fixtures/operations/valid/with-template-import.yaml',
+      );
+
+      // Both templates should be successfully loaded and expanded
+      assert.ok(
+        operation.steps.some((s) => s.name === 'Check API Health'),
+        'Should have step from array template',
+      );
+      assert.ok(
+        operation.steps.some((s) => s.name === 'Send Slack Notification'),
+        'Should have step from operation template',
+      );
+    });
+  });
 });

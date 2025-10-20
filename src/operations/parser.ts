@@ -338,6 +338,106 @@ function formatVariableCombination(vars: Record<string, any>): string {
 }
 
 /**
+ * Load template file and extract steps
+ * Supports both array format (just steps) and operation format (extract .steps)
+ */
+function loadTemplateSteps(templatePath: string, baseDirectory: string): any[] {
+  const resolvedPath = resolve(baseDirectory, templatePath);
+
+  if (!fs.existsSync(resolvedPath)) {
+    throw new OperationParseError(`Template file not found: ${templatePath}`, [
+      { field: 'uses', message: `File not found: ${resolvedPath}` },
+    ]);
+  }
+
+  const templateContents = fs.readFileSync(resolvedPath, 'utf-8');
+  let templateData: unknown;
+
+  try {
+    templateData = yaml.load(templateContents);
+  } catch (error) {
+    throw new OperationParseError(`Invalid YAML in template: ${templatePath}`, [
+      { field: 'uses', message: (error as Error).message },
+    ]);
+  }
+
+  // Handle array format (just steps)
+  if (Array.isArray(templateData)) {
+    return templateData;
+  }
+
+  // Handle operation format (extract .steps)
+  if (typeof templateData === 'object' && templateData !== null) {
+    const templateObj = templateData as any;
+    if (templateObj.steps && Array.isArray(templateObj.steps)) {
+      return templateObj.steps;
+    }
+  }
+
+  throw new OperationParseError(
+    `Invalid template format: ${templatePath}. Expected array of steps or operation with 'steps' field`,
+    [{ field: 'uses', message: 'Template must be array or object with steps field' }],
+  );
+}
+
+/**
+ * Find all ${VAR} placeholders in an object (recursively)
+ */
+function extractVariables(obj: any, vars: Set<string> = new Set()): Set<string> {
+  if (typeof obj === 'string') {
+    // Match ${VAR} pattern
+    const matches = obj.matchAll(/\$\{([^}]+)\}/g);
+    for (const match of matches) {
+      vars.add(match[1]);
+    }
+  } else if (Array.isArray(obj)) {
+    for (const item of obj) {
+      extractVariables(item, vars);
+    }
+  } else if (typeof obj === 'object' && obj !== null) {
+    for (const value of Object.values(obj)) {
+      extractVariables(value, vars);
+    }
+  }
+  return vars;
+}
+
+/**
+ * Substitute ${VAR} placeholders with values from context
+ */
+function substituteVariables(obj: any, context: Record<string, any>): any {
+  if (typeof obj === 'string') {
+    // Check if the entire string is just a single variable reference
+    const singleVarMatch = obj.match(/^\$\{([^}]+)\}$/);
+    if (singleVarMatch) {
+      const varName = singleVarMatch[1];
+      if (varName in context) {
+        // Return the value directly (preserving type)
+        return context[varName];
+      }
+    }
+
+    // Replace all ${VAR} with values (for strings with multiple vars or mixed content)
+    return obj.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+      if (varName in context) {
+        return String(context[varName]);
+      }
+      // Leave unmatched variables as-is (they might be env vars)
+      return match;
+    });
+  } else if (Array.isArray(obj)) {
+    return obj.map((item) => substituteVariables(item, context));
+  } else if (typeof obj === 'object' && obj !== null) {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = substituteVariables(value, context);
+    }
+    return result;
+  }
+  return obj;
+}
+
+/**
  * Resolve step references (use: step-name) to actual step definitions
  */
 function resolveStepReferences(
@@ -404,6 +504,59 @@ function resolveStepReferences(
       }
 
       resolvedSteps.push(clonedStep);
+    } else if (stepData.uses) {
+      // This is a template import
+      try {
+        const templatePath = stepData.uses;
+        const withVars = stepData.with || {};
+
+        // Load template steps
+        const templateSteps = loadTemplateSteps(templatePath, importContext.baseDirectory);
+
+        // Validate all template variables are provided
+        const templateVars = extractVariables(templateSteps);
+        const missingVars: string[] = [];
+        for (const varName of templateVars) {
+          if (!(varName in withVars)) {
+            missingVars.push(varName);
+          }
+        }
+
+        if (missingVars.length > 0) {
+          throw new OperationParseError(
+            `Missing template variables for ${templatePath}: ${missingVars.join(', ')}`,
+            [
+              {
+                field: `steps[${i}].with`,
+                message: `Required variables not provided: ${missingVars.join(', ')}`,
+              },
+            ],
+          );
+        }
+
+        // Substitute variables in template steps
+        const substitutedSteps = substituteVariables(templateSteps, withVars);
+
+        // Parse and add each template step
+        for (let j = 0; j < substitutedSteps.length; j++) {
+          const templateStep = parseStep(substitutedSteps[j], j);
+
+          // Set default phase if not specified
+          if (!templateStep.phase) {
+            templateStep.phase = 'flight';
+          }
+
+          resolvedSteps.push(templateStep);
+        }
+      } catch (error) {
+        if (error instanceof OperationParseError) {
+          throw error;
+        }
+        throw new OperationParseError(
+          `Failed to load template: ${stepData.uses}`,
+          [{ field: `steps[${i}].uses`, message: (error as Error).message }],
+        );
+      }
     } else {
       // This is a regular step definition
       try {
@@ -535,6 +688,7 @@ function parseStep(stepData: any, _stepIndex: number): Step {
     timeout: stepData.timeout,
     estimated_duration: stepData.estimated_duration,
     env: stepData.env,
+    uses: stepData.uses,
     with: stepData.with,
     variables: stepData.variables,
     evidence: parseEvidence(stepData),

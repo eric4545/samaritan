@@ -149,6 +149,185 @@ evidence:
 
 See `tests/fixtures/operations/features/evidence-with-results.yaml` for a complete example.
 
+#### Environment-Specific Evidence Override
+
+When using reusable steps with the `use:` directive, you can override evidence results to provide environment-specific evidence. This is particularly useful when:
+- Running rehearsals in staging/preprod before production execution
+- Collecting different evidence for different environments
+- Keeping common step definitions clean and reusable
+
+**Example:**
+
+```yaml
+# ./common/health-checks.yaml
+steps:
+  - name: check-afd-health
+    type: manual
+    instruction: |
+      Check AFD health status:
+      ```bash
+      curl https://${AFD_ENDPOINT}/health
+      ```
+    evidence:
+      required: true
+      types: [command_output, screenshot]
+      # NO results - this is a template
+```
+
+```yaml
+# main-operation.yaml
+name: Service Migration
+version: 1.0.0
+
+imports:
+  - "./common/health-checks.yaml"
+
+environments:
+  - name: preprod
+    variables:
+      AFD_ENDPOINT: preprod-afd.example.com
+  - name: prod
+    variables:
+      AFD_ENDPOINT: prod-afd.example.com
+
+steps:
+  # Reuse imported step with environment-specific evidence override
+  - use: check-afd-health
+    phase: preflight
+    evidence:
+      types: [command_output, screenshot]  # Can override types
+      results:  # Add environment-specific evidence results
+        preprod:
+          - type: screenshot
+            file: ./evidence/preprod/afd-health.png
+            description: "Preprod AFD health dashboard (2025-10-10)"
+          - type: command_output
+            content: |
+              HTTP/1.1 200 OK
+              Status: healthy
+              Region: us-east-1
+            description: "Preprod AFD health check output"
+        prod:
+          - type: screenshot
+            file: ./evidence/prod/afd-health.png
+            description: "Production AFD health dashboard (2025-10-20)"
+          - type: command_output
+            content: |
+              HTTP/1.1 200 OK
+              Status: healthy
+              Region: us-east-1, us-west-2
+            description: "Production AFD health check output"
+```
+
+**What gets overridden:**
+- `evidence.types` - Optional: override expected evidence types
+- `evidence.results` - Environment-specific evidence keyed by environment name
+- `evidence.required` - Optional: override whether evidence is required
+
+**What's preserved:**
+- Step `instruction`, `description`, and other fields from the imported step
+- Original evidence types if not explicitly overridden
+
+See `tests/fixtures/operations/features/evidence-override-in-use.yaml` for a complete example.
+
+### Template Import and Reuse
+
+SAMARITAN supports importing reusable step templates using the `uses:` directive. This allows you to:
+- **Eliminate duplication** by defining common steps once
+- **Ensure consistency** across operations
+- **Simplify maintenance** by updating templates in one place
+- **Share best practices** across teams
+
+#### Creating Templates
+
+Templates can be:
+1. **Step arrays** (simple format):
+```yaml
+# templates/health-checks.yaml
+- name: Check API Health
+  type: automatic
+  command: curl -f ${ENDPOINT}/health
+  timeout: ${TIMEOUT}
+
+- name: Verify Database
+  type: automatic
+  command: kubectl exec ${SERVICE_NAME} -- nc -zv ${DB_HOST} 5432
+```
+
+2. **Full operations** (with metadata):
+```yaml
+# templates/kubernetes-deployment.yaml
+name: Kubernetes Deployment Template
+version: 1.0.0
+description: Standard K8s deployment workflow
+
+steps:
+  - name: Apply Deployment
+    type: automatic
+    command: kubectl apply -f k8s/${SERVICE_NAME}.yaml -n ${NAMESPACE}
+
+  - name: Wait for Rollout
+    type: automatic
+    command: kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE}
+```
+
+#### Using Templates
+
+Import templates with `uses:` and pass variables with `with:`:
+
+```yaml
+name: Microservice Deployment
+version: 2.0.0
+
+environments:
+  - name: staging
+    variables:
+      ENDPOINT: https://staging.api.com
+      DB_HOST: staging-db
+      SERVICE_NAME: my-service
+      NAMESPACE: staging
+
+steps:
+  # Import template steps
+  - uses: ./templates/health-checks.yaml
+    with:
+      ENDPOINT: ${ENDPOINT}    # Pass environment variables to template
+      DB_HOST: ${DB_HOST}
+      SERVICE_NAME: ${SERVICE_NAME}
+      TIMEOUT: 60
+
+  - name: Deploy Application
+    type: manual
+    instruction: Deploy the app
+
+  # Reuse the same template with different parameters
+  - uses: ./templates/health-checks.yaml
+    with:
+      ENDPOINT: ${ENDPOINT}
+      DB_HOST: ${DB_HOST}
+      SERVICE_NAME: ${SERVICE_NAME}
+      TIMEOUT: 120  # Longer timeout for post-deployment checks
+```
+
+**How it works:**
+1. Template file is loaded (relative to parent operation)
+2. Steps are extracted (from array or `steps` field)
+3. Variables (`${VAR}`) are substituted with values from `with:`
+4. Template steps are inserted inline at the import location
+5. Generated manuals show expanded steps with substituted values
+
+**Variable substitution:**
+- `${VAR}` placeholders in templates are replaced with values from `with:`
+- All template variables must be provided (validation enforced)
+- Type preservation: `timeout: ${TIMEOUT}` with `TIMEOUT: 60` yields `timeout: 60` (number)
+
+**Example templates:**
+- `examples/templates/health-checks.yaml` - Service health verification
+- `examples/templates/kubernetes-deployment.yaml` - K8s deployment workflow
+- `examples/templates/notifications.yaml` - Team notification steps
+
+See `examples/deployment-with-templates.yaml` for a complete example.
+
 ## 🛠 CLI Commands
 
 ### Core Operations

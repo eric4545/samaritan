@@ -1,0 +1,22 @@
+# Full operation template file
+name: Notification Template
+version: 1.0.0
+description: Send notifications to team
+
+steps:
+  - name: Send Slack Notification
+    type: automatic
+    command: |
+      curl -X POST ${SLACK_WEBHOOK} \
+        -H "Content-Type: application/json" \
+        -d '{"text": "${MESSAGE}"}'
+    description: Send notification to Slack
+    timeout: 30
+
+  - name: Send Email Notification
+    type: manual
+    instruction: |
+      Send email to: ${EMAIL_RECIPIENTS}
+      Subject: ${EMAIL_SUBJECT}
+      Body: ${MESSAGE}
+    description: Manual email notification

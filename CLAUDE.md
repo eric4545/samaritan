@@ -341,6 +341,66 @@ steps:
 - **`reviewer`** (Reviewer/Buddy): The person who monitors and verifies the PIC's work
 - **Sign-off Checkboxes**: Generated manuals include checkboxes for PIC and Reviewer sign-off when these fields are set
 
+### Template Import (uses)
+
+**✅ Implemented in v1.0+**
+
+SAMARITAN supports reusable step templates via the `uses:` directive, enabling DRY (Don't Repeat Yourself) principles for common operation patterns.
+
+**How it works:**
+```yaml
+# Template file (examples/templates/health-checks.yaml)
+# Can be either:
+# 1. Array of steps (simple)
+- name: Check API
+  command: curl ${ENDPOINT}/health
+  timeout: ${TIMEOUT}
+
+# 2. Full operation (with metadata)
+name: Health Checks Template
+version: 1.0.0
+steps:
+  - name: Check API
+    command: curl ${ENDPOINT}/health
+```
+
+**Usage:**
+```yaml
+# Main operation
+steps:
+  - uses: ./templates/health-checks.yaml
+    with:
+      ENDPOINT: https://api.example.com
+      TIMEOUT: 60
+```
+
+**Implementation Details (src/operations/parser.ts):**
+1. **Template Loading** (`loadTemplateSteps`): Loads YAML file, extracts steps (handles both array and operation format)
+2. **Variable Extraction** (`extractVariables`): Finds all `${VAR}` placeholders recursively
+3. **Variable Substitution** (`substituteVariables`): Replaces placeholders, preserves types (e.g., `${TIMEOUT}` with value `60` yields number `60`, not string `"60"`)
+4. **Inline Expansion** (`resolveStepReferences`): Template steps inserted at import location (not nested)
+5. **Validation**: All `${VAR}` must have corresponding values in `with:`, otherwise parser throws error
+
+**Key Features:**
+- ✅ Supports both step array and operation file formats
+- ✅ Type-preserving variable substitution (numbers stay numbers, booleans stay booleans)
+- ✅ Relative path resolution (template paths relative to importing operation)
+- ✅ Validation of required variables (errors if any ${VAR} not provided)
+- ✅ Environment variable integration (can pass ${ENV_VAR} from parent to template)
+- ✅ Multiple imports of same template with different parameters
+
+**Tests:**
+- Parser tests: `tests/operations/parser.test.ts` (Template Import suite)
+- Test fixtures: `tests/fixtures/templates/*.yaml`
+- Integration: `tests/fixtures/operations/valid/with-template-import.yaml`
+- Examples: `examples/templates/*.yaml`, `examples/deployment-with-templates.yaml`
+
+**Schema (src/schemas/operation.schema.json):**
+- Steps `oneOf` includes third variant for template imports
+- Required: `uses` (path to template)
+- Optional: `with` (variables to pass, defaults to empty object)
+- Recursive `$ref` for sub_steps points to `oneOf/2` (regular step definition)
+
 ---
 
 ## 🔀 Git Workflow

@@ -1,0 +1,16 @@
+# Simple template file - array of steps
+- name: Check API Health
+  type: automatic
+  command: curl -f ${ENDPOINT}/health
+  description: Verify API endpoint is responding
+  timeout: ${TIMEOUT}
+  retry:
+    attempts: ${RETRIES}
+    delay: 5
+    backoff: exponential
+
+- name: Verify Database Connection
+  type: automatic
+  command: kubectl exec deployment/${SERVICE_NAME} -- nc -zv ${DB_HOST} 5432
+  description: Check database connectivity
+  timeout: 30

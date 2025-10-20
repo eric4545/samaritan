@@ -155,7 +155,8 @@ export interface Step {
   timeout?: number;
   estimated_duration?: number;
   env?: Record<string, any>;
-  with?: Record<string, any>;
+  uses?: string; // Path to template file for step import/reuse
+  with?: Record<string, any>; // Variables to pass to template (also used for parameterized steps)
   variables?: Record<string, any>; // Step-scoped variables (override env and common vars)
   evidence?: EvidenceConfig;
   evidence_required?: boolean; // DEPRECATED: Use evidence.required instead

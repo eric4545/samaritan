@@ -1,0 +1,62 @@
+name: Deployment with Template Import
+version: 1.0.0
+description: Test template import functionality
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      ENDPOINT: https://staging.api.com
+      DB_HOST: staging-db.com
+      SERVICE_NAME: my-app-staging
+      SLACK_WEBHOOK: https://hooks.slack.com/services/STAGING
+    approval_required: false
+    validation_required: true
+    restrictions: []
+
+  - name: production
+    description: Production environment
+    variables:
+      ENDPOINT: https://api.com
+      DB_HOST: prod-db.com
+      SERVICE_NAME: my-app-prod
+      SLACK_WEBHOOK: https://hooks.slack.com/services/PROD
+    approval_required: true
+    validation_required: true
+    restrictions: ["production-access"]
+
+steps:
+  - name: Pre-deployment Health Checks
+    uses: ../../templates/health-checks.yaml
+    with:
+      ENDPOINT: ${ENDPOINT}
+      DB_HOST: ${DB_HOST}
+      SERVICE_NAME: ${SERVICE_NAME}
+      TIMEOUT: 60
+      RETRIES: 5
+
+  - name: Deploy Application
+    type: manual
+    instruction: |
+      Deploy the application:
+      ```bash
+      kubectl apply -f deployment.yaml -n production
+      ```
+    description: Main deployment step
+
+  - name: Post-deployment Health Checks
+    uses: ../../templates/health-checks.yaml
+    with:
+      ENDPOINT: ${ENDPOINT}
+      DB_HOST: ${DB_HOST}
+      SERVICE_NAME: ${SERVICE_NAME}
+      TIMEOUT: 120
+      RETRIES: 10
+
+  - name: Notify Team
+    uses: ../../templates/notification.yaml
+    with:
+      SLACK_WEBHOOK: ${SLACK_WEBHOOK}
+      MESSAGE: Deployment completed successfully
+      EMAIL_RECIPIENTS: team@example.com
+      EMAIL_SUBJECT: Deployment Notification

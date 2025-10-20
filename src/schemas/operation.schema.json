@@ -307,6 +307,22 @@
           },
           {
             "type": "object",
+            "required": ["uses"],
+            "properties": {
+              "uses": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Path to template file for step import/reuse (relative to operation file)"
+              },
+              "with": {
+                "type": "object",
+                "description": "Variables to pass to template (all template variables must be provided)"
+              }
+            },
+            "description": "Template import - loads steps from external template file with variable substitution"
+          },
+          {
+            "type": "object",
             "required": ["name", "type"],
             "properties": {
               "id": {
@@ -349,8 +365,13 @@
               "env": {
                 "type": "object"
               },
+              "uses": {
+                "type": "string",
+                "description": "Path to template file for step import/reuse (relative to operation file)"
+              },
               "with": {
-                "type": "object"
+                "type": "object",
+                "description": "Variables to pass to template (when uses is specified) or parameters for the step"
               },
               "variables": {
                 "type": "object",
@@ -449,7 +470,7 @@
               "sub_steps": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/properties/steps/items/oneOf/1"
+                  "$ref": "#/properties/steps/items/oneOf/2"
                 }
               },
               "manual_override": {
