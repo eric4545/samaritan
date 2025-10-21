@@ -379,7 +379,7 @@ describe('Enhanced Operation Parser', () => {
     );
   });
 
-  describe('Template Import (uses)', () => {
+  describe('Template Import (template)', () => {
     it('should load and expand template steps with variable substitution', async () => {
       const operation = await parseOperation(
         'tests/fixtures/operations/valid/with-template-import.yaml',

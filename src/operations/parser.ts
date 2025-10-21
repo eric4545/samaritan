@@ -171,7 +171,7 @@ function loadStepLibrary(
     const steps: Step[] = [];
     data.steps.forEach((stepData: any, index: number) => {
       try {
-        const step = parseStep(stepData, index);
+        const step = parseStep(stepData, index, importContext);
         steps.push(step);
 
         // Add to step library registry
@@ -346,7 +346,7 @@ function loadTemplateSteps(templatePath: string, baseDirectory: string): any[] {
 
   if (!fs.existsSync(resolvedPath)) {
     throw new OperationParseError(`Template file not found: ${templatePath}`, [
-      { field: 'uses', message: `File not found: ${resolvedPath}` },
+      { field: 'template', message: `File not found: ${resolvedPath}` },
     ]);
   }
 
@@ -357,7 +357,7 @@ function loadTemplateSteps(templatePath: string, baseDirectory: string): any[] {
     templateData = yaml.load(templateContents);
   } catch (error) {
     throw new OperationParseError(`Invalid YAML in template: ${templatePath}`, [
-      { field: 'uses', message: (error as Error).message },
+      { field: 'template', message: (error as Error).message },
     ]);
   }
 
@@ -378,7 +378,7 @@ function loadTemplateSteps(templatePath: string, baseDirectory: string): any[] {
     `Invalid template format: ${templatePath}. Expected array of steps or operation with 'steps' field`,
     [
       {
-        field: 'uses',
+        field: 'template',
         message: 'Template must be array or object with steps field',
       },
     ],
@@ -519,10 +519,10 @@ function resolveStepReferences(
       }
 
       resolvedSteps.push(clonedStep);
-    } else if (stepData.uses) {
+    } else if (stepData.template) {
       // This is a template import
       try {
-        const templatePath = stepData.uses;
+        const templatePath = stepData.template;
         const withVars = stepData.with || {};
 
         // Load template steps
@@ -557,7 +557,7 @@ function resolveStepReferences(
 
         // Parse and add each template step
         for (let j = 0; j < substitutedSteps.length; j++) {
-          const templateStep = parseStep(substitutedSteps[j], j);
+          const templateStep = parseStep(substitutedSteps[j], j, importContext);
 
           // Set default phase if not specified
           if (!templateStep.phase) {
@@ -571,14 +571,14 @@ function resolveStepReferences(
           throw error;
         }
         throw new OperationParseError(
-          `Failed to load template: ${stepData.uses}`,
-          [{ field: `steps[${i}].uses`, message: (error as Error).message }],
+          `Failed to load template: ${stepData.template}`,
+          [{ field: `steps[${i}].template`, message: (error as Error).message }],
         );
       }
     } else {
       // This is a regular step definition
       try {
-        const step = parseStep(stepData, i);
+        const step = parseStep(stepData, i, importContext);
 
         // Set default phase if not specified
         if (!step.phase) {
@@ -656,13 +656,19 @@ function resolveStepReferences(
   return resolvedSteps;
 }
 
-function parseStep(stepData: any, _stepIndex: number): Step {
+function parseStep(stepData: any, _stepIndex: number, importContext?: ImportContext): Step {
   // Parse sub-steps recursively
   let subSteps: Step[] | undefined;
   if (stepData.sub_steps && Array.isArray(stepData.sub_steps)) {
-    subSteps = stepData.sub_steps.map((subStep: any, index: number) =>
-      parseStep(subStep, index),
-    );
+    // If we have an import context, use resolveStepReferences to handle use:/template: directives
+    if (importContext) {
+      subSteps = resolveStepReferences(stepData.sub_steps, importContext);
+    } else {
+      // Fallback for cases without import context (shouldn't happen in normal flow)
+      subSteps = stepData.sub_steps.map((subStep: any, index: number) =>
+        parseStep(subStep, index),
+      );
+    }
   }
 
   // Parse options
@@ -706,7 +712,7 @@ function parseStep(stepData: any, _stepIndex: number): Step {
     timeout: stepData.timeout,
     estimated_duration: stepData.estimated_duration,
     env: stepData.env,
-    uses: stepData.uses,
+    template: stepData.template,
     with: stepData.with,
     variables: stepData.variables,
     evidence: parseEvidence(stepData),

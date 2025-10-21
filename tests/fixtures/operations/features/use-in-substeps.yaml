@@ -1,0 +1,40 @@
+name: Use Directive in Sub Steps
+version: 1.0.0
+description: Test that use directive works in sub_steps for step library imports
+
+imports:
+  - "./common/health-checks.yaml"
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      AFD_ENDPOINT: staging-afd.example.com
+      DOMAIN_NAME: staging.example.com
+      ENV: staging
+
+  - name: production
+    description: Production environment
+    variables:
+      AFD_ENDPOINT: prod-afd.example.com
+      DOMAIN_NAME: example.com
+      ENV: production
+
+steps:
+  - name: Parent Deployment Step
+    type: manual
+    phase: flight
+    instruction: |
+      Deploy application to ${ENV}:
+      ```bash
+      kubectl apply -f deployment.yaml
+      ```
+    sub_steps:
+      - use: check-afd-health
+        phase: flight
+      - use: verify-dns
+        phase: flight
+    rollback:
+      type: manual
+      command: |
+        kubectl rollback deployment/app

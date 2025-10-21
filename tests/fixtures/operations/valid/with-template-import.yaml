@@ -27,7 +27,7 @@ environments:
 
 steps:
   - name: Pre-deployment Health Checks
-    uses: ../../templates/health-checks.yaml
+    template: ../../templates/health-checks.yaml
     with:
       ENDPOINT: ${ENDPOINT}
       DB_HOST: ${DB_HOST}
@@ -45,7 +45,7 @@ steps:
     description: Main deployment step
 
   - name: Post-deployment Health Checks
-    uses: ../../templates/health-checks.yaml
+    template: ../../templates/health-checks.yaml
     with:
       ENDPOINT: ${ENDPOINT}
       DB_HOST: ${DB_HOST}
@@ -54,7 +54,7 @@ steps:
       RETRIES: 10
 
   - name: Notify Team
-    uses: ../../templates/notification.yaml
+    template: ../../templates/notification.yaml
     with:
       SLACK_WEBHOOK: ${SLACK_WEBHOOK}
       MESSAGE: Deployment completed successfully

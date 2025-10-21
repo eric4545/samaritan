@@ -19,6 +19,7 @@ const operationWithSectionHeadingsYaml = loadYaml('sectionHeading');
 const operationWithSectionHeadingFirstYaml = loadYaml('sectionHeadingFirst');
 const ganttTimelineYaml = loadYaml('ganttTimeline');
 const evidenceRequiredYaml = loadYaml('evidenceRequired');
+const useInSubStepsYaml = loadYaml('useInSubSteps');
 
 // Helper to generate Confluence content from YAML string
 function generateConfluence(
@@ -562,5 +563,41 @@ steps:
       !stepColumn[0].includes('Evidence'),
       'Step column should NOT contain evidence',
     );
+  });
+
+  it('should handle use: directive in sub_steps', async () => {
+    // Need to use parseFixture instead of yaml.load to resolve use: directives
+    const operation = await import('../fixtures/fixtures').then(m => m.parseFixture('useInSubSteps'));
+    const content = generateConfluenceContent(operation);
+
+    // Should have parent step
+    assert.match(content, /Step 1: Parent Deployment Step/);
+
+    // Should have sub-steps resolved from library
+    assert.match(
+      content,
+      /Step 1a: check-afd-health/,
+      'Should have first sub-step from library',
+    );
+    assert.match(
+      content,
+      /Step 1b: verify-dns/,
+      'Should have second sub-step from library',
+    );
+
+    // Sub-steps should have instructions from library
+    assert.match(
+      content,
+      /Check AFD health status/,
+      'Should have AFD health check instruction',
+    );
+    assert.match(
+      content,
+      /Verify DNS/,
+      'Should have DNS verification instruction',
+    );
+
+    // Should have rollback section
+    assert.match(content, /Rollback for Step 1: Parent Deployment Step/);
   });
 });

@@ -4,6 +4,6 @@ steps:
   - name: Regular Step
     type: manual
     instruction: Do something
-  - uses: ./non-existent-template.yaml
+  - template: ./non-existent-template.yaml
     with:
       VAR: value

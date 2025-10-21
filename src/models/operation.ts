@@ -155,7 +155,7 @@ export interface Step {
   timeout?: number;
   estimated_duration?: number;
   env?: Record<string, any>;
-  uses?: string; // Path to template file for step import/reuse
+  template?: string; // Path to template file for step import/reuse
   with?: Record<string, any>; // Variables to pass to template (also used for parameterized steps)
   variables?: Record<string, any>; // Step-scoped variables (override env and common vars)
   evidence?: EvidenceConfig;
@@ -223,7 +223,7 @@ export interface Operation {
   rollback?: RollbackPlan;
   metadata: OperationMetadata;
   needs?: string[];
-  uses?: string;
+  template?: string;
   with?: Record<string, any>;
   matrix?: MatrixConfig;
   reporting?: ReportingConfig;

@@ -767,7 +767,8 @@ export function generateConfluenceContent(
   };
 
   // Helper to escape Confluence macro syntax in text (for variables like ${VAR})
-  const escapeConfluenceMacros = (text: string): string => {
+  const escapeConfluenceMacros = (text: string | undefined): string => {
+    if (!text) return '';
     // First convert markdown links to Confluence format
     const result = convertLinksToConfluence(text);
     // Then escape { and } to prevent Confluence from interpreting ${VAR} as macros

@@ -72,6 +72,9 @@ export const FIXTURES = {
   evidenceOverrideInUse:
     'tests/fixtures/operations/features/evidence-override-in-use.yaml',
 
+  // Step library imports (use: directive)
+  useInSubSteps: 'tests/fixtures/operations/features/use-in-substeps.yaml',
+
   // ===== Confluence Generator Tests =====
   multiLineCommand:
     'tests/fixtures/operations/confluence/multi-line-command.yaml',

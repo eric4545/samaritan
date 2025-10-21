@@ -307,9 +307,9 @@
           },
           {
             "type": "object",
-            "required": ["uses"],
+            "required": ["template"],
             "properties": {
-              "uses": {
+              "template": {
                 "type": "string",
                 "minLength": 1,
                 "description": "Path to template file for step import/reuse (relative to operation file)"
@@ -365,13 +365,13 @@
               "env": {
                 "type": "object"
               },
-              "uses": {
+              "template": {
                 "type": "string",
                 "description": "Path to template file for step import/reuse (relative to operation file)"
               },
               "with": {
                 "type": "object",
-                "description": "Variables to pass to template (when uses is specified) or parameters for the step"
+                "description": "Variables to pass to template (when template is specified) or parameters for the step"
               },
               "variables": {
                 "type": "object",
@@ -470,7 +470,7 @@
               "sub_steps": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/properties/steps/items/oneOf/2"
+                  "$ref": "#/properties/steps/items"
                 }
               },
               "manual_override": {

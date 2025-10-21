@@ -1,7 +1,7 @@
 name: Test Missing Variables
 version: 1.0.0
 steps:
-  - uses: ../templates/health-checks.yaml
+  - template: ../templates/health-checks.yaml
     with:
       ENDPOINT: https://api.com
       # Missing: DB_HOST, SERVICE_NAME, TIMEOUT, RETRIES

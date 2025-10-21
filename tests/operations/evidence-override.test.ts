@@ -137,4 +137,46 @@ describe('Evidence Override in use: Directive', () => {
     assert.strictEqual(dnsStep.evidence.types.length, 1);
     assert.ok(dnsStep.evidence.types.includes('command_output'));
   });
+
+  it('should support use: directive in sub_steps', async () => {
+    const operation = await parseFixture('useInSubSteps');
+
+    // Verify operation parsed correctly
+    assert.strictEqual(operation.name, 'Use Directive in Sub Steps');
+    assert.strictEqual(operation.version, '1.0.0');
+
+    // Verify environments
+    assert.strictEqual(operation.environments.length, 2);
+
+    // Verify parent step
+    assert.strictEqual(operation.steps.length, 1);
+    const parentStep = operation.steps[0];
+    assert.strictEqual(parentStep.name, 'Parent Deployment Step');
+    assert.strictEqual(parentStep.type, 'manual');
+    assert.strictEqual(parentStep.phase, 'flight');
+
+    // Verify sub_steps were resolved from library
+    assert.ok(parentStep.sub_steps);
+    assert.strictEqual(parentStep.sub_steps.length, 2);
+
+    // First sub-step: check-afd-health
+    const subStep1 = parentStep.sub_steps[0];
+    assert.strictEqual(subStep1.name, 'check-afd-health');
+    assert.strictEqual(subStep1.type, 'manual');
+    assert.strictEqual(subStep1.phase, 'flight');
+    assert.ok(subStep1.instruction);
+    assert.ok(subStep1.instruction.includes('Check AFD health status'));
+
+    // Second sub-step: verify-dns
+    const subStep2 = parentStep.sub_steps[1];
+    assert.strictEqual(subStep2.name, 'verify-dns');
+    assert.strictEqual(subStep2.type, 'manual');
+    assert.strictEqual(subStep2.phase, 'flight');
+    assert.ok(subStep2.instruction);
+    assert.ok(subStep2.instruction.includes('Verify DNS'));
+
+    // Verify rollback exists
+    assert.ok(parentStep.rollback);
+    assert.ok(parentStep.rollback.command);
+  });
 });
