@@ -227,7 +227,12 @@ class DocumentationGenerator {
 
     switch (options.format) {
       case 'confluence':
-        await this.generateConfluencePage(operation, operationName, options, operationFile);
+        await this.generateConfluencePage(
+          operation,
+          operationName,
+          options,
+          operationFile,
+        );
         break;
       case 'adf':
         await this.generateADFDocs(operation, operationName, options);
@@ -675,86 +680,89 @@ export function generateConfluenceContent(
   };
 
   // Helper to format evidence area
-  const formatEvidenceArea = (evidence: any, environmentName?: string, operationDir?: string): string => {
+  const formatEvidenceArea = (
+    evidence: any,
+    environmentName?: string,
+    operationDir?: string,
+  ): string => {
     if (!evidence) return '';
 
     const types = evidence.types || [];
     const typesText = types.length > 0 ? ` - ${types.join(', ')}` : '';
     const status = evidence.required ? 'Required' : 'Optional';
 
-    let content = '';
-
-    // Only show evidence metadata in step column (when environmentName is undefined)
+    // Don't show evidence in step column - it goes in environment columns
     if (!environmentName) {
-      // Add code block placeholder for command_output evidence type
-      let placeholder = 'Paste evidence here';
-      if (types.includes('command_output')) {
-        placeholder = '{code:bash}\n# Paste command output here\n{code}';
-      }
-      return `\n{expand:title=📎 Evidence (${status}${typesText})}${placeholder}{expand}`;
+      return '';
     }
 
-    // Render evidence results for specific environment
-    if (evidence.results && environmentName) {
-      const envResults = evidence.results[environmentName];
-      if (envResults && envResults.length > 0) {
-        content += '\n\n*Captured Evidence:*';
+    // Render evidence for specific environment (with expand block)
+    let content = `\n{expand:title=📎 Evidence (${status}${typesText})}`;
 
-        for (const evidenceResult of envResults) {
-          content += '\n';
+    // Check if we have captured evidence results for this environment
+    const envResults = evidence.results?.[environmentName];
+    if (envResults && envResults.length > 0) {
+      // Render captured evidence results directly (no "Captured Evidence:" label)
+      for (const evidenceResult of envResults) {
+        content += '\n';
 
-          // Add description if present
-          if (evidenceResult.description) {
-            content += `\n*${evidenceResult.type}:* ${evidenceResult.description}`;
-          } else {
-            content += `\n*${evidenceResult.type}:*`;
-          }
-
-          // Render based on storage type
-          if (evidenceResult.file) {
-            // For text-based evidence (command_output, log), read and embed file content
-            if (
-              (evidenceResult.type === 'command_output' ||
-                evidenceResult.type === 'log') &&
-              operationDir
-            ) {
-              try {
-                const fs = require('node:fs');
-                const path = require('node:path');
-                const filePath = path.resolve(operationDir, evidenceResult.file);
-                const fileContent = fs.readFileSync(filePath, 'utf-8');
-                const language =
-                  evidenceResult.type === 'command_output' ? 'bash' : 'text';
-                content += `\n{code:${language}}\n${fileContent}\n{code}`;
-              } catch (_error) {
-                // Fallback to link if file can't be read
-                content += `\n[View ${evidenceResult.type}|${evidenceResult.file}] _(error reading file)_`;
-              }
-            }
-            // For screenshots/photos, show as attached file reference
-            else if (
-              evidenceResult.type === 'screenshot' ||
-              evidenceResult.type === 'photo'
-            ) {
-              content += `\n!${evidenceResult.file}!`;
-            }
-            // For other file types, render as link
-            else {
-              content += `\n[View ${evidenceResult.type}|${evidenceResult.file}]`;
-            }
-          } else if (evidenceResult.content) {
-            // Inline content - render in code block
-            const language =
-              evidenceResult.type === 'command_output' ? 'bash' : 'text';
-            content += `\n{code:${language}}\n${evidenceResult.content}\n{code}`;
-          }
+        // Add description if present
+        if (evidenceResult.description) {
+          content += `\n*${evidenceResult.type}:* ${evidenceResult.description}`;
+        } else {
+          content += `\n*${evidenceResult.type}:*`;
         }
 
-        return content;
+        // Render based on storage type
+        if (evidenceResult.file) {
+          // For text-based evidence (command_output, log), read and embed file content
+          if (
+            (evidenceResult.type === 'command_output' ||
+              evidenceResult.type === 'log') &&
+            operationDir
+          ) {
+            try {
+              const fs = require('node:fs');
+              const path = require('node:path');
+              const filePath = path.resolve(operationDir, evidenceResult.file);
+              const fileContent = fs.readFileSync(filePath, 'utf-8');
+              const language =
+                evidenceResult.type === 'command_output' ? 'bash' : 'text';
+              content += `\n{code:${language}}\n${fileContent}\n{code}`;
+            } catch (_error) {
+              // Fallback to link if file can't be read
+              content += `\n[View ${evidenceResult.type}|${evidenceResult.file}] _(error reading file)_`;
+            }
+          }
+          // For screenshots/photos, show as attached file reference
+          else if (
+            evidenceResult.type === 'screenshot' ||
+            evidenceResult.type === 'photo'
+          ) {
+            content += `\n!${evidenceResult.file}!`;
+          }
+          // For other file types, render as link
+          else {
+            content += `\n[View ${evidenceResult.type}|${evidenceResult.file}]`;
+          }
+        } else if (evidenceResult.content) {
+          // Inline content - render in code block
+          const language =
+            evidenceResult.type === 'command_output' ? 'bash' : 'text';
+          content += `\n{code:${language}}\n${evidenceResult.content}\n{code}`;
+        }
+      }
+    } else {
+      // No results - show placeholder
+      if (types.includes('command_output')) {
+        content += '\n{code:bash}\n# Paste command output here\n{code}';
+      } else {
+        content += '\nPaste evidence here';
       }
     }
 
-    return '';
+    content += '\n{expand}';
+    return content;
   };
 
   // Helper to format multi-line text for Confluence table cells
@@ -1136,7 +1144,11 @@ ${filteredOperation.environments
 
         // Add evidence area with environment-specific results
         if (step.evidence) {
-          cellContent += formatEvidenceArea(step.evidence, env.name, operationDir);
+          cellContent += formatEvidenceArea(
+            step.evidence,
+            env.name,
+            operationDir,
+          );
         }
 
         commandCells.push(cellContent);
@@ -1239,7 +1251,11 @@ ${filteredOperation.environments
 
         // Add evidence area with environment-specific results for rollback
         if (step.rollback?.evidence) {
-          cellContent += formatEvidenceArea(step.rollback.evidence, env.name, operationDir);
+          cellContent += formatEvidenceArea(
+            step.rollback.evidence,
+            env.name,
+            operationDir,
+          );
         }
 
         rollbackCells.push(cellContent);
@@ -1332,7 +1348,11 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
 
           // Add evidence area with environment-specific results for global rollback step
           if (rollbackStep.evidence) {
-            cellContent += formatEvidenceArea(rollbackStep.evidence, env.name, operationDir);
+            cellContent += formatEvidenceArea(
+              rollbackStep.evidence,
+              env.name,
+              operationDir,
+            );
           }
 
           rollbackCells.push(cellContent);
@@ -1390,7 +1410,11 @@ function addConfluenceSubStepRows(
   ) => string,
   formatForTableCell: (text: string, useCodeBlock?: boolean) => string,
   addSmartLineBreaks: (command: string, maxLength?: number) => string,
-  formatEvidenceArea: (evidence: any, environmentName?: string, operationDir?: string) => string,
+  formatEvidenceArea: (
+    evidence: any,
+    environmentName?: string,
+    operationDir?: string,
+  ) => string,
   formatTimelineForDisplay: (timeline: any) => string,
   operationDir?: string,
 ): string {
@@ -1526,7 +1550,11 @@ function addConfluenceSubStepRows(
 
       // Add evidence area with environment-specific results
       if (subStep.evidence) {
-        cellContent += formatEvidenceArea(subStep.evidence, env.name, operationDir);
+        cellContent += formatEvidenceArea(
+          subStep.evidence,
+          env.name,
+          operationDir,
+        );
       }
 
       subCommandCells.push(cellContent);

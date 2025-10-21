@@ -427,33 +427,32 @@ steps:
     // with code block for command_output evidence type
     assert.match(
       content,
-      /\{expand:title=📎 Evidence \(Required - screenshot, command_output\)\}\{code:bash\}\n# Paste command output here\n\{code\}\{expand\}/,
+      /\{expand:title=📎 Evidence \(Required - screenshot, command_output\)\}\n\{code:bash\}\n# Paste command output here\n\{code\}\n\{expand\}/,
     );
 
     // Should have evidence expand macro for Manual Verification step (required, single type)
     assert.match(
       content,
-      /\{expand:title=📎 Evidence \(Required - screenshot\)\}Paste evidence here\{expand\}/,
+      /\{expand:title=📎 Evidence \(Required - screenshot\)\}\nPaste evidence here\n\{expand\}/,
     );
 
     // Should have evidence expand macro for Optional Check step (optional)
     assert.match(
       content,
-      /\{expand:title=📎 Evidence \(Optional - screenshot, log\)\}Paste evidence here\{expand\}/,
+      /\{expand:title=📎 Evidence \(Optional - screenshot, log\)\}\nPaste evidence here\n\{expand\}/,
     );
   });
 
   it('should not render evidence expand macro when evidence is not specified', () => {
     const content = generateConfluence(evidenceRequiredYaml);
 
-    // Count evidence expand macros - should be 3 (one for each step with evidence in the step column)
-    // Evidence metadata is shown in step column, evidence results are shown in environment columns
+    // Count evidence expand macros - evidence is now in environment columns
+    // We have 3 steps with evidence × 2 environments = 6 expand macros
     const evidenceMatches = content.match(/\{expand:title=📎 Evidence/g);
-    // We have 3 steps with evidence = 3 expand macros in step columns
     assert.strictEqual(
       evidenceMatches?.length,
-      3,
-      'Should have exactly 3 evidence expand macros (3 steps with evidence in step columns)',
+      6,
+      'Should have exactly 6 evidence expand macros (3 steps with evidence × 2 environments)',
     );
 
     // The "No Evidence" step should not have an expand macro
@@ -492,7 +491,76 @@ steps:
     // Should have regular "Paste evidence here" for evidence without command_output
     assert.match(
       content,
-      /\{expand:title=📎 Evidence \(Required - screenshot\)\}Paste evidence here\{expand\}/,
+      /\{expand:title=📎 Evidence \(Required - screenshot\)\}\nPaste evidence here\n\{expand\}/,
+    );
+  });
+
+  it('should wrap captured evidence results in expand blocks', () => {
+    const evidenceWithResultsYaml = loadYaml('evidenceWithResults');
+    const content = generateConfluence(
+      evidenceWithResultsYaml,
+      false,
+      false,
+      'staging',
+    );
+
+    // Should NOT have "Captured Evidence:" label - evidence goes directly in expand
+    assert(
+      !content.includes('*Captured Evidence:*'),
+      'Should NOT have "Captured Evidence:" label',
+    );
+
+    // Should have expand block with evidence types in title
+    assert.match(
+      content,
+      /\{expand:title=📎 Evidence \(Required - screenshot, command_output\)\}/,
+      'Should have evidence expand block',
+    );
+
+    // Find expand block with screenshot evidence
+    const expandWithEvidence = content.match(
+      /\{expand:title=📎 Evidence \(Required - screenshot, command_output\)\}([\s\S]*?)\{expand\}/,
+    );
+    assert(
+      expandWithEvidence !== null,
+      'Should find expand block containing evidence',
+    );
+
+    const evidenceContent = expandWithEvidence?.[1] || '';
+
+    // Should include screenshot reference inside expand (with description)
+    assert.match(
+      evidenceContent,
+      /\*screenshot:\* Kubernetes dashboard showing 3 pods running/,
+      'Expand block should contain screenshot with description',
+    );
+
+    assert.match(
+      evidenceContent,
+      /!\.\/evidence\/deployment-dashboard\.png!/,
+      'Expand block should contain screenshot file reference',
+    );
+
+    // Should include command output code block inside expand
+    assert.match(
+      evidenceContent,
+      /\*command_output:\*/,
+      'Expand block should have command_output label',
+    );
+
+    assert.match(
+      evidenceContent,
+      /\{code:bash\}[\s\S]*deployment\.apps\/web-server created[\s\S]*?\{code\}/,
+      'Expand block should contain command output code block',
+    );
+
+    // Evidence should NOT appear in step column
+    const stepColumnPattern = /\| \(\*\) Step 1: Deploy Application[^|]* \|/;
+    const stepColumn = content.match(stepColumnPattern);
+    assert(stepColumn !== null, 'Should find step column');
+    assert(
+      !stepColumn[0].includes('Evidence'),
+      'Step column should NOT contain evidence',
     );
   });
 });

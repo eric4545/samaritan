@@ -764,7 +764,11 @@ export function generateManualWithMetadata(
     environments,
   };
 
-  markdown += generateManualContent(filteredOperation, resolveVariables, operationDir);
+  markdown += generateManualContent(
+    filteredOperation,
+    resolveVariables,
+    operationDir,
+  );
   return markdown;
 }
 

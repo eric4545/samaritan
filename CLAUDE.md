@@ -306,9 +306,22 @@ evidence_types: [screenshot, log]
   - Other file types: Rendered as download links
 - **Validation**: JSON Schema enforces `oneOf` constraint (must have either file OR content, not both)
 - **Rendering**:
-  - Evidence results appear in the corresponding environment column in generated manuals
-  - Each environment shows only its own evidence
+  - **Evidence metadata** (types, required status): Shown **once** in the step column
+  - **Evidence results**: Shown in **environment-specific** columns
+  - Each environment shows only its own evidence (e.g., staging column shows `evidence.results.staging`)
 - **Test Fixtures**: See `tests/fixtures/operations/features/evidence-with-results.yaml` and `reviewer-and-env-evidence.yaml`
+
+**Implementation Notes:**
+When adding features that affect evidence rendering, ensure ALL components are updated:
+1. Update data model in `src/models/operation.ts`
+2. Update parser in `src/operations/parser.ts`
+3. Update JSON schema in `src/schemas/operation.schema.json`
+4. **Update ALL generators** (critical - often missed):
+   - `src/manuals/generator.ts` (Markdown) - pass `operationDir` for file reading
+   - `src/manuals/adf-generator.ts` (ADF/JSON)
+   - `src/cli/commands/generate.ts` (Confluence markup) - pass `operationDir` for file reading
+5. Update CLI commands to pass operation directory where needed
+6. Add comprehensive tests for all output formats
 
 ### Step Types & Aviation-Inspired Fields
 ```yaml
