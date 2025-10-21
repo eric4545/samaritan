@@ -993,6 +993,103 @@ function generateManualContent(
           phaseName,
           operationDir,
         );
+
+        // Inline rollback rendering - render immediately after step if present
+        if (
+          step.rollback &&
+          (step.rollback.command || step.rollback.instruction)
+        ) {
+          // Close current table
+          markdown += '\n';
+
+          // Add rollback heading
+          markdown += `### 🔄 Rollback for Step ${globalStepNumber}: ${step.name}\n\n`;
+
+          // Render rollback table
+          markdown += '| Environment | Rollback Action |\n';
+          markdown += '|-------------|----------------|\n';
+
+          operation.environments.forEach((env) => {
+            let cellContent = '';
+
+            // Get rollback options (defaults)
+            const substituteVars =
+              step.rollback?.options?.substitute_vars ?? true;
+            const showCommandSeparately =
+              step.rollback?.options?.show_command_separately ?? false;
+
+            // Process rollback instruction (markdown content)
+            if (step.rollback?.instruction) {
+              let displayInstruction = step.rollback.instruction;
+
+              if (resolveVariables && substituteVars) {
+                displayInstruction = substituteVariables(
+                  displayInstruction,
+                  env.variables || {},
+                  step.variables,
+                );
+              }
+
+              // Preserve markdown formatting and escape only pipes
+              const cleanInstruction = displayInstruction
+                .trim()
+                .replace(/\|/g, '\\|')
+                .replace(/\n/g, '<br>');
+              cellContent += cleanInstruction;
+            }
+
+            // Process rollback command (code content)
+            if (step.rollback?.command) {
+              let displayCommand = step.rollback.command;
+
+              if (resolveVariables && substituteVars) {
+                displayCommand = substituteVariables(
+                  displayCommand,
+                  env.variables || {},
+                  step.variables,
+                );
+              }
+
+              // Wrap in backticks and escape special characters
+              const cleanCommand = displayCommand
+                .trim()
+                .replace(/\n/g, '<br>')
+                .replace(/\|/g, '\\|')
+                .replace(/`/g, '\\`')
+                .replace(/<br>$/, '');
+
+              if (showCommandSeparately && step.rollback.instruction) {
+                cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+              } else if (!step.rollback.instruction) {
+                cellContent += `\`${cleanCommand}\``;
+              } else {
+                cellContent += `<br><br>\`${cleanCommand}\``;
+              }
+            }
+
+            // Fallback
+            if (!cellContent) {
+              cellContent = '-';
+            }
+
+            markdown += `| ${env.name} | ${cellContent} |\n`;
+          });
+
+          markdown += '\n';
+
+          // Reopen table with headers
+          markdown += '| Step |';
+          operation.environments.forEach((env) => {
+            markdown += ` ${env.name} |`;
+          });
+          markdown += '\n';
+          markdown += '|------|';
+          operation.environments.forEach(() => {
+            markdown += '---------|';
+          });
+          markdown += '\n';
+        }
+
         globalStepNumber++; // Increment for next step
       });
 

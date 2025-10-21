@@ -117,7 +117,9 @@ describe('Manual Generator Unit Tests', () => {
 
     // Test that both environments have commands
     // Should have 6 total step rows: 1 preflight + 3 flight steps + 2 postflight steps
-    const stepsTableMatch = markdown.match(/\| \[ \] Step \d+:.*?\|.*?\|.*?\|/g);
+    const stepsTableMatch = markdown.match(
+      /\| \[ \] Step \d+:.*?\|.*?\|.*?\|/g,
+    );
     assert(
       stepsTableMatch && stepsTableMatch.length === 6,
       'Should have 6 step table rows',
@@ -169,7 +171,7 @@ describe('Manual Generator Unit Tests', () => {
       'Should create table with single environment column',
     );
     assert(
-      markdown.includes('| \[ \] Step 1: Deploy ⚙️'),
+      markdown.includes('| [ ] Step 1: Deploy ⚙️'),
       'Should format single environment step',
     );
   });
@@ -1835,7 +1837,10 @@ kubectl apply -f worker.yaml`,
       markdown.match(/### Initial Setup.*\| Step \| staging \| production \|/s),
       'Should have table after section heading',
     );
-    assert(markdown.includes('[ ] Step 1: Initial Setup'), 'Should have step 1');
+    assert(
+      markdown.includes('[ ] Step 1: Initial Setup'),
+      'Should have step 1',
+    );
     assert(markdown.includes('[ ] Step 2: Deploy App'), 'Should have step 2');
     assert(markdown.includes('[ ] Step 3: Verify'), 'Should have step 3');
   });

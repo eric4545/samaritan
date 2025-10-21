@@ -506,6 +506,13 @@ function resolveStepReferences(
         };
       }
 
+      // Allow overriding timeline, pic, and reviewer (Bug fix: these were missing)
+      if (stepData.timeline !== undefined)
+        clonedStep.timeline = stepData.timeline;
+      if (stepData.pic !== undefined) clonedStep.pic = stepData.pic;
+      if (stepData.reviewer !== undefined)
+        clonedStep.reviewer = stepData.reviewer;
+
       // Set default phase if not specified
       if (!clonedStep.phase) {
         clonedStep.phase = 'flight';

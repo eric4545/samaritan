@@ -533,8 +533,103 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
   }
 
   private createGanttSchedule(operation: any): string {
-    // Gantt chart generation logic...
-    return `# Schedule for: ${operation.name}\n\nTODO: Implement Gantt chart generation`;
+    // Collect all steps with timeline information (including substeps)
+    const stepsWithTimeline = collectAllStepsWithTimelineForConfluence(
+      operation.steps,
+    );
+
+    if (stepsWithTimeline.length === 0) {
+      return `# Schedule for: ${operation.name}\n\nNo steps with timeline information found.\n\nTo add timeline data, add a \`timeline\` field to your steps:\n\`\`\`yaml\nsteps:\n  - name: My Step\n    timeline:\n      start: 2025-10-21 09:00\n      duration: 30m\n\`\`\`\n`;
+    }
+
+    let markdown = `# Schedule for: ${operation.name}\n\n`;
+
+    // Add summary info
+    const totalSteps = stepsWithTimeline.length;
+    markdown += `**Total Steps with Timeline**: ${totalSteps}\n\n`;
+
+    // Generate table header
+    markdown += '| Step Name | Phase | Start Time | Duration | PIC |\n';
+    markdown += '|-----------|-------|------------|----------|-----|\n';
+
+    // Track calculated times for dependency resolution
+    const stepTimes: Record<string, { start: string; end: string }> = {};
+
+    // Helper to parse duration to minutes
+    const parseDuration = (duration: string): number => {
+      const match = duration.match(/^(\d+)(m|h|d|w)$/);
+      if (!match) return 0;
+      const value = Number.parseInt(match[1], 10);
+      const unit = match[2];
+      switch (unit) {
+        case 'm':
+          return value;
+        case 'h':
+          return value * 60;
+        case 'd':
+          return value * 60 * 24;
+        case 'w':
+          return value * 60 * 24 * 7;
+        default:
+          return 0;
+      }
+    };
+
+    // Helper to add minutes to a time string
+    const addMinutes = (timeStr: string, minutes: number): string => {
+      try {
+        const date = new Date(timeStr);
+        date.setMinutes(date.getMinutes() + minutes);
+        return date.toISOString().slice(0, 16).replace('T', ' ');
+      } catch {
+        return timeStr;
+      }
+    };
+
+    // Process each step
+    stepsWithTimeline.forEach((step: any) => {
+      const timeline = step.timeline;
+      const phase = step.phase || 'flight';
+      const pic = step.pic || '-';
+
+      let startTime = '-';
+      let duration = '-';
+
+      if (typeof timeline === 'string') {
+        // Legacy string format - try to extract info
+        startTime = timeline;
+        duration = '-';
+      } else if (typeof timeline === 'object') {
+        // Structured format
+        if (timeline.start) {
+          startTime = timeline.start;
+        } else if (timeline.after && stepTimes[timeline.after]) {
+          // Calculate based on dependency
+          startTime = stepTimes[timeline.after].end;
+        }
+
+        if (timeline.duration) {
+          duration = timeline.duration;
+
+          // Calculate end time if we have both start and duration
+          if (startTime !== '-') {
+            const durationMinutes = parseDuration(timeline.duration);
+            const endTime = addMinutes(startTime, durationMinutes);
+            stepTimes[step.name] = { start: startTime, end: endTime };
+          }
+        }
+      }
+
+      // Add row to table
+      markdown += `| ${step.name} | ${phase} | ${startTime} | ${duration} | ${pic} |\n`;
+    });
+
+    markdown += '\n';
+
+    // Add footer with generation time
+    markdown += `\n---\n\n*Generated: ${new Date().toISOString()}*\n`;
+
+    return markdown;
   }
 }
 
@@ -1064,6 +1159,8 @@ ${filteredOperation.environments
         stepInfo += `\n${escapeConfluenceMacros(step.description)}`;
       if (step.pic)
         stepInfo += `\n(i) PIC: ${escapeConfluenceMacros(step.pic)}`;
+      if (step.reviewer)
+        stepInfo += `\n(/) Reviewer: ${escapeConfluenceMacros(step.reviewer)}`;
       if (step.timeline)
         stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`;
       if (step.needs && step.needs.length > 0)
@@ -1142,6 +1239,17 @@ ${filteredOperation.environments
           }
         }
 
+        // Add sign-off checkboxes if PIC or Reviewer is set (interactive checkboxes)
+        if (step.pic || step.reviewer) {
+          cellContent += '\n\nSign-off:';
+          if (step.pic) {
+            cellContent += '\n* [ ] PIC';
+          }
+          if (step.reviewer) {
+            cellContent += '\n* [ ] Reviewer';
+          }
+        }
+
         // Add evidence area with environment-specific results
         if (step.evidence) {
           cellContent += formatEvidenceArea(
@@ -1174,6 +1282,100 @@ ${filteredOperation.environments
           formatTimelineForDisplay,
           operationDir,
         );
+      }
+
+      // Inline rollback rendering - render immediately after step if present
+      if (
+        step.rollback &&
+        (step.rollback.command || step.rollback.instruction)
+      ) {
+        // Close current table
+        content += '\n';
+
+        // Add rollback heading
+        content += `h3. (<) Rollback for Step ${globalStepNumber}: ${escapeConfluenceMacros(step.name)}\n\n`;
+
+        // Render rollback table with environment columns
+        content += '|| Environment ||';
+        filteredOperation.environments.forEach((env: any) => {
+          content += ` ${env.name} ||`;
+        });
+        content += '\n';
+
+        // Build rollback row
+        content += '| Rollback Action |';
+        filteredOperation.environments.forEach((env: any) => {
+          let cellContent = '';
+
+          // Get rollback options (defaults)
+          const substituteVars =
+            step.rollback?.options?.substitute_vars ?? true;
+          const showCommandSeparately =
+            step.rollback?.options?.show_command_separately ?? false;
+
+          // Process rollback instruction (always markdown)
+          if (step.rollback?.instruction) {
+            let displayInstruction = step.rollback.instruction;
+
+            if (resolveVars && substituteVars) {
+              displayInstruction = substituteVariables(
+                displayInstruction,
+                env.variables || {},
+                step.variables,
+              );
+            }
+
+            const trimmed = displayInstruction.replace(/\s+$/, '');
+            cellContent += `{markdown}\n${trimmed}\n{markdown}`;
+          }
+
+          // Process rollback command (always code block)
+          if (step.rollback?.command) {
+            let displayCommand = step.rollback.command;
+
+            if (resolveVars && substituteVars) {
+              displayCommand = substituteVariables(
+                displayCommand,
+                env.variables || {},
+                step.variables,
+              );
+            }
+
+            const trimmedCommand = displayCommand.replace(/\n+$/, '');
+
+            if (showCommandSeparately && step.rollback.instruction) {
+              cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+            } else if (!step.rollback.instruction) {
+              cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
+            } else {
+              cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
+            }
+          }
+
+          // Fallback
+          if (!cellContent) {
+            cellContent = '-';
+          }
+
+          // Add evidence area with environment-specific results for rollback
+          if (step.rollback?.evidence) {
+            cellContent += formatEvidenceArea(
+              step.rollback.evidence,
+              env.name,
+              operationDir,
+            );
+          }
+
+          content += ` ${cellContent} |`;
+        });
+        content += '\n\n';
+
+        // Reopen table with headers
+        content += '|| Step ||';
+        filteredOperation.environments.forEach((env: any) => {
+          content += ` ${env.name} ||`;
+        });
+        content += '\n';
       }
 
       globalStepNumber++;
@@ -1476,6 +1678,8 @@ function addConfluenceSubStepRows(
       subStepInfo += `\n${escapeConfluenceMacros(subStep.description)}`;
     if (subStep.pic)
       subStepInfo += `\n(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`;
+    if (subStep.reviewer)
+      subStepInfo += `\n(/) Reviewer: ${escapeConfluenceMacros(subStep.reviewer)}`;
     if (subStep.timeline)
       subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(subStep.timeline))}`;
     if (subStep.needs && subStep.needs.length > 0)
@@ -1545,6 +1749,17 @@ function addConfluenceSubStepRows(
           cellContent = '_(see substeps below)_';
         } else {
           cellContent = `_(${subStep.type} step)_`;
+        }
+      }
+
+      // Add sign-off checkboxes if PIC or Reviewer is set (interactive checkboxes)
+      if (subStep.pic || subStep.reviewer) {
+        cellContent += '\n\nSign-off:';
+        if (subStep.pic) {
+          cellContent += '\n* [ ] PIC';
+        }
+        if (subStep.reviewer) {
+          cellContent += '\n* [ ] Reviewer';
         }
       }
 
