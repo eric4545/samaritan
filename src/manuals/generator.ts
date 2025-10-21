@@ -487,6 +487,107 @@ function generateStepRow(
         operationDir,
       );
     });
+
+    // Render rollbacks for all sub-steps AFTER all sub-steps are rendered
+    step.sub_steps.forEach((subStep, subIndex) => {
+      if (
+        subStep.rollback &&
+        (subStep.rollback.command || subStep.rollback.instruction)
+      ) {
+        const subStepLetter = indexToLetters(subIndex);
+        const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
+
+        // Close current table
+        rows += '\n';
+
+        // Add rollback heading (h4 level for sub-step rollbacks)
+        rows += `#### 🔄 Rollback for Step ${subStepPrefix}: ${subStep.name}\n\n`;
+
+        // Render rollback table
+        rows += '| Environment | Rollback Action |\n';
+        rows += '|-------------|----------------|\n';
+
+        environments.forEach((env) => {
+          let cellContent = '';
+
+          // Get rollback options (defaults)
+          const substituteVars =
+            subStep.rollback?.options?.substitute_vars ?? true;
+          const showCommandSeparately =
+            subStep.rollback?.options?.show_command_separately ?? false;
+
+          // Process rollback instruction (markdown content)
+          if (subStep.rollback?.instruction) {
+            let displayInstruction = subStep.rollback.instruction;
+
+            if (resolveVariables && substituteVars) {
+              displayInstruction = substituteVariables(
+                displayInstruction,
+                env.variables || {},
+                subStep.variables,
+              );
+            }
+
+            // Preserve markdown formatting and escape only pipes
+            const cleanInstruction = displayInstruction
+              .trim()
+              .replace(/\|/g, '\\|')
+              .replace(/\n/g, '<br>');
+            cellContent += cleanInstruction;
+          }
+
+          // Process rollback command (code content)
+          if (subStep.rollback?.command) {
+            let displayCommand = subStep.rollback.command;
+
+            if (resolveVariables && substituteVars) {
+              displayCommand = substituteVariables(
+                displayCommand,
+                env.variables || {},
+                subStep.variables,
+              );
+            }
+
+            // Wrap in backticks and escape special characters
+            const cleanCommand = displayCommand
+              .trim()
+              .replace(/\n/g, '<br>')
+              .replace(/\|/g, '\\|')
+              .replace(/`/g, '\\`')
+              .replace(/<br>$/, '');
+
+            if (showCommandSeparately && subStep.rollback.instruction) {
+              cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+            } else if (!subStep.rollback.instruction) {
+              cellContent += `\`${cleanCommand}\``;
+            } else {
+              cellContent += `<br><br>\`${cleanCommand}\``;
+            }
+          }
+
+          // Fallback
+          if (!cellContent) {
+            cellContent = '-';
+          }
+
+          rows += `| ${env.name} | ${cellContent} |\n`;
+        });
+
+        rows += '\n';
+
+        // Reopen table with headers
+        rows += '| Step |';
+        environments.forEach((env) => {
+          rows += ` ${env.name} |`;
+        });
+        rows += '\n';
+        rows += '|------|';
+        environments.forEach(() => {
+          rows += '---------|';
+        });
+        rows += '\n';
+      }
+    });
   }
 
   return rows;
@@ -650,99 +751,6 @@ function generateSubStepRow(
 
   rows += '\n';
 
-  // Inline rollback rendering for sub-steps - render immediately after sub-step if present
-  if (step.rollback && (step.rollback.command || step.rollback.instruction)) {
-    // Close current table
-    rows += '\n';
-
-    // Determine heading level based on depth (h4 for depth 1, h5 for depth 2, etc.)
-    const headingLevel = '#'.repeat(Math.min(3 + depth, 6)); // h4-h6 for sub-steps
-    rows += `${headingLevel} 🔄 Rollback for Step ${stepId}: ${step.name}\n\n`;
-
-    // Render rollback table
-    rows += '| Environment | Rollback Action |\n';
-    rows += '|-------------|----------------|\n';
-
-    environments.forEach((env) => {
-      let cellContent = '';
-
-      // Get rollback options (defaults)
-      const substituteVars = step.rollback?.options?.substitute_vars ?? true;
-      const showCommandSeparately =
-        step.rollback?.options?.show_command_separately ?? false;
-
-      // Process rollback instruction (markdown content)
-      if (step.rollback?.instruction) {
-        let displayInstruction = step.rollback.instruction;
-
-        if (resolveVariables && substituteVars) {
-          displayInstruction = substituteVariables(
-            displayInstruction,
-            env.variables || {},
-            step.variables,
-          );
-        }
-
-        // Preserve markdown formatting and escape only pipes
-        const cleanInstruction = displayInstruction
-          .trim()
-          .replace(/\|/g, '\\|')
-          .replace(/\n/g, '<br>');
-        cellContent += cleanInstruction;
-      }
-
-      // Process rollback command (code content)
-      if (step.rollback?.command) {
-        let displayCommand = step.rollback.command;
-
-        if (resolveVariables && substituteVars) {
-          displayCommand = substituteVariables(
-            displayCommand,
-            env.variables || {},
-            step.variables,
-          );
-        }
-
-        // Wrap in backticks and escape special characters
-        const cleanCommand = displayCommand
-          .trim()
-          .replace(/\n/g, '<br>')
-          .replace(/\|/g, '\\|')
-          .replace(/`/g, '\\`')
-          .replace(/<br>$/, '');
-
-        if (showCommandSeparately && step.rollback.instruction) {
-          cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
-        } else if (!step.rollback.instruction) {
-          cellContent += `\`${cleanCommand}\``;
-        } else {
-          cellContent += `<br><br>\`${cleanCommand}\``;
-        }
-      }
-
-      // Fallback
-      if (!cellContent) {
-        cellContent = '-';
-      }
-
-      rows += `| ${env.name} | ${cellContent} |\n`;
-    });
-
-    rows += '\n';
-
-    // Reopen table with headers
-    rows += '| Step |';
-    environments.forEach((env) => {
-      rows += ` ${env.name} |`;
-    });
-    rows += '\n';
-    rows += '|------|';
-    environments.forEach(() => {
-      rows += '---------|';
-    });
-    rows += '\n';
-  }
-
   // Handle nested sub-steps recursively (e.g., 1a1, 1a2, 1a1a, etc.)
   if (step.sub_steps && step.sub_steps.length > 0) {
     step.sub_steps.forEach((nestedSubStep, nestedIndex) => {
@@ -802,6 +810,111 @@ function generateSubStepRow(
         depth + 1,
         operationDir,
       );
+    });
+
+    // Render rollbacks for all nested sub-steps AFTER all nested sub-steps are rendered
+    step.sub_steps.forEach((nestedSubStep, nestedIndex) => {
+      if (
+        nestedSubStep.rollback &&
+        (nestedSubStep.rollback.command || nestedSubStep.rollback.instruction)
+      ) {
+        let nestedStepId: string;
+        if (depth % 2 === 1) {
+          nestedStepId = `${stepId}${nestedIndex + 1}`;
+        } else {
+          const letter = indexToLetters(nestedIndex);
+          nestedStepId = `${stepId}${letter}`;
+        }
+
+        // Close current table
+        rows += '\n';
+
+        // Determine heading level based on depth
+        const headingLevel = '#'.repeat(Math.min(3 + depth, 6));
+        rows += `${headingLevel} 🔄 Rollback for Step ${nestedStepId}: ${nestedSubStep.name}\n\n`;
+
+        // Render rollback table
+        rows += '| Environment | Rollback Action |\n';
+        rows += '|-------------|----------------|\n';
+
+        environments.forEach((env) => {
+          let cellContent = '';
+
+          // Get rollback options (defaults)
+          const substituteVars =
+            nestedSubStep.rollback?.options?.substitute_vars ?? true;
+          const showCommandSeparately =
+            nestedSubStep.rollback?.options?.show_command_separately ?? false;
+
+          // Process rollback instruction (markdown content)
+          if (nestedSubStep.rollback?.instruction) {
+            let displayInstruction = nestedSubStep.rollback.instruction;
+
+            if (resolveVariables && substituteVars) {
+              displayInstruction = substituteVariables(
+                displayInstruction,
+                env.variables || {},
+                nestedSubStep.variables,
+              );
+            }
+
+            const cleanInstruction = displayInstruction
+              .trim()
+              .replace(/\|/g, '\\|')
+              .replace(/\n/g, '<br>');
+            cellContent += cleanInstruction;
+          }
+
+          // Process rollback command (code content)
+          if (nestedSubStep.rollback?.command) {
+            let displayCommand = nestedSubStep.rollback.command;
+
+            if (resolveVariables && substituteVars) {
+              displayCommand = substituteVariables(
+                displayCommand,
+                env.variables || {},
+                nestedSubStep.variables,
+              );
+            }
+
+            const cleanCommand = displayCommand
+              .trim()
+              .replace(/\n/g, '<br>')
+              .replace(/\|/g, '\\|')
+              .replace(/`/g, '\\`')
+              .replace(/<br>$/, '');
+
+            if (showCommandSeparately && nestedSubStep.rollback.instruction) {
+              cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+            } else if (!nestedSubStep.rollback.instruction) {
+              cellContent += `\`${cleanCommand}\``;
+            } else {
+              cellContent += `<br><br>\`${cleanCommand}\``;
+            }
+          }
+
+          // Fallback
+          if (!cellContent) {
+            cellContent = '-';
+          }
+
+          rows += `| ${env.name} | ${cellContent} |\n`;
+        });
+
+        rows += '\n';
+
+        // Reopen table with headers
+        rows += '| Step |';
+        environments.forEach((env) => {
+          rows += ` ${env.name} |`;
+        });
+        rows += '\n';
+        rows += '|------|';
+        environments.forEach(() => {
+          rows += '---------|';
+        });
+        rows += '\n';
+      }
     });
   }
 
