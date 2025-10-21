@@ -201,8 +201,8 @@ test('Confluence Wiki Markup should handle 3 levels of nested sub-steps', async 
   );
 
   // Verify PIC information
-  assert.ok(confluence.includes('(i) PIC: DBA Team'));
-  assert.ok(confluence.includes('(i) PIC: Backend Team'));
+  assert.ok(confluence.includes('(i) PIC: [~DBA Team]'));
+  assert.ok(confluence.includes('(i) PIC: [~Backend Team]'));
 });
 
 test('Confluence Wiki Markup should handle 4 levels of nested sub-steps', async () => {
@@ -243,8 +243,8 @@ test('Confluence Wiki Markup should handle section headings at multiple nesting 
   );
 
   // Verify PIC in sections
-  assert.ok(confluence.includes('(i) PIC: Build Team'));
-  assert.ok(confluence.includes('(i) PIC: DevOps Team'));
+  assert.ok(confluence.includes('(i) PIC: [~Build Team]'));
+  assert.ok(confluence.includes('(i) PIC: [~DevOps Team]'));
 });
 
 test('All generators should produce consistent numbering for nested sub-steps', async () => {

@@ -54,7 +54,7 @@ describe('Confluence Generator Tests', () => {
 
     // Should include step with PIC, timeline, and ticket (Confluence emoticons)
     assert.match(content, /Health Check/);
-    assert.match(content, /\(i\) PIC: john\.doe/);
+    assert.match(content, /\(i\) PIC: \[~john\.doe\]/);
     assert.match(content, /\(time\) Timeline: 2024-01-15 10:00/);
     assert.match(content, /\(flag\) Tickets: JIRA-123/);
   });
@@ -250,7 +250,7 @@ describe('Confluence Generator Tests', () => {
     assert.match(content, /Migrate database schema/);
 
     // Should show PIC and timeline metadata under heading
-    assert.match(content, /\(i\) PIC: DBA Team/);
+    assert.match(content, /\(i\) PIC: \[~DBA Team\]/);
     assert.match(content, /\(time\) Timeline: 2024-01-15 10:00/);
 
     // Should have table before section
@@ -281,7 +281,7 @@ describe('Confluence Generator Tests', () => {
     assert.match(content, /Setup required before deployment/);
 
     // Should have PIC metadata
-    assert.match(content, /\(i\) PIC: DevOps Team/);
+    assert.match(content, /\(i\) PIC: \[~DevOps Team\]/);
 
     // After section heading, should have table with steps
     assert.match(

@@ -1130,7 +1130,7 @@ ${filteredOperation.environments
         if (step.pic || step.timeline) {
           const metadata = [];
           if (step.pic)
-            metadata.push(`(i) PIC: ${escapeConfluenceMacros(step.pic)}`);
+            metadata.push(`(i) PIC: [~${escapeConfluenceMacros(step.pic)}]`);
           if (step.timeline)
             metadata.push(
               `(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`,
@@ -1158,9 +1158,9 @@ ${filteredOperation.environments
       if (step.description)
         stepInfo += `\n${escapeConfluenceMacros(step.description)}`;
       if (step.pic)
-        stepInfo += `\n(i) PIC: ${escapeConfluenceMacros(step.pic)}`;
+        stepInfo += `\n(i) PIC: [~${escapeConfluenceMacros(step.pic)}]`;
       if (step.reviewer)
-        stepInfo += `\n(/) Reviewer: ${escapeConfluenceMacros(step.reviewer)}`;
+        stepInfo += `\n(/) Reviewer: [~${escapeConfluenceMacros(step.reviewer)}]`;
       if (step.timeline)
         stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`;
       if (step.needs && step.needs.length > 0)
@@ -1241,7 +1241,7 @@ ${filteredOperation.environments
 
         // Add sign-off checkboxes if PIC or Reviewer is set (interactive checkboxes)
         if (step.pic || step.reviewer) {
-          cellContent += '\n\nSign-off:';
+          cellContent += '\nSign-off:';
           if (step.pic) {
             cellContent += '\n* [ ] PIC';
           }
@@ -1657,7 +1657,7 @@ function addConfluenceSubStepRows(
       if (subStep.pic || subStep.timeline) {
         const metadata = [];
         if (subStep.pic)
-          metadata.push(`(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`);
+          metadata.push(`(i) PIC: [~${escapeConfluenceMacros(subStep.pic)}]`);
         if (subStep.timeline)
           metadata.push(
             `(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(subStep.timeline))}`,
@@ -1677,9 +1677,9 @@ function addConfluenceSubStepRows(
     if (subStep.description)
       subStepInfo += `\n${escapeConfluenceMacros(subStep.description)}`;
     if (subStep.pic)
-      subStepInfo += `\n(i) PIC: ${escapeConfluenceMacros(subStep.pic)}`;
+      subStepInfo += `\n(i) PIC: [~${escapeConfluenceMacros(subStep.pic)}]`;
     if (subStep.reviewer)
-      subStepInfo += `\n(/) Reviewer: ${escapeConfluenceMacros(subStep.reviewer)}`;
+      subStepInfo += `\n(/) Reviewer: [~${escapeConfluenceMacros(subStep.reviewer)}]`;
     if (subStep.timeline)
       subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(subStep.timeline))}`;
     if (subStep.needs && subStep.needs.length > 0)
@@ -1754,7 +1754,7 @@ function addConfluenceSubStepRows(
 
       // Add sign-off checkboxes if PIC or Reviewer is set (interactive checkboxes)
       if (subStep.pic || subStep.reviewer) {
-        cellContent += '\n\nSign-off:';
+        cellContent += '\nSign-off:';
         if (subStep.pic) {
           cellContent += '\n* [ ] PIC';
         }
