@@ -650,6 +650,99 @@ function generateSubStepRow(
 
   rows += '\n';
 
+  // Inline rollback rendering for sub-steps - render immediately after sub-step if present
+  if (step.rollback && (step.rollback.command || step.rollback.instruction)) {
+    // Close current table
+    rows += '\n';
+
+    // Determine heading level based on depth (h4 for depth 1, h5 for depth 2, etc.)
+    const headingLevel = '#'.repeat(Math.min(3 + depth, 6)); // h4-h6 for sub-steps
+    rows += `${headingLevel} 🔄 Rollback for Step ${stepId}: ${step.name}\n\n`;
+
+    // Render rollback table
+    rows += '| Environment | Rollback Action |\n';
+    rows += '|-------------|----------------|\n';
+
+    environments.forEach((env) => {
+      let cellContent = '';
+
+      // Get rollback options (defaults)
+      const substituteVars = step.rollback?.options?.substitute_vars ?? true;
+      const showCommandSeparately =
+        step.rollback?.options?.show_command_separately ?? false;
+
+      // Process rollback instruction (markdown content)
+      if (step.rollback?.instruction) {
+        let displayInstruction = step.rollback.instruction;
+
+        if (resolveVariables && substituteVars) {
+          displayInstruction = substituteVariables(
+            displayInstruction,
+            env.variables || {},
+            step.variables,
+          );
+        }
+
+        // Preserve markdown formatting and escape only pipes
+        const cleanInstruction = displayInstruction
+          .trim()
+          .replace(/\|/g, '\\|')
+          .replace(/\n/g, '<br>');
+        cellContent += cleanInstruction;
+      }
+
+      // Process rollback command (code content)
+      if (step.rollback?.command) {
+        let displayCommand = step.rollback.command;
+
+        if (resolveVariables && substituteVars) {
+          displayCommand = substituteVariables(
+            displayCommand,
+            env.variables || {},
+            step.variables,
+          );
+        }
+
+        // Wrap in backticks and escape special characters
+        const cleanCommand = displayCommand
+          .trim()
+          .replace(/\n/g, '<br>')
+          .replace(/\|/g, '\\|')
+          .replace(/`/g, '\\`')
+          .replace(/<br>$/, '');
+
+        if (showCommandSeparately && step.rollback.instruction) {
+          cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+        } else if (!step.rollback.instruction) {
+          cellContent += `\`${cleanCommand}\``;
+        } else {
+          cellContent += `<br><br>\`${cleanCommand}\``;
+        }
+      }
+
+      // Fallback
+      if (!cellContent) {
+        cellContent = '-';
+      }
+
+      rows += `| ${env.name} | ${cellContent} |\n`;
+    });
+
+    rows += '\n';
+
+    // Reopen table with headers
+    rows += '| Step |';
+    environments.forEach((env) => {
+      rows += ` ${env.name} |`;
+    });
+    rows += '\n';
+    rows += '|------|';
+    environments.forEach(() => {
+      rows += '---------|';
+    });
+    rows += '\n';
+  }
+
   // Handle nested sub-steps recursively (e.g., 1a1, 1a2, 1a1a, etc.)
   if (step.sub_steps && step.sub_steps.length > 0) {
     step.sub_steps.forEach((nestedSubStep, nestedIndex) => {

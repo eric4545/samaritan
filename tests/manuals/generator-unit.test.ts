@@ -2277,4 +2277,57 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should include third step',
     );
   });
+
+  it('should render rollback sections for sub-steps', async () => {
+    const operation = await parseFixture('substepRollback');
+    const markdown = generateManual(operation);
+
+    // Check that rollback sections are rendered for each sub-step
+    assert(
+      markdown.includes('#### 🔄 Rollback for Step 1a: Deploy Database'),
+      'Should render rollback heading for first sub-step',
+    );
+    assert(
+      markdown.includes('#### 🔄 Rollback for Step 1b: Deploy API'),
+      'Should render rollback heading for second sub-step',
+    );
+    assert(
+      markdown.includes('#### 🔄 Rollback for Step 1c: Monitor Health'),
+      'Should render rollback heading for third sub-step',
+    );
+
+    // Check that rollback tables are rendered with environment columns
+    assert(
+      markdown.includes('| Environment | Rollback Action |'),
+      'Should have rollback table with correct headers',
+    );
+
+    // Check rollback commands are present
+    assert(
+      markdown.includes('kubectl rollout undo deployment/database'),
+      'Should include database rollback command',
+    );
+    assert(
+      markdown.includes('kubectl rollout undo deployment/api'),
+      'Should include API rollback command',
+    );
+    assert(
+      markdown.includes('kubectl scale deployment/database --replicas=0'),
+      'Should include scale down command',
+    );
+    assert(
+      markdown.includes('kubectl scale deployment/api --replicas=0'),
+      'Should include API scale down command',
+    );
+
+    // Check that rollback sections appear after the corresponding sub-step
+    const step1aIndex = markdown.indexOf('[ ] Step 1a: Deploy Database');
+    const rollback1aIndex = markdown.indexOf(
+      '#### 🔄 Rollback for Step 1a: Deploy Database',
+    );
+    assert(
+      rollback1aIndex > step1aIndex,
+      'Rollback section should appear after the sub-step',
+    );
+  });
 });

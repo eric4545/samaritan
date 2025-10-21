@@ -1,0 +1,55 @@
+name: Sub-Step Rollback Test
+version: 1.0.0
+description: Test rollback rendering for sub-steps
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging-app
+    restrictions: []
+    approval_required: false
+    validation_required: false
+
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: prod-app
+    restrictions: []
+    approval_required: true
+    validation_required: true
+
+steps:
+  - name: Deploy Services
+    type: manual
+    description: Deploy all services with rollback capabilities
+    sub_steps:
+      - name: Deploy Database
+        type: manual
+        description: Deploy database service
+        command: kubectl apply -f database.yaml -n ${NAMESPACE}
+        rollback:
+          description: Rollback database deployment
+          command: kubectl rollout undo deployment/database -n ${NAMESPACE}
+
+      - name: Deploy API
+        type: manual
+        description: Deploy API service
+        command: kubectl apply -f api.yaml -n ${NAMESPACE}
+        rollback:
+          description: Rollback API deployment
+          command: |
+            kubectl rollout undo deployment/api -n ${NAMESPACE}
+            kubectl wait --for=condition=available deployment/api -n ${NAMESPACE}
+
+      - name: Monitor Health
+        type: manual
+        description: Monitor application health
+        instruction: Check application health status
+        command: kubectl get pods -n ${NAMESPACE}
+        rollback:
+          description: Scale down all services if health check fails
+          instruction: Scale down all deployments to zero replicas
+          command: |
+            kubectl scale deployment/database --replicas=0 -n ${NAMESPACE}
+            kubectl scale deployment/api --replicas=0 -n ${NAMESPACE}

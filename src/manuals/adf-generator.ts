@@ -771,6 +771,75 @@ function addSubStepRows(
 
     dataRows.push(tableRow(subCells));
 
+    // Inline rollback rendering for sub-steps - add rollback row immediately after sub-step if present
+    if (
+      subStep.rollback &&
+      (subStep.rollback.command || subStep.rollback.instruction)
+    ) {
+      // Create a rollback row with merged cells
+      const rollbackLabel = `🔄 Rollback for Step ${subStepId}: ${subStep.name}`;
+
+      // Build rollback cells for each environment
+      const rollbackCells = [
+        tableCell()(paragraph(strong(text(rollbackLabel)))),
+      ];
+
+      environments.forEach((env) => {
+        const cellContent = [];
+
+        // Get rollback options (defaults)
+        const substituteVars =
+          subStep.rollback?.options?.substitute_vars ?? true;
+        const showCommandSeparately =
+          subStep.rollback?.options?.show_command_separately ?? false;
+
+        // Process rollback instruction (paragraph/text content)
+        if (subStep.rollback?.instruction) {
+          let displayInstruction = subStep.rollback.instruction;
+
+          if (resolveVariables && substituteVars) {
+            displayInstruction = substituteVariables(
+              displayInstruction,
+              env.variables || {},
+              subStep.variables,
+            );
+          }
+
+          cellContent.push(paragraph(text(displayInstruction)));
+        }
+
+        // Process rollback command (code block)
+        if (subStep.rollback?.command) {
+          let displayCommand = subStep.rollback.command;
+
+          if (resolveVariables && substituteVars) {
+            displayCommand = substituteVariables(
+              displayCommand,
+              env.variables || {},
+              subStep.variables,
+            );
+          }
+
+          if (showCommandSeparately && subStep.rollback.instruction) {
+            cellContent.push(paragraph(strong(text('Command:'))));
+          }
+
+          cellContent.push(
+            codeBlock({ language: 'bash' })(text(displayCommand)),
+          );
+        }
+
+        // Fallback
+        if (cellContent.length === 0) {
+          cellContent.push(paragraph(text('-')));
+        }
+
+        rollbackCells.push(tableCell()(...cellContent));
+      });
+
+      dataRows.push(tableRow(rollbackCells));
+    }
+
     // Recursively add nested sub-steps
     if (subStep.sub_steps && subStep.sub_steps.length > 0) {
       addSubStepRows(

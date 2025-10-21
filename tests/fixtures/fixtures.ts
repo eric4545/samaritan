@@ -75,6 +75,9 @@ export const FIXTURES = {
   // Step library imports (use: directive)
   useInSubSteps: 'tests/fixtures/operations/features/use-in-substeps.yaml',
 
+  // Rollback for sub-steps
+  substepRollback: 'tests/fixtures/operations/features/substep-rollback.yaml',
+
   // ===== Confluence Generator Tests =====
   multiLineCommand:
     'tests/fixtures/operations/confluence/multi-line-command.yaml',

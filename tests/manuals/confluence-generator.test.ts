@@ -19,7 +19,6 @@ const operationWithSectionHeadingsYaml = loadYaml('sectionHeading');
 const operationWithSectionHeadingFirstYaml = loadYaml('sectionHeadingFirst');
 const ganttTimelineYaml = loadYaml('ganttTimeline');
 const evidenceRequiredYaml = loadYaml('evidenceRequired');
-const useInSubStepsYaml = loadYaml('useInSubSteps');
 
 // Helper to generate Confluence content from YAML string
 function generateConfluence(

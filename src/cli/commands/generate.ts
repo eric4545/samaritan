@@ -1779,6 +1779,84 @@ function addConfluenceSubStepRows(
     // Construct complete row with all cells
     content += `| ${subStepInfo} | ${subCommandCells.join(' | ')} |\n`;
 
+    // Inline rollback rendering for sub-steps - render immediately after sub-step if present
+    if (
+      subStep.rollback &&
+      (subStep.rollback.command || subStep.rollback.instruction)
+    ) {
+      // Add rollback row with label and environment-specific cells
+      const rollbackLabel = `(back) *Rollback for Step ${subStepId}*: ${escapeConfluenceMacros(subStep.name)}`;
+
+      // Build rollback cells for each environment
+      const rollbackCells: string[] = [];
+      environments.forEach((env: any) => {
+        let cellContent = '';
+
+        // Get rollback options (defaults)
+        const substituteVars =
+          subStep.rollback?.options?.substitute_vars ?? true;
+        const showCommandSeparately =
+          subStep.rollback?.options?.show_command_separately ?? false;
+
+        // Process rollback instruction (always markdown)
+        if (subStep.rollback?.instruction) {
+          let displayInstruction = subStep.rollback.instruction;
+
+          if (resolveVars && substituteVars) {
+            displayInstruction = substituteVariables(
+              displayInstruction,
+              env.variables || {},
+              subStep.variables,
+            );
+          }
+
+          const trimmed = displayInstruction.replace(/\s+$/, '');
+          cellContent += `{markdown}\n${trimmed}\n{markdown}`;
+        }
+
+        // Process rollback command (always code block)
+        if (subStep.rollback?.command) {
+          let displayCommand = subStep.rollback.command;
+
+          if (resolveVars && substituteVars) {
+            displayCommand = substituteVariables(
+              displayCommand,
+              env.variables || {},
+              subStep.variables,
+            );
+          }
+
+          const trimmedCommand = displayCommand.replace(/\n+$/, '');
+
+          if (showCommandSeparately && subStep.rollback.instruction) {
+            cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+          } else if (!subStep.rollback.instruction) {
+            cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
+          } else {
+            cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
+          }
+        }
+
+        // Fallback
+        if (!cellContent) {
+          cellContent = '-';
+        }
+
+        // Add evidence area with environment-specific results for rollback
+        if (subStep.rollback?.evidence) {
+          cellContent += formatEvidenceArea(
+            subStep.rollback.evidence,
+            env.name,
+            operationDir,
+          );
+        }
+
+        rollbackCells.push(cellContent);
+      });
+
+      content += `| ${rollbackLabel} | ${rollbackCells.join(' | ')} |\n`;
+    }
+
     // Recursively add nested sub-steps
     if (subStep.sub_steps && subStep.sub_steps.length > 0) {
       content += addConfluenceSubStepRows(
