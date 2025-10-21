@@ -1,0 +1,205 @@
+name: Production Release - Q1 2025
+version: 2.5.0
+description: |
+  Major production release including new features, bug fixes, and performance improvements.
+  This deployment includes database migrations and requires coordination with multiple teams.
+
+# Overview section - flexible metadata fields for release coordination
+overview:
+  Release Date: "2025-01-15"
+  Release Manager: "Jane Smith"
+  Release Notes: "https://confluence.example.com/releases/v2.5.0"
+  Release Ticket: "JIRA-1234"
+  EPIC Tickets: "EPIC-567, EPIC-890"
+  Manual Status: "APPROVED"
+  War Room (Rehearsal): "https://zoom.us/j/rehearsal-room"
+  War Room (Production): "https://zoom.us/j/production-room"
+  Rollback Window: "4 hours"
+  Estimated Duration: "2 hours"
+  Compliance Review: "Completed - 2025-01-10"
+
+environments:
+  - name: staging
+    description: Staging environment for final testing
+    variables:
+      REPLICAS: 3
+      DB_HOST: staging-db.example.com
+      CACHE_SIZE: "2GB"
+      LOG_LEVEL: "debug"
+    targets:
+      - cluster-staging-us-east-1
+      - cluster-staging-eu-west-1
+
+  - name: production
+    description: Live production environment
+    variables:
+      REPLICAS: 10
+      DB_HOST: prod-db.example.com
+      CACHE_SIZE: "8GB"
+      LOG_LEVEL: "warn"
+    approval_required: true
+    targets:
+      - cluster-prod-us-east-1
+      - cluster-prod-eu-west-1
+      - cluster-prod-asia-south-1
+
+preflight:
+  - name: Verify Database Backup
+    description: Ensure recent database backup exists before deployment
+    type: manual
+    instruction: |
+      Check that database backup completed within last 24 hours:
+      ```bash
+      aws s3 ls s3://backups/database/ --recursive | tail -5
+      ```
+    evidence:
+      required: true
+      types: [screenshot, command_output]
+      results:
+        staging:
+          - type: command_output
+            content: |
+              2025-01-14 23:00  backup-staging-20250114.tar.gz
+        production:
+          - type: command_output
+            content: |
+              2025-01-14 23:00  backup-prod-20250114.tar.gz
+    pic: db-admin@example.com
+    reviewer: ops-lead@example.com
+    timeline: "2025-01-15 08:00"
+
+  - name: Check Service Health
+    description: Verify all services are healthy before deployment
+    type: command
+    command: |
+      kubectl get pods -n production --field-selector=status.phase=Running
+      curl -f https://api.example.com/health
+
+steps:
+  - name: Enable Maintenance Mode
+    type: manual
+    description: Put application in maintenance mode to prevent user disruption
+    instruction: |
+      Enable maintenance page:
+      ```bash
+      kubectl apply -f k8s/maintenance-mode.yaml
+      curl https://www.example.com/ | grep "Maintenance"
+      ```
+    pic: ops-team@example.com
+    timeline: "2025-01-15 09:00"
+    ticket: JIRA-1234
+
+  - name: Run Database Migrations
+    type: manual
+    description: Execute database schema migrations
+    instruction: |
+      Apply migrations in correct order:
+      ```bash
+      # Migration 1: Add new columns
+      psql -h ${DB_HOST} -f migrations/001_add_columns.sql
+
+      # Migration 2: Create indexes
+      psql -h ${DB_HOST} -f migrations/002_create_indexes.sql
+
+      # Verify migrations
+      psql -h ${DB_HOST} -c "SELECT version FROM schema_migrations;"
+      ```
+    evidence:
+      required: true
+      types: [screenshot, command_output]
+    pic: db-admin@example.com
+    timeline: "2025-01-15 09:15"
+    ticket: JIRA-1235
+    rollback:
+      instruction: |
+        psql -h ${DB_HOST} -f migrations/rollback/001_rollback.sql
+
+  - name: Deploy Application
+    type: automatic
+    description: Deploy new application version to Kubernetes
+    command: |
+      kubectl set image deployment/web-app web-app=registry.example.com/web-app:2.5.0
+      kubectl rollout status deployment/web-app --timeout=10m
+    rollback:
+      command: |
+        kubectl rollout undo deployment/web-app
+        kubectl rollout status deployment/web-app --timeout=5m
+
+  - name: Scale to Full Capacity
+    type: automatic
+    description: Scale deployment to production replica count
+    command: kubectl scale deployment/web-app --replicas=${REPLICAS}
+
+  - name: Health Check
+    type: manual
+    description: Verify application health after deployment
+    instruction: |
+      Check application endpoints:
+      ```bash
+      # API health
+      curl -f https://api.example.com/health
+
+      # Database connectivity
+      curl -f https://api.example.com/db/health
+
+      # Cache connectivity
+      curl -f https://api.example.com/cache/health
+      ```
+    evidence:
+      required: true
+      types: [screenshot, command_output]
+    pic: ops-team@example.com
+    timeline: "2025-01-15 10:00"
+    ticket: JIRA-1236
+
+  - name: Disable Maintenance Mode
+    type: manual
+    description: Remove maintenance page and restore normal operation
+    instruction: |
+      Disable maintenance mode:
+      ```bash
+      kubectl delete -f k8s/maintenance-mode.yaml
+      curl https://www.example.com/ | grep -v "Maintenance"
+      ```
+    pic: ops-team@example.com
+    timeline: "2025-01-15 10:15"
+
+postflight:
+  - name: Monitor Error Rates
+    type: manual
+    description: Monitor application error rates for 15 minutes
+    instruction: |
+      Check monitoring dashboards:
+      - Error rate < 0.1%
+      - Response time < 200ms
+      - CPU usage < 70%
+
+      Dashboard: https://grafana.example.com/d/production
+    evidence:
+      required: true
+      types: [screenshot]
+    pic: sre-team@example.com
+    timeline: "2025-01-15 10:30"
+
+  - name: Send Release Notification
+    type: manual
+    description: Notify stakeholders of successful deployment
+    instruction: |
+      Post to Slack channel #releases:
+
+      "✅ Production Release v2.5.0 completed successfully
+      Release Notes: https://confluence.example.com/releases/v2.5.0
+      Deployed at: 2025-01-15 10:15 UTC"
+    pic: release-manager@example.com
+    timeline: "2025-01-15 10:45"
+
+global_rollback:
+  description: |
+    Emergency rollback procedure if critical issues are discovered post-deployment.
+    This should only be executed if the application is experiencing severe problems.
+  steps:
+    - Immediately notify #incident-response Slack channel
+    - Roll back Kubernetes deployment to previous version
+    - Roll back database migrations using rollback scripts
+    - Monitor error rates to confirm rollback success
+    - Document rollback reason in JIRA-1234

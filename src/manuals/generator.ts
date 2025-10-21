@@ -843,9 +843,9 @@ function generateManualContent(
   }
 
   // Marketplace Operation Usage
-  if (operation.uses) {
+  if (operation.template) {
     markdown += '## Based On\n\n';
-    markdown += `This operation extends: **${operation.uses}**\n`;
+    markdown += `This operation extends: **${operation.template}**\n`;
     if (operation.with && Object.keys(operation.with).length > 0) {
       markdown += '\nWith parameters:\n';
       Object.entries(operation.with).forEach(([key, value]) => {

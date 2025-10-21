@@ -1,0 +1,35 @@
+# Template: Health Checks
+# Description: Standard health checks for service deployments
+# Variables: ENDPOINT, DB_HOST, SERVICE_NAME, TIMEOUT, RETRIES
+
+- name: Check API Health
+  type: automatic
+  command: curl -f ${ENDPOINT}/health
+  description: Verify API endpoint is responding
+  timeout: ${TIMEOUT}
+  retry:
+    attempts: ${RETRIES}
+    delay: 5
+    backoff: exponential
+  evidence:
+    required: true
+    types: [command_output]
+
+- name: Verify Database Connection
+  type: automatic
+  command: kubectl exec deployment/${SERVICE_NAME} -- nc -zv ${DB_HOST} 5432
+  description: Check database connectivity
+  timeout: 30
+  evidence:
+    required: true
+    types: [command_output]
+
+- name: Check Metrics Endpoint
+  type: automatic
+  command: curl -f ${ENDPOINT}/metrics
+  description: Verify metrics are being collected
+  timeout: ${TIMEOUT}
+  retry:
+    attempts: ${RETRIES}
+    delay: 3
+  continue_on_error: true

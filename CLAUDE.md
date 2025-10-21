@@ -354,11 +354,11 @@ steps:
 - **`reviewer`** (Reviewer/Buddy): The person who monitors and verifies the PIC's work
 - **Sign-off Checkboxes**: Generated manuals include checkboxes for PIC and Reviewer sign-off when these fields are set
 
-### Template Import (uses)
+### Template Import (template)
 
 **✅ Implemented in v1.0+**
 
-SAMARITAN supports reusable step templates via the `uses:` directive, enabling DRY (Don't Repeat Yourself) principles for common operation patterns.
+SAMARITAN supports reusable step templates via the `template:` directive, enabling DRY (Don't Repeat Yourself) principles for common operation patterns.
 
 **How it works:**
 ```yaml
@@ -381,7 +381,7 @@ steps:
 ```yaml
 # Main operation
 steps:
-  - uses: ./templates/health-checks.yaml
+  - template: ./templates/health-checks.yaml
     with:
       ENDPOINT: https://api.example.com
       TIMEOUT: 60
@@ -410,7 +410,7 @@ steps:
 
 **Schema (src/schemas/operation.schema.json):**
 - Steps `oneOf` includes third variant for template imports
-- Required: `uses` (path to template)
+- Required: `template` (path to template)
 - Optional: `with` (variables to pass, defaults to empty object)
 - Recursive `$ref` for sub_steps points to `oneOf/2` (regular step definition)
 

@@ -572,7 +572,12 @@ function resolveStepReferences(
         }
         throw new OperationParseError(
           `Failed to load template: ${stepData.template}`,
-          [{ field: `steps[${i}].template`, message: (error as Error).message }],
+          [
+            {
+              field: `steps[${i}].template`,
+              message: (error as Error).message,
+            },
+          ],
         );
       }
     } else {
@@ -656,7 +661,11 @@ function resolveStepReferences(
   return resolvedSteps;
 }
 
-function parseStep(stepData: any, _stepIndex: number, importContext?: ImportContext): Step {
+function parseStep(
+  stepData: any,
+  _stepIndex: number,
+  importContext?: ImportContext,
+): Step {
   // Parse sub-steps recursively
   let subSteps: Step[] | undefined;
   if (stepData.sub_steps && Array.isArray(stepData.sub_steps)) {
@@ -1061,7 +1070,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     rollback: rawOperation.rollback,
     metadata,
     needs: rawOperation.needs,
-    uses: rawOperation.uses,
+    template: rawOperation.template,
     with: rawOperation.with,
     matrix: rawOperation.matrix,
     reporting: rawOperation.reporting,

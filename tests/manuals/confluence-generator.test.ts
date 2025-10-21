@@ -567,7 +567,9 @@ steps:
 
   it('should handle use: directive in sub_steps', async () => {
     // Need to use parseFixture instead of yaml.load to resolve use: directives
-    const operation = await import('../fixtures/fixtures').then(m => m.parseFixture('useInSubSteps'));
+    const operation = await import('../fixtures/fixtures').then((m) =>
+      m.parseFixture('useInSubSteps'),
+    );
     const content = generateConfluenceContent(operation);
 
     // Should have parent step

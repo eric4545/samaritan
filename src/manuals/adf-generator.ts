@@ -88,10 +88,13 @@ export function generateADF(
   }
 
   // Marketplace operation usage
-  if (operation.uses) {
+  if (operation.template) {
     content.push(heading({ level: 2 })(text('Based On')));
     content.push(
-      paragraph(text('This operation extends: '), strong(text(operation.uses))),
+      paragraph(
+        text('This operation extends: '),
+        strong(text(operation.template)),
+      ),
     );
     if (operation.with && Object.keys(operation.with).length > 0) {
       content.push(paragraph(text('With parameters:')));

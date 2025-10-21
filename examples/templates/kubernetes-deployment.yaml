@@ -1,0 +1,52 @@
+# Template: Kubernetes Deployment
+# Description: Standard Kubernetes deployment workflow
+# Variables: SERVICE_NAME, NAMESPACE, IMAGE_TAG, REPLICAS
+
+name: Kubernetes Deployment Template
+version: 1.0.0
+description: Reusable Kubernetes deployment steps
+
+steps:
+  - name: Apply Deployment Manifest
+    type: automatic
+    command: |
+      kubectl apply -f k8s/${SERVICE_NAME}.yaml \
+        --namespace ${NAMESPACE} \
+        --record
+    description: Deploy application to Kubernetes cluster
+    timeout: 120
+    evidence:
+      required: true
+      types: [command_output]
+
+  - name: Wait for Rollout
+    type: automatic
+    command: |
+      kubectl rollout status deployment/${SERVICE_NAME} \
+        --namespace ${NAMESPACE} \
+        --timeout=300s
+    description: Wait for deployment to complete
+    timeout: 350
+    evidence:
+      required: true
+      types: [command_output]
+
+  - name: Verify Pod Status
+    type: automatic
+    command: |
+      kubectl get pods -n ${NAMESPACE} -l app=${SERVICE_NAME}
+    description: Check that all pods are running
+    timeout: 30
+    evidence:
+      required: true
+      types: [command_output]
+
+  - name: Check Service Endpoints
+    type: automatic
+    command: |
+      kubectl get endpoints ${SERVICE_NAME} -n ${NAMESPACE}
+    description: Verify service has healthy endpoints
+    timeout: 30
+    evidence:
+      required: true
+      types: [command_output]

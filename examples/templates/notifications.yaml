@@ -1,0 +1,25 @@
+# Template: Notifications
+# Description: Send notifications to team communication channels
+# Variables: SLACK_WEBHOOK, MESSAGE, EMAIL_RECIPIENTS, EMAIL_SUBJECT
+
+- name: Send Slack Notification
+  type: automatic
+  command: |
+    curl -X POST ${SLACK_WEBHOOK} \
+      -H 'Content-Type: application/json' \
+      -d '{"text": "${MESSAGE}"}'
+  description: Send notification to Slack channel
+  timeout: 30
+  continue_on_error: true
+
+- name: Send Email Notification
+  type: manual
+  instruction: |
+    Send email notification with the following details:
+
+    **To:** ${EMAIL_RECIPIENTS}
+    **Subject:** ${EMAIL_SUBJECT}
+    **Message:** ${MESSAGE}
+
+    Use your organization's email system to send this notification.
+  description: Send manual email notification to team

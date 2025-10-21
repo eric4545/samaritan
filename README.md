@@ -232,7 +232,7 @@ See `tests/fixtures/operations/features/evidence-override-in-use.yaml` for a com
 
 ### Template Import and Reuse
 
-SAMARITAN supports importing reusable step templates using the `uses:` directive. This allows you to:
+SAMARITAN supports importing reusable step templates using the `template:` directive. This allows you to:
 - **Eliminate duplication** by defining common steps once
 - **Ensure consistency** across operations
 - **Simplify maintenance** by updating templates in one place
@@ -273,7 +273,7 @@ steps:
 
 #### Using Templates
 
-Import templates with `uses:` and pass variables with `with:`:
+Import templates with `template:` and pass variables with `with:`:
 
 ```yaml
 name: Microservice Deployment
@@ -289,7 +289,7 @@ environments:
 
 steps:
   # Import template steps
-  - uses: ./templates/health-checks.yaml
+  - template: ./templates/health-checks.yaml
     with:
       ENDPOINT: ${ENDPOINT}    # Pass environment variables to template
       DB_HOST: ${DB_HOST}
@@ -301,7 +301,7 @@ steps:
     instruction: Deploy the app
 
   # Reuse the same template with different parameters
-  - uses: ./templates/health-checks.yaml
+  - template: ./templates/health-checks.yaml
     with:
       ENDPOINT: ${ENDPOINT}
       DB_HOST: ${DB_HOST}

@@ -10,7 +10,7 @@ needs:
   - "infrastructure-setup"
 
 # This operation extends a marketplace template
-uses: "microservice-deployment@3.1.0"
+template: "microservice-deployment@3.1.0"
 with:
   service_count: 3
   health_check_timeout: 300

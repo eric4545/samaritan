@@ -1,0 +1,95 @@
+name: Microservice Deployment with Templates
+version: 2.0.0
+description: Deploy microservice using reusable template steps
+author: SRE Team
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      ENDPOINT: https://staging-api.example.com
+      DB_HOST: staging-db.example.com
+      SERVICE_NAME: my-service-staging
+      NAMESPACE: staging
+      IMAGE_TAG: latest
+      REPLICAS: 2
+      SLACK_WEBHOOK: https://hooks.slack.com/services/STAGING
+      EMAIL_RECIPIENTS: team@example.com
+    approval_required: false
+    validation_required: true
+    restrictions: []
+
+  - name: production
+    description: Production environment
+    variables:
+      ENDPOINT: https://api.example.com
+      DB_HOST: prod-db.example.com
+      SERVICE_NAME: my-service-prod
+      NAMESPACE: production
+      IMAGE_TAG: v1.2.3
+      REPLICAS: 10
+      SLACK_WEBHOOK: https://hooks.slack.com/services/PROD
+      EMAIL_RECIPIENTS: team@example.com,management@example.com
+    approval_required: true
+    validation_required: true
+    restrictions: ["production-access"]
+
+steps:
+  - name: Pre-deployment Health Checks
+    template: ./templates/health-checks.yaml
+    with:
+      ENDPOINT: ${ENDPOINT}
+      DB_HOST: ${DB_HOST}
+      SERVICE_NAME: ${SERVICE_NAME}
+      TIMEOUT: 60
+      RETRIES: 5
+
+  - name: Build Docker Image
+    type: manual
+    instruction: |
+      Build and push Docker image:
+      ```bash
+      docker build -t ${SERVICE_NAME}:${IMAGE_TAG} .
+      docker push ${SERVICE_NAME}:${IMAGE_TAG}
+      ```
+    evidence:
+      required: true
+      types: [command_output, screenshot]
+
+  - name: Deploy to Kubernetes
+    template: ./templates/kubernetes-deployment.yaml
+    with:
+      SERVICE_NAME: ${SERVICE_NAME}
+      NAMESPACE: ${NAMESPACE}
+      IMAGE_TAG: ${IMAGE_TAG}
+      REPLICAS: ${REPLICAS}
+
+  - name: Post-deployment Health Checks
+    template: ./templates/health-checks.yaml
+    with:
+      ENDPOINT: ${ENDPOINT}
+      DB_HOST: ${DB_HOST}
+      SERVICE_NAME: ${SERVICE_NAME}
+      TIMEOUT: 120
+      RETRIES: 10
+
+  - name: Notify Team of Deployment
+    template: ./templates/notifications.yaml
+    with:
+      SLACK_WEBHOOK: ${SLACK_WEBHOOK}
+      MESSAGE: "Deployment of ${SERVICE_NAME} ${IMAGE_TAG} to ${NAMESPACE} completed successfully"
+      EMAIL_RECIPIENTS: ${EMAIL_RECIPIENTS}
+      EMAIL_SUBJECT: "Deployment Complete: ${SERVICE_NAME} ${IMAGE_TAG}"
+
+  - name: Update Monitoring Dashboard
+    type: manual
+    instruction: |
+      Update the monitoring dashboard to reflect the new deployment:
+      1. Navigate to https://monitoring.example.com
+      2. Find the ${SERVICE_NAME} dashboard
+      3. Update the version tag to ${IMAGE_TAG}
+      4. Verify all metrics are reporting correctly
+    evidence:
+      required: true
+      types: [screenshot]
