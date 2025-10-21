@@ -1,0 +1,9 @@
+name: Test Missing Template
+version: 1.0.0
+steps:
+  - name: Regular Step
+    type: manual
+    instruction: Do something
+  - uses: ./non-existent-template.yaml
+    with:
+      VAR: value

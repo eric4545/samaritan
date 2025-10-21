@@ -46,6 +46,7 @@ class DocumentationGenerator {
           operationName,
           envFileSuffix,
           options,
+          operationFile,
         );
         break;
       case 'adf':
@@ -62,6 +63,7 @@ class DocumentationGenerator {
           operationName,
           envFileSuffix,
           options,
+          operationFile,
         );
         break;
       default:
@@ -97,6 +99,9 @@ class DocumentationGenerator {
       targetEnv,
     );
 
+    // Get operation directory for evidence file reading
+    const operationDir = dirname(operationFile);
+
     // Generate manual with metadata and environment filtering
     const manual = generateManualWithMetadata(
       operation,
@@ -104,6 +109,7 @@ class DocumentationGenerator {
       targetEnv,
       options.resolveVars,
       options.gantt,
+      operationDir,
     );
 
     // Determine output file
@@ -123,13 +129,16 @@ class DocumentationGenerator {
     operationName: string,
     envFileSuffix: string,
     options: GenerateOptions,
+    operationFile: string,
   ): Promise<void> {
     const targetEnv = getTargetEnvironment(options);
+    const operationDir = dirname(operationFile);
     const confluenceContent = this.createConfluenceContent(
       operation,
       options.resolveVars,
       options.gantt,
       targetEnv,
+      operationDir,
     );
     const outputFile =
       options.output ||
@@ -177,6 +186,7 @@ class DocumentationGenerator {
     operationName: string,
     envFileSuffix: string,
     options: GenerateOptions,
+    operationFile: string,
   ): Promise<void> {
     const targetEnv = getTargetEnvironment(options);
     const metadata = await createGenerationMetadata(
@@ -186,12 +196,16 @@ class DocumentationGenerator {
       targetEnv,
     );
 
+    // Get operation directory for evidence file reading
+    const operationDir = dirname(operationFile);
+
     const manual = generateManualWithMetadata(
       operation,
       metadata,
       targetEnv,
       options.resolveVars,
       options.gantt,
+      operationDir,
     );
     const htmlManual = this.markdownToHtml(manual, operation.name);
     const outputFile =
@@ -213,7 +227,7 @@ class DocumentationGenerator {
 
     switch (options.format) {
       case 'confluence':
-        await this.generateConfluencePage(operation, operationName, options);
+        await this.generateConfluencePage(operation, operationName, options, operationFile);
         break;
       case 'adf':
         await this.generateADFDocs(operation, operationName, options);
@@ -260,13 +274,16 @@ class DocumentationGenerator {
     operation: any,
     operationName: string,
     options: GenerateOptions,
+    operationFile: string,
   ): Promise<void> {
     const targetEnv = getTargetEnvironment(options);
+    const operationDir = dirname(operationFile);
     const confluenceContent = this.createConfluenceContent(
       operation,
       options.resolveVars,
       options.gantt,
       targetEnv,
+      operationDir,
     );
     const outputFile =
       options.output || `confluence/${operationName}.confluence`;
@@ -482,12 +499,14 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
     resolveVars: boolean = false,
     includeGantt: boolean = false,
     targetEnvironment?: string,
+    operationDir?: string,
   ): string {
     return generateConfluenceContent(
       operation,
       resolveVars,
       includeGantt,
       targetEnvironment,
+      operationDir,
     );
   }
 
@@ -569,6 +588,7 @@ export function generateConfluenceContent(
   resolveVars: boolean = false,
   includeGantt: boolean = false,
   targetEnvironment?: string,
+  operationDir?: string,
 ): string {
   // Filter environments if specified
   let environments = operation.environments;
@@ -655,20 +675,86 @@ export function generateConfluenceContent(
   };
 
   // Helper to format evidence area
-  const formatEvidenceArea = (evidence: any): string => {
+  const formatEvidenceArea = (evidence: any, environmentName?: string, operationDir?: string): string => {
     if (!evidence) return '';
 
     const types = evidence.types || [];
     const typesText = types.length > 0 ? ` - ${types.join(', ')}` : '';
     const status = evidence.required ? 'Required' : 'Optional';
 
-    // Add code block for command_output evidence type
-    let content = 'Paste evidence here';
-    if (types.includes('command_output')) {
-      content = '{code:bash}\n# Paste command output here\n{code}';
+    let content = '';
+
+    // Only show evidence metadata in step column (when environmentName is undefined)
+    if (!environmentName) {
+      // Add code block placeholder for command_output evidence type
+      let placeholder = 'Paste evidence here';
+      if (types.includes('command_output')) {
+        placeholder = '{code:bash}\n# Paste command output here\n{code}';
+      }
+      return `\n{expand:title=📎 Evidence (${status}${typesText})}${placeholder}{expand}`;
     }
 
-    return `\n{expand:title=📎 Evidence (${status}${typesText})}${content}{expand}`;
+    // Render evidence results for specific environment
+    if (evidence.results && environmentName) {
+      const envResults = evidence.results[environmentName];
+      if (envResults && envResults.length > 0) {
+        content += '\n\n*Captured Evidence:*';
+
+        for (const evidenceResult of envResults) {
+          content += '\n';
+
+          // Add description if present
+          if (evidenceResult.description) {
+            content += `\n*${evidenceResult.type}:* ${evidenceResult.description}`;
+          } else {
+            content += `\n*${evidenceResult.type}:*`;
+          }
+
+          // Render based on storage type
+          if (evidenceResult.file) {
+            // For text-based evidence (command_output, log), read and embed file content
+            if (
+              (evidenceResult.type === 'command_output' ||
+                evidenceResult.type === 'log') &&
+              operationDir
+            ) {
+              try {
+                const fs = require('node:fs');
+                const path = require('node:path');
+                const filePath = path.resolve(operationDir, evidenceResult.file);
+                const fileContent = fs.readFileSync(filePath, 'utf-8');
+                const language =
+                  evidenceResult.type === 'command_output' ? 'bash' : 'text';
+                content += `\n{code:${language}}\n${fileContent}\n{code}`;
+              } catch (_error) {
+                // Fallback to link if file can't be read
+                content += `\n[View ${evidenceResult.type}|${evidenceResult.file}] _(error reading file)_`;
+              }
+            }
+            // For screenshots/photos, show as attached file reference
+            else if (
+              evidenceResult.type === 'screenshot' ||
+              evidenceResult.type === 'photo'
+            ) {
+              content += `\n!${evidenceResult.file}!`;
+            }
+            // For other file types, render as link
+            else {
+              content += `\n[View ${evidenceResult.type}|${evidenceResult.file}]`;
+            }
+          } else if (evidenceResult.content) {
+            // Inline content - render in code block
+            const language =
+              evidenceResult.type === 'command_output' ? 'bash' : 'text';
+            content += `\n{code:${language}}\n${evidenceResult.content}\n{code}`;
+          }
+        }
+
+        return content;
+      }
+    }
+
+    return '';
   };
 
   // Helper to format multi-line text for Confluence table cells
@@ -979,6 +1065,11 @@ ${filteredOperation.environments
       if (step.if)
         stepInfo += `\n(?) Condition: ${escapeConfluenceMacros(step.if)}`;
 
+      // Add evidence metadata (not environment-specific) to step column
+      if (step.evidence) {
+        stepInfo += formatEvidenceArea(step.evidence);
+      }
+
       // Build all command cells for each environment
       const commandCells: string[] = [];
       filteredOperation.environments.forEach((env: any) => {
@@ -1043,9 +1134,9 @@ ${filteredOperation.environments
           }
         }
 
-        // Add evidence area if required
+        // Add evidence area with environment-specific results
         if (step.evidence) {
-          cellContent += formatEvidenceArea(step.evidence);
+          cellContent += formatEvidenceArea(step.evidence, env.name, operationDir);
         }
 
         commandCells.push(cellContent);
@@ -1069,6 +1160,7 @@ ${filteredOperation.environments
           addSmartLineBreaks,
           formatEvidenceArea,
           formatTimelineForDisplay,
+          operationDir,
         );
       }
 
@@ -1145,9 +1237,9 @@ ${filteredOperation.environments
           cellContent = '-';
         }
 
-        // Add evidence area if required for rollback
+        // Add evidence area with environment-specific results for rollback
         if (step.rollback?.evidence) {
-          cellContent += formatEvidenceArea(step.rollback.evidence);
+          cellContent += formatEvidenceArea(step.rollback.evidence, env.name, operationDir);
         }
 
         rollbackCells.push(cellContent);
@@ -1238,9 +1330,9 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
             cellContent = '-';
           }
 
-          // Add evidence area if required for global rollback step
+          // Add evidence area with environment-specific results for global rollback step
           if (rollbackStep.evidence) {
-            cellContent += formatEvidenceArea(rollbackStep.evidence);
+            cellContent += formatEvidenceArea(rollbackStep.evidence, env.name, operationDir);
           }
 
           rollbackCells.push(cellContent);
@@ -1279,6 +1371,8 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
  * @param formatForTableCell - Helper function to format table cells
  * @param addSmartLineBreaks - Helper function to add line breaks
  * @param formatEvidenceArea - Helper function to format evidence areas
+ * @param formatTimelineForDisplay - Helper function to format timeline display
+ * @param operationDir - Operation directory for reading evidence files
  * @returns Confluence Wiki Markup string for sub-steps
  */
 function addConfluenceSubStepRows(
@@ -1296,8 +1390,9 @@ function addConfluenceSubStepRows(
   ) => string,
   formatForTableCell: (text: string, useCodeBlock?: boolean) => string,
   addSmartLineBreaks: (command: string, maxLength?: number) => string,
-  formatEvidenceArea: (evidence: any) => string,
+  formatEvidenceArea: (evidence: any, environmentName?: string, operationDir?: string) => string,
   formatTimelineForDisplay: (timeline: any) => string,
+  operationDir?: string,
 ): string {
   let content = '';
 
@@ -1366,6 +1461,11 @@ function addConfluenceSubStepRows(
     if (subStep.if)
       subStepInfo += `\n(?) Condition: ${escapeConfluenceMacros(subStep.if)}`;
 
+    // Add evidence metadata (not environment-specific) to step column
+    if (subStep.evidence) {
+      subStepInfo += formatEvidenceArea(subStep.evidence);
+    }
+
     // Build all command cells for sub-step
     const subCommandCells: string[] = [];
     environments.forEach((env: any) => {
@@ -1424,9 +1524,9 @@ function addConfluenceSubStepRows(
         }
       }
 
-      // Add evidence area if required
+      // Add evidence area with environment-specific results
       if (subStep.evidence) {
-        cellContent += formatEvidenceArea(subStep.evidence);
+        cellContent += formatEvidenceArea(subStep.evidence, env.name, operationDir);
       }
 
       subCommandCells.push(cellContent);
@@ -1450,6 +1550,7 @@ function addConfluenceSubStepRows(
         addSmartLineBreaks,
         formatEvidenceArea,
         formatTimelineForDisplay,
+        operationDir,
       );
     }
   });

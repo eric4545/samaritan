@@ -376,14 +376,22 @@ function loadTemplateSteps(templatePath: string, baseDirectory: string): any[] {
 
   throw new OperationParseError(
     `Invalid template format: ${templatePath}. Expected array of steps or operation with 'steps' field`,
-    [{ field: 'uses', message: 'Template must be array or object with steps field' }],
+    [
+      {
+        field: 'uses',
+        message: 'Template must be array or object with steps field',
+      },
+    ],
   );
 }
 
 /**
  * Find all ${VAR} placeholders in an object (recursively)
  */
-function extractVariables(obj: any, vars: Set<string> = new Set()): Set<string> {
+function extractVariables(
+  obj: any,
+  vars: Set<string> = new Set(),
+): Set<string> {
   if (typeof obj === 'string') {
     // Match ${VAR} pattern
     const matches = obj.matchAll(/\$\{([^}]+)\}/g);
@@ -511,7 +519,10 @@ function resolveStepReferences(
         const withVars = stepData.with || {};
 
         // Load template steps
-        const templateSteps = loadTemplateSteps(templatePath, importContext.baseDirectory);
+        const templateSteps = loadTemplateSteps(
+          templatePath,
+          importContext.baseDirectory,
+        );
 
         // Validate all template variables are provided
         const templateVars = extractVariables(templateSteps);

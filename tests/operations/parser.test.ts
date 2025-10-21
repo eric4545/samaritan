@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import { parseOperation } from '../../src/operations/parser';
-import { parseFixture } from '../fixtures/fixtures';
+import { getFixturePath, parseFixture } from '../fixtures/fixtures';
 
 describe('Enhanced Operation Parser', () => {
   it('should parse legacy deployment.yaml with backward compatibility', async () => {
@@ -391,7 +391,11 @@ describe('Enhanced Operation Parser', () => {
       // - 2 steps from second health-checks template
       // - 2 steps from notification template
       // Total: 7 steps
-      assert.strictEqual(operation.steps.length, 7, 'Should have 7 total steps');
+      assert.strictEqual(
+        operation.steps.length,
+        7,
+        'Should have 7 total steps',
+      );
 
       // Check first template expansion (health-checks)
       assert.strictEqual(operation.steps[0].name, 'Check API Health');
@@ -403,10 +407,7 @@ describe('Enhanced Operation Parser', () => {
       assert.strictEqual(operation.steps[0].timeout, 60); // From with: TIMEOUT: 60
       assert.strictEqual(operation.steps[0].retry?.attempts, 5); // From with: RETRIES: 5
 
-      assert.strictEqual(
-        operation.steps[1].name,
-        'Verify Database Connection',
-      );
+      assert.strictEqual(operation.steps[1].name, 'Verify Database Connection');
       assert.strictEqual(operation.steps[1].type, 'automatic');
       assert.strictEqual(
         operation.steps[1].command,
@@ -422,10 +423,7 @@ describe('Enhanced Operation Parser', () => {
       assert.strictEqual(operation.steps[3].timeout, 120); // Different timeout
       assert.strictEqual(operation.steps[3].retry?.attempts, 10); // Different retries
 
-      assert.strictEqual(
-        operation.steps[4].name,
-        'Verify Database Connection',
-      );
+      assert.strictEqual(operation.steps[4].name, 'Verify Database Connection');
 
       // Check notification template expansion
       assert.strictEqual(operation.steps[5].name, 'Send Slack Notification');
@@ -440,71 +438,35 @@ describe('Enhanced Operation Parser', () => {
     });
 
     it('should throw error when template file not found', async () => {
-      // Create a test operation that references non-existent template
-      const testYaml = `
-name: Test Missing Template
-version: 1.0.0
-steps:
-  - name: Regular Step
-    type: manual
-    instruction: Do something
-  - uses: ./non-existent-template.yaml
-    with:
-      VAR: value
-`;
-
-      // Write to temp file
-      const tmpFile = '/tmp/test-missing-template.yaml';
-      const fs = await import('node:fs');
-      fs.writeFileSync(tmpFile, testYaml);
-
       // Should throw an error (OperationParseError)
       await assert.rejects(
         async () => {
-          await parseOperation(tmpFile);
+          await parseOperation(getFixturePath('missingTemplate'));
         },
         (err: any) => {
-          return err.message.includes('Template file not found') ||
-                 err.message.includes('Operation validation failed');
+          return (
+            err.message.includes('Template file not found') ||
+            err.message.includes('Operation validation failed')
+          );
         },
         'Should throw error for missing template',
       );
-
-      // Cleanup
-      fs.unlinkSync(tmpFile);
     });
 
     it('should throw error when required template variables are missing', async () => {
-      // Create a test operation that doesn't provide all required variables
-      const testYaml = `
-name: Test Missing Variables
-version: 1.0.0
-steps:
-  - uses: ../templates/health-checks.yaml
-    with:
-      ENDPOINT: https://api.com
-      # Missing: DB_HOST, SERVICE_NAME, TIMEOUT, RETRIES
-`;
-
-      // Write to temp file
-      const tmpFile = '/tmp/test-missing-vars.yaml';
-      const fs = await import('node:fs');
-      fs.writeFileSync(tmpFile, testYaml);
-
       // Should throw an error (OperationParseError)
       await assert.rejects(
         async () => {
-          await parseOperation(tmpFile);
+          await parseOperation(getFixturePath('missingTemplateVars'));
         },
         (err: any) => {
-          return err.message.includes('Missing template variables') ||
-                 err.message.includes('Operation validation failed');
+          return (
+            err.message.includes('Missing template variables') ||
+            err.message.includes('Operation validation failed')
+          );
         },
         'Should throw error for missing variables',
       );
-
-      // Cleanup
-      fs.unlinkSync(tmpFile);
     });
 
     it('should support both array and operation format templates', async () => {

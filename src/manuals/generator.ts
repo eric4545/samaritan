@@ -276,6 +276,7 @@ function generateStepRow(
   resolveVariables: boolean = false,
   prefix: string = '',
   currentPhase?: string,
+  operationDir?: string,
 ): string {
   let rows = '';
 
@@ -430,7 +431,7 @@ function generateStepRow(
     }
 
     // Add environment-specific evidence results
-    cellContent += formatEvidenceInfo(step.evidence, env.name);
+    cellContent += formatEvidenceInfo(step.evidence, env.name, operationDir);
 
     rows += ` ${cellContent} |`;
   });
@@ -482,6 +483,8 @@ function generateStepRow(
         subStepPrefix,
         environments,
         resolveVariables,
+        1,
+        operationDir,
       );
     });
   }
@@ -495,6 +498,7 @@ function generateSubStepRow(
   environments: Environment[],
   resolveVariables: boolean = false,
   depth: number = 1,
+  operationDir?: string,
 ): string {
   let rows = '';
 
@@ -639,7 +643,7 @@ function generateSubStepRow(
     }
 
     // Add environment-specific evidence results
-    cellContent += formatEvidenceInfo(step.evidence, env.name);
+    cellContent += formatEvidenceInfo(step.evidence, env.name, operationDir);
 
     rows += ` ${cellContent} |`;
   });
@@ -703,6 +707,7 @@ function generateSubStepRow(
         environments,
         resolveVariables,
         depth + 1,
+        operationDir,
       );
     });
   }
@@ -719,6 +724,7 @@ export function generateManualWithMetadata(
   targetEnvironment?: string,
   resolveVariables?: boolean,
   includeGantt?: boolean,
+  operationDir?: string,
 ): string {
   let markdown = '';
 
@@ -758,7 +764,7 @@ export function generateManualWithMetadata(
     environments,
   };
 
-  markdown += generateManualContent(filteredOperation, resolveVariables);
+  markdown += generateManualContent(filteredOperation, resolveVariables, operationDir);
   return markdown;
 }
 
@@ -809,6 +815,7 @@ function generateOverviewSection(overview: Record<string, any>): string {
 function generateManualContent(
   operation: Operation,
   resolveVariables: boolean = false,
+  operationDir?: string,
 ): string {
   let markdown = `# Manual for: ${operation.name} (v${operation.version})\n\n`;
   if (operation.description) {
@@ -980,6 +987,7 @@ function generateManualContent(
           resolveVariables,
           '',
           phaseName,
+          operationDir,
         );
         globalStepNumber++; // Increment for next step
       });

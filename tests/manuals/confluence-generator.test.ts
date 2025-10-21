@@ -446,13 +446,14 @@ steps:
   it('should not render evidence expand macro when evidence is not specified', () => {
     const content = generateConfluence(evidenceRequiredYaml);
 
-    // Count evidence expand macros - should be 3 (one for each step with evidence, repeated across environments)
+    // Count evidence expand macros - should be 3 (one for each step with evidence in the step column)
+    // Evidence metadata is shown in step column, evidence results are shown in environment columns
     const evidenceMatches = content.match(/\{expand:title=📎 Evidence/g);
-    // We have 2 environments (staging, production) and 3 steps with evidence = 6 expand macros
+    // We have 3 steps with evidence = 3 expand macros in step columns
     assert.strictEqual(
       evidenceMatches?.length,
-      6,
-      'Should have exactly 6 evidence expand macros (3 steps × 2 environments)',
+      3,
+      'Should have exactly 3 evidence expand macros (3 steps with evidence in step columns)',
     );
 
     // The "No Evidence" step should not have an expand macro
