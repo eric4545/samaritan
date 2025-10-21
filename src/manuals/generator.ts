@@ -300,7 +300,7 @@ function generateStepRow(
 
   // First column: Step name, phase, icon, and description
   // Add checkbox for tracking completion
-  let stepCell = `☐ ${prefix}Step ${stepNumber}: ${step.name} ${phaseIcon}${typeIcon}`;
+  let stepCell = `[ ] ${prefix}Step ${stepNumber}: ${step.name} ${phaseIcon}${typeIcon}`;
   // Only show phase if it differs from the current section phase
   if (step.phase && step.phase !== currentPhase) {
     stepCell += `<br><em>Phase: ${step.phase}</em>`;
@@ -332,17 +332,6 @@ function generateStepRow(
   // Add Reviewer (monitoring/buddy)
   if (step.reviewer) {
     stepCell += `<br>👥 <em>Reviewer: ${step.reviewer}</em>`;
-  }
-
-  // Add sign-off checkboxes if PIC or Reviewer is set
-  if (step.pic || step.reviewer) {
-    stepCell += '<br><em>Sign-off:</em>';
-    if (step.pic) {
-      stepCell += ' ☐ PIC';
-    }
-    if (step.reviewer) {
-      stepCell += ' ☐ Reviewer';
-    }
   }
 
   // Add timeline
@@ -427,6 +416,17 @@ function generateStepRow(
         cellContent = '_(see substeps below)_';
       } else {
         cellContent = `_(${step.type} step)_`;
+      }
+    }
+
+    // Add sign-off checkboxes if PIC or Reviewer is set (per environment)
+    if (step.pic || step.reviewer) {
+      cellContent += '<br><br>**Sign-off:**';
+      if (step.pic) {
+        cellContent += '<br>- [ ] PIC';
+      }
+      if (step.reviewer) {
+        cellContent += '<br>- [ ] Reviewer';
       }
     }
 
@@ -516,7 +516,7 @@ function generateSubStepRow(
 
   // Format as: Step 1a: Build Backend API ⚙️
   // Add checkbox for tracking completion
-  let stepCell = `☐ ${indent}Step ${stepId}: ${step.name} ${typeIcon}`;
+  let stepCell = `[ ] ${indent}Step ${stepId}: ${step.name} ${typeIcon}`;
   if (
     step.description &&
     typeof step.description === 'string' &&
@@ -544,17 +544,6 @@ function generateSubStepRow(
   // Add Reviewer (monitoring/buddy)
   if (step.reviewer) {
     stepCell += `<br>👥 <em>Reviewer: ${step.reviewer}</em>`;
-  }
-
-  // Add sign-off checkboxes if PIC or Reviewer is set
-  if (step.pic || step.reviewer) {
-    stepCell += '<br><em>Sign-off:</em>';
-    if (step.pic) {
-      stepCell += ' ☐ PIC';
-    }
-    if (step.reviewer) {
-      stepCell += ' ☐ Reviewer';
-    }
   }
 
   // Add timeline
@@ -644,6 +633,17 @@ function generateSubStepRow(
 
     // Add environment-specific evidence results
     cellContent += formatEvidenceInfo(step.evidence, env.name, operationDir);
+
+    // Add sign-off checkboxes if PIC or Reviewer is set (per environment)
+    if (step.pic || step.reviewer) {
+      cellContent += '<br><br>**Sign-off:**';
+      if (step.pic) {
+        cellContent += '<br>- [ ] PIC';
+      }
+      if (step.reviewer) {
+        cellContent += '<br>- [ ] Reviewer';
+      }
+    }
 
     rows += ` ${cellContent} |`;
   });

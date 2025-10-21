@@ -72,7 +72,7 @@ describe('Manual Generator Unit Tests', () => {
     // Test step formatting with icons and descriptions
     // Note: Continuous numbering - preflight is Step 1, so flight starts at Step 2
     assert(
-      markdown.includes('☐ Step 1: Build Docker Image'),
+      markdown.includes('[ ] Step 1: Build Docker Image'),
       'Should include Step 1: Build Docker Image',
     );
     assert(
@@ -80,15 +80,15 @@ describe('Manual Generator Unit Tests', () => {
       'Should include Build Docker Image description',
     );
     assert(
-      markdown.includes('☐ Step 2: Push Docker Image'),
+      markdown.includes('[ ] Step 2: Push Docker Image'),
       'Should include Step 2: Push Docker Image',
     );
     assert(
-      markdown.includes('☐ Step 4: Scale Deployment'),
+      markdown.includes('[ ] Step 4: Scale Deployment'),
       'Should include Step 4: Scale Deployment',
     );
     assert(
-      markdown.includes('☐ Step 5: Health Check'),
+      markdown.includes('[ ] Step 5: Health Check'),
       'Should include Step 5: Health Check',
     );
     assert(markdown.includes('👤'), 'Should include manual step icon');
@@ -117,7 +117,7 @@ describe('Manual Generator Unit Tests', () => {
 
     // Test that both environments have commands
     // Should have 6 total step rows: 1 preflight + 3 flight steps + 2 postflight steps
-    const stepsTableMatch = markdown.match(/\| ☐ Step \d+:.*?\|.*?\|.*?\|/g);
+    const stepsTableMatch = markdown.match(/\| \[ \] Step \d+:.*?\|.*?\|.*?\|/g);
     assert(
       stepsTableMatch && stepsTableMatch.length === 6,
       'Should have 6 step table rows',
@@ -169,7 +169,7 @@ describe('Manual Generator Unit Tests', () => {
       'Should create table with single environment column',
     );
     assert(
-      markdown.includes('| ☐ Step 1: Deploy ⚙️'),
+      markdown.includes('| \[ \] Step 1: Deploy ⚙️'),
       'Should format single environment step',
     );
   });
@@ -593,7 +593,7 @@ describe('Manual Generator Unit Tests', () => {
       markdown.includes('| Step | production |'),
       'Table header should be intact',
     );
-    const tableRowsCount = (markdown.match(/\| ☐ Step \d+:/g) || []).length;
+    const tableRowsCount = (markdown.match(/\| \[ \] Step \d+:/g) || []).length;
     assert(
       tableRowsCount === 2,
       'Should have 2 step rows with proper table structure',
@@ -1835,9 +1835,9 @@ kubectl apply -f worker.yaml`,
       markdown.match(/### Initial Setup.*\| Step \| staging \| production \|/s),
       'Should have table after section heading',
     );
-    assert(markdown.includes('☐ Step 1: Initial Setup'), 'Should have step 1');
-    assert(markdown.includes('☐ Step 2: Deploy App'), 'Should have step 2');
-    assert(markdown.includes('☐ Step 3: Verify'), 'Should have step 3');
+    assert(markdown.includes('[ ] Step 1: Initial Setup'), 'Should have step 1');
+    assert(markdown.includes('[ ] Step 2: Deploy App'), 'Should have step 2');
+    assert(markdown.includes('[ ] Step 3: Verify'), 'Should have step 3');
   });
 
   it('should include code block for command_output evidence type', () => {
@@ -2213,7 +2213,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
     // Step 1: check-afd-health (with evidence override)
     // Should show evidence in both environment columns
     assert(
-      markdown.includes('☐ Step 1: check-afd-health'),
+      markdown.includes('[ ] Step 1: check-afd-health'),
       'Should include first step',
     );
 
@@ -2247,7 +2247,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
 
     // Step 2: verify-dns (with evidence override)
     assert(
-      markdown.includes('☐ Step 2: verify-dns'),
+      markdown.includes('[ ] Step 2: verify-dns'),
       'Should include second step',
     );
 
@@ -2268,7 +2268,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
 
     // Step 3: Regular step (no evidence override)
     assert(
-      markdown.includes('☐ Step 3: Deploy Application'),
+      markdown.includes('[ ] Step 3: Deploy Application'),
       'Should include third step',
     );
   });

@@ -474,14 +474,6 @@ function createStepsTable(
       stepCellContent.push(paragraph(text(`👥 Reviewer: ${step.reviewer}`)));
     }
 
-    // Sign-off checkboxes
-    if (step.pic || step.reviewer) {
-      const signOffText = ['Sign-off:'];
-      if (step.pic) signOffText.push(' ☐ PIC');
-      if (step.reviewer) signOffText.push(' ☐ Reviewer');
-      stepCellContent.push(paragraph(em(text(signOffText.join('')))));
-    }
-
     // Timeline
     if (step.timeline) {
       stepCellContent.push(paragraph(text(`⏱️ Timeline: ${step.timeline}`)));
@@ -554,6 +546,17 @@ function createStepsTable(
           cellContent.push(paragraph(em(text('(see substeps below)'))));
         } else {
           cellContent.push(paragraph(em(text(`(${step.type} step)`))));
+        }
+      }
+
+      // Add sign-off checkboxes if PIC or Reviewer is set (per environment)
+      if (step.pic || step.reviewer) {
+        cellContent.push(paragraph(strong(text('Sign-off:'))));
+        if (step.pic) {
+          cellContent.push(paragraph(text('- [ ] PIC')));
+        }
+        if (step.reviewer) {
+          cellContent.push(paragraph(text('- [ ] Reviewer')));
         }
       }
 

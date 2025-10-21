@@ -88,7 +88,7 @@ describe('Manual Generation CLI Command', () => {
 
     // Pre-flight array has 2 checks, then Build Docker Image from steps array, so flight phase starts at Step 4
     assert(
-      content.includes('☐ Step 4: Push Docker Image'),
+      content.includes('[ ] Step 4: Push Docker Image'),
       'Push Docker Image step should be Step 4.',
     );
     assert(
@@ -98,7 +98,7 @@ describe('Manual Generation CLI Command', () => {
 
     // Check steps with environment-specific commands in table format
     assert(
-      content.includes('☐ Step 6: Scale Deployment'),
+      content.includes('[ ] Step 6: Scale Deployment'),
       'Scale Deployment step should be Step 6.',
     );
     assert(
@@ -116,11 +116,11 @@ describe('Manual Generation CLI Command', () => {
       'Post-Flight Phase section should exist.',
     );
     assert(
-      content.includes('☐ Step 7: Health Check'),
+      content.includes('[ ] Step 7: Health Check'),
       'Health Check step should exist.',
     );
     assert(
-      content.includes('☐ Step 8: Verify Services'),
+      content.includes('[ ] Step 8: Verify Services'),
       'Verify Services step should exist.',
     );
 
