@@ -1283,6 +1283,94 @@ ${filteredOperation.environments
           formatTimelineForDisplay,
           operationDir,
         );
+
+        // Render rollback for parent step AFTER all sub-steps (inline rendering)
+        if (
+          step.rollback &&
+          (step.rollback.command || step.rollback.instruction)
+        ) {
+          // Close current table
+          content += '\n';
+
+          // Add rollback heading
+          content += `h3. (<) Rollback for Step ${globalStepNumber}: ${escapeConfluenceMacros(step.name)}\n\n`;
+
+          // Render rollback table
+          content += '|| Environment || Rollback Action ||\n';
+
+          filteredOperation.environments.forEach((env: any) => {
+            let cellContent = '';
+
+            // Get rollback options (defaults)
+            const substituteVars = step.rollback?.options?.substitute_vars ?? true;
+            const showCommandSeparately =
+              step.rollback?.options?.show_command_separately ?? false;
+
+            // Process rollback instruction (always markdown)
+            if (step.rollback?.instruction) {
+              let displayInstruction = step.rollback.instruction;
+
+              if (resolveVars && substituteVars) {
+                displayInstruction = substituteVariables(
+                  displayInstruction,
+                  env.variables || {},
+                  step.variables,
+                );
+              }
+
+              const trimmed = displayInstruction.replace(/\s+$/, '');
+              cellContent += `{markdown}\n${trimmed}\n{markdown}`;
+            }
+
+            // Process rollback command (always code block)
+            if (step.rollback?.command) {
+              let displayCommand = step.rollback.command;
+
+              if (resolveVars && substituteVars) {
+                displayCommand = substituteVariables(
+                  displayCommand,
+                  env.variables || {},
+                  step.variables,
+                );
+              }
+
+              const trimmedCommand = displayCommand.replace(/\n+$/, '');
+
+              if (showCommandSeparately && step.rollback.instruction) {
+                cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+              } else if (!step.rollback.instruction) {
+                cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
+              } else {
+                cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
+              }
+            }
+
+            // Fallback
+            if (!cellContent) {
+              cellContent = '-';
+            }
+
+            // Add evidence area with environment-specific results for rollback
+            if (step.rollback?.evidence) {
+              cellContent += formatEvidenceArea(
+                step.rollback.evidence,
+                env.name,
+                operationDir,
+              );
+            }
+
+            content += `| ${env.name} | ${cellContent} |\n`;
+          });
+
+          content += '\n';
+
+          // Reopen table with headers
+          content += '|| Step ||';
+          filteredOperation.environments.forEach((env: any) => {
+            content += ` ${env.name} ||`;
+          });
+          content += '\n';
+        }
       }
 
       globalStepNumber++;

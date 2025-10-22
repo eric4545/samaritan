@@ -1,0 +1,40 @@
+name: Test Parent Step Rollback
+version: 1.0.0
+description: Test that parent steps with sub_steps AND rollback render the rollback correctly
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: prod
+
+steps:
+  - name: Deploy Application
+    type: manual
+    phase: flight
+    description: Deploy application with multiple sub-steps
+
+    sub_steps:
+      - name: Update Configuration
+        type: manual
+        instruction: Update the application configuration
+        command: kubectl apply -f config.yaml
+
+      - name: Deploy Pods
+        type: manual
+        instruction: Deploy the application pods
+        command: kubectl apply -f deployment.yaml
+
+      - name: Verify Deployment
+        type: manual
+        instruction: Verify all pods are running
+        command: kubectl get pods -n ${NAMESPACE}
+
+    # THIS IS THE CRITICAL ROLLBACK - must appear AFTER all sub-steps
+    rollback:
+      type: manual
+      description: Rollback deployment if issues detected
+      instruction: Rollback to previous deployment version
+      command: |
+        kubectl rollout undo deployment/app -n ${NAMESPACE}
+        kubectl wait --for=condition=available deployment/app -n ${NAMESPACE}
