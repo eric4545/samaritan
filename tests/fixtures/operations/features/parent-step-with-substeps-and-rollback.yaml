@@ -9,10 +9,11 @@ environments:
       NAMESPACE: prod
 
 steps:
-  - name: Deploy Application
+  - name: Stage 1 (1% Traffic)
+    section_heading: true
     type: manual
     phase: flight
-    description: Deploy application with multiple sub-steps
+    description: Migrate 1% traffic (weight=10, legacy weight=990)
 
     sub_steps:
       - name: Update Configuration
@@ -32,6 +33,7 @@ steps:
 
     # THIS IS THE CRITICAL ROLLBACK - must appear AFTER all sub-steps
     rollback:
+      section_heading: true
       type: manual
       description: Rollback deployment if issues detected
       instruction: Rollback to previous deployment version

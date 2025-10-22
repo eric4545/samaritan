@@ -82,6 +82,10 @@ export const FIXTURES = {
   parentStepWithSubstepsAndRollback:
     'tests/fixtures/operations/features/parent-step-with-substeps-and-rollback.yaml',
 
+  // Nested sub-step with rollback
+  nestedSubstepWithRollback:
+    'tests/fixtures/operations/features/nested-substep-with-rollback.yaml',
+
   // ===== Confluence Generator Tests =====
   multiLineCommand:
     'tests/fixtures/operations/confluence/multi-line-command.yaml',

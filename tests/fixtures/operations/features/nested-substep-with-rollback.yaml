@@ -1,0 +1,43 @@
+name: Nested Sub-step with Rollback
+version: 1.0.0
+description: Test rollback rendering for sub-steps that have their own nested sub-steps
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      ENV: prod
+
+steps:
+  - name: Traffic Migration
+    section_heading: true
+    type: manual
+    phase: flight
+    description: Multi-stage traffic migration
+
+    sub_steps:
+      - name: Stage 1 (1% Traffic)
+        type: manual
+        description: Migrate 1% traffic with multiple sub-steps
+
+        sub_steps:
+          - name: Update Configuration
+            type: manual
+            command: sed -i 's/weight=0/weight=10/' config.hcl
+
+          - name: Verify Changes
+            type: manual
+            command: cat config.hcl | grep weight
+
+          - name: Apply Changes
+            type: manual
+            command: terraform apply
+
+        # CRITICAL: This rollback must render AFTER all nested sub-steps
+        rollback:
+          type: manual
+          description: Rollback to previous configuration
+          instruction: Restore previous traffic weights
+          command: |
+            git restore config.hcl
+            terraform apply
