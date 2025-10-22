@@ -71,6 +71,8 @@ export const FIXTURES = {
     'tests/fixtures/operations/features/evidence-with-results.yaml',
   evidenceOverrideInUse:
     'tests/fixtures/operations/features/evidence-override-in-use.yaml',
+  reviewerAndEnvEvidence:
+    'tests/fixtures/operations/features/reviewer-and-env-evidence.yaml',
 
   // Step library imports (use: directive)
   useInSubSteps: 'tests/fixtures/operations/features/use-in-substeps.yaml',

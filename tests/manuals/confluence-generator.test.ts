@@ -92,13 +92,25 @@ describe('Confluence Generator Tests', () => {
     assert.match(content, /Step 1b: Sub Task B/);
   });
 
-  it('should create rollback table with environment columns', () => {
+  it('should NOT have grouped rollback section (inline only)', () => {
     const content = generateConfluence(deploymentOperationYaml);
 
-    // Should have rollback section
-    assert.match(content, /h2\. \(<\) Rollback Procedures/);
+    // Should NOT have grouped "Rollback Procedures" section for step rollbacks
+    // (Only global rollbacks should have h2 Rollback Procedures)
+    const rollbackSectionMatches = content.match(
+      /h2\. \(<\) Rollback Procedures/g,
+    );
+    // deploymentOperationYaml doesn't have global rollback, so should have 0 matches
+    assert.strictEqual(
+      rollbackSectionMatches,
+      null,
+      'Should not have grouped rollback section for step rollbacks',
+    );
 
-    // Should have table with environment columns
+    // Should have inline rollback with h4 heading (nested under h3 parent step)
+    assert.match(content, /h4\. \(<\) Rollback for Step/);
+
+    // Should have rollback table with environment columns (same format as regular steps)
     assert.match(content, /\|\| Step \|\| staging \|\| production \|\|/);
 
     // Should have rollback command
@@ -202,6 +214,13 @@ describe('Confluence Generator Tests', () => {
     assert.match(content, /\*Description:\*/);
   });
 
+  it('should include TOC macro after overview panel', () => {
+    const content = generateConfluence(deploymentOperationYaml);
+
+    // Should have {toc} macro after panel
+    assert.match(content, /\{panel\}\n\n\{toc\}\n/);
+  });
+
   it('should show generation info in footer', () => {
     const content = generateConfluence(deploymentOperationYaml);
 
@@ -249,9 +268,11 @@ describe('Confluence Generator Tests', () => {
     assert.match(content, /h3\. Database Migration/);
     assert.match(content, /Migrate database schema/);
 
-    // Should show PIC and timeline metadata under heading
-    assert.match(content, /\(i\) PIC: \[~DBA Team\]/);
-    assert.match(content, /\(time\) Timeline: 2024-01-15 10:00/);
+    // Should NOT show PIC and timeline metadata under heading (removed duplicate)
+    assert.doesNotMatch(
+      content,
+      /h3\. Database Migration[\s\S]*?\(i\) PIC: \[~DBA Team\][\s\S]*?\|\| Step \|\|/,
+    );
 
     // Should have table before section
     assert.match(content, /Step 1: Step Before Section/);
@@ -261,6 +282,17 @@ describe('Confluence Generator Tests', () => {
 
     // Section heading step should still be in table (but after heading)
     assert.match(content, /Step 2: Database Migration/);
+
+    // PIC and timeline should appear in table cell instead
+    assert.match(
+      content,
+      /Step 2: Database Migration[\s\S]*?\(i\) PIC: \[~DBA Team\]/,
+    );
+    assert.match(
+      content,
+      /Step 2: Database Migration[\s\S]*?\(time\) Timeline: 2024-01-15 10:00/,
+    );
+
     assert.match(content, /Step 3: Step After Section/);
   });
 
@@ -280,8 +312,11 @@ describe('Confluence Generator Tests', () => {
     // Should have description
     assert.match(content, /Setup required before deployment/);
 
-    // Should have PIC metadata
-    assert.match(content, /\(i\) PIC: \[~DevOps Team\]/);
+    // Should NOT have PIC metadata under section heading (removed duplicate)
+    assert.doesNotMatch(
+      content,
+      /h3\. Initial Setup[\s\S]*?\(i\) PIC: \[~DevOps Team\][\s\S]*?\|\| Step \|\|/,
+    );
 
     // After section heading, should have table with steps
     assert.match(
@@ -289,6 +324,13 @@ describe('Confluence Generator Tests', () => {
       /h3\. Initial Setup.*\|\| Step \|\| staging \|\| production \|\|/s,
     );
     assert.match(content, /Step 1: Initial Setup/);
+
+    // PIC should appear in table cell instead
+    assert.match(
+      content,
+      /Step 1: Initial Setup[\s\S]*?\(i\) PIC: \[~DevOps Team\]/,
+    );
+
     assert.match(content, /Step 2: Deploy App/);
     assert.match(content, /Step 3: Verify/);
   });
@@ -598,7 +640,94 @@ steps:
       'Should have DNS verification instruction',
     );
 
-    // Should have rollback section (in aggregate at the end, not inline)
-    assert.match(content, /Rollback for: Parent Deployment Step/);
+    // Should NOT have grouped rollback section (inline only now)
+    // The rollback should appear inline, not in aggregated section at the end
+    assert.match(
+      content,
+      /h4\. \(<\) Rollback for Step 1: Parent Deployment Step/,
+    );
+  });
+
+  it('should have rollback with correct heading hierarchy (h4 for parent, h5 for sub-steps)', () => {
+    const content = generateConfluence(deploymentOperationYaml);
+
+    // Parent step rollback should be h4 (parent is h3 section heading level)
+    assert.match(content, /h4\. \(<\) Rollback for Step/);
+
+    // Sub-step rollback should be h5 (sub-step section heading would be h4)
+    // This test needs a fixture with sub-step rollback - for now just verify parent works
+  });
+
+  it('should add blank line between sign-off and evidence for visual separation', () => {
+    const reviewerAndEvidenceYaml = loadYaml('reviewerAndEnvEvidence');
+    const content = generateConfluence(reviewerAndEvidenceYaml);
+
+    // Should have blank line (\n\n) between sign-off list and evidence expand
+    // Sign-off ends with "* [ ] Reviewer\n", then blank line, then evidence starts with "\n{expand"
+    assert.match(content, /\* \[ \] Reviewer\n\n\{expand:title=📎 Evidence/);
+  });
+
+  it('should not have empty table headers before section headings after rollback', () => {
+    // Create a test YAML with rollback followed by section heading
+    const rollbackThenSectionYaml = `name: Rollback Then Section
+version: 1.0.0
+description: Test rollback followed by section heading
+
+environments:
+  - name: staging
+    variables:
+      REPLICAS: "2"
+
+steps:
+  - name: Deploy Service
+    type: manual
+    phase: flight
+    command: kubectl apply -f deployment.yaml
+    rollback:
+      type: manual
+      command: kubectl delete -f deployment.yaml
+
+  - name: Verify Deployment
+    section_heading: true
+    type: manual
+    phase: flight
+    command: kubectl get pods
+`;
+    const content = generateConfluence(rollbackThenSectionYaml);
+
+    // Should have rollback
+    assert.match(content, /Rollback for Step 1/);
+
+    // Should NOT have empty table header between rollback and section heading
+    // Pattern to avoid: {code}\n\n|| Step || staging ||\n\nh3. Verify Deployment
+    assert.doesNotMatch(
+      content,
+      /\{code\}\n\n\|\| Step \|\|.*\n\nh3\. Verify Deployment/,
+    );
+
+    // Should have section heading immediately after rollback section (with just one newline separator)
+    assert.match(
+      content,
+      /Rollback for Step 1[\s\S]*?\n\nh3\. Verify Deployment/,
+    );
+  });
+
+  it('should have consistent rollback table format with environment columns', () => {
+    const content = generateConfluence(deploymentOperationYaml);
+
+    // Find the rollback section
+    const rollbackMatch = content.match(
+      /h4\. \(<\) Rollback for Step[\s\S]*?\|\| Step \|\| staging \|\| production \|\|/,
+    );
+    assert(
+      rollbackMatch !== null,
+      'Should find rollback section with environment columns',
+    );
+
+    // Should NOT have the old horizontal format (|| Environment || Rollback Action ||)
+    assert.doesNotMatch(content, /\|\| Environment \|\| Rollback Action \|\|/);
+
+    // Should have rollback row with "Rollback for:" prefix (may span multiple lines)
+    assert.match(content, /\| Rollback for:/);
   });
 });

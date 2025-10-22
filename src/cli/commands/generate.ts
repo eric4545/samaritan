@@ -924,6 +924,8 @@ ${filteredOperation.emergency ? '*Emergency Operation:* {status:colour=Red|title
 
 {panel}
 
+{toc}
+
 `;
 
   // Add Gantt chart if requested and steps have timeline data
@@ -1127,19 +1129,15 @@ ${filteredOperation.environments
           content += `${escapeConfluenceMacros(step.description)}\n\n`;
         }
 
-        // Add PIC and timeline if present in section heading
-        if (step.pic || step.timeline) {
-          const metadata = [];
-          if (step.pic)
-            metadata.push(`(i) PIC: [~${escapeConfluenceMacros(step.pic)}]`);
-          if (step.timeline)
-            metadata.push(
-              `(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`,
-            );
-          content += `_${metadata.join(' • ')}_\n\n`;
-        }
-
         // Reopen table
+        content += `|| Step ||`;
+        filteredOperation.environments.forEach((env: any) => {
+          content += ` ${env.name} ||`;
+        });
+        content += '\n';
+        tableOpen = true;
+      } else if (!tableOpen) {
+        // Open table for regular steps if not already open (e.g., after rollback closed it)
         content += `|| Step ||`;
         filteredOperation.environments.forEach((env: any) => {
           content += ` ${env.name} ||`;
@@ -1253,6 +1251,10 @@ ${filteredOperation.environments
 
         // Add evidence area with environment-specific results
         if (step.evidence) {
+          // Add blank line before evidence if sign-off exists
+          if (step.pic || step.reviewer) {
+            cellContent += '\n';
+          }
           cellContent += formatEvidenceArea(
             step.evidence,
             env.name,
@@ -1283,26 +1285,30 @@ ${filteredOperation.environments
           formatTimelineForDisplay,
           operationDir,
         );
+      }
 
-        // Render rollback for parent step AFTER all sub-steps (inline rendering)
-        if (
-          step.rollback &&
-          (step.rollback.command || step.rollback.instruction)
-        ) {
-          content += renderInlineRollback(
-            step.rollback,
-            `${globalStepNumber}`,
-            step.name,
-            3, // h3 for parent steps
-            filteredOperation.environments,
-            resolveVars,
-            step.variables,
-            escapeConfluenceMacros,
-            substituteVariables,
-            formatEvidenceArea,
-            operationDir,
-          );
-        }
+      // Render rollback for step AFTER all content (inline rendering)
+      // For parent steps with sub_steps, this renders after sub-steps
+      // For regular steps, this renders after the step row
+      if (
+        step.rollback &&
+        (step.rollback.command || step.rollback.instruction)
+      ) {
+        content += renderInlineRollback(
+          step.rollback,
+          `${globalStepNumber}`,
+          step.name,
+          3, // h3 for parent steps
+          filteredOperation.environments,
+          resolveVars,
+          step.variables,
+          escapeConfluenceMacros,
+          substituteVariables,
+          formatEvidenceArea,
+          operationDir,
+        );
+        // Rollback closes the table, so mark it as closed
+        tableOpen = false;
       }
 
       globalStepNumber++;
@@ -1311,107 +1317,16 @@ ${filteredOperation.environments
     content += '\n';
   });
 
-  // Rollback section if available
-  const stepsWithRollback = filteredOperation.steps.filter(
-    (step: any) => step.rollback,
-  );
-  if (stepsWithRollback.length > 0) {
-    content += `h2. (<) Rollback Procedures
-
-{warning}If deployment fails, execute the following rollback steps in reverse order:{warning}
-
-|| Step || ${filteredOperation.environments.map((e: any) => `${e.name} ||`).join(' ')}
-`;
-
-    stepsWithRollback.forEach((step: any) => {
-      // Build all rollback cells
-      const rollbackCells: string[] = [];
-      filteredOperation.environments.forEach((env: any) => {
-        let cellContent = '';
-
-        // Get rollback options (defaults)
-        const substituteVars = step.rollback?.options?.substitute_vars ?? true;
-        const showCommandSeparately =
-          step.rollback?.options?.show_command_separately ?? false;
-
-        // Process rollback instruction (always markdown)
-        if (step.rollback?.instruction) {
-          let displayInstruction = step.rollback.instruction;
-
-          if (resolveVars && substituteVars) {
-            displayInstruction = substituteVariables(
-              displayInstruction,
-              env.variables || {},
-              step.variables,
-            );
-          }
-
-          const trimmed = displayInstruction.replace(/\s+$/, '');
-          cellContent += `{markdown}\n${trimmed}\n{markdown}`;
-        }
-
-        // Process rollback command (always code block)
-        if (step.rollback?.command) {
-          let displayCommand = step.rollback.command;
-
-          if (resolveVars && substituteVars) {
-            displayCommand = substituteVariables(
-              displayCommand,
-              env.variables || {},
-              step.variables,
-            );
-          }
-
-          const trimmedCommand = displayCommand.replace(/\n+$/, '');
-
-          if (showCommandSeparately && step.rollback.instruction) {
-            cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
-          } else if (!step.rollback.instruction) {
-            cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
-          } else {
-            cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
-          }
-        }
-
-        // Fallback
-        if (!cellContent) {
-          cellContent = '-';
-        }
-
-        // Add evidence area with environment-specific results for rollback
-        if (step.rollback?.evidence) {
-          cellContent += formatEvidenceArea(
-            step.rollback.evidence,
-            env.name,
-            operationDir,
-          );
-        }
-
-        rollbackCells.push(cellContent);
-      });
-
-      // Construct complete row
-      content += `| Rollback for: ${step.name} | ${rollbackCells.join(' | ')} |\n`;
-    });
-
-    content += '\n';
-  }
-
   // Global rollback section if available
   if (
     filteredOperation.rollback?.steps &&
     filteredOperation.rollback.steps.length > 0
   ) {
-    if (stepsWithRollback.length === 0) {
-      // Only add header if not already added
-      content += `h2. (<) Rollback Procedures
+    content += `h2. (<) Rollback Procedures
 
 {warning}If deployment fails, execute the following rollback steps:{warning}
 
-`;
-    }
-
-    content += `h3. Global Rollback Plan
+h3. Global Rollback Plan
 
 *Automatic*: ${filteredOperation.rollback.automatic ? 'Yes' : 'No'}
 ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOperation.rollback.conditions.join(', ')}\n` : ''}
@@ -1514,7 +1429,7 @@ function renderInlineRollback(
   rollback: any,
   stepId: string,
   stepName: string,
-  headingLevel: number,
+  parentHeadingLevel: number,
   environments: any[],
   resolveVars: boolean,
   stepVariables: any,
@@ -1536,11 +1451,19 @@ function renderInlineRollback(
   // Close current table
   content += '\n';
 
-  // Add rollback heading
-  content += `h${headingLevel}. (<) Rollback for Step ${stepId}: ${escapeConfluenceMacros(stepName)}\n\n`;
+  // Add rollback heading - one level deeper than parent (capped at h6)
+  const rollbackHeadingLevel = Math.min(parentHeadingLevel + 1, 6);
+  content += `h${rollbackHeadingLevel}. (<) Rollback for Step ${stepId}: ${escapeConfluenceMacros(stepName)}\n\n`;
 
-  // Render rollback table
-  content += '|| Environment || Rollback Action ||\n';
+  // Render rollback table with environment columns (consistent with regular steps)
+  content += '|| Step ||';
+  environments.forEach((env: any) => {
+    content += ` ${env.name} ||`;
+  });
+  content += '\n';
+
+  // Build rollback row
+  const rollbackCells: string[] = [];
 
   environments.forEach((env: any) => {
     let cellContent = '';
@@ -1594,17 +1517,16 @@ function renderInlineRollback(
       );
     }
 
-    content += `| ${env.name} | ${cellContent} |\n`;
+    rollbackCells.push(cellContent);
   });
+
+  // Write single rollback row
+  content += `| Rollback for: ${escapeConfluenceMacros(stepName)} | ${rollbackCells.join(' | ')} |\n`;
 
   content += '\n';
 
-  // Reopen table with headers
-  content += '|| Step ||';
-  environments.forEach((env: any) => {
-    content += ` ${env.name} ||`;
-  });
-  content += '\n';
+  // Don't reopen table here - let the next step/substep handle opening a new table if needed
+  // This prevents empty table headers before section headings
 
   return content;
 }
@@ -1680,18 +1602,6 @@ function addConfluenceSubStepRows(
       content += `${headingPrefix} ${escapeConfluenceMacros(subStep.name)}\n\n`;
       if (subStep.description) {
         content += `${escapeConfluenceMacros(subStep.description)}\n\n`;
-      }
-
-      // Add PIC and timeline if present
-      if (subStep.pic || subStep.timeline) {
-        const metadata = [];
-        if (subStep.pic)
-          metadata.push(`(i) PIC: [~${escapeConfluenceMacros(subStep.pic)}]`);
-        if (subStep.timeline)
-          metadata.push(
-            `(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(subStep.timeline))}`,
-          );
-        content += `_${metadata.join(' • ')}_\n\n`;
       }
 
       // Reopen table
@@ -1794,6 +1704,10 @@ function addConfluenceSubStepRows(
 
       // Add evidence area with environment-specific results
       if (subStep.evidence) {
+        // Add blank line before evidence if sign-off exists
+        if (subStep.pic || subStep.reviewer) {
+          cellContent += '\n';
+        }
         cellContent += formatEvidenceArea(
           subStep.evidence,
           env.name,
@@ -1830,12 +1744,13 @@ function addConfluenceSubStepRows(
         subStep.rollback &&
         (subStep.rollback.command || subStep.rollback.instruction)
       ) {
-        const headingLevel = Math.min(4 + Math.ceil(depth / 2), 6);
+        // Calculate parent heading level (same formula as section heading)
+        const parentHeadingLevel = Math.min(4 + Math.ceil((depth - 1) / 2), 6);
         content += renderInlineRollback(
           subStep.rollback,
           subStepId,
           subStep.name,
-          headingLevel,
+          parentHeadingLevel,
           environments,
           resolveVars,
           subStep.variables,

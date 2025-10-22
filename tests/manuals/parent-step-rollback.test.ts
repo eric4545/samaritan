@@ -70,28 +70,23 @@ describe('Parent Step Rollback Rendering', () => {
     assert.match(confluence, /Step 1b: Deploy Pods/);
     assert.match(confluence, /Step 1c: Verify Deployment/);
 
-    // CRITICAL: Rollback should be rendered INLINE after sub-steps, not just in aggregate
+    // CRITICAL: Rollback should be rendered INLINE after sub-steps (no grouped section anymore)
     const step1cIndex = confluence.indexOf('Step 1c: Verify Deployment');
-    const aggregateIndex = confluence.indexOf('h2. (<) Rollback Procedures');
 
-    // Find the inline rollback (uses "Step 1:" format for inline, not aggregate format)
+    // Find the inline rollback (uses h4 heading now, nested under h3 parent step)
     const inlineRollbackIndex = confluence.indexOf(
-      'h3. (<) Rollback for Step 1: Stage 1 (1% Traffic)',
+      'h4. (<) Rollback for Step 1: Stage 1 (1% Traffic)',
     );
 
-    // The inline rollback should appear BETWEEN last sub-step and aggregate section
+    // The inline rollback should appear AFTER last sub-step
     assert.ok(inlineRollbackIndex > 0, 'Rollback should exist inline');
     assert.ok(
       inlineRollbackIndex > step1cIndex,
       'Rollback should appear after last sub-step (Step 1c)',
     );
-    assert.ok(
-      inlineRollbackIndex < aggregateIndex,
-      'Rollback should appear INLINE (before aggregate section)',
-    );
 
-    // Verify rollback content in inline section
-    const inlineSection = confluence.substring(step1cIndex, aggregateIndex);
+    // Verify rollback content appears in the inline section
+    const inlineSection = confluence.substring(step1cIndex);
     assert.match(inlineSection, /Rollback to previous deployment version/);
     assert.match(inlineSection, /kubectl rollout undo/);
   });
