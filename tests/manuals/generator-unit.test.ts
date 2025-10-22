@@ -2320,14 +2320,50 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should include API scale down command',
     );
 
-    // Check that rollback sections appear after the corresponding sub-step
+    // CRITICAL: Check that ALL sub-steps appear BEFORE ALL rollbacks (correct ordering)
     const step1aIndex = markdown.indexOf('[ ] Step 1a: Deploy Database');
+    const step1bIndex = markdown.indexOf('[ ] Step 1b: Deploy API');
+    const step1cIndex = markdown.indexOf('[ ] Step 1c: Monitor Health');
     const rollback1aIndex = markdown.indexOf(
       '#### 🔄 Rollback for Step 1a: Deploy Database',
     );
+    const rollback1bIndex = markdown.indexOf(
+      '#### 🔄 Rollback for Step 1b: Deploy API',
+    );
+    const rollback1cIndex = markdown.indexOf(
+      '#### 🔄 Rollback for Step 1c: Monitor Health',
+    );
+
+    // Verify all sub-steps come before any rollback
     assert(
-      rollback1aIndex > step1aIndex,
-      'Rollback section should appear after the sub-step',
+      step1aIndex < rollback1aIndex,
+      'Step 1a should appear before its rollback',
+    );
+    assert(
+      step1bIndex < rollback1aIndex,
+      'Step 1b should appear before rollback 1a (all steps before all rollbacks)',
+    );
+    assert(
+      step1cIndex < rollback1aIndex,
+      'Step 1c should appear before rollback 1a (all steps before all rollbacks)',
+    );
+    assert(
+      step1cIndex < rollback1bIndex,
+      'Step 1c should appear before rollback 1b (last step before first rollback)',
+    );
+    assert(
+      step1cIndex < rollback1cIndex,
+      'Step 1c should appear before rollback 1c',
+    );
+
+    // Verify rollbacks appear in order after all steps
+    assert(
+      rollback1aIndex < rollback1bIndex,
+      'Rollback 1a should appear before rollback 1b',
+    );
+    assert(
+      rollback1bIndex < rollback1cIndex,
+      'Rollback 1b should appear before rollback 1c',
     );
   });
 });

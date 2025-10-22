@@ -521,7 +521,7 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
   ): Promise<void> {
     console.log(`📅 Generating schedule for: ${operationFile}`);
 
-    const operation = parseOperation(operationFile);
+    const operation = await parseOperation(operationFile);
     const schedule = this.createGanttSchedule(operation);
     const outputFile =
       options.output ||
@@ -1285,100 +1285,6 @@ ${filteredOperation.environments
         );
       }
 
-      // Inline rollback rendering - render immediately after step if present
-      if (
-        step.rollback &&
-        (step.rollback.command || step.rollback.instruction)
-      ) {
-        // Close current table
-        content += '\n';
-
-        // Add rollback heading
-        content += `h3. (<) Rollback for Step ${globalStepNumber}: ${escapeConfluenceMacros(step.name)}\n\n`;
-
-        // Render rollback table with environment columns
-        content += '|| Environment ||';
-        filteredOperation.environments.forEach((env: any) => {
-          content += ` ${env.name} ||`;
-        });
-        content += '\n';
-
-        // Build rollback row
-        content += '| Rollback Action |';
-        filteredOperation.environments.forEach((env: any) => {
-          let cellContent = '';
-
-          // Get rollback options (defaults)
-          const substituteVars =
-            step.rollback?.options?.substitute_vars ?? true;
-          const showCommandSeparately =
-            step.rollback?.options?.show_command_separately ?? false;
-
-          // Process rollback instruction (always markdown)
-          if (step.rollback?.instruction) {
-            let displayInstruction = step.rollback.instruction;
-
-            if (resolveVars && substituteVars) {
-              displayInstruction = substituteVariables(
-                displayInstruction,
-                env.variables || {},
-                step.variables,
-              );
-            }
-
-            const trimmed = displayInstruction.replace(/\s+$/, '');
-            cellContent += `{markdown}\n${trimmed}\n{markdown}`;
-          }
-
-          // Process rollback command (always code block)
-          if (step.rollback?.command) {
-            let displayCommand = step.rollback.command;
-
-            if (resolveVars && substituteVars) {
-              displayCommand = substituteVariables(
-                displayCommand,
-                env.variables || {},
-                step.variables,
-              );
-            }
-
-            const trimmedCommand = displayCommand.replace(/\n+$/, '');
-
-            if (showCommandSeparately && step.rollback.instruction) {
-              cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
-            } else if (!step.rollback.instruction) {
-              cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
-            } else {
-              cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
-            }
-          }
-
-          // Fallback
-          if (!cellContent) {
-            cellContent = '-';
-          }
-
-          // Add evidence area with environment-specific results for rollback
-          if (step.rollback?.evidence) {
-            cellContent += formatEvidenceArea(
-              step.rollback.evidence,
-              env.name,
-              operationDir,
-            );
-          }
-
-          content += ` ${cellContent} |`;
-        });
-        content += '\n\n';
-
-        // Reopen table with headers
-        content += '|| Step ||';
-        filteredOperation.environments.forEach((env: any) => {
-          content += ` ${env.name} ||`;
-        });
-        content += '\n';
-      }
-
       globalStepNumber++;
     });
 
@@ -1778,84 +1684,6 @@ function addConfluenceSubStepRows(
 
     // Construct complete row with all cells
     content += `| ${subStepInfo} | ${subCommandCells.join(' | ')} |\n`;
-
-    // Inline rollback rendering for sub-steps - render immediately after sub-step if present
-    if (
-      subStep.rollback &&
-      (subStep.rollback.command || subStep.rollback.instruction)
-    ) {
-      // Add rollback row with label and environment-specific cells
-      const rollbackLabel = `(back) *Rollback for Step ${subStepId}*: ${escapeConfluenceMacros(subStep.name)}`;
-
-      // Build rollback cells for each environment
-      const rollbackCells: string[] = [];
-      environments.forEach((env: any) => {
-        let cellContent = '';
-
-        // Get rollback options (defaults)
-        const substituteVars =
-          subStep.rollback?.options?.substitute_vars ?? true;
-        const showCommandSeparately =
-          subStep.rollback?.options?.show_command_separately ?? false;
-
-        // Process rollback instruction (always markdown)
-        if (subStep.rollback?.instruction) {
-          let displayInstruction = subStep.rollback.instruction;
-
-          if (resolveVars && substituteVars) {
-            displayInstruction = substituteVariables(
-              displayInstruction,
-              env.variables || {},
-              subStep.variables,
-            );
-          }
-
-          const trimmed = displayInstruction.replace(/\s+$/, '');
-          cellContent += `{markdown}\n${trimmed}\n{markdown}`;
-        }
-
-        // Process rollback command (always code block)
-        if (subStep.rollback?.command) {
-          let displayCommand = subStep.rollback.command;
-
-          if (resolveVars && substituteVars) {
-            displayCommand = substituteVariables(
-              displayCommand,
-              env.variables || {},
-              subStep.variables,
-            );
-          }
-
-          const trimmedCommand = displayCommand.replace(/\n+$/, '');
-
-          if (showCommandSeparately && subStep.rollback.instruction) {
-            cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
-          } else if (!subStep.rollback.instruction) {
-            cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
-          } else {
-            cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
-          }
-        }
-
-        // Fallback
-        if (!cellContent) {
-          cellContent = '-';
-        }
-
-        // Add evidence area with environment-specific results for rollback
-        if (subStep.rollback?.evidence) {
-          cellContent += formatEvidenceArea(
-            subStep.rollback.evidence,
-            env.name,
-            operationDir,
-          );
-        }
-
-        rollbackCells.push(cellContent);
-      });
-
-      content += `| ${rollbackLabel} | ${rollbackCells.join(' | ')} |\n`;
-    }
 
     // Recursively add nested sub-steps
     if (subStep.sub_steps && subStep.sub_steps.length > 0) {

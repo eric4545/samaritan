@@ -598,7 +598,7 @@ steps:
       'Should have DNS verification instruction',
     );
 
-    // Should have rollback section
-    assert.match(content, /Rollback for Step 1: Parent Deployment Step/);
+    // Should have rollback section (in aggregate at the end, not inline)
+    assert.match(content, /Rollback for: Parent Deployment Step/);
   });
 });

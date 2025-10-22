@@ -611,6 +611,7 @@ function addSubStepRows(
   resolveVariables: boolean | undefined,
   dataRows: any[],
 ): void {
+  // First loop: render all sub-step rows
   subSteps.forEach((subStep, subIndex) => {
     // Determine numbering based on depth
     // Odd depths (1, 3, 5): use letters (a, b, c)
@@ -771,11 +772,34 @@ function addSubStepRows(
 
     dataRows.push(tableRow(subCells));
 
-    // Inline rollback rendering for sub-steps - add rollback row immediately after sub-step if present
+    // Recursively add nested sub-steps
+    if (subStep.sub_steps && subStep.sub_steps.length > 0) {
+      addSubStepRows(
+        subStep.sub_steps,
+        environments,
+        subStepId,
+        depth + 1,
+        resolveVariables,
+        dataRows,
+      );
+    }
+  });
+
+  // Second loop: render all rollback rows
+  subSteps.forEach((subStep, subIndex) => {
     if (
       subStep.rollback &&
       (subStep.rollback.command || subStep.rollback.instruction)
     ) {
+      // Determine numbering based on depth
+      let subStepId: string;
+      if (depth % 2 === 1) {
+        const letter = indexToLetters(subIndex);
+        subStepId = `${stepPrefix}${letter}`;
+      } else {
+        subStepId = `${stepPrefix}${subIndex + 1}`;
+      }
+
       // Create a rollback row with merged cells
       const rollbackLabel = `🔄 Rollback for Step ${subStepId}: ${subStep.name}`;
 
@@ -838,18 +862,6 @@ function addSubStepRows(
       });
 
       dataRows.push(tableRow(rollbackCells));
-    }
-
-    // Recursively add nested sub-steps
-    if (subStep.sub_steps && subStep.sub_steps.length > 0) {
-      addSubStepRows(
-        subStep.sub_steps,
-        environments,
-        subStepId,
-        depth + 1,
-        resolveVariables,
-        dataRows,
-      );
     }
   });
 }
