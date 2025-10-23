@@ -1251,10 +1251,6 @@ ${filteredOperation.environments
 
         // Add evidence area with environment-specific results
         if (step.evidence) {
-          // Add blank line before evidence if sign-off exists
-          if (step.pic || step.reviewer) {
-            cellContent += '\n';
-          }
           cellContent += formatEvidenceArea(
             step.evidence,
             env.name,
@@ -1704,10 +1700,6 @@ function addConfluenceSubStepRows(
 
       // Add evidence area with environment-specific results
       if (subStep.evidence) {
-        // Add blank line before evidence if sign-off exists
-        if (subStep.pic || subStep.reviewer) {
-          cellContent += '\n';
-        }
         cellContent += formatEvidenceArea(
           subStep.evidence,
           env.name,

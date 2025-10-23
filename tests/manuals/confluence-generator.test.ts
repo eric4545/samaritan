@@ -658,15 +658,6 @@ steps:
     // This test needs a fixture with sub-step rollback - for now just verify parent works
   });
 
-  it('should add blank line between sign-off and evidence for visual separation', () => {
-    const reviewerAndEvidenceYaml = loadYaml('reviewerAndEnvEvidence');
-    const content = generateConfluence(reviewerAndEvidenceYaml);
-
-    // Should have blank line (\n\n) between sign-off list and evidence expand
-    // Sign-off ends with "* [ ] Reviewer\n", then blank line, then evidence starts with "\n{expand"
-    assert.match(content, /\* \[ \] Reviewer\n\n\{expand:title=📎 Evidence/);
-  });
-
   it('should not have empty table headers before section headings after rollback', () => {
     // Create a test YAML with rollback followed by section heading
     const rollbackThenSectionYaml = `name: Rollback Then Section
