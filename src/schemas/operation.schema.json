@@ -157,39 +157,43 @@
                 }
               },
               "results": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": ["type"],
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "enum": [
-                        "screenshot",
-                        "log",
-                        "command_output",
-                        "file",
-                        "photo",
-                        "video"
-                      ]
+                "type": "object",
+                "description": "Environment-keyed evidence results (e.g., { staging: [...], production: [...] })",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["type"],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "screenshot",
+                          "log",
+                          "command_output",
+                          "file",
+                          "photo",
+                          "video"
+                        ]
+                      },
+                      "file": {
+                        "type": "string",
+                        "description": "File path reference (relative to operation file)"
+                      },
+                      "content": {
+                        "type": "string",
+                        "description": "Inline content (for text-based evidence)"
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Optional description or context"
+                      }
                     },
-                    "file": {
-                      "type": "string",
-                      "description": "File path reference (relative to operation file)"
-                    },
-                    "content": {
-                      "type": "string",
-                      "description": "Inline content (for text-based evidence)"
-                    },
-                    "description": {
-                      "type": "string",
-                      "description": "Optional description or context"
-                    }
-                  },
-                  "oneOf": [
-                    { "required": ["file"] },
-                    { "required": ["content"] }
-                  ]
+                    "oneOf": [
+                      { "required": ["file"] },
+                      { "required": ["content"] }
+                    ]
+                  }
                 }
               }
             }
