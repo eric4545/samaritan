@@ -1,0 +1,95 @@
+name: Environment-Specific Steps Test
+version: 1.0.0
+description: Test operation for 'when' conditional rendering and 'variants' feature
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      REPLICAS: 2
+      DATABASE: staging-db
+  - name: preprod
+    description: Pre-production environment
+    variables:
+      REPLICAS: 5
+      DATABASE: preprod-db
+  - name: prod
+    description: Production environment
+    variables:
+      REPLICAS: 10
+      DATABASE: prod-db
+
+steps:
+  # Step 1: Only for production (using 'when')
+  - name: Enable production monitoring
+    type: manual
+    when: [prod]
+    instruction: |
+      Configure DataDog production alerts
+
+      Enable high-priority monitoring
+    pic: ops-lead@example.com
+    reviewer: sre-manager@example.com
+
+  # Step 2: All environments, but with variants
+  - name: Deploy application
+    type: manual
+    instruction: kubectl apply -f deployment.yaml
+    command: kubectl apply -f deployment.yaml
+    variants:
+      prod:
+        instruction: |
+          Deploy to production with extra caution
+
+          Use blue-green deployment strategy
+        command: kubectl apply -f deployment.yaml --replicas=10 --strategy=blue-green
+        timeout: 600
+        pic: senior-sre@example.com
+        reviewer: ops-manager@example.com
+      staging:
+        command: kubectl apply -f deployment-staging.yaml --replicas=2
+
+  # Step 3: Only for staging and preprod (using 'when')
+  - name: Run integration tests
+    type: manual
+    when: [staging, preprod]
+    instruction: Execute full integration test suite
+    command: npm run test:integration
+    pic: qa-team@example.com
+
+  # Step 4: All environments with different PIC per env
+  - name: Verify deployment
+    type: manual
+    instruction: Check that all pods are running
+    command: kubectl get pods
+    variants:
+      staging:
+        pic: junior-dev@example.com
+      preprod:
+        pic: mid-dev@example.com
+        reviewer: senior-dev@example.com
+      prod:
+        pic: senior-sre@example.com
+        reviewer: ops-manager@example.com
+        evidence:
+          required: true
+          types: [screenshot, command_output]
+
+  # Step 5: Combined - conditional rendering AND variants
+  - name: Database migration
+    type: manual
+    when: [preprod, prod]
+    instruction: Run database migration
+    command: npm run migrate
+    pic: db-admin@example.com
+    variants:
+      prod:
+        instruction: |
+          Run database migration with backup
+
+          IMPORTANT: Take snapshot before migration
+        command: |
+          npm run db:backup
+          npm run migrate --safe-mode
+        reviewer: senior-dba@example.com
+        timeout: 1800

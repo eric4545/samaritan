@@ -269,6 +269,42 @@ function generateGanttChart(operation: Operation): string {
   return gantt;
 }
 
+/**
+ * Merge step variants for a specific environment with base step properties
+ * Returns the merged step (base + variant overrides) for the given environment
+ */
+function mergeStepVariant(step: Step, environmentName: string): Step {
+  if (!step.variants || !step.variants[environmentName]) {
+    return step;
+  }
+
+  const variant = step.variants[environmentName];
+  return {
+    ...step,
+    ...variant,
+    // Preserve base properties that shouldn't be overridden
+    when: step.when,
+    variants: step.variants,
+  };
+}
+
+/**
+ * Check if a step should be rendered for a specific environment
+ * Returns true if the step applies to this environment
+ */
+function shouldRenderStepForEnvironment(
+  step: Step,
+  environmentName: string,
+): boolean {
+  // If 'when' is not defined, step applies to all environments
+  if (!step.when || step.when.length === 0) {
+    return true;
+  }
+
+  // Check if this environment is in the 'when' list
+  return step.when.includes(environmentName);
+}
+
 function generateStepRow(
   step: Step,
   stepNumber: number,
@@ -351,22 +387,31 @@ function generateStepRow(
 
   // Subsequent columns: Commands for each environment
   environments.forEach((env) => {
+    // Check if step should be rendered for this environment
+    if (!shouldRenderStepForEnvironment(step, env.name)) {
+      rows += ' — |';
+      return;
+    }
+
+    // Merge variant for this environment (if exists)
+    const effectiveStep = mergeStepVariant(step, env.name);
+
     let cellContent = '';
 
-    // Get step-level options (defaults)
-    const substituteVars = step.options?.substitute_vars ?? true;
+    // Get step-level options (defaults) from effective step
+    const substituteVars = effectiveStep.options?.substitute_vars ?? true;
     const showCommandSeparately =
-      step.options?.show_command_separately ?? false;
+      effectiveStep.options?.show_command_separately ?? false;
 
     // Process instruction (markdown content)
-    if (step.instruction) {
-      let displayInstruction = step.instruction;
+    if (effectiveStep.instruction) {
+      let displayInstruction = effectiveStep.instruction;
 
       if (resolveVariables && substituteVars) {
         displayInstruction = substituteVariables(
           displayInstruction,
           env.variables || {},
-          step.variables,
+          effectiveStep.variables,
         );
       }
 
@@ -379,14 +424,14 @@ function generateStepRow(
     }
 
     // Process command (code content)
-    if (step.command) {
-      let displayCommand = step.command;
+    if (effectiveStep.command) {
+      let displayCommand = effectiveStep.command;
 
       if (resolveVariables && substituteVars) {
         displayCommand = substituteVariables(
           displayCommand,
           env.variables || {},
-          step.variables,
+          effectiveStep.variables,
         );
       }
 
@@ -398,10 +443,10 @@ function generateStepRow(
         .replace(/`/g, '\\`')
         .replace(/<br>$/, ''); // Remove trailing <br> tag
 
-      if (showCommandSeparately && step.instruction) {
+      if (showCommandSeparately && effectiveStep.instruction) {
         // Show command separately with label
         cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
-      } else if (!step.instruction) {
+      } else if (!effectiveStep.instruction) {
         // No instruction, just show command
         cellContent += `\`${cleanCommand}\``;
       } else {
@@ -412,26 +457,28 @@ function generateStepRow(
 
     // Fallback for steps with neither
     if (!cellContent) {
-      if (step.sub_steps && step.sub_steps.length > 0) {
+      if (effectiveStep.sub_steps && effectiveStep.sub_steps.length > 0) {
         cellContent = '_(see substeps below)_';
       } else {
-        cellContent = `_(${step.type} step)_`;
+        cellContent = `_(${effectiveStep.type} step)_`;
       }
     }
 
     // Add sign-off checkboxes if PIC or Reviewer is set (per environment)
-    if (step.pic || step.reviewer) {
+    // Use effectiveStep to respect variant overrides for PIC and reviewer
+    if (effectiveStep.pic || effectiveStep.reviewer) {
       cellContent += '<br><br>**Sign-off:**';
-      if (step.pic) {
+      if (effectiveStep.pic) {
         cellContent += '<br>- [ ] PIC';
       }
-      if (step.reviewer) {
+      if (effectiveStep.reviewer) {
         cellContent += '<br>- [ ] Reviewer';
       }
     }
 
     // Add environment-specific evidence results
-    cellContent += formatEvidenceInfo(step.evidence, env.name, operationDir);
+    // Use effectiveStep to respect variant overrides for evidence
+    cellContent += formatEvidenceInfo(effectiveStep.evidence, env.name, operationDir);
 
     rows += ` ${cellContent} |`;
   });
@@ -664,22 +711,31 @@ function generateSubStepRow(
 
   // Subsequent columns: Commands for each environment
   environments.forEach((env) => {
+    // Check if step should be rendered for this environment
+    if (!shouldRenderStepForEnvironment(step, env.name)) {
+      rows += ' — |';
+      return;
+    }
+
+    // Merge variant for this environment (if exists)
+    const effectiveStep = mergeStepVariant(step, env.name);
+
     let cellContent = '';
 
-    // Get sub-step options (defaults)
-    const substituteVars = step.options?.substitute_vars ?? true;
+    // Get sub-step options (defaults) from effective step
+    const substituteVars = effectiveStep.options?.substitute_vars ?? true;
     const showCommandSeparately =
-      step.options?.show_command_separately ?? false;
+      effectiveStep.options?.show_command_separately ?? false;
 
     // Process instruction (markdown content)
-    if (step.instruction) {
-      let displayInstruction = step.instruction;
+    if (effectiveStep.instruction) {
+      let displayInstruction = effectiveStep.instruction;
 
       if (resolveVariables && substituteVars) {
         displayInstruction = substituteVariables(
           displayInstruction,
           env.variables || {},
-          step.variables,
+          effectiveStep.variables,
         );
       }
 
@@ -692,14 +748,14 @@ function generateSubStepRow(
     }
 
     // Process command (code content)
-    if (step.command) {
-      let displayCommand = step.command;
+    if (effectiveStep.command) {
+      let displayCommand = effectiveStep.command;
 
       if (resolveVariables && substituteVars) {
         displayCommand = substituteVariables(
           displayCommand,
           env.variables || {},
-          step.variables,
+          effectiveStep.variables,
         );
       }
 
@@ -711,10 +767,10 @@ function generateSubStepRow(
         .replace(/`/g, '\\`')
         .replace(/<br>$/, ''); // Remove trailing <br> tag
 
-      if (showCommandSeparately && step.instruction) {
+      if (showCommandSeparately && effectiveStep.instruction) {
         // Show command separately with label
         cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
-      } else if (!step.instruction) {
+      } else if (!effectiveStep.instruction) {
         // No instruction, just show command
         cellContent += `\`${cleanCommand}\``;
       } else {
@@ -725,23 +781,25 @@ function generateSubStepRow(
 
     // Fallback for sub-steps with neither
     if (!cellContent) {
-      if (step.sub_steps && step.sub_steps.length > 0) {
+      if (effectiveStep.sub_steps && effectiveStep.sub_steps.length > 0) {
         cellContent = '_(see substeps below)_';
       } else {
-        cellContent = `_(${step.type} step)_`;
+        cellContent = `_(${effectiveStep.type} step)_`;
       }
     }
 
     // Add environment-specific evidence results
-    cellContent += formatEvidenceInfo(step.evidence, env.name, operationDir);
+    // Use effectiveStep to respect variant overrides for evidence
+    cellContent += formatEvidenceInfo(effectiveStep.evidence, env.name, operationDir);
 
     // Add sign-off checkboxes if PIC or Reviewer is set (per environment)
-    if (step.pic || step.reviewer) {
+    // Use effectiveStep to respect variant overrides for PIC and reviewer
+    if (effectiveStep.pic || effectiveStep.reviewer) {
       cellContent += '<br><br>**Sign-off:**';
-      if (step.pic) {
+      if (effectiveStep.pic) {
         cellContent += '<br>- [ ] PIC';
       }
-      if (step.reviewer) {
+      if (effectiveStep.reviewer) {
         cellContent += '<br>- [ ] Reviewer';
       }
     }

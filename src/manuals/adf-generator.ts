@@ -21,6 +21,42 @@ import { indexToLetters } from '../lib/letter-sequence';
 import type { Environment, Operation, Step } from '../models/operation';
 
 /**
+ * Merge step variants for a specific environment with base step properties
+ * Returns the merged step (base + variant overrides) for the given environment
+ */
+function mergeStepVariant(step: Step, environmentName: string): Step {
+  if (!step.variants || !step.variants[environmentName]) {
+    return step;
+  }
+
+  const variant = step.variants[environmentName];
+  return {
+    ...step,
+    ...variant,
+    // Preserve base properties that shouldn't be overridden
+    when: step.when,
+    variants: step.variants,
+  };
+}
+
+/**
+ * Check if a step should be rendered for a specific environment
+ * Returns true if the step applies to this environment
+ */
+function shouldRenderStepForEnvironment(
+  step: Step,
+  environmentName: string,
+): boolean {
+  // If 'when' is not defined, step applies to all environments
+  if (!step.when || step.when.length === 0) {
+    return true;
+  }
+
+  // Check if this environment is in the 'when' list
+  return step.when.includes(environmentName);
+}
+
+/**
  * Convert Operation to Atlassian Document Format (ADF)
  */
 export function generateADF(
@@ -502,22 +538,31 @@ function createStepsTable(
     const cells = [tableCell()(...stepCellContent)];
 
     environments.forEach((env) => {
+      // Check if step should be rendered for this environment
+      if (!shouldRenderStepForEnvironment(step, env.name)) {
+        cells.push(tableCell()(paragraph(text('—'))));
+        return;
+      }
+
+      // Merge variant for this environment (if exists)
+      const effectiveStep = mergeStepVariant(step, env.name);
+
       const cellContent = [];
 
-      // Get step-level options (defaults)
-      const substituteVars = step.options?.substitute_vars ?? true;
+      // Get step-level options (defaults) from effective step
+      const substituteVars = effectiveStep.options?.substitute_vars ?? true;
       const showCommandSeparately =
-        step.options?.show_command_separately ?? false;
+        effectiveStep.options?.show_command_separately ?? false;
 
       // Process instruction (paragraph/text content)
-      if (step.instruction) {
-        let displayInstruction = step.instruction;
+      if (effectiveStep.instruction) {
+        let displayInstruction = effectiveStep.instruction;
 
         if (resolveVariables && substituteVars) {
           displayInstruction = substituteVariables(
             displayInstruction,
             env.variables || {},
-            step.variables,
+            effectiveStep.variables,
           );
         }
 
@@ -525,18 +570,18 @@ function createStepsTable(
       }
 
       // Process command (code block)
-      if (step.command) {
-        let displayCommand = step.command;
+      if (effectiveStep.command) {
+        let displayCommand = effectiveStep.command;
 
         if (resolveVariables && substituteVars) {
           displayCommand = substituteVariables(
             displayCommand,
             env.variables || {},
-            step.variables,
+            effectiveStep.variables,
           );
         }
 
-        if (showCommandSeparately && step.instruction) {
+        if (showCommandSeparately && effectiveStep.instruction) {
           cellContent.push(paragraph(strong(text('Command:'))));
         }
 
@@ -545,26 +590,28 @@ function createStepsTable(
 
       // Fallback for steps with neither
       if (cellContent.length === 0) {
-        if (step.sub_steps && step.sub_steps.length > 0) {
+        if (effectiveStep.sub_steps && effectiveStep.sub_steps.length > 0) {
           cellContent.push(paragraph(em(text('(see substeps below)'))));
         } else {
-          cellContent.push(paragraph(em(text(`(${step.type} step)`))));
+          cellContent.push(paragraph(em(text(`(${effectiveStep.type} step)`))));
         }
       }
 
       // Add sign-off checkboxes if PIC or Reviewer is set (per environment)
-      if (step.pic || step.reviewer) {
+      // Use effectiveStep to respect variant overrides for PIC and reviewer
+      if (effectiveStep.pic || effectiveStep.reviewer) {
         cellContent.push(paragraph(strong(text('Sign-off:'))));
-        if (step.pic) {
+        if (effectiveStep.pic) {
           cellContent.push(paragraph(text('- [ ] PIC')));
         }
-        if (step.reviewer) {
+        if (effectiveStep.reviewer) {
           cellContent.push(paragraph(text('- [ ] Reviewer')));
         }
       }
 
       // Add environment-specific evidence results
-      const envEvidenceInfo = formatEvidenceInfo(step.evidence, env.name);
+      // Use effectiveStep to respect variant overrides for evidence
+      const envEvidenceInfo = formatEvidenceInfo(effectiveStep.evidence, env.name);
       if (envEvidenceInfo) {
         if (Array.isArray(envEvidenceInfo)) {
           cellContent.push(...envEvidenceInfo);
@@ -707,22 +754,31 @@ function addSubStepRows(
     const subCells = [tableCell()(...subStepCellContent)];
 
     environments.forEach((env) => {
+      // Check if substep should be rendered for this environment
+      if (!shouldRenderStepForEnvironment(subStep, env.name)) {
+        subCells.push(tableCell()(paragraph(text('—'))));
+        return;
+      }
+
+      // Merge variant for this environment (if exists)
+      const effectiveSubStep = mergeStepVariant(subStep, env.name);
+
       const cellContent = [];
 
-      // Get sub-step options (defaults)
-      const substituteVars = subStep.options?.substitute_vars ?? true;
+      // Get sub-step options (defaults) from effective substep
+      const substituteVars = effectiveSubStep.options?.substitute_vars ?? true;
       const showCommandSeparately =
-        subStep.options?.show_command_separately ?? false;
+        effectiveSubStep.options?.show_command_separately ?? false;
 
       // Process instruction (paragraph/text content)
-      if (subStep.instruction) {
-        let displayInstruction = subStep.instruction;
+      if (effectiveSubStep.instruction) {
+        let displayInstruction = effectiveSubStep.instruction;
 
         if (resolveVariables && substituteVars) {
           displayInstruction = substituteVariables(
             displayInstruction,
             env.variables || {},
-            subStep.variables,
+            effectiveSubStep.variables,
           );
         }
 
@@ -730,18 +786,18 @@ function addSubStepRows(
       }
 
       // Process command (code block)
-      if (subStep.command) {
-        let displayCommand = subStep.command;
+      if (effectiveSubStep.command) {
+        let displayCommand = effectiveSubStep.command;
 
         if (resolveVariables && substituteVars) {
           displayCommand = substituteVariables(
             displayCommand,
             env.variables || {},
-            subStep.variables,
+            effectiveSubStep.variables,
           );
         }
 
-        if (showCommandSeparately && subStep.instruction) {
+        if (showCommandSeparately && effectiveSubStep.instruction) {
           cellContent.push(paragraph(strong(text('Command:'))));
         }
 
@@ -750,15 +806,16 @@ function addSubStepRows(
 
       // Fallback for sub-steps with neither
       if (cellContent.length === 0) {
-        if (subStep.sub_steps && subStep.sub_steps.length > 0) {
+        if (effectiveSubStep.sub_steps && effectiveSubStep.sub_steps.length > 0) {
           cellContent.push(paragraph(em(text('(see substeps below)'))));
         } else {
-          cellContent.push(paragraph(em(text(`(${subStep.type} step)`))));
+          cellContent.push(paragraph(em(text(`(${effectiveSubStep.type} step)`))));
         }
       }
 
       // Add environment-specific evidence results
-      const envEvidenceInfo = formatEvidenceInfo(subStep.evidence, env.name);
+      // Use effectiveSubStep to respect variant overrides for evidence
+      const envEvidenceInfo = formatEvidenceInfo(effectiveSubStep.evidence, env.name);
       if (envEvidenceInfo) {
         if (Array.isArray(envEvidenceInfo)) {
           cellContent.push(...envEvidenceInfo);

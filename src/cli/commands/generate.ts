@@ -5,7 +5,44 @@ import { createGenerationMetadata } from '../../lib/git-metadata';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { generateADFString } from '../../manuals/adf-generator';
 import { generateManualWithMetadata } from '../../manuals/generator';
+import type { Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
+
+/**
+ * Merge step variants for a specific environment with base step properties
+ * Returns the merged step (base + variant overrides) for the given environment
+ */
+function mergeStepVariant(step: Step, environmentName: string): Step {
+  if (!step.variants || !step.variants[environmentName]) {
+    return step;
+  }
+
+  const variant = step.variants[environmentName];
+  return {
+    ...step,
+    ...variant,
+    // Preserve base properties that shouldn't be overridden
+    when: step.when,
+    variants: step.variants,
+  };
+}
+
+/**
+ * Check if a step should be rendered for a specific environment
+ * Returns true if the step applies to this environment
+ */
+function shouldRenderStepForEnvironment(
+  step: Step,
+  environmentName: string,
+): boolean {
+  // If 'when' is not defined, step applies to all environments
+  if (!step.when || step.when.length === 0) {
+    return true;
+  }
+
+  // Check if this environment is in the 'when' list
+  return step.when.includes(environmentName);
+}
 
 interface GenerateOptions {
   output?: string;
@@ -1632,22 +1669,31 @@ function addConfluenceSubStepRows(
     // Build all command cells for sub-step
     const subCommandCells: string[] = [];
     environments.forEach((env: any) => {
+      // Check if substep should be rendered for this environment
+      if (!shouldRenderStepForEnvironment(subStep, env.name)) {
+        subCommandCells.push('—');
+        return;
+      }
+
+      // Merge variant for this environment (if exists)
+      const effectiveSubStep = mergeStepVariant(subStep, env.name);
+
       let cellContent = '';
 
-      // Get sub-step options (defaults)
-      const substituteVars = subStep.options?.substitute_vars ?? true;
+      // Get sub-step options (defaults) from effective substep
+      const substituteVars = effectiveSubStep.options?.substitute_vars ?? true;
       const showCommandSeparately =
-        subStep.options?.show_command_separately ?? false;
+        effectiveSubStep.options?.show_command_separately ?? false;
 
       // Process instruction (always render as markdown)
-      if (subStep.instruction) {
-        let displayInstruction = subStep.instruction;
+      if (effectiveSubStep.instruction) {
+        let displayInstruction = effectiveSubStep.instruction;
 
         if (resolveVars && substituteVars) {
           displayInstruction = substituteVariables(
             displayInstruction,
             env.variables || {},
-            subStep.variables,
+            effectiveSubStep.variables,
           );
         }
 
@@ -1656,22 +1702,22 @@ function addConfluenceSubStepRows(
       }
 
       // Process command (always render as code block)
-      if (subStep.command) {
-        let displayCommand = subStep.command;
+      if (effectiveSubStep.command) {
+        let displayCommand = effectiveSubStep.command;
 
         if (resolveVars && substituteVars) {
           displayCommand = substituteVariables(
             displayCommand,
             env.variables || {},
-            subStep.variables,
+            effectiveSubStep.variables,
           );
         }
 
         const trimmedCommand = displayCommand.replace(/\n+$/, '');
 
-        if (showCommandSeparately && subStep.instruction) {
+        if (showCommandSeparately && effectiveSubStep.instruction) {
           cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
-        } else if (!subStep.instruction) {
+        } else if (!effectiveSubStep.instruction) {
           cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
         } else {
           cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
