@@ -1,13 +1,11 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
 import { parseOperation } from '../../src/operations/parser';
 import { getFixturePath } from '../fixtures/fixtures';
 
 describe('When and Variants', () => {
   it('should parse when constraint correctly', async () => {
-    const operation = await parseOperation(
-      getFixturePath('whenAndVariants'),
-    );
+    const operation = await parseOperation(getFixturePath('whenAndVariants'));
 
     // Step 1: Only for production
     const step1 = operation.steps[0];
@@ -21,9 +19,7 @@ describe('When and Variants', () => {
   });
 
   it('should parse variants correctly', async () => {
-    const operation = await parseOperation(
-      getFixturePath('whenAndVariants'),
-    );
+    const operation = await parseOperation(getFixturePath('whenAndVariants'));
 
     // Step 2: Has variants for prod and staging
     const step2 = operation.steps[1];
@@ -43,9 +39,7 @@ describe('When and Variants', () => {
   });
 
   it('should parse combined when and variants', async () => {
-    const operation = await parseOperation(
-      getFixturePath('whenAndVariants'),
-    );
+    const operation = await parseOperation(getFixturePath('whenAndVariants'));
 
     // Step 5: Has both when and variants
     const step5 = operation.steps[4];
@@ -62,9 +56,7 @@ describe('When and Variants', () => {
   });
 
   it('should handle steps without when or variants', async () => {
-    const operation = await parseOperation(
-      getFixturePath('whenAndVariants'),
-    );
+    const operation = await parseOperation(getFixturePath('whenAndVariants'));
 
     // Step 4: No when constraint (applies to all envs)
     const step4 = operation.steps[3];

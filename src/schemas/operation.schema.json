@@ -626,7 +626,10 @@
                   "type": "object",
                   "properties": {
                     "name": { "type": "string" },
-                    "type": { "type": "string", "enum": ["automatic", "manual", "approval", "conditional"] },
+                    "type": {
+                      "type": "string",
+                      "enum": ["automatic", "manual", "approval", "conditional"]
+                    },
                     "description": { "type": "string" },
                     "command": { "type": "string" },
                     "instruction": { "type": "string" },
@@ -634,15 +637,27 @@
                     "estimated_duration": { "type": "number", "minimum": 0 },
                     "env": { "type": "object" },
                     "variables": { "type": "object" },
-                    "evidence": { "$ref": "#/properties/steps/items/oneOf/2/properties/evidence" },
+                    "evidence": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/evidence"
+                    },
                     "continue_on_error": { "type": "boolean" },
                     "pic": { "type": "string" },
                     "reviewer": { "type": "string" },
-                    "ticket": { "$ref": "#/properties/steps/items/oneOf/2/properties/ticket" },
-                    "rollback": { "$ref": "#/properties/steps/items/oneOf/2/properties/rollback" },
-                    "retry": { "$ref": "#/properties/steps/items/oneOf/2/properties/retry" },
-                    "approval": { "$ref": "#/properties/steps/items/oneOf/2/properties/approval" },
-                    "options": { "$ref": "#/properties/steps/items/oneOf/2/properties/options" }
+                    "ticket": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/ticket"
+                    },
+                    "rollback": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/rollback"
+                    },
+                    "retry": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/retry"
+                    },
+                    "approval": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/approval"
+                    },
+                    "options": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/options"
+                    }
                   },
                   "additionalProperties": false
                 },

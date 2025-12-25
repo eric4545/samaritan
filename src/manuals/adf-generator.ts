@@ -611,7 +611,10 @@ function createStepsTable(
 
       // Add environment-specific evidence results
       // Use effectiveStep to respect variant overrides for evidence
-      const envEvidenceInfo = formatEvidenceInfo(effectiveStep.evidence, env.name);
+      const envEvidenceInfo = formatEvidenceInfo(
+        effectiveStep.evidence,
+        env.name,
+      );
       if (envEvidenceInfo) {
         if (Array.isArray(envEvidenceInfo)) {
           cellContent.push(...envEvidenceInfo);
@@ -806,16 +809,24 @@ function addSubStepRows(
 
       // Fallback for sub-steps with neither
       if (cellContent.length === 0) {
-        if (effectiveSubStep.sub_steps && effectiveSubStep.sub_steps.length > 0) {
+        if (
+          effectiveSubStep.sub_steps &&
+          effectiveSubStep.sub_steps.length > 0
+        ) {
           cellContent.push(paragraph(em(text('(see substeps below)'))));
         } else {
-          cellContent.push(paragraph(em(text(`(${effectiveSubStep.type} step)`))));
+          cellContent.push(
+            paragraph(em(text(`(${effectiveSubStep.type} step)`))),
+          );
         }
       }
 
       // Add environment-specific evidence results
       // Use effectiveSubStep to respect variant overrides for evidence
-      const envEvidenceInfo = formatEvidenceInfo(effectiveSubStep.evidence, env.name);
+      const envEvidenceInfo = formatEvidenceInfo(
+        effectiveSubStep.evidence,
+        env.name,
+      );
       if (envEvidenceInfo) {
         if (Array.isArray(envEvidenceInfo)) {
           cellContent.push(...envEvidenceInfo);

@@ -478,7 +478,11 @@ function generateStepRow(
 
     // Add environment-specific evidence results
     // Use effectiveStep to respect variant overrides for evidence
-    cellContent += formatEvidenceInfo(effectiveStep.evidence, env.name, operationDir);
+    cellContent += formatEvidenceInfo(
+      effectiveStep.evidence,
+      env.name,
+      operationDir,
+    );
 
     rows += ` ${cellContent} |`;
   });
@@ -790,7 +794,11 @@ function generateSubStepRow(
 
     // Add environment-specific evidence results
     // Use effectiveStep to respect variant overrides for evidence
-    cellContent += formatEvidenceInfo(effectiveStep.evidence, env.name, operationDir);
+    cellContent += formatEvidenceInfo(
+      effectiveStep.evidence,
+      env.name,
+      operationDir,
+    );
 
     // Add sign-off checkboxes if PIC or Reviewer is set (per environment)
     // Use effectiveStep to respect variant overrides for PIC and reviewer
