@@ -157,39 +157,43 @@
                 }
               },
               "results": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": ["type"],
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "enum": [
-                        "screenshot",
-                        "log",
-                        "command_output",
-                        "file",
-                        "photo",
-                        "video"
-                      ]
+                "type": "object",
+                "description": "Environment-keyed evidence results (e.g., { staging: [...], production: [...] })",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["type"],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "screenshot",
+                          "log",
+                          "command_output",
+                          "file",
+                          "photo",
+                          "video"
+                        ]
+                      },
+                      "file": {
+                        "type": "string",
+                        "description": "File path reference (relative to operation file)"
+                      },
+                      "content": {
+                        "type": "string",
+                        "description": "Inline content (for text-based evidence)"
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Optional description or context"
+                      }
                     },
-                    "file": {
-                      "type": "string",
-                      "description": "File path reference (relative to operation file)"
-                    },
-                    "content": {
-                      "type": "string",
-                      "description": "Inline content (for text-based evidence)"
-                    },
-                    "description": {
-                      "type": "string",
-                      "description": "Optional description or context"
-                    }
-                  },
-                  "oneOf": [
-                    { "required": ["file"] },
-                    { "required": ["content"] }
-                  ]
+                    "oneOf": [
+                      { "required": ["file"] },
+                      { "required": ["content"] }
+                    ]
+                  }
                 }
               }
             }
@@ -610,6 +614,58 @@
                 },
                 "additionalProperties": false,
                 "description": "Step-level rendering and substitution options"
+              },
+              "when": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "description": "Conditional rendering: only show this step for specified environments"
+              },
+              "variants": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "type": {
+                      "type": "string",
+                      "enum": ["automatic", "manual", "approval", "conditional"]
+                    },
+                    "description": { "type": "string" },
+                    "command": { "type": "string" },
+                    "instruction": { "type": "string" },
+                    "timeout": { "type": "number", "minimum": 0 },
+                    "estimated_duration": { "type": "number", "minimum": 0 },
+                    "env": { "type": "object" },
+                    "variables": { "type": "object" },
+                    "evidence": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/evidence"
+                    },
+                    "continue_on_error": { "type": "boolean" },
+                    "pic": { "type": "string" },
+                    "reviewer": { "type": "string" },
+                    "ticket": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/ticket"
+                    },
+                    "rollback": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/rollback"
+                    },
+                    "retry": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/retry"
+                    },
+                    "approval": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/approval"
+                    },
+                    "options": {
+                      "$ref": "#/properties/steps/items/oneOf/2/properties/options"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "description": "Environment-specific step overrides (can override any step field except 'when' and 'variants')"
               },
               "rollback": {
                 "type": "object",

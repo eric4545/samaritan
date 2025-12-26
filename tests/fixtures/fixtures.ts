@@ -88,6 +88,9 @@ export const FIXTURES = {
   nestedSubstepWithRollback:
     'tests/fixtures/operations/features/nested-substep-with-rollback.yaml',
 
+  // When and Variants
+  whenAndVariants: 'tests/fixtures/operations/features/when-and-variants.yaml',
+
   // ===== Confluence Generator Tests =====
   multiLineCommand:
     'tests/fixtures/operations/confluence/multi-line-command.yaml',

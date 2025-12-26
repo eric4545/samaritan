@@ -744,6 +744,8 @@ function parseStep(
     reviewer: stepData.reviewer,
     timeline: stepData.timeline,
     options: options,
+    when: stepData.when,
+    variants: stepData.variants,
   };
 }
 

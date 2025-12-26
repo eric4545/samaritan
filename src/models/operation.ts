@@ -178,6 +178,8 @@ export interface Step {
   reviewer?: string; // Reviewer/buddy who monitors and verifies the PIC's work
   timeline?: string | TimelineConfig; // Expected date/time or duration for this step
   options?: StepOptions; // Step-level rendering and substitution options
+  when?: string[]; // Conditional rendering: only show for these environments
+  variants?: Record<string, Partial<Omit<Step, 'variants' | 'when'>>>; // Environment-specific overrides
 }
 
 export interface Environment {
