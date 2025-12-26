@@ -345,11 +345,13 @@ npx github:eric4545/samaritan generate manual <operation.yaml> [options]
   --format <md|confluence>  Output format (default: md)
   --env <environment>   Generate for specific environment only
   --resolve-vars        Resolve variables to actual values (ready-to-execute commands)
+  --gantt               Include Mermaid Gantt chart for timeline visualization
 
 # Generate Confluence documentation
 npx github:eric4545/samaritan generate confluence <operation.yaml> [options]
   --output <file>       Output Confluence storage format file
   --env <environment>   Generate for specific environment only
+  --gantt               Include Gantt chart for timeline visualization
 
 # Export JSON schema for operations
 npx github:eric4545/samaritan schema [options]
@@ -999,6 +1001,118 @@ See `examples/multi-region-deployment.yaml` for a complete example deploying acr
 - **Include/Exclude**: Fine-tune which combinations are deployed
 - **Full Integration**: Works with all step features (evidence, rollback, approval, etc.)
 - **Clean Manuals**: Generated manuals show expanded steps with values in parentheses
+
+#### Gantt Charts and Timeline Visualization
+
+SAMARITAN can generate Mermaid Gantt charts to visualize operation timelines, making it easy to plan and coordinate complex deployments with multiple teams and dependencies.
+
+**Adding Timeline Information to Steps:**
+
+Add a `timeline` field to your steps to specify scheduling information:
+
+```yaml
+name: Coordinated Deployment
+version: 1.0.0
+description: Multi-team deployment with timeline coordination
+
+environments:
+  - name: production
+    variables:
+      REPLICAS: 5
+
+steps:
+  - name: Pre-deployment Check
+    type: manual
+    phase: preflight
+    pic: DevOps Team
+    instruction: Verify cluster health
+    timeline:
+      start: 2024-01-15 09:00
+      duration: 30m
+
+  - name: Deploy Backend
+    type: manual
+    phase: flight
+    pic: Backend Team
+    instruction: Deploy backend services
+    timeline:
+      status: active
+      duration: 15m
+
+  - name: Deploy Frontend
+    type: manual
+    phase: flight
+    pic: Frontend Team
+    instruction: Deploy frontend services
+    timeline:
+      after: Deploy Backend  # Dependency on previous step
+      duration: 10m
+
+  - name: Post-deployment Verification
+    type: manual
+    phase: postflight
+    pic: QA Team
+    instruction: Run smoke tests
+    timeline:
+      after: Deploy Frontend
+      duration: 20m
+```
+
+**Timeline Field Options:**
+
+- `start`: Absolute start time (format: `YYYY-MM-DD HH:mm`)
+- `duration`: How long the step takes (e.g., `30m`, `2h`, `1d`)
+- `after`: Dependency on another step (step name)
+- `status`: Task status (`active`, `done`, `crit` for critical tasks)
+
+**Generating Gantt Charts:**
+
+```bash
+# Generate manual with Gantt chart
+npx github:eric4545/samaritan generate manual deployment.yaml --gantt
+
+# Generate Confluence documentation with Gantt chart
+npx github:eric4545/samaritan generate confluence deployment.yaml --gantt --output deployment.html
+```
+
+**Generated Gantt Chart Example:**
+
+The `--gantt` flag adds a Mermaid diagram to your manual:
+
+```mermaid
+gantt
+    title Coordinated Deployment Timeline
+    dateFormat YYYY-MM-DD HH:mm
+    axisFormat %m-%d %H:%M
+
+    section Preflight
+    Pre-deployment Check (DevOps Team) :2024-01-15 09:00, 30m
+
+    section Flight
+    Deploy Backend (Backend Team) :active, 15m
+    Deploy Frontend (Frontend Team) :after Deploy Backend, 10m
+
+    section Postflight
+    Post-deployment Verification (QA Team) :after Deploy Frontend, 20m
+```
+
+**Key Features:**
+
+- **Automatic Phase Grouping**: Steps are grouped by phase (preflight, flight, postflight)
+- **Team Visualization**: PIC (Person In Charge) shown for each task
+- **Dependency Tracking**: `after` creates visual dependencies between steps
+- **Timeline Display**: Individual step timelines also shown in manual tables
+- **Mermaid Integration**: Charts render in GitHub, Markdown viewers, and documentation tools
+
+**Use Cases:**
+
+- **Coordinated Releases**: Plan multi-team deployments with dependencies
+- **Time-Critical Operations**: Visualize maintenance windows and deadlines
+- **Progressive Rollouts**: Show canary deployment progression over time
+- **Incident Response**: Timeline critical recovery procedures
+- **Compliance Documentation**: Provide visual timeline evidence for audit trails
+
+See `tests/fixtures/operations/confluence/gantt-timeline.yaml` for a complete example.
 
 
 ## 🔄 Execution Workflows
