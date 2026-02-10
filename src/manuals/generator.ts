@@ -322,10 +322,7 @@ function filterStepsForEnvironments(
       if (!step.sub_steps || step.sub_steps.length === 0) return step;
       return {
         ...step,
-        sub_steps: filterStepsForEnvironments(
-          step.sub_steps,
-          environmentNames,
-        ),
+        sub_steps: filterStepsForEnvironments(step.sub_steps, environmentNames),
       };
     });
 }
