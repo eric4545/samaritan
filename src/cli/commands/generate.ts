@@ -1239,6 +1239,12 @@ ${filteredOperation.environments
       // Build all command cells for each environment
       const commandCells: string[] = [];
       filteredOperation.environments.forEach((env: any) => {
+        // Check if step should be rendered for this environment
+        if (!shouldRenderStepForEnvironment(step, env.name)) {
+          commandCells.push('—');
+          return;
+        }
+
         let cellContent = '';
 
         // Get step-level options (defaults)
