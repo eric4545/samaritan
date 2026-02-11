@@ -57,6 +57,28 @@ function shouldRenderStepForEnvironment(
 }
 
 /**
+ * Filter steps (and sub_steps recursively) that don't apply to any of the given environments.
+ * Steps without a 'when' field are kept (they apply to all environments).
+ */
+function filterStepsForEnvironments(
+  steps: Step[],
+  environmentNames: string[],
+): Step[] {
+  return steps
+    .filter((step) => {
+      if (!step.when || step.when.length === 0) return true;
+      return step.when.some((env) => environmentNames.includes(env));
+    })
+    .map((step) => {
+      if (!step.sub_steps || step.sub_steps.length === 0) return step;
+      return {
+        ...step,
+        sub_steps: filterStepsForEnvironments(step.sub_steps, environmentNames),
+      };
+    });
+}
+
+/**
  * Convert Operation to Atlassian Document Format (ADF)
  */
 export function generateADF(
@@ -78,9 +100,12 @@ export function generateADF(
     }
   }
 
+  // Filter steps whose 'when' condition doesn't match any active environment
+  const environmentNames = environments.map((e) => e.name);
   const filteredOperation = {
     ...operation,
     environments,
+    steps: filterStepsForEnvironments(operation.steps, environmentNames),
   };
 
   // Build ADF content nodes

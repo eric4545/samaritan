@@ -44,6 +44,28 @@ function shouldRenderStepForEnvironment(
   return step.when.includes(environmentName);
 }
 
+/**
+ * Filter steps (and sub_steps recursively) that don't apply to any of the given environments.
+ * Steps without a 'when' field are kept (they apply to all environments).
+ */
+function filterStepsForEnvironments(
+  steps: any[],
+  environmentNames: string[],
+): any[] {
+  return steps
+    .filter((step: any) => {
+      if (!step.when || step.when.length === 0) return true;
+      return step.when.some((env: string) => environmentNames.includes(env));
+    })
+    .map((step: any) => {
+      if (!step.sub_steps || step.sub_steps.length === 0) return step;
+      return {
+        ...step,
+        sub_steps: filterStepsForEnvironments(step.sub_steps, environmentNames),
+      };
+    });
+}
+
 interface GenerateOptions {
   output?: string;
   format?: 'markdown' | 'confluence' | 'adf' | 'html' | 'pdf';
@@ -741,9 +763,12 @@ export function generateConfluenceContent(
   }
 
   // Create filtered operation for generation
+  // Filter steps whose 'when' condition doesn't match any active environment
+  const environmentNames = environments.map((e: any) => e.name);
   const filteredOperation = {
     ...operation,
     environments,
+    steps: filterStepsForEnvironments(operation.steps, environmentNames),
   };
 
   // Use Confluence emoticons instead of Unicode emojis for better compatibility
@@ -1214,6 +1239,12 @@ ${filteredOperation.environments
       // Build all command cells for each environment
       const commandCells: string[] = [];
       filteredOperation.environments.forEach((env: any) => {
+        // Check if step should be rendered for this environment
+        if (!shouldRenderStepForEnvironment(step, env.name)) {
+          commandCells.push('—');
+          return;
+        }
+
         let cellContent = '';
 
         // Get step-level options (defaults)
