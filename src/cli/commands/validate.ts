@@ -232,9 +232,10 @@ class OperationValidator {
         );
       }
 
-      // Rollback validation
+      // Rollback validation — array format is the execution-engine form (always valid)
       if (
         step.rollback &&
+        !Array.isArray(step.rollback) &&
         !step.rollback.command &&
         !step.rollback.instruction
       ) {
