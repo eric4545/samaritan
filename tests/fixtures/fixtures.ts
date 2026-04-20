@@ -91,6 +91,11 @@ export const FIXTURES = {
   // When and Variants
   whenAndVariants: 'tests/fixtures/operations/features/when-and-variants.yaml',
 
+  // Sessions / execution engine
+  withSessions: 'tests/fixtures/operations/features/with-sessions.yaml',
+  withCaptureExpect:
+    'tests/fixtures/operations/features/with-capture-expect.yaml',
+
   // ===== Confluence Generator Tests =====
   multiLineCommand:
     'tests/fixtures/operations/confluence/multi-line-command.yaml',

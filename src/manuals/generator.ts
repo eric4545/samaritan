@@ -5,7 +5,17 @@ import {
   generateYamlFrontmatter,
 } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
-import type { Environment, Operation, Step } from '../models/operation';
+import type {
+  Environment,
+  ExecRollbackStep,
+  Operation,
+  RollbackStep,
+  Step,
+} from '../models/operation';
+
+function isDocRollback(rb: RollbackStep | ExecRollbackStep[] | undefined): rb is RollbackStep {
+  return !!rb && !Array.isArray(rb);
+}
 
 function substituteVariables(
   command: string,
@@ -564,7 +574,7 @@ function generateStepRow(
     // Render rollbacks for all sub-steps AFTER all sub-steps are rendered
     step.sub_steps.forEach((subStep, subIndex) => {
       if (
-        subStep.rollback &&
+        isDocRollback(subStep.rollback) &&
         (subStep.rollback.command || subStep.rollback.instruction)
       ) {
         const subStepLetter = indexToLetters(subIndex);
@@ -903,7 +913,7 @@ function generateSubStepRow(
     // Render rollbacks for all nested sub-steps AFTER all nested sub-steps are rendered
     step.sub_steps.forEach((nestedSubStep, nestedIndex) => {
       if (
-        nestedSubStep.rollback &&
+        isDocRollback(nestedSubStep.rollback) &&
         (nestedSubStep.rollback.command || nestedSubStep.rollback.instruction)
       ) {
         let nestedStepId: string;
@@ -1293,7 +1303,7 @@ function generateManualContent(
 
         // Inline rollback rendering - render immediately after step if present
         if (
-          step.rollback &&
+          isDocRollback(step.rollback) &&
           (step.rollback.command || step.rollback.instruction)
         ) {
           // Close current table
@@ -1484,4 +1494,94 @@ function generateManualContent(
   }
 
   return markdown;
+}
+
+/**
+ * Generate a single-environment heading-based Markdown manual (issue #15).
+ * Unlike the table format (multi-env columns), this produces one clean Markdown
+ * file per environment — optimised for reading *during* an operation.
+ */
+export function generateSingleEnvManual(
+  operation: Operation,
+  targetEnv: string,
+  resolveVariables = false,
+): string {
+  // Lazy import to avoid circular deps
+  // biome-ignore lint/style/noVar: dynamic import
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { renderExpectDescription } = require('../lib/assertions') as {
+    renderExpectDescription: (e: any) => string;
+  };
+
+  const env = operation.environments.find((e) => e.name === targetEnv);
+  const envVars = env?.variables ?? {};
+
+  function resolveCmd(cmd: string): string {
+    if (!resolveVariables) return cmd;
+    return substituteVariables(cmd, envVars);
+  }
+
+  const lines: string[] = [];
+  lines.push(`# ${operation.name} — ${titleCase(targetEnv)}`);
+  lines.push('');
+
+  const steps = (operation.steps ?? []).filter(
+    (s) => !s.when || s.when.length === 0 || s.when.includes(targetEnv),
+  );
+
+  steps.forEach((step, i) => {
+    const stepNum = i + 1;
+    lines.push(`## Step ${stepNum}: ${step.name}`);
+    lines.push('');
+
+    if (step.pic) lines.push(`> PIC: ${step.pic}`);
+    if (step.reviewer) lines.push(`> Reviewer: ${step.reviewer}`);
+    if (step.pic || step.reviewer) lines.push('');
+
+    if (step.command) {
+      lines.push('**Command**');
+      lines.push('```');
+      lines.push(resolveCmd(step.command));
+      lines.push('```');
+      lines.push('');
+    } else if (step.instruction) {
+      lines.push('**Instructions**');
+      lines.push('');
+      lines.push(
+        resolveVariables ? resolveCmd(step.instruction) : step.instruction,
+      );
+      lines.push('');
+    }
+
+    if (step.verify) {
+      lines.push('**Verify**');
+      lines.push('```');
+      lines.push(resolveCmd(step.verify.command));
+      lines.push('```');
+
+      const expect = step.verify.expect ?? step.expect;
+      if (expect) {
+        const desc = renderExpectDescription(expect);
+        if (desc) lines.push(`Expected: ${desc}`);
+      }
+      lines.push('');
+    } else if (step.expect) {
+      const desc = renderExpectDescription(step.expect);
+      if (desc) {
+        lines.push(`Expected: ${desc}`);
+        lines.push('');
+      }
+    }
+
+    if (i < steps.length - 1) {
+      lines.push('---');
+      lines.push('');
+    }
+  });
+
+  return lines.join('\n');
+}
+
+function titleCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

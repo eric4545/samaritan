@@ -689,9 +689,16 @@ function parseStep(
       }
     : undefined;
 
-  // Parse rollback with options
-  const rollback = stepData.rollback
-    ? {
+  // Parse rollback: array = execution-engine format, object = doc-generation format
+  let rollback: any = undefined;
+  if (stepData.rollback) {
+    if (Array.isArray(stepData.rollback)) {
+      rollback = stepData.rollback.map((r: any) => ({
+        command: r.command,
+        session: r.session,
+      }));
+    } else {
+      rollback = {
         command: stepData.rollback.command,
         instruction: stepData.rollback.instruction,
         timeout: stepData.rollback.timeout,
@@ -705,8 +712,9 @@ function parseStep(
                 stepData.rollback.options.show_command_separately ?? false,
             }
           : undefined,
-      }
-    : undefined;
+      };
+    }
+  }
 
   return {
     id: stepData.id,
@@ -728,7 +736,10 @@ function parseStep(
     evidence_required: Boolean(stepData.evidence_required), // DEPRECATED: Use evidence.required instead
     evidence_types: stepData.evidence_types as EvidenceType[], // DEPRECATED: Use evidence.types instead
     validation: stepData.validation,
+    session: stepData.session,
     verify: stepData.verify,
+    capture: stepData.capture,
+    expect: stepData.expect,
     continue_on_error: Boolean(stepData.continue_on_error),
     retry: stepData.retry,
     rollback: rollback,
@@ -1063,6 +1074,8 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     tags: rawOperation.tags || [],
     emergency: Boolean(rawOperation.emergency),
     overview: rawOperation.overview,
+    sessions: rawOperation.sessions,
+    run: rawOperation.run,
     environments,
     variables,
     common_variables: commonVariables,

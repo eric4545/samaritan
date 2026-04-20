@@ -1,4 +1,60 @@
-// Supporting Types and Enums
+// ─── Execution Engine Types (Phase 2) ─────────────────────────────────────────
+
+export interface SessionConfig {
+  host?: string;
+  user?: string;
+  env?: Record<string, string>;
+}
+
+export interface ExecRollbackStep {
+  command: string;
+  session?: string;
+}
+
+export interface CaptureRule {
+  pattern?: string;
+  group?: number;
+  line?: 'last' | 'first';
+}
+
+export type CaptureConfig = Record<string, CaptureRule>;
+
+export interface RetryAssertConfig {
+  interval: string;
+  max: number;
+}
+
+export interface ExpectConfig {
+  contains?: string;
+  not_contains?: string;
+  equals?: string;
+  matches?: string;
+  not_empty?: boolean;
+  any_line_contains?: string;
+  no_line_contains?: string;
+  all_lines_match?: string;
+  line_count?: number;
+  line_count_gte?: number;
+  numeric_gte?: number;
+  numeric_lte?: number;
+  jsonpath?: string;
+  equals_captured?: string;
+  retry?: RetryAssertConfig;
+}
+
+export interface VerifyConfig {
+  session?: string;
+  command: string;
+  expect?: ExpectConfig | string;
+}
+
+export interface RunConfig {
+  auto_send?: boolean;
+  auto_exec?: boolean;
+}
+
+// ─── Supporting Types and Enums ───────────────────────────────────────────────
+
 export type EvidenceType =
   | 'screenshot'
   | 'file'
@@ -162,10 +218,13 @@ export interface Step {
   evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
   evidence_types?: EvidenceType[]; // DEPRECATED: Use evidence.types instead
   validation?: StepValidation;
-  verify?: { command: string };
+  session?: string;
+  verify?: VerifyConfig;
+  capture?: CaptureConfig;
+  expect?: ExpectConfig | string;
   continue_on_error?: boolean;
   retry?: RetryConfig;
-  rollback?: RollbackStep;
+  rollback?: RollbackStep | ExecRollbackStep[];
   needs?: string[];
   sub_steps?: Step[];
   manual_override?: boolean;
@@ -215,7 +274,9 @@ export interface Operation {
   category?: string;
   tags?: string[];
   emergency?: boolean;
-  overview?: Record<string, any>; // Flexible overview/metadata section with custom fields
+  overview?: Record<string, any>;
+  sessions?: Record<string, SessionConfig>;
+  run?: RunConfig; // Flexible overview/metadata section with custom fields
   environments: Environment[];
   variables: VariableMatrix;
   common_variables?: Record<string, any>; // Common variables shared across all environments

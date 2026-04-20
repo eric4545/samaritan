@@ -4,9 +4,22 @@ import { Command } from 'commander';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { generateADFString } from '../../manuals/adf-generator';
-import { generateManualWithMetadata } from '../../manuals/generator';
-import type { Step } from '../../models/operation';
+import {
+  generateManualWithMetadata,
+  generateSingleEnvManual,
+} from '../../manuals/generator';
+import type {
+  ExecRollbackStep,
+  RollbackStep,
+  Step,
+} from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
+
+function isDocRollback(
+  rb: RollbackStep | ExecRollbackStep[] | undefined,
+): rb is RollbackStep {
+  return !!rb && !Array.isArray(rb);
+}
 
 /**
  * Merge step variants for a specific environment with base step properties
@@ -161,15 +174,20 @@ class DocumentationGenerator {
     // Get operation directory for evidence file reading
     const operationDir = dirname(operationFile);
 
-    // Generate manual with metadata and environment filtering
-    const manual = generateManualWithMetadata(
-      operation,
-      metadata,
-      targetEnv,
-      options.resolveVars,
-      options.gantt,
-      operationDir,
-    );
+    // When --env is specified, use the single-env heading-based format (issue #15)
+    let manual: string;
+    if (targetEnv) {
+      manual = generateSingleEnvManual(operation, targetEnv, options.resolveVars);
+    } else {
+      manual = generateManualWithMetadata(
+        operation,
+        metadata,
+        targetEnv,
+        options.resolveVars,
+        options.gantt,
+        operationDir,
+      );
+    }
 
     // Determine output file
     const outputFile =
@@ -479,7 +497,7 @@ ${step.evidence_required ? `**Evidence Required**: ${step.evidence_types?.join('
 ${step.continue_on_error ? `**Continue on Error**: Yes` : ''}
 
 ${
-  step.rollback
+  isDocRollback(step.rollback)
     ? `**Rollback**:
 ${step.rollback.command ? `\`${step.rollback.command}\`` : step.rollback.instruction || 'See rollback instructions'}`
     : ''
@@ -1355,7 +1373,7 @@ ${filteredOperation.environments
       // For parent steps with sub_steps, this renders after sub-steps
       // For regular steps, this renders after the step row
       if (
-        step.rollback &&
+        isDocRollback(step.rollback) &&
         (step.rollback.command || step.rollback.instruction)
       ) {
         content += renderInlineRollback(
