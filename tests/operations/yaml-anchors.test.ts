@@ -474,7 +474,7 @@ steps:
       const operation = await parseOperation(tempFile);
 
       // Verify first rollback has correct properties
-      const rollback1 = operation.steps[0].rollback;
+      const rollback1 = operation.steps[0].rollback?.[0];
       assert.ok(rollback1);
       assert.strictEqual(rollback1.timeout, 120);
       assert.strictEqual(rollback1.evidence?.required, true);
@@ -485,7 +485,7 @@ steps:
       );
 
       // Verify second rollback overrode timeout
-      const rollback2 = operation.steps[1].rollback;
+      const rollback2 = operation.steps[1].rollback?.[0];
       assert.ok(rollback2);
       assert.strictEqual(rollback2.timeout, 180); // Override worked
       assert.ok(
@@ -493,7 +493,7 @@ steps:
       );
 
       // Verify third rollback
-      const rollback3 = operation.steps[2].rollback;
+      const rollback3 = operation.steps[2].rollback?.[0];
       assert.ok(rollback3);
       assert.strictEqual(rollback3.timeout, 120);
       assert.strictEqual(

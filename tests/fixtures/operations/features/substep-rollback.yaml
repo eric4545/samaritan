@@ -29,18 +29,18 @@ steps:
         description: Deploy database service
         command: kubectl apply -f database.yaml -n ${NAMESPACE}
         rollback:
-          description: Rollback database deployment
-          command: kubectl rollout undo deployment/database -n ${NAMESPACE}
+          - description: Rollback database deployment
+            command: kubectl rollout undo deployment/database -n ${NAMESPACE}
 
       - name: Deploy API
         type: manual
         description: Deploy API service
         command: kubectl apply -f api.yaml -n ${NAMESPACE}
         rollback:
-          description: Rollback API deployment
-          command: |
-            kubectl rollout undo deployment/api -n ${NAMESPACE}
-            kubectl wait --for=condition=available deployment/api -n ${NAMESPACE}
+          - description: Rollback API deployment
+            command: |
+              kubectl rollout undo deployment/api -n ${NAMESPACE}
+              kubectl wait --for=condition=available deployment/api -n ${NAMESPACE}
 
       - name: Monitor Health
         type: manual
@@ -48,8 +48,8 @@ steps:
         instruction: Check application health status
         command: kubectl get pods -n ${NAMESPACE}
         rollback:
-          description: Scale down all services if health check fails
-          instruction: Scale down all deployments to zero replicas
-          command: |
-            kubectl scale deployment/database --replicas=0 -n ${NAMESPACE}
-            kubectl scale deployment/api --replicas=0 -n ${NAMESPACE}
+          - description: Scale down all services if health check fails
+            instruction: Scale down all deployments to zero replicas
+            command: |
+              kubectl scale deployment/database --replicas=0 -n ${NAMESPACE}
+              kubectl scale deployment/api --replicas=0 -n ${NAMESPACE}

@@ -170,6 +170,7 @@ export interface RollbackStep {
   evidence?: EvidenceConfig;
   evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
   options?: StepOptions;
+  session?: string;
 }
 
 export interface RollbackPlan {
@@ -224,7 +225,7 @@ export interface Step {
   expect?: ExpectConfig | string;
   continue_on_error?: boolean;
   retry?: RetryConfig;
-  rollback?: RollbackStep | ExecRollbackStep[];
+  rollback?: RollbackStep[];
   needs?: string[];
   sub_steps?: Step[];
   manual_override?: boolean;

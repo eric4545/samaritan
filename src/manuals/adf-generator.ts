@@ -237,7 +237,9 @@ export function generateADF(
   }
 
   // Rollback procedures
-  const stepsWithRollback = operation.steps.filter((step) => step.rollback);
+  const stepsWithRollback = operation.steps.filter(
+    (step) => step.rollback && step.rollback.length > 0,
+  );
   if (stepsWithRollback.length > 0) {
     content.push(heading({ level: 2 })(text('🔄 Rollback Procedures')));
     content.push(
@@ -247,23 +249,22 @@ export function generateADF(
     );
 
     stepsWithRollback.forEach((step) => {
-      if (!step.rollback) return;
+      const rb = step.rollback?.[0];
+      if (!rb) return;
 
       content.push(heading({ level: 3 })(text(`Rollback for: ${step.name}`)));
 
-      if (step.rollback.command || step.rollback.instruction) {
+      if (rb.command || rb.instruction) {
         const rollbackRows = environments.map((env) => {
           const cellContent = [];
 
           // Get rollback options (defaults)
-          const substituteVars =
-            step.rollback?.options?.substitute_vars ?? true;
-          const showCommandSeparately =
-            step.rollback?.options?.show_command_separately ?? false;
+          const substituteVars = rb.options?.substitute_vars ?? true;
+          const showCommandSeparately = rb.options?.show_command_separately ?? false;
 
           // Process rollback instruction (paragraph/text content)
-          if (step.rollback?.instruction) {
-            let displayInstruction = step.rollback.instruction;
+          if (rb.instruction) {
+            let displayInstruction = rb.instruction;
 
             if (resolveVariables && substituteVars) {
               displayInstruction = substituteVariables(
@@ -277,8 +278,8 @@ export function generateADF(
           }
 
           // Process rollback command (code block)
-          if (step.rollback?.command) {
-            let displayCommand = step.rollback.command;
+          if (rb.command) {
+            let displayCommand = rb.command;
 
             if (resolveVariables && substituteVars) {
               displayCommand = substituteVariables(
@@ -288,7 +289,7 @@ export function generateADF(
               );
             }
 
-            if (showCommandSeparately && step.rollback.instruction) {
+            if (showCommandSeparately && rb.instruction) {
               cellContent.push(paragraph(strong(text('Command:'))));
             }
 
@@ -880,10 +881,8 @@ function addSubStepRows(
 
   // Second loop: render all rollback rows
   subSteps.forEach((subStep, subIndex) => {
-    if (
-      subStep.rollback &&
-      (subStep.rollback.command || subStep.rollback.instruction)
-    ) {
+    const rb = subStep.rollback?.[0];
+    if (rb && (rb.command || rb.instruction)) {
       // Determine numbering based on depth
       let subStepId: string;
       if (depth % 2 === 1) {
@@ -905,14 +904,12 @@ function addSubStepRows(
         const cellContent = [];
 
         // Get rollback options (defaults)
-        const substituteVars =
-          subStep.rollback?.options?.substitute_vars ?? true;
-        const showCommandSeparately =
-          subStep.rollback?.options?.show_command_separately ?? false;
+        const substituteVars = rb.options?.substitute_vars ?? true;
+        const showCommandSeparately = rb.options?.show_command_separately ?? false;
 
         // Process rollback instruction (paragraph/text content)
-        if (subStep.rollback?.instruction) {
-          let displayInstruction = subStep.rollback.instruction;
+        if (rb.instruction) {
+          let displayInstruction = rb.instruction;
 
           if (resolveVariables && substituteVars) {
             displayInstruction = substituteVariables(
@@ -926,8 +923,8 @@ function addSubStepRows(
         }
 
         // Process rollback command (code block)
-        if (subStep.rollback?.command) {
-          let displayCommand = subStep.rollback.command;
+        if (rb.command) {
+          let displayCommand = rb.command;
 
           if (resolveVariables && substituteVars) {
             displayCommand = substituteVariables(
@@ -937,7 +934,7 @@ function addSubStepRows(
             );
           }
 
-          if (showCommandSeparately && subStep.rollback.instruction) {
+          if (showCommandSeparately && rb.instruction) {
             cellContent.push(paragraph(strong(text('Command:'))));
           }
 

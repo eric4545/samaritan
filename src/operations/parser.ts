@@ -9,6 +9,7 @@ import type {
   Operation,
   OperationMetadata,
   PreflightCheck,
+  RollbackStep,
   Step,
   StepPhase,
   StepType,
@@ -689,30 +690,41 @@ function parseStep(
       }
     : undefined;
 
-  // Parse rollback: array = execution-engine format, object = doc-generation format
-  let rollback: any = undefined;
+  // Parse rollback: normalize both object and array YAML formats to RollbackStep[]
+  let rollback: RollbackStep[] | undefined = undefined;
   if (stepData.rollback) {
     if (Array.isArray(stepData.rollback)) {
       rollback = stepData.rollback.map((r: any) => ({
         command: r.command,
         session: r.session,
-      }));
-    } else {
-      rollback = {
-        command: stepData.rollback.command,
-        instruction: stepData.rollback.instruction,
-        timeout: stepData.rollback.timeout,
-        evidence: parseEvidence(stepData.rollback),
-        evidence_required: Boolean(stepData.rollback.evidence_required),
-        options: stepData.rollback.options
+        instruction: r.instruction,
+        timeout: r.timeout,
+        evidence: r.evidence ? parseEvidence(r) : undefined,
+        options: r.options
           ? {
-              substitute_vars:
-                stepData.rollback.options.substitute_vars ?? true,
-              show_command_separately:
-                stepData.rollback.options.show_command_separately ?? false,
+              substitute_vars: r.options.substitute_vars ?? true,
+              show_command_separately: r.options.show_command_separately ?? false,
             }
           : undefined,
-      };
+      }));
+    } else {
+      rollback = [
+        {
+          command: stepData.rollback.command,
+          instruction: stepData.rollback.instruction,
+          timeout: stepData.rollback.timeout,
+          evidence: parseEvidence(stepData.rollback),
+          evidence_required: Boolean(stepData.rollback.evidence_required),
+          options: stepData.rollback.options
+            ? {
+                substitute_vars:
+                  stepData.rollback.options.substitute_vars ?? true,
+                show_command_separately:
+                  stepData.rollback.options.show_command_separately ?? false,
+              }
+            : undefined,
+        },
+      ];
     }
   }
 

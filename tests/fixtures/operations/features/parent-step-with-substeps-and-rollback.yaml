@@ -33,10 +33,9 @@ steps:
 
     # THIS IS THE CRITICAL ROLLBACK - must appear AFTER all sub-steps
     rollback:
-      section_heading: true
-      type: manual
-      description: Rollback deployment if issues detected
-      instruction: Rollback to previous deployment version
-      command: |
-        kubectl rollout undo deployment/app -n ${NAMESPACE}
-        kubectl wait --for=condition=available deployment/app -n ${NAMESPACE}
+      - type: manual
+        description: Rollback deployment if issues detected
+        instruction: Rollback to previous deployment version
+        command: |
+          kubectl rollout undo deployment/app -n ${NAMESPACE}
+          kubectl wait --for=condition=available deployment/app -n ${NAMESPACE}

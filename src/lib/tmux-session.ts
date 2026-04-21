@@ -105,8 +105,8 @@ export async function bootstrapSessions(
   for (let i = 0; i < sessionNames.length; i++) {
     const name = sessionNames[i];
     const config = sessions[name];
-    const paneIndex = i;
-    const paneTarget = `${tmuxName}:0.${paneIndex}`;
+    // Each session gets its own window; the first pane in window i is :i.0
+    const paneTarget = `${tmuxName}:${i}.0`;
 
     if (i > 0) {
       execSync(`tmux new-window -t ${tmuxName}`);

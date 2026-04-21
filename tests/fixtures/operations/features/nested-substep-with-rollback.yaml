@@ -35,9 +35,9 @@ steps:
 
         # CRITICAL: This rollback must render AFTER all nested sub-steps
         rollback:
-          type: manual
-          description: Rollback to previous configuration
-          instruction: Restore previous traffic weights
-          command: |
-            git restore config.hcl
-            terraform apply
+          - type: manual
+            description: Rollback to previous configuration
+            instruction: Restore previous traffic weights
+            command: |
+              git restore config.hcl
+              terraform apply

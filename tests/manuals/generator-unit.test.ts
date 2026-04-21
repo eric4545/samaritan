@@ -1452,18 +1452,22 @@ kubectl apply -f worker.yaml`,
           name: 'Deploy Application',
           type: 'automatic',
           command: 'kubectl apply -f deployment.yaml -n ${NAMESPACE}',
-          rollback: {
-            command: 'kubectl rollout undo deployment/app -n ${NAMESPACE}',
-          },
+          rollback: [
+            {
+              command: 'kubectl rollout undo deployment/app -n ${NAMESPACE}',
+            },
+          ],
         },
         {
           name: 'Update Config',
           type: 'manual',
           command: 'kubectl apply -f config.yaml',
-          rollback: {
-            instruction:
-              'kubectl delete configmap app-config && kubectl apply -f config-backup.yaml',
-          },
+          rollback: [
+            {
+              instruction:
+                'kubectl delete configmap app-config && kubectl apply -f config-backup.yaml',
+            },
+          ],
         },
       ],
       preflight: [],

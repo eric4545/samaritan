@@ -1120,22 +1120,24 @@ gantt
 See `tests/fixtures/operations/confluence/gantt-timeline.yaml` for a complete example.
 
 
-## ⚡ Interactive Execution Engine
+## ⚡ Interactive Execution Engine *(In Development)*
 
-SAMARITAN's `run` command opens an interactive terminal UI backed by `tmux`, letting you execute operations step-by-step with automated verification, output capture, and a full JSONL audit trail.
+> **Status**: The individual components (tmux bootstrap, TUI, JSONL event logger, assertions, capture) are implemented and tested. End-to-end wiring of `samaritan run` to the interactive engine is in progress — the current `run` command falls back to the basic `OperationExecutor`. The YAML schema, `report` command, and single-env manual generation are fully functional today.
 
-### How it works
+SAMARITAN's interactive execution engine will let you run operations step-by-step with automated verification, output capture, and a full JSONL audit trail backed by `tmux`.
+
+### Planned flow
 
 ```
 samaritan run deployment-with-run.yaml --env production
   1. Creates a tmux session (samaritan-<id>)
-  2. Bootstraps one pane per named session (local or SSH)
+  2. Bootstraps one window per named session (local or SSH)
   3. Starts pipe-pane background capture on every pane
   4. Launches the interactive TUI in the current terminal
   5. Writes all events to /tmp/samaritan-<id>.jsonl
 ```
 
-In iTerm2, panes open as native vertical splits automatically. In any other terminal with tmux, panes are split inside the current window. Without tmux, attach instructions are printed.
+In iTerm2, panes open as native vertical splits automatically. In any other terminal with tmux, panes are split inside the current window.
 
 ### Named sessions
 

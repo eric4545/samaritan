@@ -7,15 +7,10 @@ import {
 import { indexToLetters } from '../lib/letter-sequence';
 import type {
   Environment,
-  ExecRollbackStep,
   Operation,
   RollbackStep,
   Step,
 } from '../models/operation';
-
-function isDocRollback(rb: RollbackStep | ExecRollbackStep[] | undefined): rb is RollbackStep {
-  return !!rb && !Array.isArray(rb);
-}
 
 function substituteVariables(
   command: string,
@@ -573,10 +568,8 @@ function generateStepRow(
 
     // Render rollbacks for all sub-steps AFTER all sub-steps are rendered
     step.sub_steps.forEach((subStep, subIndex) => {
-      if (
-        isDocRollback(subStep.rollback) &&
-        (subStep.rollback.command || subStep.rollback.instruction)
-      ) {
+      const rb = subStep.rollback?.[0];
+      if (rb && (rb.command || rb.instruction)) {
         const subStepLetter = indexToLetters(subIndex);
         const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
 
@@ -594,14 +587,12 @@ function generateStepRow(
           let cellContent = '';
 
           // Get rollback options (defaults)
-          const substituteVars =
-            subStep.rollback?.options?.substitute_vars ?? true;
-          const showCommandSeparately =
-            subStep.rollback?.options?.show_command_separately ?? false;
+          const substituteVars = rb.options?.substitute_vars ?? true;
+          const showCommandSeparately = rb.options?.show_command_separately ?? false;
 
           // Process rollback instruction (markdown content)
-          if (subStep.rollback?.instruction) {
-            let displayInstruction = subStep.rollback.instruction;
+          if (rb.instruction) {
+            let displayInstruction = rb.instruction;
 
             if (resolveVariables && substituteVars) {
               displayInstruction = substituteVariables(
@@ -620,8 +611,8 @@ function generateStepRow(
           }
 
           // Process rollback command (code content)
-          if (subStep.rollback?.command) {
-            let displayCommand = subStep.rollback.command;
+          if (rb.command) {
+            let displayCommand = rb.command;
 
             if (resolveVariables && substituteVars) {
               displayCommand = substituteVariables(
@@ -639,9 +630,9 @@ function generateStepRow(
               .replace(/`/g, '\\`')
               .replace(/<br>$/, '');
 
-            if (showCommandSeparately && subStep.rollback.instruction) {
+            if (showCommandSeparately && rb.instruction) {
               cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
-            } else if (!subStep.rollback.instruction) {
+            } else if (!rb.instruction) {
               cellContent += `\`${cleanCommand}\``;
             } else {
               cellContent += `<br><br>\`${cleanCommand}\``;
@@ -912,10 +903,8 @@ function generateSubStepRow(
 
     // Render rollbacks for all nested sub-steps AFTER all nested sub-steps are rendered
     step.sub_steps.forEach((nestedSubStep, nestedIndex) => {
-      if (
-        isDocRollback(nestedSubStep.rollback) &&
-        (nestedSubStep.rollback.command || nestedSubStep.rollback.instruction)
-      ) {
+      const rb = nestedSubStep.rollback?.[0];
+      if (rb && (rb.command || rb.instruction)) {
         let nestedStepId: string;
         if (depth % 2 === 1) {
           nestedStepId = `${stepId}${nestedIndex + 1}`;
@@ -939,14 +928,12 @@ function generateSubStepRow(
           let cellContent = '';
 
           // Get rollback options (defaults)
-          const substituteVars =
-            nestedSubStep.rollback?.options?.substitute_vars ?? true;
-          const showCommandSeparately =
-            nestedSubStep.rollback?.options?.show_command_separately ?? false;
+          const substituteVars = rb.options?.substitute_vars ?? true;
+          const showCommandSeparately = rb.options?.show_command_separately ?? false;
 
           // Process rollback instruction (markdown content)
-          if (nestedSubStep.rollback?.instruction) {
-            let displayInstruction = nestedSubStep.rollback.instruction;
+          if (rb.instruction) {
+            let displayInstruction = rb.instruction;
 
             if (resolveVariables && substituteVars) {
               displayInstruction = substituteVariables(
@@ -964,8 +951,8 @@ function generateSubStepRow(
           }
 
           // Process rollback command (code content)
-          if (nestedSubStep.rollback?.command) {
-            let displayCommand = nestedSubStep.rollback.command;
+          if (rb.command) {
+            let displayCommand = rb.command;
 
             if (resolveVariables && substituteVars) {
               displayCommand = substituteVariables(
@@ -982,9 +969,9 @@ function generateSubStepRow(
               .replace(/`/g, '\\`')
               .replace(/<br>$/, '');
 
-            if (showCommandSeparately && nestedSubStep.rollback.instruction) {
+            if (showCommandSeparately && rb.instruction) {
               cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
-            } else if (!nestedSubStep.rollback.instruction) {
+            } else if (!rb.instruction) {
               cellContent += `\`${cleanCommand}\``;
             } else {
               cellContent += `<br><br>\`${cleanCommand}\``;
@@ -1302,10 +1289,8 @@ function generateManualContent(
         );
 
         // Inline rollback rendering - render immediately after step if present
-        if (
-          isDocRollback(step.rollback) &&
-          (step.rollback.command || step.rollback.instruction)
-        ) {
+        const rb = step.rollback?.[0];
+        if (rb && (rb.command || rb.instruction)) {
           // Close current table
           markdown += '\n';
 
@@ -1320,14 +1305,12 @@ function generateManualContent(
             let cellContent = '';
 
             // Get rollback options (defaults)
-            const substituteVars =
-              step.rollback?.options?.substitute_vars ?? true;
-            const showCommandSeparately =
-              step.rollback?.options?.show_command_separately ?? false;
+            const substituteVars = rb.options?.substitute_vars ?? true;
+            const showCommandSeparately = rb.options?.show_command_separately ?? false;
 
             // Process rollback instruction (markdown content)
-            if (step.rollback?.instruction) {
-              let displayInstruction = step.rollback.instruction;
+            if (rb.instruction) {
+              let displayInstruction = rb.instruction;
 
               if (resolveVariables && substituteVars) {
                 displayInstruction = substituteVariables(
@@ -1346,8 +1329,8 @@ function generateManualContent(
             }
 
             // Process rollback command (code content)
-            if (step.rollback?.command) {
-              let displayCommand = step.rollback.command;
+            if (rb.command) {
+              let displayCommand = rb.command;
 
               if (resolveVariables && substituteVars) {
                 displayCommand = substituteVariables(
@@ -1365,9 +1348,9 @@ function generateManualContent(
                 .replace(/`/g, '\\`')
                 .replace(/<br>$/, '');
 
-              if (showCommandSeparately && step.rollback.instruction) {
+              if (showCommandSeparately && rb.instruction) {
                 cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
-              } else if (!step.rollback.instruction) {
+              } else if (!rb.instruction) {
                 cellContent += `\`${cleanCommand}\``;
               } else {
                 cellContent += `<br><br>\`${cleanCommand}\``;
@@ -1407,18 +1390,21 @@ function generateManualContent(
   }
 
   // Add rollback section if any steps have rollback defined
-  const stepsWithRollback = operation.steps.filter((step) => step.rollback);
+  const stepsWithRollback = operation.steps.filter(
+    (step) => step.rollback && step.rollback.length > 0,
+  );
   if (stepsWithRollback.length > 0) {
     markdown += '## 🔄 Rollback Procedures\n\n';
     markdown +=
       'If deployment fails, execute the following rollback steps:\n\n';
 
     stepsWithRollback.forEach((step, _index) => {
-      if (!step.rollback) return;
+      const rb = step.rollback?.[0];
+      if (!rb) return;
 
       markdown += `### Rollback for: ${step.name}\n\n`;
 
-      if (step.rollback.command || step.rollback.instruction) {
+      if (rb.command || rb.instruction) {
         markdown += '| Environment | Rollback Action |\n';
         markdown += '|-------------|----------------|\n';
 
@@ -1426,14 +1412,12 @@ function generateManualContent(
           let cellContent = '';
 
           // Get rollback options (defaults)
-          const substituteVars =
-            step.rollback?.options?.substitute_vars ?? true;
-          const showCommandSeparately =
-            step.rollback?.options?.show_command_separately ?? false;
+          const substituteVars = rb.options?.substitute_vars ?? true;
+          const showCommandSeparately = rb.options?.show_command_separately ?? false;
 
           // Process rollback instruction (markdown content)
-          if (step.rollback?.instruction) {
-            let displayInstruction = step.rollback.instruction;
+          if (rb.instruction) {
+            let displayInstruction = rb.instruction;
 
             if (resolveVariables && substituteVars) {
               displayInstruction = substituteVariables(
@@ -1452,8 +1436,8 @@ function generateManualContent(
           }
 
           // Process rollback command (code content)
-          if (step.rollback?.command) {
-            let displayCommand = step.rollback.command;
+          if (rb.command) {
+            let displayCommand = rb.command;
 
             if (resolveVariables && substituteVars) {
               displayCommand = substituteVariables(
@@ -1471,9 +1455,9 @@ function generateManualContent(
               .replace(/`/g, '\\`')
               .replace(/<br>$/, '');
 
-            if (showCommandSeparately && step.rollback.instruction) {
+            if (showCommandSeparately && rb.instruction) {
               cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
-            } else if (!step.rollback.instruction) {
+            } else if (!rb.instruction) {
               cellContent += `\`${cleanCommand}\``;
             } else {
               cellContent += `<br><br>\`${cleanCommand}\``;

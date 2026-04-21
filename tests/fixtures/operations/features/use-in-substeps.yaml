@@ -35,6 +35,6 @@ steps:
       - use: verify-dns
         phase: flight
     rollback:
-      type: manual
-      command: |
-        kubectl rollback deployment/app
+      - type: manual
+        command: |
+          kubectl rollback deployment/app
