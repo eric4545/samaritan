@@ -12,6 +12,7 @@ export interface SessionCheckpoint {
 export interface OperationSession {
   id: string;
   operation_id: string;
+  operation_file?: string; // Absolute path to the operation YAML — required for cross-process resume
   environment: string;
   status: SessionStatus;
   current_step_index: number;

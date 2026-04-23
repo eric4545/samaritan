@@ -262,6 +262,114 @@ describe('Operation Executor', () => {
   });
 });
 
+describe('Waiting step regression tests', () => {
+  const makeOperation = (steps: Operation['steps']): Operation => ({
+    id: 'regression-op',
+    name: 'Regression Operation',
+    version: '1.0.0',
+    description: '',
+    environments: [
+      {
+        name: 'test',
+        description: '',
+        variables: {},
+        restrictions: [],
+        approval_required: false,
+        validation_required: false,
+      },
+    ],
+    variables: { test: {} },
+    steps,
+    preflight: [],
+    metadata: {
+      created_at: new Date(),
+      updated_at: new Date(),
+      execution_count: 0,
+    },
+  });
+
+  it('manual step without user input does not produce completed status', async () => {
+    const op = makeOperation([
+      { name: 'Manual Step', type: 'manual', instruction: 'Do it manually' },
+    ]);
+    const context = ExecutorUtils.createContext('regression-op', 'test', {}, 'user');
+    const executor = createExecutor(op, context);
+
+    await executor.execute();
+
+    const state = executor.getState();
+    assert.notStrictEqual(state.status, 'completed', 'operation must not be completed when manual step is pending');
+    assert.strictEqual(state.status, 'paused');
+    assert.strictEqual(state.waitingSteps, 1);
+    assert.strictEqual(state.completedSteps, 0);
+  });
+
+  it('approval step without input does not produce completed status', async () => {
+    const op = makeOperation([
+      { name: 'Approve', type: 'approval', instruction: 'Approve the change' },
+    ]);
+    const context = ExecutorUtils.createContext('regression-op', 'test', {}, 'user');
+    const executor = createExecutor(op, context);
+
+    await executor.execute();
+
+    const state = executor.getState();
+    assert.notStrictEqual(state.status, 'completed');
+    assert.strictEqual(state.status, 'paused');
+    assert.strictEqual(state.waitingSteps, 1);
+  });
+
+  it('hybrid run with pending manual step does not complete subsequent steps', async () => {
+    const op = makeOperation([
+      { name: 'Auto Step', type: 'automatic', command: 'echo hi' },
+      { name: 'Manual Gate', type: 'manual', instruction: 'Verify output' },
+      { name: 'After Gate', type: 'automatic', command: 'echo done' },
+    ]);
+    // autoMode: false => automatic steps also require manual confirmation
+    const context = ExecutorUtils.createContext('regression-op', 'test', {}, 'user', { autoMode: false });
+    const executor = createExecutor(op, context);
+
+    await executor.execute();
+
+    const state = executor.getState();
+    assert.strictEqual(state.status, 'paused');
+    assert.strictEqual(state.waitingSteps, 1);
+    // The step after the gate must not have run
+    assert.strictEqual(state.steps[2].status, 'pending', 'step after manual gate must remain pending');
+  });
+
+  it('getSummary reflects waitingSteps count', async () => {
+    const op = makeOperation([
+      { name: 'Manual', type: 'manual', instruction: 'Do something' },
+    ]);
+    const context = ExecutorUtils.createContext('regression-op', 'test', {}, 'user');
+    const executor = createExecutor(op, context);
+
+    await executor.execute();
+
+    const summary = executor.getSummary();
+    assert.strictEqual(summary.status, 'paused');
+    assert.strictEqual(summary.waitingSteps, 1);
+    assert.strictEqual(summary.completedSteps, 0);
+  });
+
+  it('operation with only automatic steps in autoMode still completes', async () => {
+    const op = makeOperation([
+      { name: 'Step 1', type: 'automatic', command: 'echo a' },
+      { name: 'Step 2', type: 'automatic', command: 'echo b' },
+    ]);
+    const context = ExecutorUtils.createContext('regression-op', 'test', {}, 'user', { autoMode: true });
+    const executor = createExecutor(op, context);
+
+    await executor.execute();
+
+    const state = executor.getState();
+    assert.strictEqual(state.status, 'completed');
+    assert.strictEqual(state.waitingSteps, 0);
+    assert.strictEqual(state.completedSteps, 2);
+  });
+});
+
 describe('Executor Utils', () => {
   it('should create execution context with defaults', () => {
     const context = ExecutorUtils.createContext(
