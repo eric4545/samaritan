@@ -1,0 +1,50 @@
+name: Capture and Expect Test
+version: 1.0.0
+description: Tests capture and all assertion types
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      ENDPOINT: https://staging.example.com
+    approval_required: false
+    validation_required: false
+    restrictions: []
+
+steps:
+  - name: Build image
+    type: manual
+    session: execution
+    command: docker build -t myapp .
+    capture:
+      IMAGE_ID:
+        pattern: "Successfully built ([a-f0-9]+)"
+        group: 1
+
+  - name: Check pod count
+    type: manual
+    verify:
+      command: kubectl get pods -n prod | grep -c Running
+      expect:
+        line_count_gte: 1
+        numeric_gte: 3
+
+  - name: Deploy
+    type: manual
+    session: execution
+    command: kubectl set image deployment/myapp myapp=myapp:latest
+    verify:
+      session: verification
+      command: kubectl get pod -l app=myapp -o jsonpath='{.items[0].spec.containers[0].imageID}'
+      expect:
+        contains: "${IMAGE_ID}"
+        retry:
+          interval: 5s
+          max: 6
+
+  - name: Health check
+    type: manual
+    verify:
+      command: curl -s https://staging.example.com/health | jq .status
+      expect:
+        equals: '"healthy"'

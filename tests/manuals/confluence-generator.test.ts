@@ -675,8 +675,8 @@ steps:
     phase: flight
     command: kubectl apply -f deployment.yaml
     rollback:
-      type: manual
-      command: kubectl delete -f deployment.yaml
+      - type: manual
+        command: kubectl delete -f deployment.yaml
 
   - name: Verify Deployment
     section_heading: true

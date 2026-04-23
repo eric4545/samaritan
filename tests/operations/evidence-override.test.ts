@@ -177,6 +177,6 @@ describe('Evidence Override in use: Directive', () => {
 
     // Verify rollback exists
     assert.ok(parentStep.rollback);
-    assert.ok(parentStep.rollback.command);
+    assert.ok(parentStep.rollback[0].command);
   });
 });

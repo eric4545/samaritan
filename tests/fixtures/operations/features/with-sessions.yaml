@@ -1,0 +1,57 @@
+name: Deploy with Sessions
+version: 1.0.0
+description: Tests sessions, verify, rollback array, capture, and expect
+
+sessions:
+  execution:
+    host: prod-bastion.example.com
+    user: deploy
+    env:
+      KUBECONFIG: /home/deploy/.kube/config
+  verification:
+    host: monitoring.example.com
+    user: sre-readonly
+
+run:
+  auto_send: false
+  auto_exec: false
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      REPLICAS: 3
+    approval_required: true
+    validation_required: true
+    restrictions: []
+
+steps:
+  - name: Deploy App
+    type: manual
+    session: execution
+    command: kubectl apply -f deployment.yaml
+    verify:
+      session: verification
+      command: kubectl get pods -n prod
+      expect:
+        contains: Running
+        retry:
+          interval: 5s
+          max: 12
+    rollback:
+      - command: kubectl rollout undo deployment/web
+        session: execution
+      - command: kubectl delete pod -l app=web --force
+        session: execution
+
+  - name: Build Image
+    type: manual
+    session: execution
+    command: docker build -t myapp .
+    capture:
+      IMAGE_ID:
+        pattern: "Successfully built ([a-f0-9]+)"
+        group: 1
+      LAST_LINE:
+        line: last
+    expect: "Successfully built"

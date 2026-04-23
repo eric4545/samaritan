@@ -13,11 +13,17 @@ npx github:eric4545/samaritan --help
 # Validate an operation
 npx github:eric4545/samaritan validate examples/deployment.yaml
 
-# Generate operation manual
-npx github:eric4545/samaritan generate:manual examples/deployment.yaml manual.md
+# Generate multi-environment table manual (default)
+npx github:eric4545/samaritan generate manual examples/deployment.yaml --output manual.md
 
-# Execute operation (dry run)
-npx github:eric4545/samaritan run examples/deployment.yaml --env preprod --dry-run
+# Generate single-environment heading-based manual (for use during execution)
+npx github:eric4545/samaritan generate manual examples/deployment.yaml --env staging --output staging-manual.md
+
+# Execute operation with interactive tmux TUI
+npx github:eric4545/samaritan run examples/deployment-with-run.yaml --env production
+
+# Generate evidence report from a completed session log
+npx github:eric4545/samaritan report /tmp/samaritan-<id>.jsonl --output evidence.md
 ```
 
 ### Real-World Workflow
@@ -29,13 +35,16 @@ npx github:eric4545/samaritan operation my-deployment --template deployment
 # 2. Validate your operation with strict checks
 npx github:eric4545/samaritan validate my-deployment.yaml --strict --env production
 
-# 3. Generate manual for review
-npx github:eric4545/samaritan generate:manual my-deployment.yaml deployment-manual.md
+# 3. Generate single-env manual for staging (resolved variables, heading format)
+npx github:eric4545/samaritan generate manual my-deployment.yaml --env staging --resolve-vars --output staging-runbook.md
 
-# 4. Execute in staging first
+# 4. Execute in staging with interactive TUI
 npx github:eric4545/samaritan run my-deployment.yaml --env staging
 
-# 5. Execute in production
+# 5. Generate evidence report for the staging run
+npx github:eric4545/samaritan report /tmp/samaritan-<id>.jsonl --output staging-evidence.md
+
+# 6. Execute in production
 npx github:eric4545/samaritan run my-deployment.yaml --env production
 ```
 

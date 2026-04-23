@@ -4,7 +4,10 @@ import { Command } from 'commander';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { generateADFString } from '../../manuals/adf-generator';
-import { generateManualWithMetadata } from '../../manuals/generator';
+import {
+  generateManualWithMetadata,
+  generateSingleEnvManual,
+} from '../../manuals/generator';
 import type { Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
@@ -69,16 +72,14 @@ function filterStepsForEnvironments(
 interface GenerateOptions {
   output?: string;
   format?: 'markdown' | 'confluence' | 'adf' | 'html' | 'pdf';
-  env?: string; // Primary option: -e, --env
-  environment?: string; // DEPRECATED: Legacy alias for backward compatibility
+  env?: string;
   resolveVars?: boolean;
   template?: string;
   gantt?: boolean;
 }
 
-// Helper to get target environment from options (handles both --env and legacy --environment)
 function getTargetEnvironment(options: GenerateOptions): string | undefined {
-  return options.env || options.environment;
+  return options.env;
 }
 
 class DocumentationGenerator {
@@ -161,15 +162,20 @@ class DocumentationGenerator {
     // Get operation directory for evidence file reading
     const operationDir = dirname(operationFile);
 
-    // Generate manual with metadata and environment filtering
-    const manual = generateManualWithMetadata(
-      operation,
-      metadata,
-      targetEnv,
-      options.resolveVars,
-      options.gantt,
-      operationDir,
-    );
+    // When --env is specified, use the single-env heading-based format (issue #15)
+    let manual: string;
+    if (targetEnv) {
+      manual = generateSingleEnvManual(operation, targetEnv, options.resolveVars);
+    } else {
+      manual = generateManualWithMetadata(
+        operation,
+        metadata,
+        targetEnv,
+        options.resolveVars,
+        options.gantt,
+        operationDir,
+      );
+    }
 
     // Determine output file
     const outputFile =
@@ -478,12 +484,12 @@ ${step.estimated_duration ? `**Estimated Duration**: ${step.estimated_duration}s
 ${step.evidence_required ? `**Evidence Required**: ${step.evidence_types?.join(', ') || 'Yes'}` : ''}
 ${step.continue_on_error ? `**Continue on Error**: Yes` : ''}
 
-${
-  step.rollback
-    ? `**Rollback**:
-${step.rollback.command ? `\`${step.rollback.command}\`` : step.rollback.instruction || 'See rollback instructions'}`
-    : ''
-}
+${(() => {
+  const rb = step.rollback?.[0];
+  return rb
+    ? `**Rollback**:\n${rb.command ? `\`${rb.command}\`` : rb.instruction || 'See rollback instructions'}`
+    : '';
+})()}
 `,
   )
   .join('')}
@@ -1354,12 +1360,10 @@ ${filteredOperation.environments
       // Render rollback for step AFTER all content (inline rendering)
       // For parent steps with sub_steps, this renders after sub-steps
       // For regular steps, this renders after the step row
-      if (
-        step.rollback &&
-        (step.rollback.command || step.rollback.instruction)
-      ) {
+      const rb = step.rollback?.[0];
+      if (rb && (rb.command || rb.instruction)) {
         content += renderInlineRollback(
-          step.rollback,
+          rb,
           `${globalStepNumber}`,
           step.name,
           3, // h3 for parent steps
@@ -1809,14 +1813,12 @@ function addConfluenceSubStepRows(
       );
 
       // Render rollback for sub-step AFTER all nested sub-steps (inline rendering)
-      if (
-        subStep.rollback &&
-        (subStep.rollback.command || subStep.rollback.instruction)
-      ) {
+      const subRb = subStep.rollback?.[0];
+      if (subRb && (subRb.command || subRb.instruction)) {
         // Calculate parent heading level (same formula as section heading)
         const parentHeadingLevel = Math.min(4 + Math.ceil((depth - 1) / 2), 6);
         content += renderInlineRollback(
-          subStep.rollback,
+          subRb,
           subStepId,
           subStep.name,
           parentHeadingLevel,

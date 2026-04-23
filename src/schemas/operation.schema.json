@@ -109,6 +109,40 @@
       "type": "string",
       "description": "Path to .env file for loading variables (lowest priority in variable lookup)"
     },
+    "sessions": {
+      "type": "object",
+      "description": "Named tmux sessions for execution engine",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "host": { "type": "string", "description": "SSH host (omit for local)" },
+          "user": { "type": "string", "description": "SSH user" },
+          "env": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Environment variables to set on connect"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "run": {
+      "type": "object",
+      "description": "Run-mode configuration for the execution engine",
+      "properties": {
+        "auto_send": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-load command text into terminal when step starts"
+        },
+        "auto_exec": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-press Enter after send"
+        }
+      },
+      "additionalProperties": false
+    },
     "preflight": {
       "type": "array",
       "items": {
@@ -565,6 +599,46 @@
                 "type": "string",
                 "description": "Reviewer/buddy who monitors and verifies the PIC's work"
               },
+              "session": {
+                "type": "string",
+                "description": "Named tmux session to use for this step (execution engine)"
+              },
+              "capture": {
+                "type": "object",
+                "description": "Extract named values from command output for use in later steps",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "pattern": { "type": "string", "description": "Regex pattern with capture group" },
+                    "group": { "type": "number", "minimum": 0, "description": "Capture group index (default 1)" },
+                    "line": { "type": "string", "enum": ["last", "first"], "description": "Extract specific line" }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "expect": {
+                "description": "Shorthand: string means contains. Structured for full assertion config.",
+                "oneOf": [
+                  { "type": "string" },
+                  { "$ref": "#/definitions/expectConfig" }
+                ]
+              },
+              "verify": {
+                "type": "object",
+                "description": "Verification command run after the main command",
+                "required": ["command"],
+                "properties": {
+                  "session": { "type": "string", "description": "Session to run verify command in" },
+                  "command": { "type": "string" },
+                  "expect": {
+                    "oneOf": [
+                      { "type": "string" },
+                      { "$ref": "#/definitions/expectConfig" }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
               "timeline": {
                 "oneOf": [
                   {
@@ -668,35 +742,51 @@
                 "description": "Environment-specific step overrides (can override any step field except 'when' and 'variants')"
               },
               "rollback": {
-                "type": "object",
-                "properties": {
-                  "command": {
-                    "type": "string"
-                  },
-                  "instruction": {
-                    "type": "string"
-                  },
-                  "timeout": {
-                    "type": "number",
-                    "minimum": 0
-                  },
-                  "options": {
-                    "type": "object",
-                    "properties": {
-                      "substitute_vars": {
-                        "type": "boolean",
-                        "default": true,
-                        "description": "Substitute ${VAR} in instruction and command (default: true)"
-                      },
-                      "show_command_separately": {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Show command in separate section from instruction (default: false)"
+                "description": "Rollback steps for this step. Array format preferred; object format accepted for backward compatibility (parser normalizes to array).",
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "command": { "type": "string" },
+                        "instruction": { "type": "string" },
+                        "timeout": { "type": "number", "minimum": 0 },
+                        "session": { "type": "string", "description": "Session to run rollback in (defaults to step session)" },
+                        "description": { "type": "string" },
+                        "type": { "type": "string" },
+                        "options": {
+                          "type": "object",
+                          "properties": {
+                            "substitute_vars": { "type": "boolean", "default": true },
+                            "show_command_separately": { "type": "boolean", "default": false }
+                          },
+                          "additionalProperties": false
+                        }
                       }
                     },
-                    "additionalProperties": false
+                    "description": "Rollback steps (preferred format)"
+                  },
+                  {
+                    "type": "object",
+                    "description": "Single rollback step (backward-compatible object format)",
+                    "properties": {
+                      "command": { "type": "string" },
+                      "instruction": { "type": "string" },
+                      "timeout": { "type": "number", "minimum": 0 },
+                      "description": { "type": "string" },
+                      "type": { "type": "string" },
+                      "options": {
+                        "type": "object",
+                        "properties": {
+                          "substitute_vars": { "type": "boolean", "default": true },
+                          "show_command_separately": { "type": "boolean", "default": false }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
                   }
-                }
+                ]
               },
               "retry": {
                 "type": "object",
@@ -803,6 +893,38 @@
           "type": "string"
         }
       }
+    }
+  },
+  "definitions": {
+    "expectConfig": {
+      "type": "object",
+      "description": "Rule-based assertion config for verify output",
+      "properties": {
+        "contains": { "type": "string" },
+        "not_contains": { "type": "string" },
+        "equals": { "type": "string" },
+        "matches": { "type": "string" },
+        "not_empty": { "type": "boolean" },
+        "any_line_contains": { "type": "string" },
+        "no_line_contains": { "type": "string" },
+        "all_lines_match": { "type": "string" },
+        "line_count": { "type": "number", "minimum": 0 },
+        "line_count_gte": { "type": "number", "minimum": 0 },
+        "numeric_gte": { "type": "number" },
+        "numeric_lte": { "type": "number" },
+        "jsonpath": { "type": "string" },
+        "equals_captured": { "type": "string" },
+        "retry": {
+          "type": "object",
+          "required": ["interval", "max"],
+          "properties": {
+            "interval": { "type": "string", "description": "Polling interval e.g. '5s'" },
+            "max": { "type": "number", "minimum": 1, "description": "Max retry count" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

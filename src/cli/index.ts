@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { generateCommand } from './commands/generate';
 import { projectCommands } from './commands/project';
 import { qrhCommand } from './commands/qrh';
+import { reportCommand } from './commands/report';
 import { resumeCommand, runCommand } from './commands/run';
 import { schemaCommand } from './commands/schema';
 import { validateCommand } from './commands/validate';
@@ -29,6 +30,9 @@ program.addCommand(resumeCommand);
 
 // Schema inspection
 program.addCommand(schemaCommand);
+
+// Evidence report generation
+program.addCommand(reportCommand);
 
 // Emergency procedures
 program.addCommand(qrhCommand);

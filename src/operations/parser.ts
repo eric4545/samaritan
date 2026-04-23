@@ -9,6 +9,7 @@ import type {
   Operation,
   OperationMetadata,
   PreflightCheck,
+  RollbackStep,
   Step,
   StepPhase,
   StepType,
@@ -689,24 +690,43 @@ function parseStep(
       }
     : undefined;
 
-  // Parse rollback with options
-  const rollback = stepData.rollback
-    ? {
-        command: stepData.rollback.command,
-        instruction: stepData.rollback.instruction,
-        timeout: stepData.rollback.timeout,
-        evidence: parseEvidence(stepData.rollback),
-        evidence_required: Boolean(stepData.rollback.evidence_required),
-        options: stepData.rollback.options
+  // Parse rollback: normalize both object and array YAML formats to RollbackStep[]
+  let rollback: RollbackStep[] | undefined = undefined;
+  if (stepData.rollback) {
+    if (Array.isArray(stepData.rollback)) {
+      rollback = stepData.rollback.map((r: any) => ({
+        command: r.command,
+        session: r.session,
+        instruction: r.instruction,
+        timeout: r.timeout,
+        evidence: r.evidence ? parseEvidence(r) : undefined,
+        options: r.options
           ? {
-              substitute_vars:
-                stepData.rollback.options.substitute_vars ?? true,
-              show_command_separately:
-                stepData.rollback.options.show_command_separately ?? false,
+              substitute_vars: r.options.substitute_vars ?? true,
+              show_command_separately: r.options.show_command_separately ?? false,
             }
           : undefined,
-      }
-    : undefined;
+      }));
+    } else {
+      rollback = [
+        {
+          command: stepData.rollback.command,
+          instruction: stepData.rollback.instruction,
+          timeout: stepData.rollback.timeout,
+          evidence: parseEvidence(stepData.rollback),
+          evidence_required: Boolean(stepData.rollback.evidence_required),
+          options: stepData.rollback.options
+            ? {
+                substitute_vars:
+                  stepData.rollback.options.substitute_vars ?? true,
+                show_command_separately:
+                  stepData.rollback.options.show_command_separately ?? false,
+              }
+            : undefined,
+        },
+      ];
+    }
+  }
 
   return {
     id: stepData.id,
@@ -728,7 +748,10 @@ function parseStep(
     evidence_required: Boolean(stepData.evidence_required), // DEPRECATED: Use evidence.required instead
     evidence_types: stepData.evidence_types as EvidenceType[], // DEPRECATED: Use evidence.types instead
     validation: stepData.validation,
+    session: stepData.session,
     verify: stepData.verify,
+    capture: stepData.capture,
+    expect: stepData.expect,
     continue_on_error: Boolean(stepData.continue_on_error),
     retry: stepData.retry,
     rollback: rollback,
@@ -1063,6 +1086,8 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     tags: rawOperation.tags || [],
     emergency: Boolean(rawOperation.emergency),
     overview: rawOperation.overview,
+    sessions: rawOperation.sessions,
+    run: rawOperation.run,
     environments,
     variables,
     common_variables: commonVariables,

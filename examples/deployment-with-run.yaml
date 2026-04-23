@@ -1,0 +1,110 @@
+name: Deploy Kubernetes Service
+version: 1.0.0
+description: |
+  Production Kubernetes deployment with automated verification, rollback,
+  and a separate monitoring session for read-only validation.
+
+# ─── Named tmux sessions ───────────────────────────────────────────────────────
+# SAMARITAN bootstraps one tmux pane per session. SSH sessions open automatically.
+# Local sessions (no host) run on the operator's machine.
+sessions:
+  execution:
+    host: prod-bastion.example.com
+    user: deploy
+    env:
+      KUBECONFIG: /home/deploy/.kube/prod-config
+  monitoring:
+    host: monitoring.example.com
+    user: sre-readonly
+
+# ─── Execution run-mode ────────────────────────────────────────────────────────
+# auto_send: true  → command text auto-loaded into terminal when step starts
+# auto_exec: true  → Enter sent automatically (fully hands-off)
+# Default: both false (most cautious — operator confirms each step)
+run:
+  auto_send: false
+  auto_exec: false
+
+environments:
+  - name: staging
+    description: Staging cluster
+    variables:
+      NAMESPACE: staging
+      REPLICAS: 1
+      IMAGE_TAG: latest
+    approval_required: false
+    validation_required: false
+    restrictions: []
+
+  - name: production
+    description: Production cluster
+    variables:
+      NAMESPACE: prod
+      REPLICAS: 3
+      IMAGE_TAG: stable
+    approval_required: true
+    validation_required: true
+    restrictions: []
+
+steps:
+  # ─── Step 1: Capture current state before making changes ─────────────────────
+  - name: Record current image
+    type: manual
+    session: execution
+    command: kubectl get deployment web -n ${NAMESPACE} -o jsonpath='{.spec.template.spec.containers[0].image}'
+    capture:
+      CURRENT_IMAGE:
+        line: last    # store the entire output as CURRENT_IMAGE for rollback reference
+    verify:
+      session: monitoring
+      command: kubectl get deployment web -n ${NAMESPACE} --no-headers
+      expect:
+        not_empty: true
+
+  # ─── Step 2: Deploy new image ─────────────────────────────────────────────────
+  - name: Deploy new image
+    type: manual
+    session: execution
+    pic: ops@example.com
+    reviewer: sre-lead@example.com
+    command: kubectl set image deployment/web web=myapp:${IMAGE_TAG} -n ${NAMESPACE}
+    verify:
+      session: monitoring
+      command: kubectl rollout status deployment/web -n ${NAMESPACE} --timeout=120s
+      expect:
+        contains: "successfully rolled out"
+        retry:
+          interval: 10s
+          max: 12         # poll up to 12 × 10s = 2 minutes
+    rollback:
+      - command: kubectl rollout undo deployment/web -n ${NAMESPACE}
+        session: execution
+      - command: kubectl rollout status deployment/web -n ${NAMESPACE} --timeout=60s
+        session: monitoring
+
+  # ─── Step 3: Verify pod count ─────────────────────────────────────────────────
+  - name: Check pod readiness
+    type: manual
+    session: monitoring
+    command: kubectl get pods -n ${NAMESPACE} -l app=web --no-headers | grep -c Running
+    expect:
+      numeric_gte: 1    # at least 1 pod running (override per-env via variants if needed)
+    verify:
+      session: monitoring
+      command: kubectl get pods -n ${NAMESPACE} -l app=web -o wide
+      expect:
+        no_line_contains: "CrashLoopBackOff"
+
+  # ─── Step 4: Smoke test ────────────────────────────────────────────────────────
+  - name: Smoke test
+    type: manual
+    verify:
+      command: curl -sf https://api.${NAMESPACE}.example.com/health | jq -r .status
+      expect:
+        equals: "ok"
+        retry:
+          interval: 5s
+          max: 6
+    rollback:
+      - command: kubectl rollout undo deployment/web -n ${NAMESPACE}
+        session: execution

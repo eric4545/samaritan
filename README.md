@@ -30,6 +30,7 @@ npx github:eric4545/samaritan#branch-name validate my-operation.yaml
 - [Core Concepts](#-core-concepts)
 - [CLI Commands](#-cli-commands)
 - [Operation Definition](#-operation-definition)
+- [Interactive Execution Engine](#-interactive-execution-engine)
 - [Execution Workflows](#-execution-workflows)
 - [Examples](#-examples)
 - [Roadmap](#-roadmap)
@@ -343,7 +344,7 @@ npx github:eric4545/samaritan validate <operation.yaml> [options]
 npx github:eric4545/samaritan generate manual <operation.yaml> [options]
   --output <file>       Output file (default: stdout)
   --format <md|confluence>  Output format (default: md)
-  --env <environment>   Generate for specific environment only
+  --env <environment>   Single-environment heading-based Markdown (no tables); omit for multi-env table format
   --resolve-vars        Resolve variables to actual values (ready-to-execute commands)
   --gantt               Include Mermaid Gantt chart for timeline visualization
 
@@ -352,6 +353,10 @@ npx github:eric4545/samaritan generate confluence <operation.yaml> [options]
   --output <file>       Output Confluence storage format file
   --env <environment>   Generate for specific environment only
   --gantt               Include Gantt chart for timeline visualization
+
+# Generate evidence report from a session log
+npx github:eric4545/samaritan report <session.jsonl> [options]
+  --output <file>       Output Markdown file (default: stdout)
 
 # Export JSON schema for operations
 npx github:eric4545/samaritan schema [options]
@@ -1113,6 +1118,218 @@ gantt
 - **Compliance Documentation**: Provide visual timeline evidence for audit trails
 
 See `tests/fixtures/operations/confluence/gantt-timeline.yaml` for a complete example.
+
+
+## ⚡ Interactive Execution Engine *(In Development)*
+
+> **Status**: The individual components (tmux bootstrap, TUI, JSONL event logger, assertions, capture) are implemented and tested. End-to-end wiring of `samaritan run` to the interactive engine is in progress — the current `run` command falls back to the basic `OperationExecutor`. The YAML schema, `report` command, and single-env manual generation are fully functional today.
+
+SAMARITAN's interactive execution engine will let you run operations step-by-step with automated verification, output capture, and a full JSONL audit trail backed by `tmux`.
+
+### Planned flow
+
+```
+samaritan run deployment-with-run.yaml --env production
+  1. Creates a tmux session (samaritan-<id>)
+  2. Bootstraps one window per named session (local or SSH)
+  3. Starts pipe-pane background capture on every pane
+  4. Launches the interactive TUI in the current terminal
+  5. Writes all events to /tmp/samaritan-<id>.jsonl
+```
+
+In iTerm2, panes open as native vertical splits automatically. In any other terminal with tmux, panes are split inside the current window.
+
+### Named sessions
+
+Define where each step runs — local or over SSH:
+
+```yaml
+sessions:
+  execution:
+    host: prod-bastion.example.com
+    user: deploy
+    env:
+      KUBECONFIG: /home/deploy/.kube/prod-config
+  monitoring:
+    host: monitoring.example.com
+    user: sre-readonly         # read-only verification host
+```
+
+Assign a step to a session with `session: <name>`. Verification can run in a *different* session than execution:
+
+```yaml
+steps:
+  - name: Deploy
+    session: execution
+    command: kubectl apply -f deployment.yaml -n ${NAMESPACE}
+    verify:
+      session: monitoring      # check via the read-only pane
+      command: kubectl rollout status deployment/web -n ${NAMESPACE}
+      expect:
+        contains: "successfully rolled out"
+```
+
+### Run modes (`auto_send` / `auto_exec`)
+
+Control how hands-off the operator experience is:
+
+```yaml
+run:
+  auto_send: false   # true → command auto-loaded into terminal on step start
+  auto_exec: false   # true → Enter sent automatically after send
+```
+
+| `auto_send` | `auto_exec` | Behaviour |
+|---|---|---|
+| `false` | `false` | `[s]` loads command, operator presses Enter (most cautious) |
+| `true` | `false` | command auto-loads, operator reviews then presses Enter |
+| `false` | `true` | `[s]` loads and immediately executes |
+| `true` | `true` | fully automatic — no operator intervention |
+
+### Rule-based assertions
+
+Verify command output automatically. Shorthand string = `contains`:
+
+```yaml
+verify:
+  command: kubectl get pods -n prod | grep web | grep -c Running
+  expect: "3"                 # shorthand: output must contain "3"
+```
+
+Or structured:
+
+```yaml
+verify:
+  command: kubectl get pod web-0 -o jsonpath='{.status.phase}'
+  expect:
+    equals: "Running"
+    retry:
+      interval: 5s
+      max: 12               # retry up to 12 times (60s total)
+```
+
+**All supported assertion types:**
+
+| YAML key | Passes when |
+|---|---|
+| `contains: "text"` | output includes substring |
+| `not_contains: "Error"` | output does not include substring |
+| `equals: "value"` | trimmed output exactly equals value |
+| `matches: "regex"` | output matches regular expression |
+| `not_empty: true` | output is non-empty |
+| `any_line_contains: "text"` | at least one line includes substring |
+| `no_line_contains: "Error"` | no line includes substring |
+| `all_lines_match: "regex"` | every non-empty line matches pattern |
+| `line_count: 3` | exactly N non-empty lines |
+| `line_count_gte: 1` | at least N non-empty lines |
+| `numeric_gte: 80` | first number in output ≥ value |
+| `jsonpath: "$.status" equals: "ok"` | JSONPath expression equals value |
+| `equals_captured: VAR` | output equals a previously captured variable |
+
+### Capture — carry values forward
+
+Extract values from command output and use them in later steps:
+
+```yaml
+steps:
+  - name: Build image
+    command: docker build -t myapp .
+    capture:
+      IMAGE_ID:
+        pattern: "Successfully built ([a-f0-9]+)"
+        group: 1            # capture group 1 from the regex
+      LAST_LINE:
+        line: last          # or: line: first
+
+  - name: Deploy
+    command: kubectl set image deployment/web web=myapp:${IMAGE_ID}
+    verify:
+      command: kubectl get pod -l app=web -o jsonpath='{.items[0].spec.containers[0].image}'
+      expect:
+        contains: "${IMAGE_ID}"    # ${VAR} interpolated at runtime
+```
+
+### Rollback
+
+Define rollback commands as an ordered list per step. SAMARITAN runs them when the operator presses `[r]` or verify fails:
+
+```yaml
+steps:
+  - name: Deploy
+    session: execution
+    command: kubectl apply -f deployment.yaml
+    rollback:
+      - command: kubectl rollout undo deployment/web
+        session: execution
+      - command: kubectl delete pod -l app=web --force
+        session: execution
+```
+
+After rolling back step N, SAMARITAN offers to walk back previous steps too.
+
+If no `rollback:` is defined, the operator is prompted to intervene manually.
+
+### JSONL audit trail
+
+Every action writes a line to `/tmp/samaritan-<id>.jsonl`:
+
+```jsonl
+{"ts":"2026-04-18T10:00:00Z","type":"session_start","op":"deployment.yaml","session_id":"f3a9b2"}
+{"ts":"2026-04-18T10:00:01Z","type":"session_open","name":"execution","host":"prod-bastion","pane":"samaritan-f3a9b2:0.1"}
+{"ts":"2026-04-18T10:00:05Z","type":"step_start","step":0,"name":"Deploy","pic":"ops@example.com"}
+{"ts":"2026-04-18T10:00:06Z","type":"command_sent","session":"execution","command":"kubectl apply -f deployment.yaml"}
+{"ts":"2026-04-18T10:00:20Z","type":"pane_captured","session":"execution","output":"deployment.apps/web created"}
+{"ts":"2026-04-18T10:00:22Z","type":"assert_result","step":0,"pass":true,"actual":"successfully rolled out","type":"contains"}
+{"ts":"2026-04-18T10:00:30Z","type":"step_complete","step":0}
+{"ts":"2026-04-18T10:02:00Z","type":"session_end","status":"completed"}
+```
+
+Query with `jq`:
+
+```bash
+# All commands sent during the session
+cat /tmp/samaritan-f3a9b2.jsonl | jq 'select(.type=="command_sent")'
+
+# Assertion failures only
+cat /tmp/samaritan-f3a9b2.jsonl | jq 'select(.type=="assert_result" and .pass==false)'
+```
+
+### Evidence report
+
+Generate a human-readable Markdown report from any JSONL log:
+
+```bash
+# Print to stdout
+samaritan report /tmp/samaritan-f3a9b2.jsonl
+
+# Save to file
+samaritan report /tmp/samaritan-f3a9b2.jsonl --output evidence-report.md
+```
+
+The report includes a summary (steps, duration, PIC/reviewer), per-step command + output, verification sign-offs, and a dedicated rollback events section. Attach it directly to a change ticket.
+
+### Single-environment Markdown manual
+
+Generate a clean, heading-based manual for a specific environment — optimised for reading *during* an operation rather than cross-env comparison:
+
+```bash
+# Single-env format (headings, no tables)
+samaritan generate manual deployment.yaml --env production --output prod-manual.md
+
+# Multi-env table format (default, no --env flag)
+samaritan generate manual deployment.yaml --output full-manual.md
+```
+
+The `--env` format renders `## Step N: <name>` headings, `**Command**`/`**Verify**`/`Expected:` blocks, and `> PIC:`/`> Reviewer:` blockquotes — no tables.
+
+### Complete example
+
+See [`examples/deployment-with-run.yaml`](examples/deployment-with-run.yaml) for a full operation using:
+- Two named sessions (execution over SSH, monitoring over SSH)
+- `capture` to record the pre-deploy image tag for rollback reference
+- `verify` with `expect` + `retry` on the monitoring session
+- Array-format `rollback` steps on multiple steps
+- `run.auto_send: false` / `run.auto_exec: false` (operator confirms each step)
 
 
 ## 🔄 Execution Workflows

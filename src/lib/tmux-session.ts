@@ -1,0 +1,143 @@
+import { execSync, spawnSync } from 'node:child_process';
+import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { SessionConfig } from '../models/operation';
+
+export function isLocalSession(config: SessionConfig | undefined): boolean {
+  return !config?.host;
+}
+
+export class TmuxSession {
+  private sessionId: string;
+  private tmuxName: string;
+  private paneMap: Map<string, string> = new Map();
+
+  constructor(sessionId: string, tmuxName: string) {
+    this.sessionId = sessionId;
+    this.tmuxName = tmuxName;
+  }
+
+  getPipeFilePath(sessionName: string): string {
+    return join(tmpdir(), `samaritan-${this.sessionId}-${sessionName}.pipe`);
+  }
+
+  send(sessionName: string, command: string): void {
+    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    execSync(
+      `tmux send-keys -t ${pane} ${JSON.stringify(command)} Enter`,
+    );
+  }
+
+  currentOffset(sessionName: string): number {
+    const pipeFile = this.getPipeFilePath(sessionName);
+    if (!existsSync(pipeFile)) return 0;
+    try {
+      return statSync(pipeFile).size;
+    } catch {
+      return 0;
+    }
+  }
+
+  readOutput(sessionName: string, fromOffset: number): string {
+    const pipeFile = this.getPipeFilePath(sessionName);
+    if (!existsSync(pipeFile)) return '';
+    try {
+      const buf = readFileSync(pipeFile);
+      return buf.slice(fromOffset).toString('utf-8');
+    } catch {
+      return '';
+    }
+  }
+
+  async waitForPrompt(
+    sessionName: string,
+    timeoutMs: number,
+    promptPattern = '\\$\\s*$',
+  ): Promise<'done' | 'timeout'> {
+    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    const deadline = Date.now() + timeoutMs;
+    const re = new RegExp(promptPattern, 'm');
+
+    while (Date.now() < deadline) {
+      const result = spawnSync('tmux', ['capture-pane', '-p', '-t', pane]);
+      const output = result.stdout?.toString() ?? '';
+      if (re.test(output)) return 'done';
+      await sleep(500);
+    }
+    return 'timeout';
+  }
+
+  registerPane(sessionName: string, paneTarget: string): void {
+    this.paneMap.set(sessionName, paneTarget);
+  }
+
+  teardown(): void {
+    try {
+      execSync(`tmux kill-session -t ${this.tmuxName}`, { stdio: 'ignore' });
+    } catch {
+      // session may already be gone
+    }
+    for (const name of this.paneMap.keys()) {
+      const pipeFile = this.getPipeFilePath(name);
+      if (existsSync(pipeFile)) {
+        try {
+          unlinkSync(pipeFile);
+        } catch {
+          // best effort
+        }
+      }
+    }
+  }
+}
+
+export async function bootstrapSessions(
+  sessionId: string,
+  sessions: Record<string, SessionConfig>,
+  promptPattern?: string,
+): Promise<TmuxSession> {
+  const tmuxName = `samaritan-${sessionId}`;
+  const tmuxSession = new TmuxSession(sessionId, tmuxName);
+
+  execSync(`tmux new-session -d -s ${tmuxName}`);
+
+  const sessionNames = Object.keys(sessions);
+  for (let i = 0; i < sessionNames.length; i++) {
+    const name = sessionNames[i];
+    const config = sessions[name];
+    // Each session gets its own window; the first pane in window i is :i.0
+    const paneTarget = `${tmuxName}:${i}.0`;
+
+    if (i > 0) {
+      execSync(`tmux new-window -t ${tmuxName}`);
+    }
+
+    // Start pipe-pane capture
+    const pipeFile = tmuxSession.getPipeFilePath(name);
+    execSync(
+      `tmux pipe-pane -t ${paneTarget} -o 'cat >> ${pipeFile}'`,
+    );
+
+    tmuxSession.registerPane(name, paneTarget);
+
+    // SSH connect if host defined
+    if (config.host) {
+      const userAtHost = config.user
+        ? `${config.user}@${config.host}`
+        : config.host;
+      execSync(
+        `tmux send-keys -t ${paneTarget} ${JSON.stringify(`ssh ${userAtHost}`)} Enter`,
+      );
+    }
+
+    // Wait for prompt after connecting
+    const pattern = promptPattern ?? '\\$\\s*$';
+    await tmuxSession.waitForPrompt(name, 10_000, pattern);
+  }
+
+  return tmuxSession;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
