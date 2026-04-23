@@ -106,18 +106,36 @@ class OperationRunner {
       console.log('▶️  Starting operation execution...\n');
       await executor.execute();
 
-      console.log('\n✅ Operation completed successfully!');
+      const finalState = executor.getState();
+
+      if (finalState.status === 'paused') {
+        const waitingStep = finalState.steps[finalState.currentStepIndex];
+        console.log('\n⏸️  Operation paused — manual interaction required');
+        console.log(
+          `   ${finalState.waitingSteps} step(s) are waiting for manual input or approval`,
+        );
+        if (waitingStep) {
+          console.log(`   Waiting at step: "${waitingStep.step.name}"`);
+        }
+        console.log(`\n💡 Complete the step and resume:`);
+        console.log(`   samaritan resume ${session.id}`);
+      } else {
+        console.log('\n✅ Operation completed successfully!');
+      }
 
       // Show session summary
       const summary = sessionManager.getSessionSummary(session.id);
       if (summary) {
-        console.log(`📊 Execution Summary:`);
+        console.log(`\n📊 Execution Summary:`);
         console.log(
           `   Duration: ${SessionUtils.formatSessionDuration(session)}`,
         );
         console.log(`   Evidence collected: ${summary.evidenceCount} items`);
         console.log(`   Retries: ${summary.retryCount}`);
         console.log(`   Approvals: ${summary.approvalCount}`);
+        if (finalState.waitingSteps > 0) {
+          console.log(`   Pending (waiting): ${finalState.waitingSteps} step(s)`);
+        }
       }
 
       // Generate automatic documentation if configured

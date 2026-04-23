@@ -74,6 +74,7 @@ export interface OperationExecutionState {
   completedSteps: number;
   failedSteps: number;
   skippedSteps: number;
+  waitingSteps: number;
 }
 
 /**
@@ -137,6 +138,7 @@ export class OperationExecutor {
       completedSteps: 0,
       failedSteps: 0,
       skippedSteps: 0,
+      waitingSteps: 0,
     };
 
     // Initialize evidence collectors for steps that require evidence
@@ -154,7 +156,7 @@ export class OperationExecutor {
    * Get execution summary
    */
   getSummary() {
-    const { status, totalSteps, completedSteps, failedSteps, skippedSteps } =
+    const { status, totalSteps, completedSteps, failedSteps, skippedSteps, waitingSteps } =
       this.state;
     const progress =
       totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
@@ -169,6 +171,7 @@ export class OperationExecutor {
       completedSteps,
       failedSteps,
       skippedSteps,
+      waitingSteps,
       currentStep: this.getCurrentStep()?.step.name,
       duration: this.getExecutionDuration(),
       lastError: this.getLastError(),
@@ -203,7 +206,17 @@ export class OperationExecutor {
     try {
       await this.executeSteps();
 
-      if (this.state.failedSteps === 0) {
+      if (this.state.waitingSteps > 0) {
+        this.state.status = 'paused';
+        this.state.endTime = new Date();
+
+        this.emitEvent({
+          type: 'operation_paused',
+          timestamp: new Date(),
+          operationId: this.state.operation.id,
+          message: `Operation paused: ${this.state.waitingSteps} step(s) require manual interaction`,
+        });
+      } else if (this.state.failedSteps === 0) {
         this.state.status = 'completed';
         this.state.endTime = new Date();
 
@@ -406,6 +419,9 @@ export class OperationExecutor {
           if (!stepState.step.continue_on_error) {
             break; // Stop execution
           }
+        } else if (result.status === 'waiting') {
+          this.state.waitingSteps++;
+          break; // Stop - step requires manual interaction before proceeding
         }
       } catch (error) {
         stepState.status = 'failed';
