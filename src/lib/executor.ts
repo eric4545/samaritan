@@ -555,6 +555,10 @@ export class OperationExecutor {
                 ? `Confirmed by operator: ${userInput}`
                 : 'Command executed automatically';
             result.exitCode = 0;
+          } else if (this.state.context.dryRun) {
+            result.status = 'completed';
+            result.output = `[dry-run] Would execute: ${step.command ?? step.name}`;
+            result.exitCode = 0;
           } else {
             // Non-interactive, non-auto mode: block
             result.status = 'waiting';
@@ -573,6 +577,9 @@ export class OperationExecutor {
           if (userInput !== undefined) {
             result.status = 'completed';
             result.manualNotes = userInput;
+          } else if (this.state.context.dryRun) {
+            result.status = 'completed';
+            result.manualNotes = '[dry-run] Would wait for manual completion';
           } else {
             result.status = 'waiting';
             this.emitEvent({
@@ -590,6 +597,9 @@ export class OperationExecutor {
           if (userInput !== undefined) {
             result.status = 'completed';
             result.manualNotes = userInput;
+          } else if (this.state.context.dryRun) {
+            result.status = 'completed';
+            result.manualNotes = '[dry-run] Would wait for approval';
           } else {
             result.status = 'waiting';
             this.emitEvent({
