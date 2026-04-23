@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { Command } from 'commander';
 import { OperationExecutor } from '../../lib/executor';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
+import { bootstrapSessions, type TmuxSession } from '../../lib/tmux-session';
 import type { ExecutionMode, Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
@@ -110,11 +111,25 @@ class OperationRunner {
       const isInteractiveMode = !context.autoMode && !options.dryRun;
 
       if (isInteractiveMode) {
+        // Bootstrap tmux sessions when the operation declares sessions
+        let tmuxSession: TmuxSession | undefined;
+        if (operation.sessions && Object.keys(operation.sessions).length > 0) {
+          console.log('🖥️  Bootstrapping tmux sessions...');
+          try {
+            tmuxSession = await bootstrapSessions(context.sessionId, operation.sessions);
+            console.log(`   Sessions created: ${Object.keys(operation.sessions).join(', ')}\n`);
+          } catch (err: any) {
+            console.warn(`⚠️  tmux bootstrap failed (${err.message}); falling back to prompt-only mode.\n`);
+          }
+        }
+
         // Interactive step-by-step loop
         console.log('▶️  Starting interactive operation execution...\n');
         executor.startInteractive();
-        await this.runInteractiveStepLoop(executor, operation, operationFile);
+        await this.runInteractiveStepLoop(executor, operation, operationFile, tmuxSession);
         executor.finalizeOperation();
+
+        tmuxSession?.teardown();
       } else {
         // Automatic or dry-run path
         console.log('▶️  Starting operation execution...\n');
@@ -124,7 +139,12 @@ class OperationRunner {
       const finalState = executor.getState();
 
       if (finalState.status === 'completed') {
-        console.log('\n✅ Operation completed successfully!');
+        if (options.dryRun) {
+          console.log('\n✅ Dry-run preview complete — all steps traversed.');
+          console.log(`   Steps: ${finalState.totalSteps}  Skipped: ${finalState.skippedSteps}`);
+        } else {
+          console.log('\n✅ Operation completed successfully!');
+        }
       } else if (finalState.status === 'paused') {
         console.log('\n⏸️  Operation paused — some steps were skipped or are still waiting.');
         console.log(
@@ -231,6 +251,7 @@ class OperationRunner {
     executor: OperationExecutor,
     operation: Operation,
     operationFile: string,
+    tmuxSession?: TmuxSession,
   ): Promise<void> {
     const { createInterface } = await import('node:readline/promises');
     const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -244,31 +265,55 @@ class OperationRunner {
         const { step } = steps[i];
         const stepNum = `[${i + 1}/${steps.length}]`;
         const typeLabel = step.type.toUpperCase();
+        const sessionName = step.session;
 
         console.log(`\n${DIVIDER}`);
         console.log(`${stepNum} ${typeLabel}: ${step.name}`);
         if (step.description) console.log(`    ${step.description}`);
         if (step.pic) console.log(`    PIC      : ${step.pic}`);
         if (step.reviewer) console.log(`    Reviewer : ${step.reviewer}`);
+        if (sessionName) console.log(`    Session  : ${sessionName}`);
 
         if (step.type === 'automatic') {
           if (step.command) console.log(`\n    $ ${step.command}`);
-          const ans = await rl.question(
-            '\n    ▶  Execute? [Enter=yes / s=skip / q=quit]: ',
-          );
-          const choice = ans.trim().toLowerCase();
-          if (choice === 'q' || choice === 'quit') {
-            console.log('\n⛔ Execution aborted by operator.');
-            break;
+
+          // If a tmux session is available and the step targets a named session, send command via tmux
+          if (tmuxSession && sessionName && step.command) {
+            const ans = await rl.question(
+              '\n    ▶  Send to tmux session? [Enter=yes / s=skip / q=quit]: ',
+            );
+            const choice = ans.trim().toLowerCase();
+            if (choice === 'q' || choice === 'quit') {
+              console.log('\n⛔ Execution aborted by operator.');
+              break;
+            }
+            if (choice === 's' || choice === 'skip') {
+              executor.skipStep(i);
+              console.log('    ⏭  Skipped.');
+              continue;
+            }
+            tmuxSession.send(sessionName, step.command);
+            console.log(`    📤 Command sent to tmux pane [${sessionName}].`);
+            await executor.executeStepManually(i, `sent via tmux session: ${sessionName}`);
+            console.log('    ✅ Step marked complete.');
+          } else {
+            const ans = await rl.question(
+              '\n    ▶  Execute? [Enter=yes / s=skip / q=quit]: ',
+            );
+            const choice = ans.trim().toLowerCase();
+            if (choice === 'q' || choice === 'quit') {
+              console.log('\n⛔ Execution aborted by operator.');
+              break;
+            }
+            if (choice === 's' || choice === 'skip') {
+              executor.skipStep(i);
+              console.log('    ⏭  Skipped.');
+              continue;
+            }
+            await executor.executeStepManually(i, 'confirmed');
+            console.log('    ✅ Step marked complete.');
           }
-          if (choice === 's' || choice === 'skip') {
-            executor.skipStep(i);
-            console.log('    ⏭  Skipped.');
-            continue;
-          }
-          await executor.executeStepManually(i, 'confirmed');
-          console.log('    ✅ Step marked complete.');
-        } else if (step.type === 'manual' || step.type === 'hybrid') {
+        } else if (step.type === 'manual') {
           if (step.instruction) console.log(`\n    ${step.instruction}`);
           if (step.command) console.log(`\n    Command reference:\n    $ ${step.command}`);
           const notes = await rl.question(
