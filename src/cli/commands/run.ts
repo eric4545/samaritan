@@ -348,7 +348,7 @@ class OperationRunner {
 const runCommand = new Command('run')
   .description('Execute an operation')
   .argument('<operation>', 'Operation file or name')
-  .requiredOption('-e, --env <environment>', 'Target environment')
+  .requiredOption('-e, --environment <environment>', 'Target environment')
   .option('--auto-approve', 'Auto-approve all manual steps and approvals')
   .option('--dry-run', 'Show what would be executed without running')
   .option(

@@ -377,7 +377,7 @@ const validateCommand = new Command('validate')
   .description('Validate operation definitions')
   .argument('<file>', 'Path to operation YAML file')
   .option('--strict', 'Enable strict validation with best practices')
-  .option('--env <environment>', 'Validate for specific environment')
+  .option('-e, --environment <environment>', 'Validate for specific environment')
   .option('-v, --verbose', 'Verbose output')
   .action(async (file: string, options: ValidationOptions) => {
     const validator = new OperationValidator();
