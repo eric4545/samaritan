@@ -76,6 +76,20 @@ class OperationRunner {
       );
     }
 
+    // Warn about fallback mode limitations for manual/hybrid runs
+    const isInteractiveMode = !context.autoMode && !options.dryRun;
+    if (isInteractiveMode) {
+      console.log(
+        '⚠️  Note: Interactive execution (tmux/TUI) is not yet available.',
+      );
+      console.log(
+        '   Manual and approval steps will pause execution but cannot be completed interactively.',
+      );
+      console.log(
+        '   Use --dry-run to preview steps, or generate a manual: samaritan generate manual <file>\n',
+      );
+    }
+
     // Create session
     const session = sessionManager.createSession(
       operation.id,
@@ -117,8 +131,14 @@ class OperationRunner {
         if (waitingStep) {
           console.log(`   Waiting at step: "${waitingStep.step.name}"`);
         }
-        console.log(`\n💡 Complete the step and resume:`);
-        console.log(`   samaritan resume ${session.id}`);
+        console.log(
+          '\nℹ️  Session state is not persisted. Resume across separate invocations is not yet supported.',
+        );
+        console.log('   To execute this operation interactively:');
+        console.log(
+          `   • Generate a step-by-step manual: samaritan generate manual ${options.dryRun ? '<operation.yaml>' : ''}`,
+        );
+        console.log('   • Use --dry-run to preview all steps without executing');
       } else {
         console.log('\n✅ Operation completed successfully!');
       }
@@ -174,7 +194,12 @@ class OperationRunner {
     // Get session
     const session = sessionManager.getSession(sessionId);
     if (!session) {
-      throw new Error(`Session not found: ${sessionId}`);
+      throw new Error(
+        `Session not found: ${sessionId}\n` +
+          '  Session state is held in-memory and is not persisted across separate CLI invocations.\n' +
+          '  Resume is only available within the same process that started the run.\n' +
+          '  Cross-process session persistence is not yet implemented.',
+      );
     }
 
     if (session.status === 'completed') {
