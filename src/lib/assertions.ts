@@ -203,23 +203,44 @@ function resolveSimpleJsonPath(obj: unknown, path: string): unknown {
   return current;
 }
 
+/**
+ * Convert an assertion expectation to clean, human-readable text for manuals.
+ * Avoids escaped regex artifacts and doubled quotes.
+ */
 export function renderExpectDescription(expect: ExpectConfig | string | undefined): string {
   if (!expect) return '';
-  if (typeof expect === 'string') return `contains "${expect}"`;
+  if (typeof expect === 'string') return expect;
   if (expect.equals !== undefined) {
-    if (expect.jsonpath) return `${expect.jsonpath} == "${expect.equals}"`;
-    return `"${expect.equals}"`;
+    if (expect.jsonpath) return `${expect.jsonpath} equals ${expect.equals}`;
+    return `equals ${expect.equals}`;
   }
-  if (expect.contains !== undefined) return `contains "${expect.contains}"`;
-  if (expect.not_contains !== undefined) return `not contains "${expect.not_contains}"`;
-  if (expect.matches !== undefined) return `matches \`${expect.matches}\``;
-  if (expect.not_empty) return 'not empty';
-  if (expect.any_line_contains !== undefined) return `any line contains "${expect.any_line_contains}"`;
-  if (expect.no_line_contains !== undefined) return `no line contains "${expect.no_line_contains}"`;
-  if (expect.all_lines_match !== undefined) return `all lines match \`${expect.all_lines_match}\``;
-  if (expect.line_count !== undefined) return `line count == ${expect.line_count}`;
-  if (expect.line_count_gte !== undefined) return `line count >= ${expect.line_count_gte}`;
-  if (expect.numeric_gte !== undefined) return `value >= ${expect.numeric_gte}`;
-  if (expect.numeric_lte !== undefined) return `value <= ${expect.numeric_lte}`;
+  if (expect.contains !== undefined) {
+    // Strip surrounding quotes added by JSON serialisation
+    const val = String(expect.contains).replace(/^"|"$/g, '');
+    return `contains: ${val}`;
+  }
+  if (expect.not_contains !== undefined) {
+    const val = String(expect.not_contains).replace(/^"|"$/g, '');
+    return `does not contain: ${val}`;
+  }
+  if (expect.matches !== undefined) {
+    // Extract human-readable alternatives from regex groups like (A|B|C)
+    const pattern = String(expect.matches);
+    const altMatch = pattern.match(/\(([^)]+)\)/);
+    if (altMatch) {
+      return `matches ${altMatch[1].split('|').join(' or ')}`;
+    }
+    // Strip common metacharacters for a readable approximation
+    const readable = pattern.replace(/\\[^\\]/g, '').replace(/[\\^$.*+?[\]{}|]/g, ' ').replace(/\s+/g, ' ').trim();
+    return `matches: ${readable}`;
+  }
+  if (expect.not_empty) return 'is not empty';
+  if (expect.any_line_contains !== undefined) return `any line contains: ${expect.any_line_contains}`;
+  if (expect.no_line_contains !== undefined) return `no line contains: ${expect.no_line_contains}`;
+  if (expect.all_lines_match !== undefined) return `all lines match: ${expect.all_lines_match}`;
+  if (expect.line_count !== undefined) return `exactly ${expect.line_count} line(s)`;
+  if (expect.line_count_gte !== undefined) return `at least ${expect.line_count_gte} line(s)`;
+  if (expect.numeric_gte !== undefined) return `value ≥ ${expect.numeric_gte}`;
+  if (expect.numeric_lte !== undefined) return `value ≤ ${expect.numeric_lte}`;
   return '';
 }

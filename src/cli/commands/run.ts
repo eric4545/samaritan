@@ -6,7 +6,7 @@ import type { ExecutionMode, Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
 interface RunOptions {
-  environment: string;
+  env?: string;
   autoApprove?: boolean;
   dryRun?: boolean;
   mode?: ExecutionMode;
@@ -27,19 +27,20 @@ class OperationRunner {
     operationFile: string,
     options: RunOptions,
   ): Promise<void> {
+    const targetEnv = options.env as string; // guaranteed by requiredOption
     console.log(`🚀 Starting operation: ${operationFile}`);
-    console.log(`🎯 Target environment: ${options.environment}`);
+    console.log(`🎯 Target environment: ${targetEnv}`);
 
     // Parse operation
     const operation = await this.parseOperationFile(operationFile);
 
     // Validate environment exists
     const environment = operation.environments.find(
-      (env) => env.name === options.environment,
+      (env) => env.name === targetEnv,
     );
     if (!environment) {
       throw new Error(
-        `Environment '${options.environment}' not found in operation. Available: ${operation.environments.map((e) => e.name).join(', ')}`,
+        `Environment '${targetEnv}' not found in operation. Available: ${operation.environments.map((e) => e.name).join(', ')}`,
       );
     }
 
@@ -49,9 +50,9 @@ class OperationRunner {
     // Create execution context
     const context = {
       operationId: operation.id,
-      environment: options.environment,
+      environment: targetEnv,
       variables: {
-        ...operation.variables[options.environment],
+        ...operation.variables[targetEnv],
         ...additionalVars,
       },
       operator: process.env.USER || 'unknown',
@@ -78,7 +79,7 @@ class OperationRunner {
     // Create session
     const session = sessionManager.createSession(
       operation.id,
-      options.environment,
+      targetEnv,
       context.operator,
       options.mode || (options.autoApprove ? 'automatic' : 'hybrid'),
       { ...context.variables, ...additionalVars },
@@ -348,7 +349,7 @@ class OperationRunner {
 const runCommand = new Command('run')
   .description('Execute an operation')
   .argument('<operation>', 'Operation file or name')
-  .requiredOption('-e, --environment <environment>', 'Target environment')
+  .requiredOption('-e, --env <environment>', 'Target environment')
   .option('--auto-approve', 'Auto-approve all manual steps and approvals')
   .option('--dry-run', 'Show what would be executed without running')
   .option(
