@@ -1505,17 +1505,9 @@ export function generateSingleEnvManual(
     return substituteVariables(cmd, envVars);
   }
 
-  const lines: string[] = [];
-  lines.push(`# ${operation.name} — ${titleCase(targetEnv)}`);
-  lines.push('');
-
-  const steps = (operation.steps ?? []).filter(
-    (s) => !s.when || s.when.length === 0 || s.when.includes(targetEnv),
-  );
-
-  steps.forEach((step, i) => {
-    const stepNum = i + 1;
-    lines.push(`## Step ${stepNum}: ${step.name}`);
+  function renderStep(step: Step, prefix: string, headingLevel: number): void {
+    const hashes = '#'.repeat(headingLevel);
+    lines.push(`${hashes} ${prefix}: ${step.name}`);
     lines.push('');
 
     if (step.pic) lines.push(`> PIC: ${step.pic}`);
@@ -1524,7 +1516,7 @@ export function generateSingleEnvManual(
 
     if (step.command) {
       lines.push('**Command**');
-      lines.push('```');
+      lines.push('```bash');
       lines.push(resolveCmd(step.command));
       lines.push('```');
       lines.push('');
@@ -1539,24 +1531,44 @@ export function generateSingleEnvManual(
 
     if (step.verify) {
       lines.push('**Verify**');
-      lines.push('```');
+      lines.push('```bash');
       lines.push(resolveCmd(step.verify.command));
       lines.push('```');
 
       const expect = step.verify.expect ?? step.expect;
       if (expect) {
         const desc = renderExpectDescription(expect);
-        if (desc) lines.push(`Expected: ${desc}`);
+        if (desc) lines.push(`> Expected: ${desc}`);
       }
       lines.push('');
     } else if (step.expect) {
       const desc = renderExpectDescription(step.expect);
       if (desc) {
-        lines.push(`Expected: ${desc}`);
+        lines.push(`> Expected: ${desc}`);
         lines.push('');
       }
     }
 
+    // Recursively render sub_steps as deeper headings (Step N.1, N.1.1, etc.)
+    if (step.sub_steps && step.sub_steps.length > 0) {
+      step.sub_steps
+        .filter((s) => !s.when || s.when.length === 0 || s.when.includes(targetEnv))
+        .forEach((sub, idx) => {
+          renderStep(sub, `${prefix}.${idx + 1}`, Math.min(headingLevel + 1, 6));
+        });
+    }
+  }
+
+  const lines: string[] = [];
+  lines.push(`# ${operation.name} — ${titleCase(targetEnv)}`);
+  lines.push('');
+
+  const steps = (operation.steps ?? []).filter(
+    (s) => !s.when || s.when.length === 0 || s.when.includes(targetEnv),
+  );
+
+  steps.forEach((step, i) => {
+    renderStep(step, `Step ${i + 1}`, 2);
     if (i < steps.length - 1) {
       lines.push('---');
       lines.push('');

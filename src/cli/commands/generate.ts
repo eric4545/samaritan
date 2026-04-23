@@ -1854,6 +1854,7 @@ generateCommand
     'markdown',
   )
   .option('-e, --env <environment>', 'Generate for specific environment')
+  .option('--environment <environment>', 'Generate for specific environment (alias for --env)')
   .option(
     '--resolve-vars',
     'Resolve variables to actual values instead of showing placeholders',
