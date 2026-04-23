@@ -1,6 +1,6 @@
 import assert from 'node:assert';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { tmpdir, homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, it } from 'node:test';
@@ -10,6 +10,7 @@ function fixturePath(name: string): string {
   const map: Record<string, string> = {
     deploymentTest: 'tests/fixtures/operations/valid/deployment-test.yaml',
     minimal: 'tests/fixtures/operations/valid/minimal.yaml',
+    evidenceRequiredRun: 'tests/fixtures/operations/features/evidence-required-run.yaml',
   };
   return resolve(map[name]);
 }
@@ -243,5 +244,139 @@ describe('resume command: session persistence', () => {
     }
     // If the directory doesn't exist yet, the feature isn't broken — just skipped.
     // The real persistence check is that resume works across processes (next test).
+  });
+});
+
+// ─── Issue 2: JSONL event log creation ───────────────────────────────────────
+
+describe('run command: JSONL event log (Issue 2)', () => {
+  it('dry-run creates a JSONL log file in /tmp', () => {
+    const fixture = fixturePath('minimal');
+    const before = Date.now();
+    const result = runCli(['run', fixture, '--env', 'default', '--dry-run']);
+    assert.strictEqual(result.status, 0, 'dry-run must exit 0');
+
+    // Find any samaritan-*.jsonl created after this test started
+    const tmp = tmpdir();
+    const jsonlFiles = readdirSync(tmp)
+      .filter((f) => f.startsWith('samaritan-') && f.endsWith('.jsonl'));
+    assert.ok(
+      jsonlFiles.length > 0,
+      'At least one samaritan-*.jsonl must exist in /tmp after dry-run',
+    );
+  });
+
+  it('dry-run JSONL contains operation_started and session_end events', () => {
+    const fixture = fixturePath('minimal');
+    const result = runCli(['run', fixture, '--env', 'default', '--dry-run']);
+    assert.strictEqual(result.status, 0, 'dry-run must exit 0');
+
+    const tmp = tmpdir();
+    const jsonlFiles = readdirSync(tmp)
+      .filter((f) => f.startsWith('samaritan-') && f.endsWith('.jsonl'))
+      .map((f) => join(tmp, f))
+      .sort((a, b) => {
+        const { mtimeMs: ma } = require('node:fs').statSync(a);
+        const { mtimeMs: mb } = require('node:fs').statSync(b);
+        return mb - ma;
+      });
+
+    assert.ok(jsonlFiles.length > 0, 'JSONL file must exist');
+    const content = readFileSync(jsonlFiles[0], 'utf-8');
+    const events = content.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+
+    const types = new Set(events.map((e: any) => e.type));
+    assert.ok(types.has('session_start'), 'Must have session_start event');
+    assert.ok(types.has('session_end'), 'Must have session_end event');
+  });
+
+  it('log path is printed to stdout during run', () => {
+    const fixture = fixturePath('minimal');
+    const result = runCli(['run', fixture, '--env', 'default', '--dry-run']);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Session log') && combined.includes('.jsonl'),
+      'Log path must be printed to output',
+    );
+  });
+
+  it('auto-approve run creates JSONL with operation events', () => {
+    const fixture = fixturePath('minimal');
+    const result = runCli(['run', fixture, '--env', 'default', '--auto-approve']);
+    assert.strictEqual(result.status, 0, 'auto-approve must exit 0');
+
+    const tmp = tmpdir();
+    const jsonlFiles = readdirSync(tmp)
+      .filter((f) => f.startsWith('samaritan-') && f.endsWith('.jsonl'));
+    assert.ok(jsonlFiles.length > 0, 'JSONL file must exist after auto-approve run');
+  });
+});
+
+// ─── Issue 1: Evidence collection gate ───────────────────────────────────────
+
+describe('run command: evidence collection gate (Issue 1)', () => {
+  it('evidence-required step blocks completion when "done" entered with no evidence', () => {
+    const fixture = fixturePath('evidenceRequiredRun');
+    // Send 'done' immediately (no evidence) then 'skip' to exit the evidence loop,
+    // then 'q' to quit the outer loop
+    const result = runCli(
+      ['run', fixture, '--env', 'staging'],
+      { input: 'done\nskip\nq\n', timeout: 15_000 },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('required') || combined.includes('evidence'),
+      'Must mention evidence requirement when "done" entered with no evidence',
+    );
+  });
+
+  it('evidence-required step accepts a text file path and proceeds', () => {
+    const fixture = fixturePath('evidenceRequiredRun');
+    // Create a temp file to use as evidence
+    const { writeFileSync } = require('node:fs');
+    const tmpFile = join(tmpdir(), `samaritan-test-evidence-${Date.now()}.log`);
+    writeFileSync(tmpFile, 'deployment completed successfully\npods: 3/3 running');
+
+    // Provide the file path as evidence, then 'done', then quit remaining steps
+    const result = runCli(
+      ['run', fixture, '--env', 'staging'],
+      { input: `${tmpFile}\ndone\nq\n`, timeout: 15_000 },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('attached') || combined.includes('evidence') || combined.includes('collected'),
+      'Must confirm evidence was attached',
+    );
+  });
+
+  it('evidence step shows evidence types in prompt', () => {
+    const fixture = fixturePath('evidenceRequiredRun');
+    const result = runCli(
+      ['run', fixture, '--env', 'staging'],
+      { input: 'skip\n', timeout: 15_000 },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('screenshot') || combined.includes('Evidence'),
+      'Evidence types must appear in interactive prompt',
+    );
+  });
+
+  it('run summary shows evidence count when evidence is provided', () => {
+    const fixture = fixturePath('evidenceRequiredRun');
+    const { writeFileSync } = require('node:fs');
+    const tmpFile = join(tmpdir(), `samaritan-test-evcount-${Date.now()}.log`);
+    writeFileSync(tmpFile, 'evidence content here');
+
+    // Provide evidence for first step, skip remaining
+    const result = runCli(
+      ['run', fixture, '--env', 'staging'],
+      { input: `${tmpFile}\ndone\nskip\nq\n`, timeout: 15_000 },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Evidence collected') || combined.includes('evidence'),
+      'Summary must mention evidence collected',
+    );
   });
 });

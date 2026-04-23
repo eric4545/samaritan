@@ -1,0 +1,27 @@
+name: Evidence Required Run Test
+version: 1.0.0
+description: Operation with evidence-required steps for interactive run tests
+
+environments:
+  - name: staging
+    description: Staging environment
+
+steps:
+  - name: Manual Step With Evidence
+    type: manual
+    instruction: |
+      Take a screenshot of the dashboard and attach it as evidence.
+    evidence:
+      required: true
+      types: [screenshot]
+
+  - name: Automatic Step With Evidence
+    type: automatic
+    command: echo "deployment complete"
+    evidence:
+      required: true
+      types: [command_output]
+
+  - name: Step Without Evidence
+    type: manual
+    instruction: Just confirm this step is done.

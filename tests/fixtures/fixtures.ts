@@ -69,6 +69,8 @@ export const FIXTURES = {
   // Evidence with results
   evidenceWithResults:
     'tests/fixtures/operations/features/evidence-with-results.yaml',
+  evidenceRequiredRun:
+    'tests/fixtures/operations/features/evidence-required-run.yaml',
   evidenceOverrideInUse:
     'tests/fixtures/operations/features/evidence-override-in-use.yaml',
   reviewerAndEnvEvidence:
