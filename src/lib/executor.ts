@@ -204,6 +204,29 @@ export class OperationExecutor {
   }
 
   /**
+   * Resume interactive execution from a specific step index (cross-process resume).
+   * Marks all preceding steps as completed and sets the current index.
+   */
+  resumeFromIndex(stepIndex: number): void {
+    if (this.state.status !== 'pending') {
+      throw new Error(`Cannot resume operation in ${this.state.status} state`);
+    }
+    for (let i = 0; i < stepIndex && i < this.state.steps.length; i++) {
+      this.state.steps[i].status = 'completed';
+      this.state.completedSteps++;
+    }
+    this.state.currentStepIndex = stepIndex;
+    this.state.status = 'running';
+    this.state.startTime = new Date();
+    this.emitEvent({
+      type: 'operation_started',
+      timestamp: new Date(),
+      operationId: this.state.operation.id,
+      message: `Resumed operation at step ${stepIndex + 1}: ${this.state.operation.name}`,
+    });
+  }
+
+  /**
    * Start operation execution
    */
   async start(): Promise<void> {

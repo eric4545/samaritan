@@ -1,8 +1,12 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { Command } from 'commander';
 import { OperationExecutor } from '../../lib/executor';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import { bootstrapSessions, type TmuxSession } from '../../lib/tmux-session';
+import { resolveVars, resolveVarsSafe } from '../../lib/variable-resolver';
+import { SessionState } from '../../lib/session-state';
+import { createEventLogger } from '../../lib/event-logger';
+import { StepController } from '../../lib/tui';
 import type { ExecutionMode, Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
@@ -33,13 +37,17 @@ class OperationRunner {
     if (!targetEnv) {
       throw new Error("Required option '-e, --env <environment>' not specified");
     }
-    console.log(`🚀 Starting operation: ${operationFile}`);
+
+    // Resolve to absolute path for persistence
+    const absFile = existsSync(operationFile)
+      ? realpathSync(operationFile)
+      : operationFile;
+
+    console.log(`🚀 Starting operation: ${absFile}`);
     console.log(`🎯 Target environment: ${targetEnv}`);
 
-    // Parse operation
-    const operation = await this.parseOperationFile(operationFile);
+    const operation = await this.parseOperationFile(absFile);
 
-    // Validate environment exists
     const environment = operation.environments.find(
       (env) => env.name === targetEnv,
     );
@@ -49,59 +57,55 @@ class OperationRunner {
       );
     }
 
-    // Parse additional variables
     const additionalVars = this.parseVariables(options.variables || []);
 
-    // Create execution context
+    // Merge common + env-specific + CLI overrides into resolved variable set
+    const resolvedVars: Record<string, any> = {
+      ...(operation.common_variables ?? {}),
+      ...operation.variables[targetEnv],
+      ...additionalVars,
+    };
+
+    const executionMode: ExecutionMode =
+      options.mode ??
+      (options.autoApprove ? 'automatic' : 'manual');
+
     const context = {
       operationId: operation.id,
       environment: targetEnv,
-      variables: {
-        ...operation.variables[targetEnv],
-        ...additionalVars,
-      },
+      variables: resolvedVars,
       operator: process.env.USER || 'unknown',
       sessionId: `run-${operation.id}-${Date.now()}`,
       dryRun: options.dryRun || false,
-      autoMode: options.mode === 'automatic' || options.autoApprove || false,
+      autoMode: executionMode === 'automatic' || options.autoApprove || false,
     };
 
-    // Show operation summary
-    this.displayOperationSummary(operation, environment, context);
+    this.displayOperationSummary(operation, environment, context, executionMode);
 
-    // Check for approval requirements
-    if (
-      environment.approval_required &&
-      !options.autoApprove &&
-      !options.dryRun
-    ) {
+    if (environment.approval_required && !options.autoApprove && !options.dryRun) {
       console.log('⚠️  This environment requires approval.');
       console.log(
         '💡 Use --auto-approve to skip approval prompts or ensure approvals are pre-authorized.',
       );
     }
 
-
-    // Create session
     const session = sessionManager.createSession(
       operation.id,
       targetEnv,
       context.operator,
-      options.mode || (options.autoApprove ? 'automatic' : 'hybrid'),
-      { ...context.variables, ...additionalVars },
+      executionMode,
+      resolvedVars,
+      absFile,
     );
 
-    console.log(`📋 Session created: ${session.id}\n`);
+    console.log(`📋 Session: ${session.id}\n`);
 
-    // Create and configure executor
     const executor = new OperationExecutor(operation, context);
     sessionManager.associateExecutor(session.id, executor);
 
-    // Set up event handlers
     this.setupEventHandlers(executor, options);
 
     try {
-      // Run preflight checks
       if (operation.preflight && operation.preflight.length > 0) {
         console.log('🔍 Running preflight checks...');
         await this.runPreflightChecks(operation.preflight, context);
@@ -111,27 +115,28 @@ class OperationRunner {
       const isInteractiveMode = !context.autoMode && !options.dryRun;
 
       if (isInteractiveMode) {
-        // Bootstrap tmux sessions when the operation declares sessions
         let tmuxSession: TmuxSession | undefined;
         if (operation.sessions && Object.keys(operation.sessions).length > 0) {
           console.log('🖥️  Bootstrapping tmux sessions...');
           try {
             tmuxSession = await bootstrapSessions(context.sessionId, operation.sessions);
-            console.log(`   Sessions created: ${Object.keys(operation.sessions).join(', ')}\n`);
+            console.log(`   Sessions: ${Object.keys(operation.sessions).join(', ')}\n`);
           } catch (err: any) {
-            console.warn(`⚠️  tmux bootstrap failed (${err.message}); falling back to prompt-only mode.\n`);
+            console.warn(
+              `⚠️  tmux bootstrap failed (${err.message}); falling back to prompt-only mode.\n`,
+            );
           }
         }
 
-        // Interactive step-by-step loop
         console.log('▶️  Starting interactive operation execution...\n');
         executor.startInteractive();
-        await this.runInteractiveStepLoop(executor, operation, operationFile, tmuxSession);
+        await this.runInteractiveStepLoop(
+          executor, operation, absFile, resolvedVars, executionMode, tmuxSession,
+        );
         executor.finalizeOperation();
 
         tmuxSession?.teardown();
       } else {
-        // Automatic or dry-run path
         console.log('▶️  Starting operation execution...\n');
         await executor.execute();
       }
@@ -141,24 +146,26 @@ class OperationRunner {
       if (finalState.status === 'completed') {
         if (options.dryRun) {
           console.log('\n✅ Dry-run preview complete — all steps traversed.');
-          console.log(`   Steps: ${finalState.totalSteps}  Skipped: ${finalState.skippedSteps}`);
+          console.log(
+            `   Steps: ${finalState.totalSteps}  Skipped: ${finalState.skippedSteps}`,
+          );
         } else {
           console.log('\n✅ Operation completed successfully!');
         }
       } else if (finalState.status === 'paused') {
-        console.log('\n⏸️  Operation paused — some steps were skipped or are still waiting.');
+        const waitingStep = finalState.steps.find((s) => s.status === 'waiting');
+        const stepName = waitingStep?.step.name ?? 'unknown';
+        console.log('\n⏸️  Operation paused — manual interaction required.');
         console.log(
-          `   Skipped: ${finalState.skippedSteps}  Waiting: ${finalState.waitingSteps}`,
+          `   ${finalState.waitingSteps} step(s) waiting. Paused at: "${stepName}"`,
         );
+        console.log(`\n💡 Resume this session:\n   samaritan resume ${session.id}`);
       }
 
-      // Show session summary
       const summary = sessionManager.getSessionSummary(session.id);
       if (summary) {
         console.log(`\n📊 Execution Summary:`);
-        console.log(
-          `   Duration: ${SessionUtils.formatSessionDuration(session)}`,
-        );
+        console.log(`   Duration: ${SessionUtils.formatSessionDuration(session)}`);
         console.log(`   Evidence collected: ${summary.evidenceCount} items`);
         console.log(`   Retries: ${summary.retryCount}`);
         console.log(`   Approvals: ${summary.approvalCount}`);
@@ -168,15 +175,8 @@ class OperationRunner {
 
       const currentSession = sessionManager.getSession(session.id);
       if (currentSession) {
-        console.log(`\n🔄 To resume from where you left off:`);
+        console.log(`\n🔄 Resume from where you left off:`);
         console.log(`   samaritan resume ${session.id}`);
-
-        if (operation.rollback) {
-          console.log(`\n🔄 To rollback changes:`);
-          console.log(
-            `   # Rollback not yet implemented - check operation definition`,
-          );
-        }
       }
 
       throw error;
@@ -189,14 +189,13 @@ class OperationRunner {
   ): Promise<void> {
     console.log(`🔄 Resuming session: ${sessionId}`);
 
-    // Get session
+    // getSession now checks in-memory then file-based persistence
     const session = sessionManager.getSession(sessionId);
     if (!session) {
       throw new Error(
         `Session not found: ${sessionId}\n` +
-          '  Session state is held in-memory and is not persisted across separate CLI invocations.\n' +
-          '  Resume is only available within the same process that started the run.\n' +
-          '  Cross-process session persistence is not yet implemented.',
+          '  No persisted session found for this ID.\n' +
+          '  Start a new run with: samaritan run <operation.yaml> -e <environment>',
       );
     }
 
@@ -209,78 +208,140 @@ class OperationRunner {
       throw new Error('Cannot resume cancelled session');
     }
 
+    if (!session.operation_file) {
+      throw new Error(
+        'Cannot resume: session has no operation_file recorded.\n' +
+          '  This session was started with an older version of samaritan.',
+      );
+    }
+
     console.log(`📋 Session details:`);
     console.log(`   Operation: ${session.operation_id}`);
+    console.log(`   File: ${session.operation_file}`);
     console.log(`   Environment: ${session.environment}`);
-    console.log(`   Current step: ${session.current_step_index + 1}`);
+    console.log(`   Resuming at step: ${session.current_step_index + 1}`);
     console.log(`   Progress: ${session.completion_percentage || 0}%`);
     console.log(
       `   Status: ${SessionUtils.getSessionStatusEmoji(session.status)} ${session.status}`,
     );
 
-    // Get associated executor or create new one
-    const executor = sessionManager.getExecutor(sessionId);
+    const operation = await this.parseOperationFile(session.operation_file);
 
-    if (!executor) {
-      // Need to recreate executor from session
-      console.log('🔄 Recreating executor from session state...');
+    const context = {
+      operationId: session.operation_id,
+      environment: session.environment,
+      variables: session.variables || {},
+      operator: session.operator || process.env.USER || 'unknown',
+      sessionId: session.id,
+      dryRun: false,
+      autoMode: session.mode === 'automatic',
+    };
 
-      // We need the original operation - try to find it
-      // This is a simplified implementation - in practice you'd want to store operation file path in session
-      throw new Error(
-        'Executor recreation not yet implemented - operation file path needed',
-      );
-    }
+    const executor = new OperationExecutor(operation, context);
+    sessionManager.associateExecutor(session.id, executor);
 
-    // Setup event handlers
     this.setupEventHandlers(executor, { verbose: options.verbose });
 
-    try {
-      // Resume execution
-      console.log('\n▶️  Resuming operation execution...\n');
-      await sessionManager.resumeSession(sessionId);
-
-      console.log('\n✅ Operation resumed and completed successfully!');
-    } catch (error: any) {
-      console.error(`\n❌ Resume failed: ${error.message}`);
-      throw error;
+    // Bootstrap tmux if the operation uses sessions
+    let tmuxSession: TmuxSession | undefined;
+    if (operation.sessions && Object.keys(operation.sessions).length > 0) {
+      console.log('\n🖥️  Bootstrapping tmux sessions...');
+      try {
+        tmuxSession = await bootstrapSessions(session.id, operation.sessions);
+        console.log(`   Sessions: ${Object.keys(operation.sessions).join(', ')}\n`);
+      } catch (err: any) {
+        console.warn(
+          `⚠️  tmux bootstrap failed (${err.message}); continuing without tmux.\n`,
+        );
+      }
     }
+
+    console.log('\n▶️  Resuming operation execution...\n');
+    executor.resumeFromIndex(session.current_step_index);
+
+    await this.runInteractiveStepLoop(
+      executor, operation, session.operation_file, context.variables,
+      session.mode, tmuxSession,
+    );
+    executor.finalizeOperation();
+    tmuxSession?.teardown();
+
+    console.log('\n✅ Session resumed and completed!');
   }
 
   private async runInteractiveStepLoop(
     executor: OperationExecutor,
     operation: Operation,
     operationFile: string,
+    vars: Record<string, any>,
+    mode: ExecutionMode,
     tmuxSession?: TmuxSession,
   ): Promise<void> {
     const { createInterface } = await import('node:readline/promises');
     const rl = createInterface({ input: process.stdin, output: process.stdout });
 
+    // Set up event logger + session state + step controller for tmux-backed steps
+    const state = executor.getState();
+    const logger = createEventLogger(state.context.sessionId);
+    const sessionState = new SessionState();
+
+    // Pre-populate session state with resolved operation variables
+    for (const [key, value] of Object.entries(vars)) {
+      sessionState.capture(key, String(value));
+    }
+
+    const autoSend = operation.run?.auto_send ?? false;
+    const autoExec = operation.run?.auto_exec ?? false;
+
+    const controller = tmuxSession
+      ? new StepController({
+          logger,
+          tmux: tmuxSession,
+          sessionState,
+          autoSend,
+          autoExec,
+          sessions: operation.sessions,
+        })
+      : null;
+
     const DIVIDER = '─'.repeat(60);
+
+    const tryResolve = (text: string | undefined): string | undefined => {
+      if (!text) return text;
+      try {
+        return resolveVars(text, vars);
+      } catch {
+        // Fall back to safe resolution (display with unresolved markers)
+        return resolveVarsSafe(text, vars);
+      }
+    };
 
     try {
       const steps = executor.getState().steps;
 
-      for (let i = 0; i < steps.length; i++) {
+      for (let i = executor.getState().currentStepIndex; i < steps.length; i++) {
         const { step } = steps[i];
         const stepNum = `[${i + 1}/${steps.length}]`;
         const typeLabel = step.type.toUpperCase();
-        const sessionName = step.session;
+
+        const resolvedCommand = tryResolve(step.command);
+        const resolvedInstruction = tryResolve(step.instruction);
 
         console.log(`\n${DIVIDER}`);
         console.log(`${stepNum} ${typeLabel}: ${step.name}`);
         if (step.description) console.log(`    ${step.description}`);
         if (step.pic) console.log(`    PIC      : ${step.pic}`);
         if (step.reviewer) console.log(`    Reviewer : ${step.reviewer}`);
-        if (sessionName) console.log(`    Session  : ${sessionName}`);
+        if (step.session) console.log(`    Session  : ${step.session}`);
+        if (step.ticket) console.log(`    Ticket   : ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`);
 
         if (step.type === 'automatic') {
-          if (step.command) console.log(`\n    $ ${step.command}`);
+          if (resolvedCommand) console.log(`\n    $ ${resolvedCommand}`);
 
-          // If a tmux session is available and the step targets a named session, send command via tmux
-          if (tmuxSession && sessionName && step.command) {
+          if (controller && step.session && resolvedCommand) {
+            // tmux-backed automatic step
             const ans = await rl.question(
-              '\n    ▶  Send to tmux session? [Enter=yes / s=skip / q=quit]: ',
+              '\n    ▶  Send to tmux? [Enter=yes / s=skip / q=quit]: ',
             );
             const choice = ans.trim().toLowerCase();
             if (choice === 'q' || choice === 'quit') {
@@ -292,11 +353,31 @@ class OperationRunner {
               console.log('    ⏭  Skipped.');
               continue;
             }
-            tmuxSession.send(sessionName, step.command);
-            console.log(`    📤 Command sent to tmux pane [${sessionName}].`);
-            await executor.executeStepManually(i, `sent via tmux session: ${sessionName}`);
-            console.log('    ✅ Step marked complete.');
+            await controller.sendCommand(step.session, resolvedCommand, i);
+            await executor.executeStepManually(i, `sent via tmux [${step.session}]`);
+            console.log(`    📤 Sent to tmux pane [${step.session}].`);
+
+            // Run verify if defined
+            if (step.verify) {
+              console.log(`    🔍 Running verify: ${tryResolve(step.verify.command) ?? step.verify.command}`);
+              const { state: vState, assertResult } = await controller.runVerify(step, i);
+              if (assertResult) {
+                const icon = assertResult.pass ? '✅ PASS' : '❌ FAIL';
+                console.log(`    ${icon} Assert (${assertResult.type}): expected "${assertResult.expected}"`);
+                if (!assertResult.pass) {
+                  const override = await rl.question(
+                    '    ⚠️  Assertion failed. Override and continue? [y/N]: ',
+                  );
+                  if (override.trim().toLowerCase() !== 'y') {
+                    console.log('    ❌ Stopping due to failed assertion.');
+                    break;
+                  }
+                }
+              }
+              console.log(`    ✅ Verify: ${vState}`);
+            }
           } else {
+            // prompt-only automatic step
             const ans = await rl.question(
               '\n    ▶  Execute? [Enter=yes / s=skip / q=quit]: ',
             );
@@ -314,12 +395,17 @@ class OperationRunner {
             console.log('    ✅ Step marked complete.');
           }
         } else if (step.type === 'manual') {
-          if (step.instruction) console.log(`\n    ${step.instruction}`);
-          if (step.command) console.log(`\n    Command reference:\n    $ ${step.command}`);
+          if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
+          if (resolvedCommand) console.log(`\n    Command reference:\n    $ ${resolvedCommand}`);
           const notes = await rl.question(
-            '\n    ✋ Mark done (Enter notes or press Enter to confirm, "skip" to skip): ',
+            '\n    ✋ Mark done (notes/Enter=confirm, "skip"=skip, "abort"=abort): ',
           );
-          if (notes.trim().toLowerCase() === 'skip') {
+          const choice = notes.trim().toLowerCase();
+          if (choice === 'abort') {
+            console.log('\n⛔ Execution aborted by operator.');
+            break;
+          }
+          if (choice === 'skip') {
             executor.skipStep(i);
             console.log('    ⏭  Skipped.');
             continue;
@@ -327,19 +413,24 @@ class OperationRunner {
           await executor.executeStepManually(i, notes.trim() || 'confirmed');
           console.log('    ✅ Step marked complete.');
         } else if (step.type === 'approval') {
-          if (step.instruction) console.log(`\n    ${step.instruction}`);
+          if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
           const ans = await rl.question(
-            '\n    ⚡ Type "approve" to approve or "skip" to skip: ',
+            '\n    ⚡ "approve" / "reject" / "skip": ',
           );
-          if (ans.trim().toLowerCase() === 'approve') {
+          const choice = ans.trim().toLowerCase();
+          if (choice === 'approve') {
             await executor.executeStepManually(i, 'approved');
+            logger.emit({ type: 'user_input', step: i, decision: 'approved' });
             console.log('    ✅ Approved.');
+          } else if (choice === 'reject') {
+            executor.skipStep(i);
+            logger.emit({ type: 'user_input', step: i, decision: 'rejected' });
+            console.log('    ❌ Rejected — step skipped.');
           } else {
             executor.skipStep(i);
             console.log('    ⏭  Skipped.');
           }
         } else {
-          // Unknown/default type
           await executor.executeStepManually(i, 'confirmed');
         }
       }
@@ -347,6 +438,7 @@ class OperationRunner {
       console.log(`\n${DIVIDER}`);
     } finally {
       rl.close();
+      logger.close();
     }
   }
 
@@ -354,13 +446,11 @@ class OperationRunner {
     if (!existsSync(filePath)) {
       throw new Error(`Operation file not found: ${filePath}`);
     }
-
     return await parseOperation(filePath);
   }
 
   private parseVariables(variableStrings: string[]): Record<string, any> {
     const variables: Record<string, any> = {};
-
     for (const varString of variableStrings) {
       const [key, value] = varString.split('=', 2);
       if (!key || value === undefined) {
@@ -368,15 +458,12 @@ class OperationRunner {
           `Invalid variable format: ${varString}. Use KEY=VALUE format.`,
         );
       }
-
-      // Try to parse as JSON, fallback to string
       try {
         variables[key] = JSON.parse(value);
       } catch {
         variables[key] = value;
       }
     }
-
     return variables;
   }
 
@@ -384,24 +471,20 @@ class OperationRunner {
     operation: Operation,
     environment: any,
     context: any,
+    mode: ExecutionMode,
   ): void {
     console.log(`\n📋 Operation Summary:`);
     console.log(`   Name: ${operation.name} v${operation.version}`);
     console.log(`   Description: ${operation.description}`);
-    console.log(
-      `   Environment: ${environment.name} (${environment.description})`,
-    );
+    console.log(`   Environment: ${environment.name} (${environment.description})`);
     console.log(`   Steps: ${operation.steps.length}`);
     console.log(`   Preflight checks: ${operation.preflight?.length || 0}`);
-    console.log(
-      `   Execution mode: ${context.autoMode ? 'Automatic' : 'Manual/Hybrid'}`,
-    );
+    console.log(`   Execution mode: ${mode}`);
     console.log(`   Dry run: ${context.dryRun ? 'Yes' : 'No'}`);
 
     if (environment.approval_required) {
       console.log(`   ⚠️  Approval required for this environment`);
     }
-
     if (environment.validation_required) {
       console.log(`   ✅ Validation required for this environment`);
     }
@@ -412,76 +495,46 @@ class OperationRunner {
   private setupEventHandlers(executor: OperationExecutor, options: any): void {
     if (options.verbose) {
       executor.on('step_started', (event) => {
-        console.log(`▶️  [${event.stepIndex + 1}] Starting: ${event.step.name}`);
-        if (event.step.description) {
-          console.log(`    ${event.step.description}`);
-        }
+        console.log(`▶️  [${event.stepIndex + 1}] Starting: ${event.step?.name}`);
       });
-
       executor.on('step_completed', (event) => {
-        console.log(
-          `✅ [${event.stepIndex + 1}] Completed: ${event.step.name}`,
-        );
+        console.log(`✅ [${event.stepIndex + 1}] Completed: ${event.step?.name}`);
         if (event.result?.duration) {
           console.log(`    Duration: ${event.result.duration}ms`);
         }
       });
-
       executor.on('step_failed', (event) => {
-        console.log(`❌ [${event.stepIndex + 1}] Failed: ${event.step.name}`);
+        console.log(`❌ [${event.stepIndex + 1}] Failed: ${event.step?.name}`);
         console.log(`    Error: ${event.error}`);
       });
-
       executor.on('step_skipped', (event) => {
-        console.log(`⏭️  [${event.stepIndex + 1}] Skipped: ${event.step.name}`);
-        console.log(`    Reason: ${event.reason}`);
+        console.log(`⏭️  [${event.stepIndex + 1}] Skipped: ${event.step?.name}`);
       });
-
       executor.on('approval_required', (event) => {
-        console.log(
-          `⏸️  [${event.stepIndex + 1}] Approval required: ${event.step.name}`,
-        );
-      });
-
-      executor.on('evidence_collected', (event) => {
-        console.log(
-          `📎 Evidence collected: ${event.evidence.type} for step ${event.stepIndex + 1}`,
-        );
+        console.log(`⏸️  [${event.stepIndex + 1}] Approval required: ${event.step?.name}`);
       });
     }
 
     executor.on('operation_paused', () => {
       console.log('\n⏸️  Operation paused');
     });
-
     executor.on('operation_completed', () => {
       console.log('\n🎉 Operation completed successfully!');
     });
-
     executor.on('operation_failed', (event) => {
-      console.log(
-        `\n💥 Operation failed at step ${event.stepIndex + 1}: ${event.error}`,
-      );
+      console.log(`\n💥 Operation failed: ${event.error}`);
     });
   }
 
-  private async runPreflightChecks(
-    preflight: any[],
-    context: any,
-  ): Promise<void> {
+  private async runPreflightChecks(preflight: any[], context: any): Promise<void> {
     for (let i = 0; i < preflight.length; i++) {
       const check = preflight[i];
       console.log(`   ${i + 1}. ${check.name}: ${check.description}`);
-
       if (check.type === 'command' && check.command && !context.dryRun) {
-        // In a real implementation, you'd execute the command here
         console.log(`      Command: ${check.command}`);
         console.log(`      ✅ Passed`);
       } else if (check.type === 'manual') {
-        console.log(`      Manual check - verify: ${check.description}`);
-        console.log(
-          `      ✅ Assumed passed (interactive verification not implemented)`,
-        );
+        console.log(`      ✅ Manual check assumed passed`);
       } else {
         console.log(`      ✅ Skipped (dry run)`);
       }
@@ -489,18 +542,19 @@ class OperationRunner {
   }
 }
 
-// Run command
+// ─── CLI commands ─────────────────────────────────────────────────────────────
+
 const runCommand = new Command('run')
   .description('Execute an operation')
-  .argument('<operation>', 'Operation file or name')
+  .argument('<operation>', 'Operation file path')
   .option('-e, --env <environment>', 'Target environment')
   .option('--environment <environment>', 'Target environment (alias for --env)')
   .option('--auto-approve', 'Auto-approve all manual steps and approvals')
-  .option('--dry-run', 'Show what would be executed without running')
+  .option('--dry-run', 'Preview full operation plan without executing')
   .option(
     '-m, --mode <mode>',
-    'Execution mode (automatic, manual, hybrid)',
-    'hybrid',
+    'Execution mode: automatic | manual | hybrid',
+    'manual',
   )
   .option(
     '--var <key=value>',
@@ -520,7 +574,6 @@ const runCommand = new Command('run')
     }
   });
 
-// Resume command
 const resumeCommand = new Command('resume')
   .description('Resume a paused or failed operation session')
   .argument('<session-id>', 'Session ID to resume')

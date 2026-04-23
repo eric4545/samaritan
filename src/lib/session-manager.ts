@@ -11,6 +11,11 @@ import type {
   OperationExecutionState,
   OperationExecutor,
 } from './executor';
+import {
+  deletePersistedSession,
+  loadSession,
+  saveSession,
+} from './session-persistence';
 
 /**
  * Session management for operation execution with persistence and resume capability
@@ -28,10 +33,12 @@ export class SessionManager {
     operator: string,
     mode: ExecutionMode = 'automatic',
     variables?: Record<string, any>,
+    operationFile?: string,
   ): OperationSession {
     const session: OperationSession = {
       id: randomUUID(),
       operation_id: operationId,
+      operation_file: operationFile,
       environment,
       status: 'running',
       current_step_index: 0,
@@ -49,6 +56,7 @@ export class SessionManager {
     };
 
     this.sessions.set(session.id, session);
+    saveSession(session);
     return session;
   }
 
@@ -56,7 +64,15 @@ export class SessionManager {
    * Get session by ID
    */
   getSession(sessionId: string): OperationSession | undefined {
-    return this.sessions.get(sessionId);
+    const mem = this.sessions.get(sessionId);
+    if (mem) return mem;
+    // Fall back to file-based persistence so cross-process resume works.
+    const persisted = loadSession(sessionId);
+    if (persisted) {
+      this.sessions.set(sessionId, persisted);
+      return persisted;
+    }
+    return undefined;
   }
 
   /**
@@ -81,6 +97,7 @@ export class SessionManager {
     session.evidence = this.collectEvidenceFromSteps(executorState);
 
     this.sessions.set(sessionId, session);
+    saveSession(session);
   }
 
   /**
@@ -153,6 +170,7 @@ export class SessionManager {
       session.status = 'paused';
       session.updated_at = new Date();
       this.sessions.set(sessionId, session);
+      saveSession(session);
     }
 
     // Pause associated executor
@@ -210,6 +228,7 @@ export class SessionManager {
         ? 100
         : session.completion_percentage;
       this.sessions.set(sessionId, session);
+      saveSession(session);
     }
   }
 
