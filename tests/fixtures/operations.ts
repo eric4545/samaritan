@@ -76,9 +76,11 @@ export const deploymentOperation: Operation = {
       phase: 'flight',
       description: 'Deploy the application to Kubernetes',
       command: 'kubectl apply -f k8s/deployment.yaml',
-      rollback: {
-        command: 'kubectl rollout undo deployment/web-server',
-      },
+      rollback: [
+        {
+          command: 'kubectl rollout undo deployment/web-server',
+        },
+      ],
     },
     {
       name: 'Scale Deployment',

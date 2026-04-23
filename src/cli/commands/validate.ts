@@ -232,16 +232,14 @@ class OperationValidator {
         );
       }
 
-      // Rollback validation — array format is the execution-engine form (always valid)
-      if (
-        step.rollback &&
-        !Array.isArray(step.rollback) &&
-        !step.rollback.command &&
-        !step.rollback.instruction
-      ) {
-        result.warnings.push(
-          `Step ${i + 1} (${step.name}): rollback defined but no command or instruction specified`,
-        );
+      // Rollback validation — warn if the first rollback step has neither command nor instruction
+      if (step.rollback && step.rollback.length > 0) {
+        const rb = step.rollback[0];
+        if (!rb.command && !rb.instruction) {
+          result.warnings.push(
+            `Step ${i + 1} (${step.name}): rollback defined but no command or instruction specified`,
+          );
+        }
       }
     }
   }

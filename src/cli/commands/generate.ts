@@ -8,18 +8,8 @@ import {
   generateManualWithMetadata,
   generateSingleEnvManual,
 } from '../../manuals/generator';
-import type {
-  ExecRollbackStep,
-  RollbackStep,
-  Step,
-} from '../../models/operation';
+import type { Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
-
-function isDocRollback(
-  rb: RollbackStep | ExecRollbackStep[] | undefined,
-): rb is RollbackStep {
-  return !!rb && !Array.isArray(rb);
-}
 
 /**
  * Merge step variants for a specific environment with base step properties
@@ -496,12 +486,12 @@ ${step.estimated_duration ? `**Estimated Duration**: ${step.estimated_duration}s
 ${step.evidence_required ? `**Evidence Required**: ${step.evidence_types?.join(', ') || 'Yes'}` : ''}
 ${step.continue_on_error ? `**Continue on Error**: Yes` : ''}
 
-${
-  isDocRollback(step.rollback)
-    ? `**Rollback**:
-${step.rollback.command ? `\`${step.rollback.command}\`` : step.rollback.instruction || 'See rollback instructions'}`
-    : ''
-}
+${(() => {
+  const rb = step.rollback?.[0];
+  return rb
+    ? `**Rollback**:\n${rb.command ? `\`${rb.command}\`` : rb.instruction || 'See rollback instructions'}`
+    : '';
+})()}
 `,
   )
   .join('')}
@@ -1372,12 +1362,10 @@ ${filteredOperation.environments
       // Render rollback for step AFTER all content (inline rendering)
       // For parent steps with sub_steps, this renders after sub-steps
       // For regular steps, this renders after the step row
-      if (
-        isDocRollback(step.rollback) &&
-        (step.rollback.command || step.rollback.instruction)
-      ) {
+      const rb = step.rollback?.[0];
+      if (rb && (rb.command || rb.instruction)) {
         content += renderInlineRollback(
-          step.rollback,
+          rb,
           `${globalStepNumber}`,
           step.name,
           3, // h3 for parent steps
@@ -1827,14 +1815,12 @@ function addConfluenceSubStepRows(
       );
 
       // Render rollback for sub-step AFTER all nested sub-steps (inline rendering)
-      if (
-        subStep.rollback &&
-        (subStep.rollback.command || subStep.rollback.instruction)
-      ) {
+      const subRb = subStep.rollback?.[0];
+      if (subRb && (subRb.command || subRb.instruction)) {
         // Calculate parent heading level (same formula as section heading)
         const parentHeadingLevel = Math.min(4 + Math.ceil((depth - 1) / 2), 6);
         content += renderInlineRollback(
-          subStep.rollback,
+          subRb,
           subStepId,
           subStep.name,
           parentHeadingLevel,

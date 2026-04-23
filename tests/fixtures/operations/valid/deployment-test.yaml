@@ -59,7 +59,7 @@ steps:
     description: Deploy the application to Kubernetes
     command: kubectl apply -f k8s/deployment.yaml
     rollback:
-      command: kubectl rollout undo deployment/web-server
+      - command: kubectl rollout undo deployment/web-server
 
   - name: Scale Deployment
     type: automatic

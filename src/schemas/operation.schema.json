@@ -742,14 +742,40 @@
                 "description": "Environment-specific step overrides (can override any step field except 'when' and 'variants')"
               },
               "rollback": {
-                "description": "Rollback for this step. Object format for manual-doc generation; array format for execution engine.",
+                "description": "Rollback steps for this step. Array format preferred; object format accepted for backward compatibility (parser normalizes to array).",
                 "oneOf": [
                   {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "command": { "type": "string" },
+                        "instruction": { "type": "string" },
+                        "timeout": { "type": "number", "minimum": 0 },
+                        "session": { "type": "string", "description": "Session to run rollback in (defaults to step session)" },
+                        "description": { "type": "string" },
+                        "type": { "type": "string" },
+                        "options": {
+                          "type": "object",
+                          "properties": {
+                            "substitute_vars": { "type": "boolean", "default": true },
+                            "show_command_separately": { "type": "boolean", "default": false }
+                          },
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "description": "Rollback steps (preferred format)"
+                  },
+                  {
                     "type": "object",
+                    "description": "Single rollback step (backward-compatible object format)",
                     "properties": {
                       "command": { "type": "string" },
                       "instruction": { "type": "string" },
                       "timeout": { "type": "number", "minimum": 0 },
+                      "description": { "type": "string" },
+                      "type": { "type": "string" },
                       "options": {
                         "type": "object",
                         "properties": {
@@ -759,19 +785,6 @@
                         "additionalProperties": false
                       }
                     }
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": ["command"],
-                      "properties": {
-                        "command": { "type": "string" },
-                        "session": { "type": "string", "description": "Session to run rollback in (defaults to step session)" }
-                      },
-                      "additionalProperties": false
-                    },
-                    "description": "Execution-engine rollback commands"
                   }
                 ]
               },

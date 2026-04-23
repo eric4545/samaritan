@@ -1,7 +1,7 @@
 import type { EventLogger } from './event-logger';
 import type { SessionState } from './session-state';
 import type { TmuxSession } from './tmux-session';
-import type { ExecRollbackStep, ExpectConfig, Step } from '../models/operation';
+import type { ExpectConfig, Step } from '../models/operation';
 import { assertOutput } from './assertions';
 import { isLocalSession } from './tmux-session';
 
@@ -156,9 +156,7 @@ export class StepController {
       triggered_by: triggeredBy,
     });
 
-    const rollbackSteps = Array.isArray(step.rollback)
-      ? (step.rollback as ExecRollbackStep[])
-      : [];
+    const rollbackSteps = step.rollback ?? [];
 
     for (const rb of rollbackSteps) {
       const sessionName = rb.session ?? step.session ?? 'default';
