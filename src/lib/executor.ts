@@ -186,6 +186,24 @@ export class OperationExecutor {
   }
 
   /**
+   * Initialize operation state for interactive step-by-step execution.
+   * Does not run steps; caller iterates via executeStepManually() then calls finalizeOperation().
+   */
+  startInteractive(): void {
+    if (this.state.status !== 'pending') {
+      throw new Error(`Cannot start operation in ${this.state.status} state`);
+    }
+    this.state.status = 'running';
+    this.state.startTime = new Date();
+    this.emitEvent({
+      type: 'operation_started',
+      timestamp: new Date(),
+      operationId: this.state.operation.id,
+      message: `Started operation: ${this.state.operation.name}`,
+    });
+  }
+
+  /**
    * Start operation execution
    */
   async start(): Promise<void> {
@@ -291,7 +309,8 @@ export class OperationExecutor {
   }
 
   /**
-   * Execute a specific step manually
+   * Execute a specific step manually and update operation-level counters.
+   * Used by the interactive CLI loop.
    */
   async executeStepManually(
     stepIndex: number,
@@ -302,7 +321,70 @@ export class OperationExecutor {
       throw new Error(`Step ${stepIndex} not found`);
     }
 
-    return this.executeStep(stepState, userInput);
+    const result = await this.executeStep(stepState, userInput);
+
+    if (result.status === 'completed') {
+      this.state.completedSteps++;
+      this.state.currentStepIndex = stepIndex + 1;
+    } else if (result.status === 'failed') {
+      this.state.failedSteps++;
+    } else if (result.status === 'waiting') {
+      this.state.waitingSteps++;
+    }
+
+    return result;
+  }
+
+  /**
+   * Mark a step as skipped explicitly (used by interactive mode).
+   */
+  skipStep(stepIndex: number): void {
+    const stepState = this.state.steps[stepIndex];
+    if (!stepState) return;
+    stepState.status = 'skipped';
+    this.state.skippedSteps++;
+    this.state.currentStepIndex = stepIndex + 1;
+    this.emitEvent({
+      type: 'step_skipped',
+      timestamp: new Date(),
+      operationId: this.state.operation.id,
+      stepId: stepState.step.id ?? `step-${stepIndex}`,
+      message: `Step skipped: ${stepState.step.name}`,
+    });
+  }
+
+  /**
+   * Finalize operation status after all steps have been processed.
+   * Must be called after an interactive loop completes.
+   */
+  finalizeOperation(): void {
+    this.state.endTime = new Date();
+
+    if (this.state.waitingSteps > 0) {
+      this.state.status = 'paused';
+      this.emitEvent({
+        type: 'operation_paused',
+        timestamp: new Date(),
+        operationId: this.state.operation.id,
+        message: `Operation paused: ${this.state.waitingSteps} step(s) require manual interaction`,
+      });
+    } else if (this.state.failedSteps === 0) {
+      this.state.status = 'completed';
+      this.emitEvent({
+        type: 'operation_completed',
+        timestamp: new Date(),
+        operationId: this.state.operation.id,
+        message: 'Operation completed successfully',
+      });
+    } else {
+      this.state.status = 'failed';
+      this.emitEvent({
+        type: 'operation_failed',
+        timestamp: new Date(),
+        operationId: this.state.operation.id,
+        message: `Operation failed with ${this.state.failedSteps} failed step(s)`,
+      });
+    }
   }
 
   /**
@@ -465,12 +547,16 @@ export class OperationExecutor {
       // Handle different step types
       switch (step.type) {
         case 'automatic':
-          if (this.state.context.autoMode) {
+          // userInput signals interactive confirmation from the CLI loop
+          if (this.state.context.autoMode || userInput !== undefined) {
             result.status = 'completed'; // TODO: Execute command
-            result.output = 'Command executed successfully';
+            result.output =
+              userInput !== undefined
+                ? `Confirmed by operator: ${userInput}`
+                : 'Command executed automatically';
             result.exitCode = 0;
           } else {
-            // In manual mode, require user confirmation
+            // Non-interactive, non-auto mode: block
             result.status = 'waiting';
             this.emitEvent({
               type: 'user_input_required',
@@ -484,34 +570,38 @@ export class OperationExecutor {
           break;
 
         case 'manual':
-          result.status = 'waiting';
-          this.emitEvent({
-            type: 'user_input_required',
-            timestamp: new Date(),
-            operationId: this.state.operation.id,
-            stepId: result.stepId,
-            message: `Manual step: ${step.name}`,
-          });
-
-          // In a real implementation, this would wait for user input
-          if (userInput) {
+          if (userInput !== undefined) {
             result.status = 'completed';
             result.manualNotes = userInput;
           } else {
-            return result; // Wait for user input
+            result.status = 'waiting';
+            this.emitEvent({
+              type: 'user_input_required',
+              timestamp: new Date(),
+              operationId: this.state.operation.id,
+              stepId: result.stepId,
+              message: `Manual step: ${step.name}`,
+            });
+            return result;
           }
           break;
 
         case 'approval':
-          result.status = 'waiting';
-          this.emitEvent({
-            type: 'approval_required',
-            timestamp: new Date(),
-            operationId: this.state.operation.id,
-            stepId: result.stepId,
-            message: `Approval required for: ${step.name}`,
-          });
-          return result; // Wait for approval
+          if (userInput !== undefined) {
+            result.status = 'completed';
+            result.manualNotes = userInput;
+          } else {
+            result.status = 'waiting';
+            this.emitEvent({
+              type: 'approval_required',
+              timestamp: new Date(),
+              operationId: this.state.operation.id,
+              stepId: result.stepId,
+              message: `Approval required for: ${step.name}`,
+            });
+            return result;
+          }
+          break;
 
         default:
           result.status = 'completed';

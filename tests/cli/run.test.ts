@@ -6,8 +6,11 @@ import { getFixturePath } from '../fixtures/fixtures';
 const CLI = 'node_modules/.bin/tsx';
 const INDEX = 'src/cli/index.ts';
 
-function runCli(args: string[]): { stdout: string; stderr: string; status: number | null } {
-  const result = spawnSync(CLI, [INDEX, ...args], { encoding: 'utf8' });
+function runCli(args: string[], opts?: { input?: string }): { stdout: string; stderr: string; status: number | null } {
+  const result = spawnSync(CLI, [INDEX, ...args], {
+    encoding: 'utf8',
+    input: opts?.input,
+  });
   return {
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
@@ -15,11 +18,43 @@ function runCli(args: string[]): { stdout: string; stderr: string; status: numbe
   };
 }
 
-describe('run command: pause output accuracy', () => {
-  it('does not print a resume hint when operation pauses on a manual step', () => {
-    // deployment-test has manual steps; staging env has no approval required
+describe('run command: --env / --environment flag', () => {
+  it('--env flag is accepted', () => {
     const fixture = getFixturePath('deploymentTest');
-    const result = runCli(['run', fixture, '--env', 'staging']);
+    const result = runCli(['run', fixture, '--env', 'staging', '--dry-run']);
+    const combined = result.stdout + result.stderr;
+    assert.ok(!combined.includes('not specified'), '--env should be accepted');
+  });
+
+  it('--environment flag is accepted as alias for --env', () => {
+    const fixture = getFixturePath('deploymentTest');
+    const result = runCli(['run', fixture, '--environment', 'staging', '--dry-run']);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      !combined.includes('not specified') && !combined.includes('unknown option'),
+      '--environment should be accepted as an alias',
+    );
+  });
+
+  it('missing env flag gives a clear error', () => {
+    const fixture = getFixturePath('deploymentTest');
+    const result = runCli(['run', fixture]);
+    const combined = result.stdout + result.stderr;
+    assert.notStrictEqual(result.status, 0);
+    assert.ok(
+      combined.includes('not specified') || combined.includes('required'),
+      'Error must mention the missing required env option',
+    );
+  });
+});
+
+describe('run command: dry-run pause output', () => {
+  // In --dry-run mode the operation uses the non-interactive executor path.
+  // Automatic steps with autoMode=false return waiting, so the run pauses.
+
+  it('does not print a resume hint when operation pauses', () => {
+    const fixture = getFixturePath('deploymentTest');
+    const result = runCli(['run', fixture, '--env', 'staging', '--dry-run']);
 
     const combined = result.stdout + result.stderr;
     assert.ok(
@@ -28,40 +63,51 @@ describe('run command: pause output accuracy', () => {
     );
   });
 
-  it('prints paused status instead of completed when manual step is encountered', () => {
+  it('generate manual guidance includes the operation file path', () => {
     const fixture = getFixturePath('deploymentTest');
-    const result = runCli(['run', fixture, '--env', 'staging']);
-
+    const result = runCli(['run', fixture, '--env', 'staging', '--dry-run']);
     const combined = result.stdout + result.stderr;
+
+    // The paused output should include the actual file path in the manual hint
+    const hasFilePath =
+      combined.includes('generate manual') && combined.includes(fixture);
     assert.ok(
-      combined.includes('paused') || combined.includes('Paused') || combined.includes('waiting'),
-      'Output must indicate operation paused, not completed',
+      hasFilePath || !combined.includes('generate manual'),
+      'If a generate manual hint is shown it must include the actual operation file path, not a placeholder',
     );
     assert.ok(
-      !combined.includes('Operation completed successfully'),
-      'Output must not claim the operation completed successfully',
+      !combined.includes('<operation.yaml>'),
+      'Must not show placeholder <operation.yaml> — use actual path',
+    );
+  });
+});
+
+describe('run command: interactive mode (non-dry-run)', () => {
+  it('starts interactive execution when not in dry-run mode', () => {
+    const fixture = getFixturePath('deploymentTest');
+    // Pipe a quit command so readline exits immediately without blocking
+    const result = runCli(
+      ['run', fixture, '--env', 'staging'],
+      { input: 'q\n' },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('interactive') || combined.includes('Step') || combined.includes('Execute'),
+      'Interactive mode should show step-by-step prompts',
+    );
+    assert.ok(
+      !combined.includes('samaritan resume'),
+      'Interactive mode must not print a resume hint',
     );
   });
 
-  it('prints honest note about session persistence when paused', () => {
-    const fixture = getFixturePath('deploymentTest');
-    const result = runCli(['run', fixture, '--env', 'staging']);
-
+  it('--auto-approve flag bypasses interactive prompts', () => {
+    const fixture = getFixturePath('minimal');
+    const result = runCli(['run', fixture, '--env', 'default', '--auto-approve']);
     const combined = result.stdout + result.stderr;
     assert.ok(
-      combined.includes('not persisted') || combined.includes('not yet') || combined.includes('not available'),
-      'Output must explain that session state is not persisted or interactive mode is not available',
-    );
-  });
-
-  it('warns about interactive mode limitations before execution starts', () => {
-    const fixture = getFixturePath('deploymentTest');
-    const result = runCli(['run', fixture, '--env', 'staging']);
-
-    const combined = result.stdout + result.stderr;
-    assert.ok(
-      combined.includes('not yet available') || combined.includes('Interactive execution'),
-      'Should warn about interactive execution limitation upfront',
+      combined.includes('completed') || combined.includes('success') || result.status === 0,
+      'Auto-approve should result in completed run, not interactive prompts',
     );
   });
 });

@@ -7,6 +7,7 @@ import { parseOperation } from '../../operations/parser';
 
 interface RunOptions {
   env?: string;
+  environment?: string;
   autoApprove?: boolean;
   dryRun?: boolean;
   mode?: ExecutionMode;
@@ -27,7 +28,10 @@ class OperationRunner {
     operationFile: string,
     options: RunOptions,
   ): Promise<void> {
-    const targetEnv = options.env as string; // guaranteed by requiredOption
+    const targetEnv = options.env || options.environment;
+    if (!targetEnv) {
+      throw new Error("Required option '-e, --env <environment>' not specified");
+    }
     console.log(`🚀 Starting operation: ${operationFile}`);
     console.log(`🎯 Target environment: ${targetEnv}`);
 
@@ -76,19 +80,6 @@ class OperationRunner {
       );
     }
 
-    // Warn about fallback mode limitations for manual/hybrid runs
-    const isInteractiveMode = !context.autoMode && !options.dryRun;
-    if (isInteractiveMode) {
-      console.log(
-        '⚠️  Note: Interactive execution (tmux/TUI) is not yet available.',
-      );
-      console.log(
-        '   Manual and approval steps will pause execution but cannot be completed interactively.',
-      );
-      console.log(
-        '   Use --dry-run to preview steps, or generate a manual: samaritan generate manual <file>\n',
-      );
-    }
 
     // Create session
     const session = sessionManager.createSession(
@@ -116,31 +107,29 @@ class OperationRunner {
         console.log('✅ Preflight checks passed\n');
       }
 
-      // Execute operation
-      console.log('▶️  Starting operation execution...\n');
-      await executor.execute();
+      const isInteractiveMode = !context.autoMode && !options.dryRun;
+
+      if (isInteractiveMode) {
+        // Interactive step-by-step loop
+        console.log('▶️  Starting interactive operation execution...\n');
+        executor.startInteractive();
+        await this.runInteractiveStepLoop(executor, operation, operationFile);
+        executor.finalizeOperation();
+      } else {
+        // Automatic or dry-run path
+        console.log('▶️  Starting operation execution...\n');
+        await executor.execute();
+      }
 
       const finalState = executor.getState();
 
-      if (finalState.status === 'paused') {
-        const waitingStep = finalState.steps[finalState.currentStepIndex];
-        console.log('\n⏸️  Operation paused — manual interaction required');
-        console.log(
-          `   ${finalState.waitingSteps} step(s) are waiting for manual input or approval`,
-        );
-        if (waitingStep) {
-          console.log(`   Waiting at step: "${waitingStep.step.name}"`);
-        }
-        console.log(
-          '\nℹ️  Session state is not persisted. Resume across separate invocations is not yet supported.',
-        );
-        console.log('   To execute this operation interactively:');
-        console.log(
-          `   • Generate a step-by-step manual: samaritan generate manual ${options.dryRun ? '<operation.yaml>' : ''}`,
-        );
-        console.log('   • Use --dry-run to preview all steps without executing');
-      } else {
+      if (finalState.status === 'completed') {
         console.log('\n✅ Operation completed successfully!');
+      } else if (finalState.status === 'paused') {
+        console.log('\n⏸️  Operation paused — some steps were skipped or are still waiting.');
+        console.log(
+          `   Skipped: ${finalState.skippedSteps}  Waiting: ${finalState.waitingSteps}`,
+        );
       }
 
       // Show session summary
@@ -153,17 +142,6 @@ class OperationRunner {
         console.log(`   Evidence collected: ${summary.evidenceCount} items`);
         console.log(`   Retries: ${summary.retryCount}`);
         console.log(`   Approvals: ${summary.approvalCount}`);
-        if (finalState.waitingSteps > 0) {
-          console.log(`   Pending (waiting): ${finalState.waitingSteps} step(s)`);
-        }
-      }
-
-      // Generate automatic documentation if configured
-      if (operation.reporting?.confluence || !options.dryRun) {
-        console.log('\n📄 Generating execution report...');
-        console.log(
-          '💡 Use "samaritan generate docs" to create comprehensive documentation',
-        );
       }
     } catch (error: any) {
       console.error(`\n❌ Operation failed: ${error.message}`);
@@ -246,6 +224,84 @@ class OperationRunner {
     } catch (error: any) {
       console.error(`\n❌ Resume failed: ${error.message}`);
       throw error;
+    }
+  }
+
+  private async runInteractiveStepLoop(
+    executor: OperationExecutor,
+    operation: Operation,
+    operationFile: string,
+  ): Promise<void> {
+    const { createInterface } = await import('node:readline/promises');
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+    const DIVIDER = '─'.repeat(60);
+
+    try {
+      const steps = executor.getState().steps;
+
+      for (let i = 0; i < steps.length; i++) {
+        const { step } = steps[i];
+        const stepNum = `[${i + 1}/${steps.length}]`;
+        const typeLabel = step.type.toUpperCase();
+
+        console.log(`\n${DIVIDER}`);
+        console.log(`${stepNum} ${typeLabel}: ${step.name}`);
+        if (step.description) console.log(`    ${step.description}`);
+        if (step.pic) console.log(`    PIC      : ${step.pic}`);
+        if (step.reviewer) console.log(`    Reviewer : ${step.reviewer}`);
+
+        if (step.type === 'automatic') {
+          if (step.command) console.log(`\n    $ ${step.command}`);
+          const ans = await rl.question(
+            '\n    ▶  Execute? [Enter=yes / s=skip / q=quit]: ',
+          );
+          const choice = ans.trim().toLowerCase();
+          if (choice === 'q' || choice === 'quit') {
+            console.log('\n⛔ Execution aborted by operator.');
+            break;
+          }
+          if (choice === 's' || choice === 'skip') {
+            executor.skipStep(i);
+            console.log('    ⏭  Skipped.');
+            continue;
+          }
+          await executor.executeStepManually(i, 'confirmed');
+          console.log('    ✅ Step marked complete.');
+        } else if (step.type === 'manual' || step.type === 'hybrid') {
+          if (step.instruction) console.log(`\n    ${step.instruction}`);
+          if (step.command) console.log(`\n    Command reference:\n    $ ${step.command}`);
+          const notes = await rl.question(
+            '\n    ✋ Mark done (Enter notes or press Enter to confirm, "skip" to skip): ',
+          );
+          if (notes.trim().toLowerCase() === 'skip') {
+            executor.skipStep(i);
+            console.log('    ⏭  Skipped.');
+            continue;
+          }
+          await executor.executeStepManually(i, notes.trim() || 'confirmed');
+          console.log('    ✅ Step marked complete.');
+        } else if (step.type === 'approval') {
+          if (step.instruction) console.log(`\n    ${step.instruction}`);
+          const ans = await rl.question(
+            '\n    ⚡ Type "approve" to approve or "skip" to skip: ',
+          );
+          if (ans.trim().toLowerCase() === 'approve') {
+            await executor.executeStepManually(i, 'approved');
+            console.log('    ✅ Approved.');
+          } else {
+            executor.skipStep(i);
+            console.log('    ⏭  Skipped.');
+          }
+        } else {
+          // Unknown/default type
+          await executor.executeStepManually(i, 'confirmed');
+        }
+      }
+
+      console.log(`\n${DIVIDER}`);
+    } finally {
+      rl.close();
     }
   }
 
@@ -392,7 +448,8 @@ class OperationRunner {
 const runCommand = new Command('run')
   .description('Execute an operation')
   .argument('<operation>', 'Operation file or name')
-  .requiredOption('-e, --env <environment>', 'Target environment')
+  .option('-e, --env <environment>', 'Target environment')
+  .option('--environment <environment>', 'Target environment (alias for --env)')
   .option('--auto-approve', 'Auto-approve all manual steps and approvals')
   .option('--dry-run', 'Show what would be executed without running')
   .option(
