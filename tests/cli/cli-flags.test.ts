@@ -17,7 +17,7 @@ describe('renderExpectDescription', () => {
     assert.ok(result.includes('Status'), 'Should include the key text');
   });
 
-  it('renders matches with human-readable alternatives', () => {
+  it('renders matches with human-readable alternatives from regex groups', () => {
     const result = renderExpectDescription({ matches: '"Status":\\s*"(Success|Pending)"' });
     assert.ok(result.includes('Success'), 'Should include first alternative');
     assert.ok(result.includes('Pending'), 'Should include second alternative');
@@ -26,56 +26,43 @@ describe('renderExpectDescription', () => {
   });
 
   it('renders equals without surrounding quotes', () => {
-    const result = renderExpectDescription({ equals: 'ready' });
-    assert.strictEqual(result, 'equals ready');
+    assert.strictEqual(renderExpectDescription({ equals: 'ready' }), 'equals ready');
   });
 
   it('renders not_empty', () => {
-    const result = renderExpectDescription({ not_empty: true });
-    assert.ok(result.includes('not empty'));
+    assert.ok(renderExpectDescription({ not_empty: true }).includes('not empty'));
   });
 
   it('renders numeric_gte with ≥ symbol', () => {
-    const result = renderExpectDescription({ numeric_gte: 5 });
-    assert.ok(result.includes('≥ 5'));
+    assert.ok(renderExpectDescription({ numeric_gte: 5 }).includes('≥ 5'));
   });
 
   it('renders numeric_lte with ≤ symbol', () => {
-    const result = renderExpectDescription({ numeric_lte: 100 });
-    assert.ok(result.includes('≤ 100'));
+    assert.ok(renderExpectDescription({ numeric_lte: 100 }).includes('≤ 100'));
   });
 
-  it('renders line_count_gte as plain English', () => {
+  it('renders line_count_gte as plain English without programming operators', () => {
     const result = renderExpectDescription({ line_count_gte: 3 });
-    assert.ok(result.includes('3'), 'Should include count');
-    assert.ok(!result.includes('>='), 'Should not use programming operator');
+    assert.ok(result.includes('3'));
+    assert.ok(!result.includes('>='), 'Should not use >= operator');
   });
 });
 
-describe('CLI Flag Compatibility', () => {
+describe('CLI --env flag', () => {
   const outputPath = '/tmp/samaritan-test-cli-flags-manual.md';
 
   after(() => {
     if (existsSync(outputPath)) unlinkSync(outputPath);
   });
 
-  describe('validate command: --environment and --env aliases', () => {
-    it('accepts --environment flag (primary)', () => {
-      const fixture = getFixturePath('minimal');
-      const result = execSync(
-        `node_modules/.bin/tsx src/cli/index.ts validate ${fixture} --environment default`,
-        { cwd: process.cwd(), encoding: 'utf-8' },
-      );
-      assert.ok(result.includes('YAML syntax valid'), 'Should run validation with --environment');
-    });
-
-    it('accepts --env flag (alias)', () => {
+  describe('validate: --env flag', () => {
+    it('accepts --env flag', () => {
       const fixture = getFixturePath('minimal');
       const result = execSync(
         `node_modules/.bin/tsx src/cli/index.ts validate ${fixture} --env default`,
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
-      assert.ok(result.includes('YAML syntax valid'), 'Should run validation with --env alias');
+      assert.ok(result.includes('YAML syntax valid'));
     });
 
     it('accepts -e short flag', () => {
@@ -84,33 +71,22 @@ describe('CLI Flag Compatibility', () => {
         `node_modules/.bin/tsx src/cli/index.ts validate ${fixture} -e default`,
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
-      assert.ok(result.includes('YAML syntax valid'), 'Should run validation with -e');
+      assert.ok(result.includes('YAML syntax valid'));
     });
   });
 
-  describe('run command: --environment and --env aliases', () => {
-    it('accepts --environment flag without flag-parsing error', () => {
-      const fixture = getFixturePath('minimal');
-      const result = spawnSync(
-        'node_modules/.bin/tsx',
-        ['src/cli/index.ts', 'run', fixture, '--environment', 'default', '--dry-run'],
-        { cwd: process.cwd(), encoding: 'utf-8' },
-      );
-      // Should not complain about missing --environment flag
-      assert.ok(!result.stderr.includes('required option'), 'Should not report missing required option');
-    });
-
-    it('accepts --env flag (alias) without flag-parsing error', () => {
+  describe('run: --env flag', () => {
+    it('accepts --env flag without flag-parsing error', () => {
       const fixture = getFixturePath('minimal');
       const result = spawnSync(
         'node_modules/.bin/tsx',
         ['src/cli/index.ts', 'run', fixture, '--env', 'default', '--dry-run'],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
-      assert.ok(!result.stderr.includes('required option'), 'Should accept --env alias');
+      assert.ok(!result.stderr.includes('unknown option'), 'Should recognise --env');
     });
 
-    it('errors cleanly when no env flag is provided', () => {
+    it('errors when --env is omitted', () => {
       const fixture = getFixturePath('minimal');
       const result = spawnSync(
         'node_modules/.bin/tsx',
@@ -119,62 +95,46 @@ describe('CLI Flag Compatibility', () => {
       );
       assert.notStrictEqual(result.status, 0, 'Should exit non-zero');
       const combined = (result.stdout || '') + (result.stderr || '');
-      assert.ok(combined.includes('environment') || combined.includes('env'), 'Should mention the missing flag');
+      assert.ok(combined.includes('env'), 'Error message should mention --env');
     });
   });
 
-  describe('generate manual --env/--environment: single-env heading format', () => {
-    it('generates heading-based manual (not table) when --environment is specified', () => {
-      const fixture = getFixturePath('minimal');
-      execSync(
-        `node_modules/.bin/tsx src/cli/index.ts generate manual ${fixture} --environment default --output ${outputPath}`,
-        { cwd: process.cwd(), encoding: 'utf-8' },
-      );
-      assert.ok(existsSync(outputPath), 'Output file should exist');
-      const content = readFileSync(outputPath, 'utf-8');
-      assert.ok(content.includes('## Step'), 'Should use heading-based format');
-      assert.ok(!content.includes('| Step |'), 'Should not use table format');
-    });
-
-    it('generates same heading-based manual with --env alias', () => {
+  describe('generate manual --env: single-env heading format', () => {
+    it('generates heading-based manual (not table)', () => {
       const fixture = getFixturePath('minimal');
       execSync(
         `node_modules/.bin/tsx src/cli/index.ts generate manual ${fixture} --env default --output ${outputPath}`,
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
-      assert.ok(existsSync(outputPath), 'Output file should exist');
+      assert.ok(existsSync(outputPath));
       const content = readFileSync(outputPath, 'utf-8');
       assert.ok(content.includes('## Step'), 'Should use heading-based format');
+      assert.ok(!content.includes('| Step |'), 'Should not use table format');
     });
 
-    it('renders sub_steps hierarchically in single-env mode', () => {
-      const fixture = getFixturePath('nestedSubSteps2Levels');
-      execSync(
-        `node_modules/.bin/tsx src/cli/index.ts generate manual ${fixture} --env staging --output ${outputPath}`,
-        { cwd: process.cwd(), encoding: 'utf-8' },
-      );
-      assert.ok(existsSync(outputPath), 'Output file should exist');
-      const content = readFileSync(outputPath, 'utf-8');
-
-      // Parent step
-      assert.ok(content.includes('## Step 1:'), 'Should render parent step heading');
-      // First-level sub-steps
-      assert.ok(content.includes('### Step 1.1:'), 'Should render first sub-step');
-      assert.ok(content.includes('### Step 1.2:'), 'Should render second sub-step');
-      // Nested sub-steps
-      assert.ok(content.includes('#### Step 1.1.1:'), 'Should render nested sub-step');
-    });
-
-    it('renders sub_step commands in single-env mode', () => {
+    it('renders sub_steps as hierarchical headings', () => {
       const fixture = getFixturePath('nestedSubSteps2Levels');
       execSync(
         `node_modules/.bin/tsx src/cli/index.ts generate manual ${fixture} --env staging --output ${outputPath}`,
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
       const content = readFileSync(outputPath, 'utf-8');
-      assert.ok(content.includes('kubectl apply -f backend.yaml'), 'Should render sub-step command');
-      assert.ok(content.includes('kubectl apply -f frontend.yaml'), 'Should render second sub-step command');
-      assert.ok(content.includes('kubectl wait --for=condition=ready pod -l app=backend'), 'Should render nested sub-step command');
+      assert.ok(content.includes('## Step 1:'), 'Parent step heading');
+      assert.ok(content.includes('### Step 1.1:'), 'First sub-step heading');
+      assert.ok(content.includes('### Step 1.2:'), 'Second sub-step heading');
+      assert.ok(content.includes('#### Step 1.1.1:'), 'Nested sub-step heading');
+    });
+
+    it('includes sub_step commands in output', () => {
+      const fixture = getFixturePath('nestedSubSteps2Levels');
+      execSync(
+        `node_modules/.bin/tsx src/cli/index.ts generate manual ${fixture} --env staging --output ${outputPath}`,
+        { cwd: process.cwd(), encoding: 'utf-8' },
+      );
+      const content = readFileSync(outputPath, 'utf-8');
+      assert.ok(content.includes('kubectl apply -f backend.yaml'));
+      assert.ok(content.includes('kubectl apply -f frontend.yaml'));
+      assert.ok(content.includes('kubectl wait --for=condition=ready pod -l app=backend'));
     });
   });
 });

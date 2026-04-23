@@ -6,8 +6,7 @@ import type { ExecutionMode, Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
 interface RunOptions {
-  environment?: string; // --environment flag
-  env?: string; // --env alias (backward compat)
+  env?: string;
   autoApprove?: boolean;
   dryRun?: boolean;
   mode?: ExecutionMode;
@@ -23,21 +22,12 @@ interface ResumeOptions {
   fromStep?: number;
 }
 
-function resolveRunEnv(options: RunOptions): string {
-  const env = options.env || options.environment;
-  if (!env) {
-    console.error("❌ Error: required option '-e, --environment <environment>' not specified");
-    process.exit(1);
-  }
-  return env;
-}
-
 class OperationRunner {
   async runOperation(
     operationFile: string,
     options: RunOptions,
   ): Promise<void> {
-    const targetEnv = resolveRunEnv(options);
+    const targetEnv = options.env as string; // guaranteed by requiredOption
     console.log(`🚀 Starting operation: ${operationFile}`);
     console.log(`🎯 Target environment: ${targetEnv}`);
 
@@ -359,8 +349,7 @@ class OperationRunner {
 const runCommand = new Command('run')
   .description('Execute an operation')
   .argument('<operation>', 'Operation file or name')
-  .option('-e, --environment <environment>', 'Target environment')
-  .option('--env <environment>', 'Target environment (alias for --environment)')
+  .requiredOption('-e, --env <environment>', 'Target environment')
   .option('--auto-approve', 'Auto-approve all manual steps and approvals')
   .option('--dry-run', 'Show what would be executed without running')
   .option(

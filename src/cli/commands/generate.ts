@@ -72,16 +72,14 @@ function filterStepsForEnvironments(
 interface GenerateOptions {
   output?: string;
   format?: 'markdown' | 'confluence' | 'adf' | 'html' | 'pdf';
-  env?: string; // Primary option: -e, --env
-  environment?: string; // DEPRECATED: Legacy alias for backward compatibility
+  env?: string;
   resolveVars?: boolean;
   template?: string;
   gantt?: boolean;
 }
 
-// Helper to get target environment from options (handles both --env and legacy --environment)
 function getTargetEnvironment(options: GenerateOptions): string | undefined {
-  return options.env || options.environment;
+  return options.env;
 }
 
 class DocumentationGenerator {
@@ -1854,7 +1852,6 @@ generateCommand
     'markdown',
   )
   .option('-e, --env <environment>', 'Generate for specific environment')
-  .option('--environment <environment>', 'Generate for specific environment (alias for --env)')
   .option(
     '--resolve-vars',
     'Resolve variables to actual values instead of showing placeholders',

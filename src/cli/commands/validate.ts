@@ -12,8 +12,7 @@ interface ValidationResult {
 
 interface ValidationOptions {
   strict?: boolean;
-  environment?: string; // --environment flag
-  env?: string; // --env alias (backward compat)
+  env?: string;
   verbose?: boolean;
 }
 
@@ -55,9 +54,8 @@ class OperationValidator {
         this.strictValidation(operation, result, options);
       }
 
-      const targetEnv = options.env || options.environment;
-      if (targetEnv) {
-        this.validateForEnvironment(operation, targetEnv, result);
+      if (options.env) {
+        this.validateForEnvironment(operation, options.env, result);
       }
     } catch (error: any) {
       result.errors.push(`Parsing error: ${error.message}`);
@@ -379,8 +377,7 @@ const validateCommand = new Command('validate')
   .description('Validate operation definitions')
   .argument('<file>', 'Path to operation YAML file')
   .option('--strict', 'Enable strict validation with best practices')
-  .option('-e, --environment <environment>', 'Validate for specific environment')
-  .option('--env <environment>', 'Validate for specific environment (alias for --environment)')
+  .option('-e, --env <environment>', 'Validate for specific environment')
   .option('-v, --verbose', 'Verbose output')
   .action(async (file: string, options: ValidationOptions) => {
     const validator = new OperationValidator();
