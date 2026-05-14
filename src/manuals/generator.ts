@@ -1514,18 +1514,20 @@ export function generateSingleEnvManual(
     if (step.reviewer) lines.push(`> Reviewer: ${step.reviewer}`);
     if (step.pic || step.reviewer) lines.push('');
 
-    if (step.command) {
-      lines.push('**Command**');
-      lines.push('```bash');
-      lines.push(resolveCmd(step.command));
-      lines.push('```');
-      lines.push('');
-    } else if (step.instruction) {
+    if (step.instruction) {
       lines.push('**Instructions**');
       lines.push('');
       lines.push(
         resolveVariables ? resolveCmd(step.instruction) : step.instruction,
       );
+      lines.push('');
+    }
+
+    if (step.command) {
+      lines.push('**Command**');
+      lines.push('```bash');
+      lines.push(resolveCmd(step.command));
+      lines.push('```');
       lines.push('');
     }
 
