@@ -721,4 +721,47 @@ steps:
     // Should have rollback row with "Rollback for:" prefix (may span multiple lines)
     assert.match(content, /\| Rollback for:/);
   });
+
+  it('preserves original step numbers across environments when steps are skipped by when (--env)', () => {
+    // when-and-variants.yaml:
+    //   step 1: when: [prod]    → only prod
+    //   step 2: all envs
+    //   step 3: when: [staging, preprod]
+    //   step 4: all envs
+    //   step 5: when: [preprod, prod]
+    const whenYaml = loadYaml('whenAndVariants');
+
+    // prod sees steps 1, 2, 4, 5 → numbers must remain 1, 2, 4, 5
+    const prodContent = generateConfluence(whenYaml, false, false, 'prod');
+    assert.match(prodContent, /Step 1:/, 'prod: step 1 keeps number 1');
+    assert.match(prodContent, /Step 2:/, 'prod: step 2 keeps number 2');
+    assert.doesNotMatch(
+      prodContent,
+      /Step 3:/,
+      'prod: staging/preprod-only step 3 not shown',
+    );
+    assert.match(prodContent, /Step 4:/, 'prod: step 4 keeps number 4');
+    assert.match(prodContent, /Step 5:/, 'prod: step 5 keeps number 5');
+
+    // staging sees steps 2, 3, 4 → numbers must remain 2, 3, 4
+    const stagingContent = generateConfluence(
+      whenYaml,
+      false,
+      false,
+      'staging',
+    );
+    assert.doesNotMatch(
+      stagingContent,
+      /Step 1:/,
+      'staging: prod-only step 1 not shown',
+    );
+    assert.match(stagingContent, /Step 2:/, 'staging: step 2 keeps number 2');
+    assert.match(stagingContent, /Step 3:/, 'staging: step 3 keeps number 3');
+    assert.match(stagingContent, /Step 4:/, 'staging: step 4 keeps number 4');
+    assert.doesNotMatch(
+      stagingContent,
+      /Step 5:/,
+      'staging: preprod/prod-only step 5 not shown',
+    );
+  });
 });
