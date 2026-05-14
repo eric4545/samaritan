@@ -11,7 +11,11 @@ import type {
   OperationExecutionState,
   OperationExecutor,
 } from './executor';
-import { loadSession, saveSession } from './session-persistence';
+import {
+  deletePersistedSession,
+  loadSession,
+  saveSession,
+} from './session-persistence';
 
 /**
  * Session management for operation execution with persistence and resume capability
@@ -370,6 +374,7 @@ export class SessionManager {
       ) {
         this.sessions.delete(sessionId);
         this.executors.delete(sessionId);
+        deletePersistedSession(sessionId);
         cleaned++;
       }
     }
