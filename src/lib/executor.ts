@@ -156,8 +156,14 @@ export class OperationExecutor {
    * Get execution summary
    */
   getSummary() {
-    const { status, totalSteps, completedSteps, failedSteps, skippedSteps, waitingSteps } =
-      this.state;
+    const {
+      status,
+      totalSteps,
+      completedSteps,
+      failedSteps,
+      skippedSteps,
+      waitingSteps,
+    } = this.state;
     const progress =
       totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
 

@@ -5,12 +5,7 @@ import {
   generateYamlFrontmatter,
 } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
-import type {
-  Environment,
-  Operation,
-  RollbackStep,
-  Step,
-} from '../models/operation';
+import type { Environment, Operation, Step } from '../models/operation';
 
 function substituteVariables(
   command: string,
@@ -1495,7 +1490,6 @@ export function generateSingleEnvManual(
   resolveVariables = false,
 ): string {
   // Lazy import to avoid circular deps
-  // biome-ignore lint/style/noVar: dynamic import
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { renderExpectDescription } = require('../lib/assertions') as {
     renderExpectDescription: (e: any) => string;

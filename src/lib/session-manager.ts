@@ -11,11 +11,7 @@ import type {
   OperationExecutionState,
   OperationExecutor,
 } from './executor';
-import {
-  deletePersistedSession,
-  loadSession,
-  saveSession,
-} from './session-persistence';
+import { loadSession, saveSession } from './session-persistence';
 
 /**
  * Session management for operation execution with persistence and resume capability

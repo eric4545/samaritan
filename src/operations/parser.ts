@@ -691,7 +691,7 @@ function parseStep(
     : undefined;
 
   // Parse rollback: normalize both object and array YAML formats to RollbackStep[]
-  let rollback: RollbackStep[] | undefined = undefined;
+  let rollback: RollbackStep[] | undefined;
   if (stepData.rollback) {
     if (Array.isArray(stepData.rollback)) {
       rollback = stepData.rollback.map((r: any) => ({
@@ -703,7 +703,8 @@ function parseStep(
         options: r.options
           ? {
               substitute_vars: r.options.substitute_vars ?? true,
-              show_command_separately: r.options.show_command_separately ?? false,
+              show_command_separately:
+                r.options.show_command_separately ?? false,
             }
           : undefined,
       }));

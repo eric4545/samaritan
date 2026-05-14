@@ -260,7 +260,8 @@ export function generateADF(
 
           // Get rollback options (defaults)
           const substituteVars = rb.options?.substitute_vars ?? true;
-          const showCommandSeparately = rb.options?.show_command_separately ?? false;
+          const showCommandSeparately =
+            rb.options?.show_command_separately ?? false;
 
           // Process rollback instruction (paragraph/text content)
           if (rb.instruction) {
@@ -905,7 +906,8 @@ function addSubStepRows(
 
         // Get rollback options (defaults)
         const substituteVars = rb.options?.substitute_vars ?? true;
-        const showCommandSeparately = rb.options?.show_command_separately ?? false;
+        const showCommandSeparately =
+          rb.options?.show_command_separately ?? false;
 
         // Process rollback instruction (paragraph/text content)
         if (rb.instruction) {

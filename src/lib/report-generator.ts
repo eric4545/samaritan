@@ -49,7 +49,7 @@ export function generateReport(jsonlPath: string): string {
   const rollbacks: RollbackEvent[] = [];
 
   let currentStep: StepSummary | null = null;
-  let pendingOutput: Map<string, string> = new Map();
+  const pendingOutput: Map<string, string> = new Map();
   let currentRollback: RollbackEvent | null = null;
 
   for (const event of events) {
@@ -84,10 +84,11 @@ export function generateReport(jsonlPath: string): string {
       }
 
       case 'pane_captured': {
-        const sessionName = event.session as string;
+        const _sessionName = event.session as string;
         const output = event.output as string;
         if (event.context === 'rollback') {
-          const last = currentRollback?.commands[currentRollback.commands.length - 1];
+          const last =
+            currentRollback?.commands[currentRollback.commands.length - 1];
           if (last) last.output = output;
         } else if (currentStep?.commands.length) {
           const last = currentStep.commands[currentStep.commands.length - 1];
@@ -144,7 +145,8 @@ export function generateReport(jsonlPath: string): string {
   // Calculate duration
   const firstTs = events[0]?.ts;
   const lastTs = events[events.length - 1]?.ts;
-  const duration = firstTs && lastTs ? calcDuration(firstTs, lastTs) : 'unknown';
+  const duration =
+    firstTs && lastTs ? calcDuration(firstTs, lastTs) : 'unknown';
 
   const stepsCompleted = steps.filter((s) => !s.failed).length;
 
@@ -152,7 +154,9 @@ export function generateReport(jsonlPath: string): string {
   const lines: string[] = [];
 
   lines.push(`# Evidence Report: ${opFile}`);
-  lines.push(`Session: ${sessionId} | Date: ${startTs} | Status: ${statusIcon(status)} ${status}`);
+  lines.push(
+    `Session: ${sessionId} | Date: ${startTs} | Status: ${statusIcon(status)} ${status}`,
+  );
   lines.push('');
   lines.push('## Summary');
   lines.push('');
@@ -160,7 +164,9 @@ export function generateReport(jsonlPath: string): string {
   lines.push(`- Duration: ${duration}`);
 
   const pics = [...new Set(steps.filter((s) => s.pic).map((s) => s.pic!))];
-  const reviewers = [...new Set(steps.filter((s) => s.reviewer).map((s) => s.reviewer!))];
+  const reviewers = [
+    ...new Set(steps.filter((s) => s.reviewer).map((s) => s.reviewer!)),
+  ];
   if (pics.length) lines.push(`- PIC: ${pics.join(', ')}`);
   if (reviewers.length) lines.push(`- Reviewer: ${reviewers.join(', ')}`);
 
@@ -173,7 +179,9 @@ export function generateReport(jsonlPath: string): string {
     lines.push('');
 
     if (step.startTs) {
-      lines.push(`**Time**: ${formatTs(step.startTs)}${firstCmd ? ` | **Session**: ${firstCmd.session}` : ''}`);
+      lines.push(
+        `**Time**: ${formatTs(step.startTs)}${firstCmd ? ` | **Session**: ${firstCmd.session}` : ''}`,
+      );
     }
 
     for (const cmd of step.commands) {
@@ -191,7 +199,9 @@ export function generateReport(jsonlPath: string): string {
 
     if (step.verifiedBy) {
       lines.push('');
-      lines.push(`**Verified by**: ${step.verifiedBy} at ${formatTs(step.verifiedAt ?? '')} ✅`);
+      lines.push(
+        `**Verified by**: ${step.verifiedBy} at ${formatTs(step.verifiedAt ?? '')} ✅`,
+      );
     }
     if (step.failed) {
       lines.push('');

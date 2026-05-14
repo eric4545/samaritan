@@ -165,7 +165,11 @@ class DocumentationGenerator {
     // When --env is specified, use the single-env heading-based format (issue #15)
     let manual: string;
     if (targetEnv) {
-      manual = generateSingleEnvManual(operation, targetEnv, options.resolveVars);
+      manual = generateSingleEnvManual(
+        operation,
+        targetEnv,
+        options.resolveVars,
+      );
     } else {
       manual = generateManualWithMetadata(
         operation,

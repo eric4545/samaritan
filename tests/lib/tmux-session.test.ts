@@ -1,9 +1,8 @@
 import assert from 'node:assert';
 import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { TmuxSession, isLocalSession } from '../../src/lib/tmux-session';
+import { isLocalSession, TmuxSession } from '../../src/lib/tmux-session';
 
 describe('TmuxSession (issue #6)', () => {
   it('getPipeFilePath follows naming convention', () => {

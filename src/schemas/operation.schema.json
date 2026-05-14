@@ -115,7 +115,10 @@
       "additionalProperties": {
         "type": "object",
         "properties": {
-          "host": { "type": "string", "description": "SSH host (omit for local)" },
+          "host": {
+            "type": "string",
+            "description": "SSH host (omit for local)"
+          },
           "user": { "type": "string", "description": "SSH user" },
           "env": {
             "type": "object",
@@ -609,9 +612,20 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
-                    "pattern": { "type": "string", "description": "Regex pattern with capture group" },
-                    "group": { "type": "number", "minimum": 0, "description": "Capture group index (default 1)" },
-                    "line": { "type": "string", "enum": ["last", "first"], "description": "Extract specific line" }
+                    "pattern": {
+                      "type": "string",
+                      "description": "Regex pattern with capture group"
+                    },
+                    "group": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Capture group index (default 1)"
+                    },
+                    "line": {
+                      "type": "string",
+                      "enum": ["last", "first"],
+                      "description": "Extract specific line"
+                    }
                   },
                   "additionalProperties": false
                 }
@@ -628,7 +642,10 @@
                 "description": "Verification command run after the main command",
                 "required": ["command"],
                 "properties": {
-                  "session": { "type": "string", "description": "Session to run verify command in" },
+                  "session": {
+                    "type": "string",
+                    "description": "Session to run verify command in"
+                  },
                   "command": { "type": "string" },
                   "expect": {
                     "oneOf": [
@@ -752,14 +769,23 @@
                         "command": { "type": "string" },
                         "instruction": { "type": "string" },
                         "timeout": { "type": "number", "minimum": 0 },
-                        "session": { "type": "string", "description": "Session to run rollback in (defaults to step session)" },
+                        "session": {
+                          "type": "string",
+                          "description": "Session to run rollback in (defaults to step session)"
+                        },
                         "description": { "type": "string" },
                         "type": { "type": "string" },
                         "options": {
                           "type": "object",
                           "properties": {
-                            "substitute_vars": { "type": "boolean", "default": true },
-                            "show_command_separately": { "type": "boolean", "default": false }
+                            "substitute_vars": {
+                              "type": "boolean",
+                              "default": true
+                            },
+                            "show_command_separately": {
+                              "type": "boolean",
+                              "default": false
+                            }
                           },
                           "additionalProperties": false
                         }
@@ -779,8 +805,14 @@
                       "options": {
                         "type": "object",
                         "properties": {
-                          "substitute_vars": { "type": "boolean", "default": true },
-                          "show_command_separately": { "type": "boolean", "default": false }
+                          "substitute_vars": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "show_command_separately": {
+                            "type": "boolean",
+                            "default": false
+                          }
                         },
                         "additionalProperties": false
                       }
@@ -918,8 +950,15 @@
           "type": "object",
           "required": ["interval", "max"],
           "properties": {
-            "interval": { "type": "string", "description": "Polling interval e.g. '5s'" },
-            "max": { "type": "number", "minimum": 1, "description": "Max retry count" }
+            "interval": {
+              "type": "string",
+              "description": "Polling interval e.g. '5s'"
+            },
+            "max": {
+              "type": "number",
+              "minimum": 1,
+              "description": "Max retry count"
+            }
           },
           "additionalProperties": false
         }

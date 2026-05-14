@@ -292,13 +292,22 @@ describe('Waiting step regression tests', () => {
     const op = makeOperation([
       { name: 'Manual Step', type: 'manual', instruction: 'Do it manually' },
     ]);
-    const context = ExecutorUtils.createContext('regression-op', 'test', {}, 'user');
+    const context = ExecutorUtils.createContext(
+      'regression-op',
+      'test',
+      {},
+      'user',
+    );
     const executor = createExecutor(op, context);
 
     await executor.execute();
 
     const state = executor.getState();
-    assert.notStrictEqual(state.status, 'completed', 'operation must not be completed when manual step is pending');
+    assert.notStrictEqual(
+      state.status,
+      'completed',
+      'operation must not be completed when manual step is pending',
+    );
     assert.strictEqual(state.status, 'paused');
     assert.strictEqual(state.waitingSteps, 1);
     assert.strictEqual(state.completedSteps, 0);
@@ -308,7 +317,12 @@ describe('Waiting step regression tests', () => {
     const op = makeOperation([
       { name: 'Approve', type: 'approval', instruction: 'Approve the change' },
     ]);
-    const context = ExecutorUtils.createContext('regression-op', 'test', {}, 'user');
+    const context = ExecutorUtils.createContext(
+      'regression-op',
+      'test',
+      {},
+      'user',
+    );
     const executor = createExecutor(op, context);
 
     await executor.execute();
@@ -326,7 +340,13 @@ describe('Waiting step regression tests', () => {
       { name: 'After Gate', type: 'automatic', command: 'echo done' },
     ]);
     // autoMode: false => automatic steps also require manual confirmation
-    const context = ExecutorUtils.createContext('regression-op', 'test', {}, 'user', { autoMode: false });
+    const context = ExecutorUtils.createContext(
+      'regression-op',
+      'test',
+      {},
+      'user',
+      { autoMode: false },
+    );
     const executor = createExecutor(op, context);
 
     await executor.execute();
@@ -335,14 +355,23 @@ describe('Waiting step regression tests', () => {
     assert.strictEqual(state.status, 'paused');
     assert.strictEqual(state.waitingSteps, 1);
     // The step after the gate must not have run
-    assert.strictEqual(state.steps[2].status, 'pending', 'step after manual gate must remain pending');
+    assert.strictEqual(
+      state.steps[2].status,
+      'pending',
+      'step after manual gate must remain pending',
+    );
   });
 
   it('getSummary reflects waitingSteps count', async () => {
     const op = makeOperation([
       { name: 'Manual', type: 'manual', instruction: 'Do something' },
     ]);
-    const context = ExecutorUtils.createContext('regression-op', 'test', {}, 'user');
+    const context = ExecutorUtils.createContext(
+      'regression-op',
+      'test',
+      {},
+      'user',
+    );
     const executor = createExecutor(op, context);
 
     await executor.execute();
@@ -358,7 +387,13 @@ describe('Waiting step regression tests', () => {
       { name: 'Step 1', type: 'automatic', command: 'echo a' },
       { name: 'Step 2', type: 'automatic', command: 'echo b' },
     ]);
-    const context = ExecutorUtils.createContext('regression-op', 'test', {}, 'user', { autoMode: true });
+    const context = ExecutorUtils.createContext(
+      'regression-op',
+      'test',
+      {},
+      'user',
+      { autoMode: true },
+    );
     const executor = createExecutor(op, context);
 
     await executor.execute();
