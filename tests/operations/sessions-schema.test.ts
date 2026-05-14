@@ -7,14 +7,20 @@ describe('Sessions / execution-engine schema (issue #5)', () => {
     it('parses sessions block on Operation', async () => {
       const op = await parseFixture('withSessions');
       assert.ok(op.sessions, 'sessions should be present');
-      assert.ok(op.sessions['execution'], 'execution session should exist');
-      assert.strictEqual(op.sessions['execution'].host, 'prod-bastion.example.com');
-      assert.strictEqual(op.sessions['execution'].user, 'deploy');
-      assert.deepStrictEqual(op.sessions['execution'].env, {
+      assert.ok(op.sessions.execution, 'execution session should exist');
+      assert.strictEqual(
+        op.sessions.execution.host,
+        'prod-bastion.example.com',
+      );
+      assert.strictEqual(op.sessions.execution.user, 'deploy');
+      assert.deepStrictEqual(op.sessions.execution.env, {
         KUBECONFIG: '/home/deploy/.kube/config',
       });
-      assert.ok(op.sessions['verification'], 'verification session should exist');
-      assert.strictEqual(op.sessions['verification'].host, 'monitoring.example.com');
+      assert.ok(op.sessions.verification, 'verification session should exist');
+      assert.strictEqual(
+        op.sessions.verification.host,
+        'monitoring.example.com',
+      );
     });
 
     it('parses run config on Operation', async () => {
@@ -48,12 +54,18 @@ describe('Sessions / execution-engine schema (issue #5)', () => {
     it('parses step.rollback as array (execution-engine format)', async () => {
       const op = await parseFixture('withSessions');
       const deployStep = op.steps[0];
-      assert.ok(Array.isArray(deployStep.rollback), 'rollback should be an array');
+      assert.ok(
+        Array.isArray(deployStep.rollback),
+        'rollback should be an array',
+      );
       const rb = deployStep.rollback as any[];
       assert.strictEqual(rb.length, 2);
       assert.strictEqual(rb[0].command, 'kubectl rollout undo deployment/web');
       assert.strictEqual(rb[0].session, 'execution');
-      assert.strictEqual(rb[1].command, 'kubectl delete pod -l app=web --force');
+      assert.strictEqual(
+        rb[1].command,
+        'kubectl delete pod -l app=web --force',
+      );
     });
 
     it('parses step.capture config', async () => {
@@ -61,11 +73,14 @@ describe('Sessions / execution-engine schema (issue #5)', () => {
       const buildStep = op.steps[1];
       assert.strictEqual(buildStep.name, 'Build Image');
       assert.ok(buildStep.capture, 'capture should be present');
-      assert.ok(buildStep.capture['IMAGE_ID'], 'IMAGE_ID capture should exist');
-      assert.strictEqual(buildStep.capture['IMAGE_ID'].pattern, 'Successfully built ([a-f0-9]+)');
-      assert.strictEqual(buildStep.capture['IMAGE_ID'].group, 1);
-      assert.ok(buildStep.capture['LAST_LINE'], 'LAST_LINE capture should exist');
-      assert.strictEqual(buildStep.capture['LAST_LINE'].line, 'last');
+      assert.ok(buildStep.capture.IMAGE_ID, 'IMAGE_ID capture should exist');
+      assert.strictEqual(
+        buildStep.capture.IMAGE_ID.pattern,
+        'Successfully built ([a-f0-9]+)',
+      );
+      assert.strictEqual(buildStep.capture.IMAGE_ID.group, 1);
+      assert.ok(buildStep.capture.LAST_LINE, 'LAST_LINE capture should exist');
+      assert.strictEqual(buildStep.capture.LAST_LINE.line, 'last');
     });
 
     it('parses step.expect as string shorthand', async () => {

@@ -10,7 +10,7 @@
 export function resolveVars(text: string, vars: Record<string, any>): string {
   const unresolved: string[] = [];
   const result = text.replace(/\$\{([^}]+)\}/g, (match, name) => {
-    if (Object.prototype.hasOwnProperty.call(vars, name)) {
+    if (Object.hasOwn(vars, name)) {
       return String(vars[name]);
     }
     unresolved.push(name);
@@ -36,7 +36,7 @@ export function resolveVarsSafe(
   vars: Record<string, any>,
 ): string {
   return text.replace(/\$\{([^}]+)\}/g, (match, name) => {
-    if (Object.prototype.hasOwnProperty.call(vars, name)) {
+    if (Object.hasOwn(vars, name)) {
       return String(vars[name]);
     }
     return match;
@@ -46,10 +46,13 @@ export function resolveVarsSafe(
 /**
  * Returns true if `text` still contains any unresolved ${VAR} placeholders.
  */
-export function hasUnresolvedVars(text: string, vars: Record<string, any>): boolean {
+export function hasUnresolvedVars(
+  text: string,
+  vars: Record<string, any>,
+): boolean {
   return /\$\{([^}]+)\}/.test(
     text.replace(/\$\{([^}]+)\}/g, (match, name) =>
-      Object.prototype.hasOwnProperty.call(vars, name) ? '' : match,
+      Object.hasOwn(vars, name) ? '' : match,
     ),
   );
 }

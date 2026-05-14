@@ -195,7 +195,10 @@ const yamlContent = loadYaml('enhanced')
 1. **RED**: Write failing test first
 2. **GREEN**: Implement minimal code to pass
 3. **REFACTOR**: Clean up while keeping tests green
-4. **Commit**: Always commit tests with implementation
+4. **LINT**: Run `npx @biomejs/biome check --write <changed files>` and fix any new errors
+5. **Commit**: Always commit tests with implementation in the same commit
+
+> When adding fields to `renderStep` in `generateSingleEnvManual`, cover each new field with a test — the pattern of adding rendering logic without a test is how the `else if` instruction/command bug went undetected.
 
 ### Debug Files
 - Create debug/temp files in `/tmp/` folder, **NEVER in project root**
@@ -318,6 +321,9 @@ When adding features that affect evidence rendering, ensure ALL components are u
 3. Update JSON schema in `src/schemas/operation.schema.json`
 4. **Update ALL generators** (critical - often missed):
    - `src/manuals/generator.ts` (Markdown) - pass `operationDir` for file reading
+     - **Two rendering paths inside this file** (easy to update one and miss the other):
+       - `generateStepRow` / `generateSubStepRow` — multi-env table format (used without `--env`)
+       - `generateSingleEnvManual` → `renderStep` — heading format (used with `--env`)
    - `src/manuals/adf-generator.ts` (ADF/JSON)
    - `src/cli/commands/generate.ts` (Confluence markup) - pass `operationDir` for file reading
 5. Update CLI commands to pass operation directory where needed
@@ -480,6 +486,9 @@ evidence:
 - Check implementation before assuming functionality
 - If docs mention a feature, verify in code
 - When in doubt, check `ROADMAP.md`
+
+### 5. `git add src/manuals/` Requires `-f`
+The `.gitignore` contains `manuals/` which also matches `src/manuals/`, so plain `git add src/manuals/*.ts` silently fails. Since those files are already tracked, use `git add -f src/manuals/<file>` to stage them.
 
 ---
 

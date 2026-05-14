@@ -1,8 +1,8 @@
+import type { ExpectConfig, Step } from '../models/operation';
+import { assertOutput } from './assertions';
 import type { EventLogger } from './event-logger';
 import type { SessionState } from './session-state';
 import type { TmuxSession } from './tmux-session';
-import type { ExpectConfig, Step } from '../models/operation';
-import { assertOutput } from './assertions';
 import { isLocalSession } from './tmux-session';
 
 export type StepState =
@@ -70,7 +70,7 @@ export class StepController {
   async sendCommand(
     sessionName: string,
     command: string,
-    stepIndex: number,
+    _stepIndex: number,
   ): Promise<void> {
     const { logger, tmux, autoExec } = this.opts;
 
@@ -88,7 +88,10 @@ export class StepController {
   async runVerify(
     step: Step,
     stepIndex: number,
-  ): Promise<{ state: StepState; assertResult?: ReturnType<typeof assertOutput> }> {
+  ): Promise<{
+    state: StepState;
+    assertResult?: ReturnType<typeof assertOutput>;
+  }> {
     const { logger, tmux, sessionState } = this.opts;
 
     if (!step.verify) return { state: 'complete' };
@@ -250,10 +253,7 @@ export function renderTuiPending(
   return lines.join('\n');
 }
 
-export function renderTuiWaiting(
-  elapsed: number,
-  timeout: number,
-): string {
+export function renderTuiWaiting(elapsed: number, timeout: number): string {
   return [
     '─'.repeat(49),
     ` ⏳ Running... (${elapsed}s / timeout: ${timeout}s)`,

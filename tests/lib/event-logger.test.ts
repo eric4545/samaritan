@@ -13,7 +13,11 @@ describe('EventLogger (issue #7)', () => {
 
   it('appends one valid JSON line per emit', () => {
     const logger = createEventLogger('test-emit1');
-    logger.emit({ type: 'session_start', op: 'test.yaml', tmux_session: 'sam-test-emit1' });
+    logger.emit({
+      type: 'session_start',
+      op: 'test.yaml',
+      tmux_session: 'sam-test-emit1',
+    });
     logger.emit({ type: 'step_start', step: 1, name: 'Deploy' });
     logger.close();
 
@@ -60,12 +64,39 @@ describe('EventLogger (issue #7)', () => {
   it('log is queryable by type (all event types round-trip as JSON)', () => {
     const logger = createEventLogger('test-query1');
     const events = [
-      { type: 'session_start' as const, op: 'dep.yaml', tmux_session: 'sam-q1' },
-      { type: 'session_open' as const, name: 'execution', host: 'bastion', pane: 'sam-q1:0.1' },
-      { type: 'step_start' as const, step: 1, name: 'Deploy', pic: 'ops@example.com' },
-      { type: 'command_sent' as const, session: 'execution', command: 'kubectl apply -f dep.yaml' },
-      { type: 'pane_captured' as const, session: 'execution', output: 'deployment created' },
-      { type: 'user_input' as const, action: 'verify_ok', step: 1, actor: 'ops@example.com' },
+      {
+        type: 'session_start' as const,
+        op: 'dep.yaml',
+        tmux_session: 'sam-q1',
+      },
+      {
+        type: 'session_open' as const,
+        name: 'execution',
+        host: 'bastion',
+        pane: 'sam-q1:0.1',
+      },
+      {
+        type: 'step_start' as const,
+        step: 1,
+        name: 'Deploy',
+        pic: 'ops@example.com',
+      },
+      {
+        type: 'command_sent' as const,
+        session: 'execution',
+        command: 'kubectl apply -f dep.yaml',
+      },
+      {
+        type: 'pane_captured' as const,
+        session: 'execution',
+        output: 'deployment created',
+      },
+      {
+        type: 'user_input' as const,
+        action: 'verify_ok',
+        step: 1,
+        actor: 'ops@example.com',
+      },
       { type: 'step_complete' as const, step: 1 },
     ];
     for (const e of events) logger.emit(e);

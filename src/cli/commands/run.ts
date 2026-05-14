@@ -1,12 +1,12 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { Command } from 'commander';
+import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
-import { bootstrapSessions, type TmuxSession } from '../../lib/tmux-session';
-import { resolveVars, resolveVarsSafe } from '../../lib/variable-resolver';
 import { SessionState } from '../../lib/session-state';
-import { createEventLogger } from '../../lib/event-logger';
+import { bootstrapSessions, type TmuxSession } from '../../lib/tmux-session';
 import { StepController } from '../../lib/tui';
+import { resolveVars, resolveVarsSafe } from '../../lib/variable-resolver';
 import type { ExecutionMode, Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
@@ -35,7 +35,9 @@ class OperationRunner {
   ): Promise<void> {
     const targetEnv = options.env || options.environment;
     if (!targetEnv) {
-      throw new Error("Required option '-e, --env <environment>' not specified");
+      throw new Error(
+        "Required option '-e, --env <environment>' not specified",
+      );
     }
 
     // Resolve to absolute path for persistence
@@ -67,8 +69,7 @@ class OperationRunner {
     };
 
     const executionMode: ExecutionMode =
-      options.mode ??
-      (options.autoApprove ? 'automatic' : 'manual');
+      options.mode ?? (options.autoApprove ? 'automatic' : 'manual');
 
     const context = {
       operationId: operation.id,
@@ -80,9 +81,18 @@ class OperationRunner {
       autoMode: executionMode === 'automatic' || options.autoApprove || false,
     };
 
-    this.displayOperationSummary(operation, environment, context, executionMode);
+    this.displayOperationSummary(
+      operation,
+      environment,
+      context,
+      executionMode,
+    );
 
-    if (environment.approval_required && !options.autoApprove && !options.dryRun) {
+    if (
+      environment.approval_required &&
+      !options.autoApprove &&
+      !options.dryRun
+    ) {
       console.log('⚠️  This environment requires approval.');
       console.log(
         '💡 Use --auto-approve to skip approval prompts or ensure approvals are pre-authorized.',
@@ -119,8 +129,13 @@ class OperationRunner {
         if (operation.sessions && Object.keys(operation.sessions).length > 0) {
           console.log('🖥️  Bootstrapping tmux sessions...');
           try {
-            tmuxSession = await bootstrapSessions(context.sessionId, operation.sessions);
-            console.log(`   Sessions: ${Object.keys(operation.sessions).join(', ')}\n`);
+            tmuxSession = await bootstrapSessions(
+              context.sessionId,
+              operation.sessions,
+            );
+            console.log(
+              `   Sessions: ${Object.keys(operation.sessions).join(', ')}\n`,
+            );
           } catch (err: any) {
             console.warn(
               `⚠️  tmux bootstrap failed (${err.message}); falling back to prompt-only mode.\n`,
@@ -131,7 +146,12 @@ class OperationRunner {
         console.log('▶️  Starting interactive operation execution...\n');
         executor.startInteractive();
         await this.runInteractiveStepLoop(
-          executor, operation, absFile, resolvedVars, executionMode, tmuxSession,
+          executor,
+          operation,
+          absFile,
+          resolvedVars,
+          executionMode,
+          tmuxSession,
         );
         executor.finalizeOperation();
 
@@ -153,19 +173,25 @@ class OperationRunner {
           console.log('\n✅ Operation completed successfully!');
         }
       } else if (finalState.status === 'paused') {
-        const waitingStep = finalState.steps.find((s) => s.status === 'waiting');
+        const waitingStep = finalState.steps.find(
+          (s) => s.status === 'waiting',
+        );
         const stepName = waitingStep?.step.name ?? 'unknown';
         console.log('\n⏸️  Operation paused — manual interaction required.');
         console.log(
           `   ${finalState.waitingSteps} step(s) waiting. Paused at: "${stepName}"`,
         );
-        console.log(`\n💡 Resume this session:\n   samaritan resume ${session.id}`);
+        console.log(
+          `\n💡 Resume this session:\n   samaritan resume ${session.id}`,
+        );
       }
 
       const summary = sessionManager.getSessionSummary(session.id);
       if (summary) {
         console.log(`\n📊 Execution Summary:`);
-        console.log(`   Duration: ${SessionUtils.formatSessionDuration(session)}`);
+        console.log(
+          `   Duration: ${SessionUtils.formatSessionDuration(session)}`,
+        );
         console.log(`   Evidence collected: ${summary.evidenceCount} items`);
         console.log(`   Retries: ${summary.retryCount}`);
         console.log(`   Approvals: ${summary.approvalCount}`);
@@ -248,7 +274,9 @@ class OperationRunner {
       console.log('\n🖥️  Bootstrapping tmux sessions...');
       try {
         tmuxSession = await bootstrapSessions(session.id, operation.sessions);
-        console.log(`   Sessions: ${Object.keys(operation.sessions).join(', ')}\n`);
+        console.log(
+          `   Sessions: ${Object.keys(operation.sessions).join(', ')}\n`,
+        );
       } catch (err: any) {
         console.warn(
           `⚠️  tmux bootstrap failed (${err.message}); continuing without tmux.\n`,
@@ -260,8 +288,12 @@ class OperationRunner {
     executor.resumeFromIndex(session.current_step_index);
 
     await this.runInteractiveStepLoop(
-      executor, operation, session.operation_file, context.variables,
-      session.mode, tmuxSession,
+      executor,
+      operation,
+      session.operation_file,
+      context.variables,
+      session.mode,
+      tmuxSession,
     );
     executor.finalizeOperation();
     tmuxSession?.teardown();
@@ -272,13 +304,16 @@ class OperationRunner {
   private async runInteractiveStepLoop(
     executor: OperationExecutor,
     operation: Operation,
-    operationFile: string,
+    _operationFile: string,
     vars: Record<string, any>,
-    mode: ExecutionMode,
+    _mode: ExecutionMode,
     tmuxSession?: TmuxSession,
   ): Promise<void> {
     const { createInterface } = await import('node:readline/promises');
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
 
     // Set up event logger + session state + step controller for tmux-backed steps
     const state = executor.getState();
@@ -319,7 +354,11 @@ class OperationRunner {
     try {
       const steps = executor.getState().steps;
 
-      for (let i = executor.getState().currentStepIndex; i < steps.length; i++) {
+      for (
+        let i = executor.getState().currentStepIndex;
+        i < steps.length;
+        i++
+      ) {
         const { step } = steps[i];
         const stepNum = `[${i + 1}/${steps.length}]`;
         const typeLabel = step.type.toUpperCase();
@@ -333,7 +372,10 @@ class OperationRunner {
         if (step.pic) console.log(`    PIC      : ${step.pic}`);
         if (step.reviewer) console.log(`    Reviewer : ${step.reviewer}`);
         if (step.session) console.log(`    Session  : ${step.session}`);
-        if (step.ticket) console.log(`    Ticket   : ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`);
+        if (step.ticket)
+          console.log(
+            `    Ticket   : ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`,
+          );
 
         if (step.type === 'automatic') {
           if (resolvedCommand) console.log(`\n    $ ${resolvedCommand}`);
@@ -354,16 +396,24 @@ class OperationRunner {
               continue;
             }
             await controller.sendCommand(step.session, resolvedCommand, i);
-            await executor.executeStepManually(i, `sent via tmux [${step.session}]`);
+            await executor.executeStepManually(
+              i,
+              `sent via tmux [${step.session}]`,
+            );
             console.log(`    📤 Sent to tmux pane [${step.session}].`);
 
             // Run verify if defined
             if (step.verify) {
-              console.log(`    🔍 Running verify: ${tryResolve(step.verify.command) ?? step.verify.command}`);
-              const { state: vState, assertResult } = await controller.runVerify(step, i);
+              console.log(
+                `    🔍 Running verify: ${tryResolve(step.verify.command) ?? step.verify.command}`,
+              );
+              const { state: vState, assertResult } =
+                await controller.runVerify(step, i);
               if (assertResult) {
                 const icon = assertResult.pass ? '✅ PASS' : '❌ FAIL';
-                console.log(`    ${icon} Assert (${assertResult.type}): expected "${assertResult.expected}"`);
+                console.log(
+                  `    ${icon} Assert (${assertResult.type}): expected "${assertResult.expected}"`,
+                );
                 if (!assertResult.pass) {
                   const override = await rl.question(
                     '    ⚠️  Assertion failed. Override and continue? [y/N]: ',
@@ -396,7 +446,8 @@ class OperationRunner {
           }
         } else if (step.type === 'manual') {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
-          if (resolvedCommand) console.log(`\n    Command reference:\n    $ ${resolvedCommand}`);
+          if (resolvedCommand)
+            console.log(`\n    Command reference:\n    $ ${resolvedCommand}`);
           const notes = await rl.question(
             '\n    ✋ Mark done (notes/Enter=confirm, "skip"=skip, "abort"=abort): ',
           );
@@ -476,7 +527,9 @@ class OperationRunner {
     console.log(`\n📋 Operation Summary:`);
     console.log(`   Name: ${operation.name} v${operation.version}`);
     console.log(`   Description: ${operation.description}`);
-    console.log(`   Environment: ${environment.name} (${environment.description})`);
+    console.log(
+      `   Environment: ${environment.name} (${environment.description})`,
+    );
     console.log(`   Steps: ${operation.steps.length}`);
     console.log(`   Preflight checks: ${operation.preflight?.length || 0}`);
     console.log(`   Execution mode: ${mode}`);
@@ -495,10 +548,14 @@ class OperationRunner {
   private setupEventHandlers(executor: OperationExecutor, options: any): void {
     if (options.verbose) {
       executor.on('step_started', (event) => {
-        console.log(`▶️  [${event.stepIndex + 1}] Starting: ${event.step?.name}`);
+        console.log(
+          `▶️  [${event.stepIndex + 1}] Starting: ${event.step?.name}`,
+        );
       });
       executor.on('step_completed', (event) => {
-        console.log(`✅ [${event.stepIndex + 1}] Completed: ${event.step?.name}`);
+        console.log(
+          `✅ [${event.stepIndex + 1}] Completed: ${event.step?.name}`,
+        );
         if (event.result?.duration) {
           console.log(`    Duration: ${event.result.duration}ms`);
         }
@@ -511,7 +568,9 @@ class OperationRunner {
         console.log(`⏭️  [${event.stepIndex + 1}] Skipped: ${event.step?.name}`);
       });
       executor.on('approval_required', (event) => {
-        console.log(`⏸️  [${event.stepIndex + 1}] Approval required: ${event.step?.name}`);
+        console.log(
+          `⏸️  [${event.stepIndex + 1}] Approval required: ${event.step?.name}`,
+        );
       });
     }
 
@@ -526,7 +585,10 @@ class OperationRunner {
     });
   }
 
-  private async runPreflightChecks(preflight: any[], context: any): Promise<void> {
+  private async runPreflightChecks(
+    preflight: any[],
+    context: any,
+  ): Promise<void> {
     for (let i = 0; i < preflight.length; i++) {
       const check = preflight[i];
       console.log(`   ${i + 1}. ${check.name}: ${check.description}`);

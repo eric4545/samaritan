@@ -21,7 +21,9 @@ describe('assertOutput (issue #12)', () => {
   });
 
   it('not_contains - fails when substring present', () => {
-    const r = assertOutput('Error: pod crashlooping', { not_contains: 'Error' });
+    const r = assertOutput('Error: pod crashlooping', {
+      not_contains: 'Error',
+    });
     assert.strictEqual(r.pass, false);
   });
 
@@ -56,22 +58,30 @@ describe('assertOutput (issue #12)', () => {
   });
 
   it('any_line_contains - passes when at least one line matches', () => {
-    const r = assertOutput('line1\nRunning\nline3', { any_line_contains: 'Running' });
+    const r = assertOutput('line1\nRunning\nline3', {
+      any_line_contains: 'Running',
+    });
     assert.strictEqual(r.pass, true);
   });
 
   it('any_line_contains - fails when no line matches', () => {
-    const r = assertOutput('line1\nline2\nline3', { any_line_contains: 'Running' });
+    const r = assertOutput('line1\nline2\nline3', {
+      any_line_contains: 'Running',
+    });
     assert.strictEqual(r.pass, false);
   });
 
   it('no_line_contains - passes when no line has the substring', () => {
-    const r = assertOutput('line1\nline2\nline3', { no_line_contains: 'Error' });
+    const r = assertOutput('line1\nline2\nline3', {
+      no_line_contains: 'Error',
+    });
     assert.strictEqual(r.pass, true);
   });
 
   it('no_line_contains - fails when a line has the substring', () => {
-    const r = assertOutput('line1\nError: crash\nline3', { no_line_contains: 'Error' });
+    const r = assertOutput('line1\nError: crash\nline3', {
+      no_line_contains: 'Error',
+    });
     assert.strictEqual(r.pass, false);
   });
 
@@ -128,12 +138,16 @@ describe('assertOutput (issue #12)', () => {
   });
 
   it('all_lines_match - passes when every non-empty line matches pattern', () => {
-    const r = assertOutput('Running\nReady\nRunning', { all_lines_match: 'Running|Ready' });
+    const r = assertOutput('Running\nReady\nRunning', {
+      all_lines_match: 'Running|Ready',
+    });
     assert.strictEqual(r.pass, true);
   });
 
   it('all_lines_match - fails when a line does not match', () => {
-    const r = assertOutput('Running\nFailed\nRunning', { all_lines_match: 'Running' });
+    const r = assertOutput('Running\nFailed\nRunning', {
+      all_lines_match: 'Running',
+    });
     assert.strictEqual(r.pass, false);
   });
 
@@ -161,10 +175,7 @@ describe('SessionState (issue #12)', () => {
 
   it('throws on undefined ${VAR}', () => {
     const state = new SessionState();
-    assert.throws(
-      () => state.interpolate('value is ${MISSING}'),
-      /MISSING/,
-    );
+    assert.throws(() => state.interpolate('value is ${MISSING}'), /MISSING/);
   });
 
   it('multiple vars interpolated in single string', () => {

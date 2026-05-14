@@ -24,9 +24,7 @@ export class TmuxSession {
 
   send(sessionName: string, command: string): void {
     const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
-    execSync(
-      `tmux send-keys -t ${pane} ${JSON.stringify(command)} Enter`,
-    );
+    execSync(`tmux send-keys -t ${pane} ${JSON.stringify(command)} Enter`);
   }
 
   currentOffset(sessionName: string): number {
@@ -114,9 +112,7 @@ export async function bootstrapSessions(
 
     // Start pipe-pane capture
     const pipeFile = tmuxSession.getPipeFilePath(name);
-    execSync(
-      `tmux pipe-pane -t ${paneTarget} -o 'cat >> ${pipeFile}'`,
-    );
+    execSync(`tmux pipe-pane -t ${paneTarget} -o 'cat >> ${pipeFile}'`);
 
     tmuxSession.registerPane(name, paneTarget);
 

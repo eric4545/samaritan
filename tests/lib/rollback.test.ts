@@ -3,10 +3,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import type { EventLogger } from '../../src/lib/event-logger';
 import { createEventLogger } from '../../src/lib/event-logger';
-import {
-  StepController,
-  type StepControllerOptions,
-} from '../../src/lib/tui';
+import { StepController, type StepControllerOptions } from '../../src/lib/tui';
 
 function makeLogger(id: string): EventLogger {
   return createEventLogger(id);
@@ -38,7 +35,10 @@ describe('Rollback support (issue #9)', () => {
       name: 'Deploy App',
       session: 'execution',
       rollback: [
-        { command: 'kubectl rollout undo deployment/web', session: 'execution' },
+        {
+          command: 'kubectl rollout undo deployment/web',
+          session: 'execution',
+        },
       ],
     } as any;
 
@@ -46,13 +46,21 @@ describe('Rollback support (issue #9)', () => {
     await ctrl.rollback(step, 0, 'user_input');
 
     const content = readFileSync(logger.path, 'utf-8');
-    const events = content.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const events = content
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l));
 
     const starts = events.filter((e) => e.type === 'rollback_start');
     const completes = events.filter((e) => e.type === 'rollback_complete');
 
     assert.strictEqual(starts.length, 1, 'should have one rollback_start');
-    assert.strictEqual(completes.length, 1, 'should have one rollback_complete');
+    assert.strictEqual(
+      completes.length,
+      1,
+      'should have one rollback_complete',
+    );
     assert.strictEqual(starts[0].step, 0);
     assert.strictEqual(starts[0].triggered_by, 'user_input');
 
@@ -84,10 +92,20 @@ describe('Rollback support (issue #9)', () => {
     await ctrl.rollback(step, 1, 'user_input');
 
     const content = readFileSync(logger.path, 'utf-8');
-    const events = content.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const events = content
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l));
 
-    const sent = events.filter((e) => e.type === 'command_sent' && e.context === 'rollback');
-    assert.strictEqual(sent.length, 2, 'should have two rollback command_sent events');
+    const sent = events.filter(
+      (e) => e.type === 'command_sent' && e.context === 'rollback',
+    );
+    assert.strictEqual(
+      sent.length,
+      2,
+      'should have two rollback command_sent events',
+    );
     assert.strictEqual(sent[0].command, 'docker rmi myapp:latest');
     assert.strictEqual(sent[1].command, 'git checkout HEAD~1');
 
@@ -111,7 +129,11 @@ describe('Rollback support (issue #9)', () => {
     await ctrl.rollback(step, 2, 'user_input');
 
     const content = readFileSync(logger.path, 'utf-8');
-    const events = content.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const events = content
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l));
     const starts = events.filter((e) => e.type === 'rollback_start');
     assert.strictEqual(starts.length, 1);
 

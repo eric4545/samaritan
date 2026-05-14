@@ -1,8 +1,8 @@
 import assert from 'node:assert';
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { describe, it } from 'node:test';
 
 // Resolve fixture paths directly (avoids importing parser via fixtures.ts)
@@ -46,11 +46,16 @@ describe('run command: --env / --environment flag', () => {
   it('--environment flag is accepted as alias for --env', () => {
     const fixture = fixturePath('deploymentTest');
     const result = runCli([
-      'run', fixture, '--environment', 'staging', '--dry-run',
+      'run',
+      fixture,
+      '--environment',
+      'staging',
+      '--dry-run',
     ]);
     const combined = result.stdout + result.stderr;
     assert.ok(
-      !combined.includes('not specified') && !combined.includes('unknown option'),
+      !combined.includes('not specified') &&
+        !combined.includes('unknown option'),
       '--environment should be accepted as an alias',
     );
   });
@@ -76,8 +81,9 @@ describe('run command: dry-run semantics', () => {
     assert.strictEqual(result.status, 0, 'dry-run must exit 0');
     const combined = result.stdout + result.stderr;
     assert.ok(
-      combined.includes('preview complete') || combined.includes('traversed') ||
-      combined.includes('completed'),
+      combined.includes('preview complete') ||
+        combined.includes('traversed') ||
+        combined.includes('completed'),
       'dry-run must report full traversal',
     );
   });
@@ -120,10 +126,9 @@ describe('run command: variable interpolation', () => {
   it('resolves ${VAR} from environment variables before display', () => {
     // deployment-test.yaml has ${REPLICAS} for staging=2 and ${PORT} for staging=8080
     const fixture = fixturePath('deploymentTest');
-    const result = runCli(
-      ['run', fixture, '--env', 'staging'],
-      { input: 'q\n' },
-    );
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
     const combined = result.stdout + result.stderr;
     // The instruction for Health Check step reads:
     //   "Check the application health endpoint at http://localhost:${PORT}/health"
@@ -137,10 +142,9 @@ describe('run command: variable interpolation', () => {
 
   it('resolves ${REPLICAS} placeholder in commands', () => {
     const fixture = fixturePath('deploymentTest');
-    const result = runCli(
-      ['run', fixture, '--env', 'staging'],
-      { input: 'q\n' },
-    );
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
     const combined = result.stdout + result.stderr;
     assert.ok(
       !combined.includes('${REPLICAS}'),
@@ -154,26 +158,31 @@ describe('run command: variable interpolation', () => {
 describe('run command: interactive mode', () => {
   it('starts interactive execution when not in dry-run mode', () => {
     const fixture = fixturePath('deploymentTest');
-    const result = runCli(
-      ['run', fixture, '--env', 'staging'],
-      { input: 'q\n' },
-    );
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
     const combined = result.stdout + result.stderr;
     assert.ok(
       combined.includes('interactive') ||
-      combined.includes('Step') ||
-      combined.includes('Execute') ||
-      combined.includes('AUTOMATIC') ||
-      combined.includes('MANUAL'),
+        combined.includes('Step') ||
+        combined.includes('Execute') ||
+        combined.includes('AUTOMATIC') ||
+        combined.includes('MANUAL'),
       'Interactive mode should show step-by-step prompts',
     );
   });
 
   it('shows exact execution mode in summary', () => {
     const fixture = fixturePath('deploymentTest');
-    const result = runCli(
-      ['run', fixture, '--env', 'staging', '--dry-run', '-m', 'manual'],
-    );
+    const result = runCli([
+      'run',
+      fixture,
+      '--env',
+      'staging',
+      '--dry-run',
+      '-m',
+      'manual',
+    ]);
     const combined = result.stdout + result.stderr;
     assert.ok(
       combined.includes('manual') || combined.includes('Execution mode'),
@@ -183,12 +192,18 @@ describe('run command: interactive mode', () => {
 
   it('--auto-approve flag runs without interactive prompts', () => {
     const fixture = fixturePath('minimal');
-    const result = runCli(['run', fixture, '--env', 'default', '--auto-approve']);
+    const result = runCli([
+      'run',
+      fixture,
+      '--env',
+      'default',
+      '--auto-approve',
+    ]);
     const combined = result.stdout + result.stderr;
     assert.ok(
       combined.includes('completed') ||
-      combined.includes('success') ||
-      result.status === 0,
+        combined.includes('success') ||
+        result.status === 0,
       'Auto-approve should complete without prompts',
     );
   });
@@ -215,7 +230,8 @@ describe('resume command: session persistence', () => {
     const result = runCli(['resume', 'nonexistent-session-id-abc123']);
     const combined = result.stdout + result.stderr;
     assert.notStrictEqual(
-      result.status, 0,
+      result.status,
+      0,
       'resume with unknown session must exit non-zero',
     );
     assert.ok(
@@ -227,7 +243,11 @@ describe('resume command: session persistence', () => {
   it('session file is written to ~/.samaritan/sessions/ on run', () => {
     const fixture = fixturePath('minimal');
     const result = runCli([
-      'run', fixture, '--env', 'default', '--auto-approve',
+      'run',
+      fixture,
+      '--env',
+      'default',
+      '--auto-approve',
     ]);
     assert.strictEqual(result.status, 0, 'run should complete successfully');
 
@@ -235,7 +255,9 @@ describe('resume command: session persistence', () => {
     const sessionDir = join(homedir(), '.samaritan', 'sessions');
     if (existsSync(sessionDir)) {
       const { readdirSync } = require('node:fs');
-      const files = readdirSync(sessionDir).filter((f: string) => f.endsWith('.json'));
+      const files = readdirSync(sessionDir).filter((f: string) =>
+        f.endsWith('.json'),
+      );
       assert.ok(
         files.length > 0,
         'At least one session file must be written to ~/.samaritan/sessions/',

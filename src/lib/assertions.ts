@@ -165,7 +165,8 @@ function evalJsonPath(
   }
 
   const actual = resolveSimpleJsonPath(parsed, path);
-  const actualStr = typeof actual === 'string' ? actual : JSON.stringify(actual);
+  const actualStr =
+    typeof actual === 'string' ? actual : JSON.stringify(actual);
 
   if (expectedValue !== undefined) {
     return {
@@ -188,7 +189,7 @@ function resolveSimpleJsonPath(obj: unknown, path: string): unknown {
   // Supports simple paths: $.key.nested or $.items[0].field
   const parts = path
     .replace(/^\$\.?/, '')
-    .split(/[.\[\]]/)
+    .split(/[.[\]]/)
     .filter(Boolean);
 
   let current: unknown = obj;
@@ -207,7 +208,9 @@ function resolveSimpleJsonPath(obj: unknown, path: string): unknown {
  * Convert an assertion expectation to clean, human-readable text for manuals.
  * Avoids escaped regex artifacts and doubled quotes.
  */
-export function renderExpectDescription(expect: ExpectConfig | string | undefined): string {
+export function renderExpectDescription(
+  expect: ExpectConfig | string | undefined,
+): string {
   if (!expect) return '';
   if (typeof expect === 'string') return expect;
   if (expect.equals !== undefined) {
@@ -231,15 +234,24 @@ export function renderExpectDescription(expect: ExpectConfig | string | undefine
       return `matches ${altMatch[1].split('|').join(' or ')}`;
     }
     // Strip common metacharacters for a readable approximation
-    const readable = pattern.replace(/\\[^\\]/g, '').replace(/[\\^$.*+?[\]{}|]/g, ' ').replace(/\s+/g, ' ').trim();
+    const readable = pattern
+      .replace(/\\[^\\]/g, '')
+      .replace(/[\\^$.*+?[\]{}|]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
     return `matches: ${readable}`;
   }
   if (expect.not_empty) return 'is not empty';
-  if (expect.any_line_contains !== undefined) return `any line contains: ${expect.any_line_contains}`;
-  if (expect.no_line_contains !== undefined) return `no line contains: ${expect.no_line_contains}`;
-  if (expect.all_lines_match !== undefined) return `all lines match: ${expect.all_lines_match}`;
-  if (expect.line_count !== undefined) return `exactly ${expect.line_count} line(s)`;
-  if (expect.line_count_gte !== undefined) return `at least ${expect.line_count_gte} line(s)`;
+  if (expect.any_line_contains !== undefined)
+    return `any line contains: ${expect.any_line_contains}`;
+  if (expect.no_line_contains !== undefined)
+    return `no line contains: ${expect.no_line_contains}`;
+  if (expect.all_lines_match !== undefined)
+    return `all lines match: ${expect.all_lines_match}`;
+  if (expect.line_count !== undefined)
+    return `exactly ${expect.line_count} line(s)`;
+  if (expect.line_count_gte !== undefined)
+    return `at least ${expect.line_count_gte} line(s)`;
   if (expect.numeric_gte !== undefined) return `value ≥ ${expect.numeric_gte}`;
   if (expect.numeric_lte !== undefined) return `value ≤ ${expect.numeric_lte}`;
   return '';

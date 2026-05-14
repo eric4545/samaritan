@@ -25,7 +25,8 @@ export interface BaseEvent {
   session_id: string;
 }
 
-export type LogEvent = Omit<BaseEvent, 'ts' | 'session_id'> & Record<string, unknown>;
+export type LogEvent = Omit<BaseEvent, 'ts' | 'session_id'> &
+  Record<string, unknown>;
 
 export interface EventLogger {
   emit(event: LogEvent): void;
@@ -42,7 +43,7 @@ export function createEventLogger(sessionId: string): EventLogger {
       session_id: sessionId,
       ...event,
     };
-    appendFileSync(logPath, JSON.stringify(fullEvent) + '\n', 'utf-8');
+    appendFileSync(logPath, `${JSON.stringify(fullEvent)}\n`, 'utf-8');
   }
 
   function close(): void {

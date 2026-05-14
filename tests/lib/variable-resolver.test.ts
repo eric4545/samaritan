@@ -32,9 +32,13 @@ describe('resolveVars', () => {
 
   it('throws with a clear error listing unresolved ${VAR}', () => {
     assert.throws(
-      () => resolveVars('deploy to ${ENV} with key ${MISSING}', { ENV: 'prod' }),
+      () =>
+        resolveVars('deploy to ${ENV} with key ${MISSING}', { ENV: 'prod' }),
       (err: Error) => {
-        assert.ok(err.message.includes('MISSING'), 'Error must name the missing var');
+        assert.ok(
+          err.message.includes('MISSING'),
+          'Error must name the missing var',
+        );
         return true;
       },
     );

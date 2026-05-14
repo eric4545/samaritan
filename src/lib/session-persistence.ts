@@ -32,7 +32,11 @@ function reviveDates(session: OperationSession): OperationSession {
 
 export function saveSession(session: OperationSession): void {
   try {
-    writeFileSync(sessionPath(session.id), JSON.stringify(session, null, 2), 'utf-8');
+    writeFileSync(
+      sessionPath(session.id),
+      JSON.stringify(session, null, 2),
+      'utf-8',
+    );
   } catch {
     // Persistence is best-effort; don't crash the run if writes fail.
   }

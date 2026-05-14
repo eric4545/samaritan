@@ -374,6 +374,7 @@ export class SessionManager {
       ) {
         this.sessions.delete(sessionId);
         this.executors.delete(sessionId);
+        deletePersistedSession(sessionId);
         cleaned++;
       }
     }

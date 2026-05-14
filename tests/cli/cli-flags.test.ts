@@ -7,7 +7,10 @@ import { getFixturePath } from '../fixtures/fixtures';
 
 describe('renderExpectDescription', () => {
   it('returns a plain string as-is', () => {
-    assert.strictEqual(renderExpectDescription('pod is running'), 'pod is running');
+    assert.strictEqual(
+      renderExpectDescription('pod is running'),
+      'pod is running',
+    );
   });
 
   it('renders contains without doubled/escaped quotes', () => {
@@ -18,19 +21,29 @@ describe('renderExpectDescription', () => {
   });
 
   it('renders matches with human-readable alternatives from regex groups', () => {
-    const result = renderExpectDescription({ matches: '"Status":\\s*"(Success|Pending)"' });
+    const result = renderExpectDescription({
+      matches: '"Status":\\s*"(Success|Pending)"',
+    });
     assert.ok(result.includes('Success'), 'Should include first alternative');
     assert.ok(result.includes('Pending'), 'Should include second alternative');
     assert.ok(result.includes('or'), 'Should join alternatives with "or"');
-    assert.ok(!result.includes('\\s*'), 'Should not include raw regex metacharacters');
+    assert.ok(
+      !result.includes('\\s*'),
+      'Should not include raw regex metacharacters',
+    );
   });
 
   it('renders equals without surrounding quotes', () => {
-    assert.strictEqual(renderExpectDescription({ equals: 'ready' }), 'equals ready');
+    assert.strictEqual(
+      renderExpectDescription({ equals: 'ready' }),
+      'equals ready',
+    );
   });
 
   it('renders not_empty', () => {
-    assert.ok(renderExpectDescription({ not_empty: true }).includes('not empty'));
+    assert.ok(
+      renderExpectDescription({ not_empty: true }).includes('not empty'),
+    );
   });
 
   it('renders numeric_gte with ≥ symbol', () => {
@@ -83,7 +96,10 @@ describe('CLI --env flag', () => {
         ['src/cli/index.ts', 'run', fixture, '--env', 'default', '--dry-run'],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
-      assert.ok(!result.stderr.includes('unknown option'), 'Should recognise --env');
+      assert.ok(
+        !result.stderr.includes('unknown option'),
+        'Should recognise --env',
+      );
     });
 
     it('errors when --env is omitted', () => {
@@ -122,7 +138,10 @@ describe('CLI --env flag', () => {
       assert.ok(content.includes('## Step 1:'), 'Parent step heading');
       assert.ok(content.includes('### Step 1.1:'), 'First sub-step heading');
       assert.ok(content.includes('### Step 1.2:'), 'Second sub-step heading');
-      assert.ok(content.includes('#### Step 1.1.1:'), 'Nested sub-step heading');
+      assert.ok(
+        content.includes('#### Step 1.1.1:'),
+        'Nested sub-step heading',
+      );
     });
 
     it('includes sub_step commands in output', () => {
@@ -134,7 +153,11 @@ describe('CLI --env flag', () => {
       const content = readFileSync(outputPath, 'utf-8');
       assert.ok(content.includes('kubectl apply -f backend.yaml'));
       assert.ok(content.includes('kubectl apply -f frontend.yaml'));
-      assert.ok(content.includes('kubectl wait --for=condition=ready pod -l app=backend'));
+      assert.ok(
+        content.includes(
+          'kubectl wait --for=condition=ready pod -l app=backend',
+        ),
+      );
     });
   });
 });

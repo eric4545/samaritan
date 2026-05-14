@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 
 export function isIterm2(): boolean {
-  return process.env['TERM_PROGRAM'] === 'iTerm.app';
+  return process.env.TERM_PROGRAM === 'iTerm.app';
 }
 
 export function isTmuxAvailable(): boolean {
@@ -79,7 +79,9 @@ export function openDisplaySplits(opts: SplitOptions): void {
           );
           execSync(`tmux select-pane -T 'samaritan: ${name} (${host})'`);
         } catch (err) {
-          console.error(`⚠ Could not open tmux split for ${name}: ${err instanceof Error ? err.message : String(err)}`);
+          console.error(
+            `⚠ Could not open tmux split for ${name}: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       });
       break;
@@ -87,9 +89,13 @@ export function openDisplaySplits(opts: SplitOptions): void {
 
     case 'print_instructions': {
       console.log('');
-      console.log('📺 To view execution panes, attach tmux in separate terminals:');
+      console.log(
+        '📺 To view execution panes, attach tmux in separate terminals:',
+      );
       sessionNames.forEach((name, i) => {
-        console.log(`  ${name}: tmux attach-session -t ${opts.tmuxName} \\; select-pane -t 0.${i}`);
+        console.log(
+          `  ${name}: tmux attach-session -t ${opts.tmuxName} \\; select-pane -t 0.${i}`,
+        );
       });
       console.log('');
       break;
