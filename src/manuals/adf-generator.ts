@@ -57,28 +57,6 @@ function shouldRenderStepForEnvironment(
 }
 
 /**
- * Filter steps (and sub_steps recursively) that don't apply to any of the given environments.
- * Steps without a 'when' field are kept (they apply to all environments).
- */
-function filterStepsForEnvironments(
-  steps: Step[],
-  environmentNames: string[],
-): Step[] {
-  return steps
-    .filter((step) => {
-      if (!step.when || step.when.length === 0) return true;
-      return step.when.some((env) => environmentNames.includes(env));
-    })
-    .map((step) => {
-      if (!step.sub_steps || step.sub_steps.length === 0) return step;
-      return {
-        ...step,
-        sub_steps: filterStepsForEnvironments(step.sub_steps, environmentNames),
-      };
-    });
-}
-
-/**
  * Convert Operation to Atlassian Document Format (ADF)
  */
 export function generateADF(
@@ -100,13 +78,7 @@ export function generateADF(
     }
   }
 
-  // Filter steps whose 'when' condition doesn't match any active environment
   const environmentNames = environments.map((e) => e.name);
-  const filteredOperation = {
-    ...operation,
-    environments,
-    steps: filterStepsForEnvironments(operation.steps, environmentNames),
-  };
 
   // Build ADF content nodes
   const content = [];
@@ -172,22 +144,31 @@ export function generateADF(
     content.push(createEnvironmentsTable(environments));
   }
 
-  // Steps grouped by phase
-  if (filteredOperation.steps && filteredOperation.steps.length > 0) {
-    const phases: { [key: string]: Step[] } = {
-      preflight: [],
-      flight: [],
-      postflight: [],
-    };
+  // Steps grouped by phase, preserving original indices for consistent step numbers
+  if (operation.steps && operation.steps.length > 0) {
+    // Build step entries with original 1-based numbers, filtering by active environments
+    const stepEntries = operation.steps
+      .map((step, i) => ({ step, stepNumber: i + 1 }))
+      .filter(
+        ({ step }) =>
+          !step.when ||
+          step.when.length === 0 ||
+          step.when.some((e) => environmentNames.includes(e)),
+      );
 
-    filteredOperation.steps.forEach((step) => {
+    const phases: { [key: string]: Array<{ step: Step; stepNumber: number }> } =
+      {
+        preflight: [],
+        flight: [],
+        postflight: [],
+      };
+
+    stepEntries.forEach(({ step, stepNumber }) => {
       const phase = step.phase || 'flight';
       if (phases[phase]) {
-        phases[phase].push(step);
+        phases[phase].push({ step, stepNumber });
       }
     });
-
-    let globalStepNumber = 1;
 
     // Pre-flight phase
     if (phases.preflight.length > 0) {
@@ -196,12 +177,10 @@ export function generateADF(
         createStepsTable(
           phases.preflight,
           environments,
-          globalStepNumber,
           resolveVariables,
           'preflight',
         ),
       );
-      globalStepNumber += phases.preflight.length;
     }
 
     // Flight phase
@@ -213,12 +192,10 @@ export function generateADF(
         createStepsTable(
           phases.flight,
           environments,
-          globalStepNumber,
           resolveVariables,
           'flight',
         ),
       );
-      globalStepNumber += phases.flight.length;
     }
 
     // Post-flight phase
@@ -228,7 +205,6 @@ export function generateADF(
         createStepsTable(
           phases.postflight,
           environments,
-          globalStepNumber,
           resolveVariables,
           'postflight',
         ),
@@ -453,9 +429,8 @@ function createEnvironmentsTable(environments: Environment[]): any {
  * Create steps table for a phase
  */
 function createStepsTable(
-  steps: Step[],
+  steps: Array<{ step: Step; stepNumber: number }>,
   environments: Environment[],
-  startNumber: number,
   resolveVariables?: boolean,
   currentPhase?: string,
 ): any {
@@ -468,9 +443,7 @@ function createStepsTable(
   const headerRow = tableRow(headerCells);
   const dataRows: any[] = [];
 
-  steps.forEach((step, index) => {
-    const stepNumber = startNumber + index;
-
+  steps.forEach(({ step, stepNumber }) => {
     // Build step description cell
     const stepCellContent = [];
 
