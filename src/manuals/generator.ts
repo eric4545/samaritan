@@ -588,7 +588,8 @@ function generateStepRow(
 
           // Get rollback options (defaults)
           const substituteVars = rb.options?.substitute_vars ?? true;
-          const showCommandSeparately = rb.options?.show_command_separately ?? false;
+          const showCommandSeparately =
+            rb.options?.show_command_separately ?? false;
 
           // Process rollback instruction (markdown content)
           if (rb.instruction) {
@@ -929,7 +930,8 @@ function generateSubStepRow(
 
           // Get rollback options (defaults)
           const substituteVars = rb.options?.substitute_vars ?? true;
-          const showCommandSeparately = rb.options?.show_command_separately ?? false;
+          const showCommandSeparately =
+            rb.options?.show_command_separately ?? false;
 
           // Process rollback instruction (markdown content)
           if (rb.instruction) {
@@ -1306,7 +1308,8 @@ function generateManualContent(
 
             // Get rollback options (defaults)
             const substituteVars = rb.options?.substitute_vars ?? true;
-            const showCommandSeparately = rb.options?.show_command_separately ?? false;
+            const showCommandSeparately =
+              rb.options?.show_command_separately ?? false;
 
             // Process rollback instruction (markdown content)
             if (rb.instruction) {
@@ -1413,7 +1416,8 @@ function generateManualContent(
 
           // Get rollback options (defaults)
           const substituteVars = rb.options?.substitute_vars ?? true;
-          const showCommandSeparately = rb.options?.show_command_separately ?? false;
+          const showCommandSeparately =
+            rb.options?.show_command_separately ?? false;
 
           // Process rollback instruction (markdown content)
           if (rb.instruction) {
@@ -1506,45 +1510,73 @@ export function generateSingleEnvManual(
   }
 
   function renderStep(step: Step, prefix: string, headingLevel: number): void {
+    // Apply env-specific variant overrides before rendering
+    const effectiveStep = mergeStepVariant(step, targetEnv);
+
     const hashes = '#'.repeat(headingLevel);
-    lines.push(`${hashes} ${prefix}: ${step.name}`);
+    lines.push(`${hashes} ${prefix}: ${effectiveStep.name}`);
     lines.push('');
 
-    if (step.pic) lines.push(`> PIC: ${step.pic}`);
-    if (step.reviewer) lines.push(`> Reviewer: ${step.reviewer}`);
-    if (step.pic || step.reviewer) lines.push('');
-
-    if (step.instruction) {
-      lines.push('**Instructions**');
+    if (effectiveStep.description) {
+      lines.push(`_${effectiveStep.description}_`);
       lines.push('');
+    }
+
+    if (effectiveStep.pic) lines.push(`> PIC: ${effectiveStep.pic}`);
+    if (effectiveStep.reviewer)
+      lines.push(`> Reviewer: ${effectiveStep.reviewer}`);
+    if (effectiveStep.pic || effectiveStep.reviewer) lines.push('');
+
+    if (effectiveStep.needs && effectiveStep.needs.length > 0) {
+      lines.push(`> Depends on: ${effectiveStep.needs.join(', ')}`);
+      lines.push('');
+    }
+
+    if (effectiveStep.timeline) {
       lines.push(
-        resolveVariables ? resolveCmd(step.instruction) : step.instruction,
+        `> Timeline: ${formatTimelineForDisplay(effectiveStep.timeline)}`,
       );
       lines.push('');
     }
 
-    if (step.command) {
+    if (effectiveStep.if) {
+      lines.push(`> Condition: ${effectiveStep.if}`);
+      lines.push('');
+    }
+
+    if (effectiveStep.instruction) {
+      lines.push('**Instructions**');
+      lines.push('');
+      lines.push(
+        resolveVariables
+          ? resolveCmd(effectiveStep.instruction)
+          : effectiveStep.instruction,
+      );
+      lines.push('');
+    }
+
+    if (effectiveStep.command) {
       lines.push('**Command**');
       lines.push('```bash');
-      lines.push(resolveCmd(step.command));
+      lines.push(resolveCmd(effectiveStep.command));
       lines.push('```');
       lines.push('');
     }
 
-    if (step.verify) {
+    if (effectiveStep.verify) {
       lines.push('**Verify**');
       lines.push('```bash');
-      lines.push(resolveCmd(step.verify.command));
+      lines.push(resolveCmd(effectiveStep.verify.command));
       lines.push('```');
 
-      const expect = step.verify.expect ?? step.expect;
+      const expect = effectiveStep.verify.expect ?? effectiveStep.expect;
       if (expect) {
         const desc = renderExpectDescription(expect);
         if (desc) lines.push(`> Expected: ${desc}`);
       }
       lines.push('');
-    } else if (step.expect) {
-      const desc = renderExpectDescription(step.expect);
+    } else if (effectiveStep.expect) {
+      const desc = renderExpectDescription(effectiveStep.expect);
       if (desc) {
         lines.push(`> Expected: ${desc}`);
         lines.push('');
@@ -1554,9 +1586,15 @@ export function generateSingleEnvManual(
     // Recursively render sub_steps as deeper headings (Step N.1, N.1.1, etc.)
     if (step.sub_steps && step.sub_steps.length > 0) {
       step.sub_steps
-        .filter((s) => !s.when || s.when.length === 0 || s.when.includes(targetEnv))
+        .filter(
+          (s) => !s.when || s.when.length === 0 || s.when.includes(targetEnv),
+        )
         .forEach((sub, idx) => {
-          renderStep(sub, `${prefix}.${idx + 1}`, Math.min(headingLevel + 1, 6));
+          renderStep(
+            sub,
+            `${prefix}.${idx + 1}`,
+            Math.min(headingLevel + 1, 6),
+          );
         });
     }
   }

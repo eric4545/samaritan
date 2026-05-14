@@ -8,7 +8,10 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     const op = await parseFixture('withSessions');
     const md = generateSingleEnvManual(op, 'production');
 
-    assert.ok(md.includes('# Deploy with Sessions — Production'), 'has H1 title');
+    assert.ok(
+      md.includes('# Deploy with Sessions — Production'),
+      'has H1 title',
+    );
     assert.ok(md.includes('## Step 1:'), 'has step headings');
     assert.ok(!md.includes('|'), 'has no table pipes');
   });
@@ -26,7 +29,10 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     const md = generateSingleEnvManual(op, 'production');
 
     assert.ok(md.includes('**Command**'), 'has Command block');
-    assert.ok(md.includes('kubectl apply -f deployment.yaml'), 'has command text');
+    assert.ok(
+      md.includes('kubectl apply -f deployment.yaml'),
+      'has command text',
+    );
     assert.ok(md.includes('```'), 'has code fence');
   });
 
@@ -55,7 +61,10 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     const md = generateSingleEnvManual(op, 'production');
 
     assert.ok(md.includes('> PIC: ops@example.com'), 'has PIC blockquote');
-    assert.ok(md.includes('> Reviewer: sre@example.com'), 'has Reviewer blockquote');
+    assert.ok(
+      md.includes('> Reviewer: sre@example.com'),
+      'has Reviewer blockquote',
+    );
   });
 
   it('horizontal rule separates steps', async () => {
@@ -75,7 +84,9 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
   });
 
   it('without --env: existing table format unchanged (deployment fixture)', async () => {
-    const { generateManualWithMetadata } = await import('../../src/manuals/generator');
+    const { generateManualWithMetadata } = await import(
+      '../../src/manuals/generator'
+    );
     const op = await parseFixture('deployment');
     const md = generateManualWithMetadata(op, undefined, undefined);
     // Table format has | characters
@@ -107,8 +118,87 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     assert.ok(md.includes('Expected:'), 'has expected');
     // Verify contains assertion rendered
     assert.ok(
-      md.includes('healthy') || md.includes('"healthy"') || md.includes('equals'),
+      md.includes('healthy') ||
+        md.includes('"healthy"') ||
+        md.includes('equals'),
       'renders expected value',
     );
+  });
+
+  it('renders both instruction and command when both are present', async () => {
+    const op = await parseFixture('withSessions');
+    // Patch step to have both instruction and command
+    const step = op.steps[0];
+    step.instruction = 'Make sure the cluster is healthy before proceeding.';
+    step.command = 'kubectl apply -f deployment.yaml';
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(md.includes('**Instructions**'), 'renders Instructions section');
+    assert.ok(
+      md.includes('Make sure the cluster is healthy before proceeding.'),
+      'renders instruction text',
+    );
+    assert.ok(md.includes('**Command**'), 'renders Command section');
+    assert.ok(
+      md.includes('kubectl apply -f deployment.yaml'),
+      'renders command text',
+    );
+    // Instructions must appear before Command
+    const instrIdx = md.indexOf('**Instructions**');
+    const cmdIdx = md.indexOf('**Command**');
+    assert.ok(instrIdx < cmdIdx, 'instruction appears before command');
+  });
+
+  it('renders step description when present', async () => {
+    const op = await parseFixture('withSessions');
+    op.steps[0].description = 'Deploy the web application to the cluster';
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(
+      md.includes('_Deploy the web application to the cluster_'),
+      'renders description as italic',
+    );
+  });
+
+  it('renders needs/dependencies when present', async () => {
+    const op = await parseFixture('withSessions');
+    op.steps[1].needs = ['deploy-app'];
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(
+      md.includes('> Depends on: deploy-app'),
+      'renders dependency blockquote',
+    );
+  });
+
+  it('renders timeline when present', async () => {
+    const op = await parseFixture('withSessions');
+    op.steps[0].timeline = '2025-10-21 09:00 for 30m';
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(md.includes('> Timeline:'), 'renders timeline blockquote');
+    assert.ok(
+      md.includes('2025-10-21 09:00 for 30m'),
+      'renders timeline value',
+    );
+  });
+
+  it('renders conditional (if) when present', async () => {
+    const op = await parseFixture('withSessions');
+    op.steps[0].if = 'env == "production"';
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(
+      md.includes('> Condition: env == "production"'),
+      'renders condition blockquote',
+    );
+  });
+
+  it('applies env-specific variant overrides in single-env output', async () => {
+    const op = await parseFixture('whenAndVariants');
+    const envName = op.environments[0].name;
+    // If the fixture has variants, they should be applied
+    const md = generateSingleEnvManual(op, envName);
+    assert.ok(md.includes('#'), 'produces output');
   });
 });

@@ -195,7 +195,10 @@ const yamlContent = loadYaml('enhanced')
 1. **RED**: Write failing test first
 2. **GREEN**: Implement minimal code to pass
 3. **REFACTOR**: Clean up while keeping tests green
-4. **Commit**: Always commit tests with implementation
+4. **LINT**: Run `npx @biomejs/biome check --write <changed files>` and fix any new errors
+5. **Commit**: Always commit tests with implementation in the same commit
+
+> When adding fields to `renderStep` in `generateSingleEnvManual`, cover each new field with a test — the pattern of adding rendering logic without a test is how the `else if` instruction/command bug went undetected.
 
 ### Debug Files
 - Create debug/temp files in `/tmp/` folder, **NEVER in project root**
