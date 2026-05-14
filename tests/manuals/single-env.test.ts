@@ -248,4 +248,64 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     assert.ok(prodMd.includes('## Step 4:'), 'prod: step 4 keeps number 4');
     assert.ok(prodMd.includes('## Step 5:'), 'prod: step 5 keeps number 5');
   });
+
+  it('renders rollback instruction in single-env mode', async () => {
+    const op = await parseFixture('parentStepWithSubstepsAndRollback');
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(
+      md.includes('🔄 Rollback'),
+      'has rollback heading',
+    );
+    assert.ok(
+      md.includes('Rollback to previous deployment version'),
+      'has rollback instruction text',
+    );
+  });
+
+  it('renders rollback command block in single-env mode', async () => {
+    const op = await parseFixture('parentStepWithSubstepsAndRollback');
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(md.includes('kubectl rollout undo deployment/app'), 'has rollback command');
+    assert.ok(md.includes('```bash'), 'rollback command in code fence');
+  });
+
+  it('rollback appears after sub_steps in single-env mode', async () => {
+    const op = await parseFixture('parentStepWithSubstepsAndRollback');
+    const md = generateSingleEnvManual(op, 'production');
+
+    const lastSubStepIdx = md.indexOf('Step 1.3: Verify Deployment');
+    const rollbackIdx = md.indexOf('🔄 Rollback');
+    assert.ok(rollbackIdx > 0, 'rollback heading is present');
+    assert.ok(lastSubStepIdx > 0, 'last sub-step heading is present');
+    assert.ok(rollbackIdx > lastSubStepIdx, 'rollback appears after last sub-step');
+  });
+
+  it('no table pipes even when rollback is present in single-env mode', async () => {
+    const op = await parseFixture('parentStepWithSubstepsAndRollback');
+    const md = generateSingleEnvManual(op, 'production');
+
+    const lines = md.split('\n');
+    const tableLines = lines.filter((l) => l.startsWith('|'));
+    assert.strictEqual(tableLines.length, 0, 'should have no table lines even with rollback');
+  });
+
+  it('resolves rollback variables when resolveVariables=true', async () => {
+    const op = await parseFixture('parentStepWithSubstepsAndRollback');
+    const md = generateSingleEnvManual(op, 'production', true);
+
+    // ${NAMESPACE} should be resolved to "prod" (from production env vars)
+    assert.ok(md.includes('-n prod'), 'rollback command has resolved variable');
+    assert.ok(!md.includes('${NAMESPACE}'), 'no unresolved variables in rollback');
+  });
+
+  it('renders rollback for nested sub-step in single-env mode', async () => {
+    const op = await parseFixture('nestedSubstepWithRollback');
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(md.includes('🔄 Rollback'), 'has rollback heading for nested sub-step');
+    assert.ok(md.includes('Restore previous traffic weights'), 'has nested rollback instruction');
+    assert.ok(md.includes('git restore config.hcl'), 'has nested rollback command');
+  });
 });
