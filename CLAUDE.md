@@ -318,6 +318,9 @@ When adding features that affect evidence rendering, ensure ALL components are u
 3. Update JSON schema in `src/schemas/operation.schema.json`
 4. **Update ALL generators** (critical - often missed):
    - `src/manuals/generator.ts` (Markdown) - pass `operationDir` for file reading
+     - **Two rendering paths inside this file** (easy to update one and miss the other):
+       - `generateStepRow` / `generateSubStepRow` — multi-env table format (used without `--env`)
+       - `generateSingleEnvManual` → `renderStep` — heading format (used with `--env`)
    - `src/manuals/adf-generator.ts` (ADF/JSON)
    - `src/cli/commands/generate.ts` (Confluence markup) - pass `operationDir` for file reading
 5. Update CLI commands to pass operation directory where needed
@@ -480,6 +483,9 @@ evidence:
 - Check implementation before assuming functionality
 - If docs mention a feature, verify in code
 - When in doubt, check `ROADMAP.md`
+
+### 5. `git add src/manuals/` Requires `-f`
+The `.gitignore` contains `manuals/` which also matches `src/manuals/`, so plain `git add src/manuals/*.ts` silently fails. Since those files are already tracked, use `git add -f src/manuals/<file>` to stage them.
 
 ---
 
