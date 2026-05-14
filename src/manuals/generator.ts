@@ -1580,13 +1580,15 @@ export function generateSingleEnvManual(
     // Recursively render sub_steps as deeper headings (Step N.1, N.1.1, etc.)
     if (step.sub_steps && step.sub_steps.length > 0) {
       step.sub_steps
+        .map((sub, originalIdx) => ({ sub, originalIdx }))
         .filter(
-          (s) => !s.when || s.when.length === 0 || s.when.includes(targetEnv),
+          ({ sub }) =>
+            !sub.when || sub.when.length === 0 || sub.when.includes(targetEnv),
         )
-        .forEach((sub, idx) => {
+        .forEach(({ sub, originalIdx }) => {
           renderStep(
             sub,
-            `${prefix}.${idx + 1}`,
+            `${prefix}.${originalIdx + 1}`,
             Math.min(headingLevel + 1, 6),
           );
         });
@@ -1597,13 +1599,19 @@ export function generateSingleEnvManual(
   lines.push(`# ${operation.name} — ${titleCase(targetEnv)}`);
   lines.push('');
 
-  const steps = (operation.steps ?? []).filter(
-    (s) => !s.when || s.when.length === 0 || s.when.includes(targetEnv),
-  );
+  const allSteps = operation.steps ?? [];
+  // Use original index for step numbers so "Step 6" means the same step
+  // regardless of which environments skip earlier when-conditional steps.
+  const visibleSteps = allSteps
+    .map((step, originalIndex) => ({ step, originalIndex }))
+    .filter(
+      ({ step }) =>
+        !step.when || step.when.length === 0 || step.when.includes(targetEnv),
+    );
 
-  steps.forEach((step, i) => {
-    renderStep(step, `Step ${i + 1}`, 2);
-    if (i < steps.length - 1) {
+  visibleSteps.forEach(({ step, originalIndex }, i) => {
+    renderStep(step, `Step ${originalIndex + 1}`, 2);
+    if (i < visibleSteps.length - 1) {
       lines.push('---');
       lines.push('');
     }

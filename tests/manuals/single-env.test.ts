@@ -201,4 +201,51 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     const md = generateSingleEnvManual(op, envName);
     assert.ok(md.includes('#'), 'produces output');
   });
+
+  it('preserves original step numbers across environments when steps are skipped by when', async () => {
+    // When a step has `when: [dev]`, env=prod should skip it but keep the
+    // original step numbers for remaining steps so that "Step 6" in dev is
+    // still "Step 6" in prod (not renumbered to "Step 5").
+    const op = await parseFixture('whenAndVariants');
+    // when-and-variants.yaml:
+    //   step 1: when: [prod]
+    //   step 2: all envs
+    //   step 3: when: [staging, preprod]
+    //   step 4: all envs
+    //   step 5: when: [preprod, prod]
+
+    // staging sees steps 2, 3, 4 → should be Step 2, Step 3, Step 4
+    const stagingMd = generateSingleEnvManual(op, 'staging');
+    assert.ok(
+      stagingMd.includes('## Step 2:'),
+      'staging: step 2 keeps number 2',
+    );
+    assert.ok(
+      stagingMd.includes('## Step 3:'),
+      'staging: step 3 keeps number 3',
+    );
+    assert.ok(
+      stagingMd.includes('## Step 4:'),
+      'staging: step 4 keeps number 4',
+    );
+    assert.ok(
+      !stagingMd.includes('## Step 1:'),
+      'staging: prod-only step 1 not shown',
+    );
+    assert.ok(
+      !stagingMd.includes('## Step 5:'),
+      'staging: preprod/prod-only step 5 not shown',
+    );
+
+    // prod sees steps 1, 2, 4, 5 → should be Step 1, Step 2, Step 4, Step 5
+    const prodMd = generateSingleEnvManual(op, 'prod');
+    assert.ok(prodMd.includes('## Step 1:'), 'prod: step 1 keeps number 1');
+    assert.ok(prodMd.includes('## Step 2:'), 'prod: step 2 keeps number 2');
+    assert.ok(
+      !prodMd.includes('## Step 3:'),
+      'prod: staging/preprod-only step 3 not shown',
+    );
+    assert.ok(prodMd.includes('## Step 4:'), 'prod: step 4 keeps number 4');
+    assert.ok(prodMd.includes('## Step 5:'), 'prod: step 5 keeps number 5');
+  });
 });
