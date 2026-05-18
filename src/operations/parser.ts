@@ -987,9 +987,10 @@ export async function parseOperation(filePath: string): Promise<Operation> {
         const preflightStep: Step = {
           id: checkData.id || randomUUID(),
           name: checkData.name,
-          type: 'automatic', // Preflight checks are automatic
+          type: checkData.type === 'manual' ? 'manual' : 'automatic',
           phase: 'preflight',
           description: checkData.description || '',
+          instruction: checkData.instruction,
           command: checkData.command,
           condition: checkData.condition,
           timeout: checkData.timeout,

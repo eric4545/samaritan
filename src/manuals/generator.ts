@@ -1550,10 +1550,16 @@ export function generateSingleEnvManual(
     }
 
     if (effectiveStep.command) {
+      const resolvedCmd = resolveCmd(effectiveStep.command);
       lines.push('**Command**');
-      lines.push('```bash');
-      lines.push(resolveCmd(effectiveStep.command));
-      lines.push('```');
+      lines.push('');
+      if (/^\s*```/.test(resolvedCmd)) {
+        lines.push(resolvedCmd.trimEnd());
+      } else {
+        lines.push('```bash');
+        lines.push(resolvedCmd);
+        lines.push('```');
+      }
       lines.push('');
     }
 

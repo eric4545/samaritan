@@ -91,6 +91,10 @@ export const FIXTURES = {
   // When and Variants
   whenAndVariants: 'tests/fixtures/operations/features/when-and-variants.yaml',
 
+  // Preflight instruction and pre-fenced command
+  preflightInstruction:
+    'tests/fixtures/operations/features/preflight-instruction.yaml',
+
   // Sessions / execution engine
   withSessions: 'tests/fixtures/operations/features/with-sessions.yaml',
   withCaptureExpect:
