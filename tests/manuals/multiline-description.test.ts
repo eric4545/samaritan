@@ -1,53 +1,61 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import { generateSingleEnvManual } from '../../src/manuals/generator';
-import { parseFixture } from '../fixtures/fixtures';
+import type { Operation } from '../../src/models/operation';
+
+function makeOp(stepDescription: string): Operation {
+  return {
+    id: 'test-op',
+    name: 'Test Operation',
+    version: '1.0.0',
+    description: '',
+    environments: [
+      {
+        name: 'staging',
+        description: '',
+        variables: {},
+        restrictions: [],
+        approval_required: false,
+        validation_required: false,
+      },
+    ],
+    variables: {},
+    steps: [
+      { name: 'Test Step', type: 'manual', description: stepDescription },
+    ],
+    preflight: [],
+    metadata: { created_at: new Date(), updated_at: new Date() },
+  };
+}
 
 describe('Bug 1 — multi-line description must not be wrapped in italic markers', () => {
-  it('multi-line description is not wrapped in _..._', async () => {
-    const op = await parseFixture('multilineDescription');
-    const md = generateSingleEnvManual(op, 'staging');
-
-    // The announce step has a multi-line description; it must not start with _
-    const announceIdx = md.indexOf('announce');
-    assert.ok(announceIdx >= 0, 'announce step present');
-
-    const deployIdx = md.indexOf('Deploy App');
-    const announceSection = md.slice(announceIdx, deployIdx);
-
-    assert.ok(
-      !announceSection.includes('_Post to'),
-      'multi-line description must not start with _ (italic marker)',
-    );
-    assert.ok(
-      !/proceeding\.\s*_/.test(announceSection),
-      'multi-line description must not end with _ on its own line',
-    );
+  it('multi-line description is not wrapped in _..._', () => {
+    const md = generateSingleEnvManual(makeOp('line one\nline two'), 'staging');
+    assert.ok(!md.includes('_line one'), 'must not open with italic marker');
+    assert.ok(!/two_/.test(md), 'must not close with italic marker');
   });
 
-  it('multi-line description body text is present', async () => {
-    const op = await parseFixture('multilineDescription');
-    const md = generateSingleEnvManual(op, 'staging');
-
-    assert.ok(md.includes('Post to'), 'first line of description present');
-    assert.ok(
-      md.includes('Capture thread timestamp'),
-      'last line of description present',
-    );
+  it('multi-line description content is preserved', () => {
+    const md = generateSingleEnvManual(makeOp('line one\nline two'), 'staging');
+    assert.ok(md.includes('line one'), 'first line present');
+    assert.ok(md.includes('line two'), 'second line present');
   });
 
-  it('single-line description may still be wrapped in italic', async () => {
-    const op = await parseFixture('multilineDescription');
-    const md = generateSingleEnvManual(op, 'staging');
+  it('multi-line description with fenced code block is not wrapped in _..._', () => {
+    const desc = 'Run this:\n```bash\necho hello\n```\nDone.';
+    const md = generateSingleEnvManual(makeOp(desc), 'staging');
+    assert.ok(!md.includes('_Run this'), 'must not open with italic marker');
+    assert.ok(md.includes('```bash'), 'fenced block preserved');
+  });
 
-    // The Deploy App step has a single-line description
-    const deployIdx = md.indexOf('Deploy App');
-    assert.ok(deployIdx >= 0, 'Deploy App step present');
-    const deploySection = md.slice(deployIdx);
-
+  it('single-line description is wrapped in italic', () => {
+    const md = generateSingleEnvManual(
+      makeOp('single line description'),
+      'staging',
+    );
     assert.ok(
-      deploySection.includes('_Single-line step description_'),
-      'single-line description wrapped in italics',
+      md.includes('_single line description_'),
+      'single-line wrapped in italics',
     );
   });
 });

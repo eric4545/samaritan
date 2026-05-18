@@ -95,10 +95,6 @@ export const FIXTURES = {
   preflightInstruction:
     'tests/fixtures/operations/features/preflight-instruction.yaml',
 
-  // Multi-line description rendering
-  multilineDescription:
-    'tests/fixtures/operations/features/multiline-description.yaml',
-
   // Sessions / execution engine
   withSessions: 'tests/fixtures/operations/features/with-sessions.yaml',
   withCaptureExpect:
