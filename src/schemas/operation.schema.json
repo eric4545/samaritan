@@ -160,6 +160,9 @@
             "type": "string",
             "enum": ["command", "manual"]
           },
+          "instruction": {
+            "type": "string"
+          },
           "command": {
             "type": "string"
           },

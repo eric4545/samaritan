@@ -1,0 +1,33 @@
+name: Announce and Deploy
+version: 1.0.0
+description: Operation with preflight instruction and pre-fenced command.
+
+environments:
+  - name: dev
+    variables:
+      ANNOUNCE_CHANNEL: '#dev-ops'
+
+preflight:
+  - name: announce
+    type: manual
+    description: Post announcement
+    instruction: |
+      Post to ${ANNOUNCE_CHANNEL}:
+      ```
+      <!here>
+      [Summary] my operation
+      ```
+      Capture thread timestamp before proceeding.
+
+  - name: socks-proxy
+    type: manual
+    description: Open SOCKS proxy
+    command: |
+      ```bash
+      ssh -D 6666 user@access.dev.rpsp.jp
+      ```
+
+steps:
+  - name: Deploy App
+    type: automatic
+    command: kubectl apply -f deployment.yaml
