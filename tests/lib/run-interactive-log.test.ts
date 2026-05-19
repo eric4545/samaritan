@@ -153,4 +153,30 @@ describe('Interactive run JSONL event log', () => {
       if (existsSync(logPath)) unlinkSync(logPath);
     }
   });
+
+  it('prints audit log path to terminal on session start', () => {
+    const fixture = fixturePath('minimal');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'q\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.toLowerCase().includes('audit log') || combined.includes('Audit log'),
+      'output should mention "Audit log"',
+    );
+    assert.ok(combined.includes('.jsonl'), 'output should include .jsonl path');
+  });
+
+  it('typing r at step prompt triggers rollback handling', () => {
+    const fixture = fixturePath('minimal');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'r\nq\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.toLowerCase().includes('rollback'),
+      'output should contain rollback-related message when user types r',
+    );
+  });
 });

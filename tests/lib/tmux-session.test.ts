@@ -105,6 +105,24 @@ describe('TmuxSession (issue #6)', () => {
     const paneMap = session.getPaneMap();
     assert.strictEqual(paneMap.size, 0);
   });
+
+  it('waitForPrompt returns idle when pipe file stops growing', async () => {
+    const session = new TmuxSession('idle-detect-1', 'samaritan-idle-detect-1');
+    const pipeFile = session.getPipeFilePath('execution');
+    writeFileSync(pipeFile, 'initial output\n', 'utf-8');
+    try {
+      const result = await session.waitForPrompt('execution', 5_000, undefined, 200);
+      assert.strictEqual(result, 'idle', 'should detect idle when pipe stops growing');
+    } finally {
+      if (existsSync(pipeFile)) unlinkSync(pipeFile);
+    }
+  });
+
+  it('waitForPrompt returns timeout when deadline exceeded with idle disabled', async () => {
+    const session = new TmuxSession('no-idle-1', 'samaritan-no-idle-1');
+    const result = await session.waitForPrompt('execution', 300, undefined, 0);
+    assert.strictEqual(result, 'timeout', 'should return timeout with idle disabled');
+  });
 });
 
 describe('isLocalSession (issue #6)', () => {

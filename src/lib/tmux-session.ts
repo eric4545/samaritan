@@ -51,17 +51,33 @@ export class TmuxSession {
   async waitForPrompt(
     sessionName: string,
     timeoutMs: number,
-    promptPattern = '\\$\\s*$',
-  ): Promise<'done' | 'timeout'> {
+    promptPattern?: string,
+    idleThresholdMs = 0,
+  ): Promise<'done' | 'timeout' | 'idle'> {
     const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
     const deadline = Date.now() + timeoutMs;
-    const re = new RegExp(promptPattern, 'm');
+    const re = new RegExp(promptPattern ?? '\\$\\s*$', 'm');
+    const pollMs = 50;
+
+    let lastSize = this.currentOffset(sessionName);
+    let lastChangeTime = Date.now();
 
     while (Date.now() < deadline) {
       const result = spawnSync('tmux', ['capture-pane', '-p', '-t', pane]);
       const output = result.stdout?.toString() ?? '';
       if (re.test(output)) return 'done';
-      await sleep(500);
+
+      if (idleThresholdMs > 0) {
+        const size = this.currentOffset(sessionName);
+        if (size !== lastSize) {
+          lastSize = size;
+          lastChangeTime = Date.now();
+        } else if (Date.now() - lastChangeTime >= idleThresholdMs) {
+          return 'idle';
+        }
+      }
+
+      await sleep(pollMs);
     }
     return 'timeout';
   }
