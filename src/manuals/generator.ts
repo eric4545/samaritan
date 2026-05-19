@@ -1600,6 +1600,38 @@ export function generateSingleEnvManual(
           );
         });
     }
+
+    // Render rollback AFTER sub_steps (mirrors multi-env inline rollback position)
+    const rb = effectiveStep.rollback?.[0];
+    if (rb && (rb.command || rb.instruction)) {
+      const rbHashes = '#'.repeat(Math.min(headingLevel + 1, 6));
+      lines.push(`${rbHashes} 🔄 Rollback`);
+      lines.push('');
+
+      if (rb.instruction) {
+        lines.push('**Instructions**');
+        lines.push('');
+        lines.push(
+          resolveVariables && (rb.options?.substitute_vars ?? true)
+            ? resolveCmd(rb.instruction)
+            : rb.instruction,
+        );
+        lines.push('');
+      }
+
+      if (rb.command) {
+        lines.push('**Command**');
+        lines.push('```bash');
+        const cmd = rb.command.trimEnd();
+        lines.push(
+          resolveVariables && (rb.options?.substitute_vars ?? true)
+            ? resolveCmd(cmd)
+            : cmd,
+        );
+        lines.push('```');
+        lines.push('');
+      }
+    }
   }
 
   const lines: string[] = [];
