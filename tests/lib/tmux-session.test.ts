@@ -86,6 +86,25 @@ describe('TmuxSession (issue #6)', () => {
     // The intent is that the function exists and has the right signature
     assert.strictEqual(typeof session.send, 'function');
   });
+
+  it('getPaneMap returns registered panes as a ReadonlyMap', () => {
+    const session = new TmuxSession('pane-map-test', 'samaritan-pane-map-test');
+    session.registerPane('execution', 'samaritan-pane-map-test:0.0');
+    session.registerPane('verification', 'samaritan-pane-map-test:0.1');
+    const paneMap = session.getPaneMap();
+    assert.strictEqual(paneMap.get('execution'), 'samaritan-pane-map-test:0.0');
+    assert.strictEqual(
+      paneMap.get('verification'),
+      'samaritan-pane-map-test:0.1',
+    );
+    assert.strictEqual(paneMap.size, 2);
+  });
+
+  it('getPaneMap returns empty map when no panes registered', () => {
+    const session = new TmuxSession('no-panes', 'samaritan-no-panes');
+    const paneMap = session.getPaneMap();
+    assert.strictEqual(paneMap.size, 0);
+  });
 });
 
 describe('isLocalSession (issue #6)', () => {

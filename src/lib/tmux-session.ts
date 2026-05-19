@@ -70,6 +70,10 @@ export class TmuxSession {
     this.paneMap.set(sessionName, paneTarget);
   }
 
+  getPaneMap(): ReadonlyMap<string, string> {
+    return this.paneMap;
+  }
+
   teardown(): void {
     try {
       execSync(`tmux kill-session -t ${this.tmuxName}`, { stdio: 'ignore' });

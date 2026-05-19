@@ -71,12 +71,24 @@ class OperationRunner {
     const executionMode: ExecutionMode =
       options.mode ?? (options.autoApprove ? 'automatic' : 'manual');
 
+    const operator = process.env.USER || 'unknown';
+
+    // Create session first so its ID can serve as the JSONL log identifier
+    const session = sessionManager.createSession(
+      operation.id,
+      targetEnv,
+      operator,
+      executionMode,
+      resolvedVars,
+      absFile,
+    );
+
     const context = {
       operationId: operation.id,
       environment: targetEnv,
       variables: resolvedVars,
-      operator: process.env.USER || 'unknown',
-      sessionId: `run-${operation.id}-${Date.now()}`,
+      operator,
+      sessionId: session.id,
       dryRun: options.dryRun || false,
       autoMode: executionMode === 'automatic' || options.autoApprove || false,
     };
@@ -98,15 +110,6 @@ class OperationRunner {
         '💡 Use --auto-approve to skip approval prompts or ensure approvals are pre-authorized.',
       );
     }
-
-    const session = sessionManager.createSession(
-      operation.id,
-      targetEnv,
-      context.operator,
-      executionMode,
-      resolvedVars,
-      absFile,
-    );
 
     console.log(`📋 Session: ${session.id}\n`);
 
@@ -304,7 +307,7 @@ class OperationRunner {
   private async runInteractiveStepLoop(
     executor: OperationExecutor,
     operation: Operation,
-    _operationFile: string,
+    operationFile: string,
     vars: Record<string, any>,
     _mode: ExecutionMode,
     tmuxSession?: TmuxSession,
@@ -319,6 +322,22 @@ class OperationRunner {
     const state = executor.getState();
     const logger = createEventLogger(state.context.sessionId);
     const sessionState = new SessionState();
+
+    // Emit session_start so the audit log records the operation file
+    logger.emit({ type: 'session_start', op: operationFile });
+
+    // Emit session_open for every bootstrapped tmux pane
+    if (tmuxSession && operation.sessions) {
+      for (const [name, pane] of tmuxSession.getPaneMap().entries()) {
+        const cfg = operation.sessions[name];
+        logger.emit({
+          type: 'session_open',
+          name,
+          host: cfg?.host ?? 'local',
+          pane,
+        });
+      }
+    }
 
     // Pre-populate session state with resolved operation variables
     for (const [key, value] of Object.entries(vars)) {
@@ -365,6 +384,15 @@ class OperationRunner {
 
         const resolvedCommand = tryResolve(step.command);
         const resolvedInstruction = tryResolve(step.instruction);
+
+        // Emit step_start for every step so the report can reconstruct the timeline
+        logger.emit({
+          type: 'step_start',
+          step: i,
+          name: step.name,
+          pic: step.pic,
+          reviewer: step.reviewer,
+        });
 
         console.log(`\n${DIVIDER}`);
         console.log(`${stepNum} ${typeLabel}: ${step.name}`);
@@ -425,7 +453,14 @@ class OperationRunner {
                 }
               }
               console.log(`    ✅ Verify: ${vState}`);
+              logger.emit({
+                type: 'user_input',
+                action: 'verify_ok',
+                step: i,
+                actor: state.context.operator,
+              });
             }
+            controller.completeStep(i);
           } else {
             // prompt-only automatic step
             const ans = await rl.question(
@@ -442,6 +477,13 @@ class OperationRunner {
               continue;
             }
             await executor.executeStepManually(i, 'confirmed');
+            logger.emit({
+              type: 'user_input',
+              action: 'confirmed',
+              step: i,
+              actor: state.context.operator,
+            });
+            logger.emit({ type: 'step_complete', step: i });
             console.log('    ✅ Step marked complete.');
           }
         } else if (step.type === 'manual') {
@@ -462,6 +504,14 @@ class OperationRunner {
             continue;
           }
           await executor.executeStepManually(i, notes.trim() || 'confirmed');
+          logger.emit({
+            type: 'user_input',
+            action: 'confirmed',
+            step: i,
+            actor: state.context.operator,
+            notes: notes.trim() || undefined,
+          });
+          logger.emit({ type: 'step_complete', step: i });
           console.log('    ✅ Step marked complete.');
         } else if (step.type === 'approval') {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
@@ -471,11 +521,22 @@ class OperationRunner {
           const choice = ans.trim().toLowerCase();
           if (choice === 'approve') {
             await executor.executeStepManually(i, 'approved');
-            logger.emit({ type: 'user_input', step: i, decision: 'approved' });
+            logger.emit({
+              type: 'user_input',
+              action: 'approved',
+              step: i,
+              actor: state.context.operator,
+            });
+            logger.emit({ type: 'step_complete', step: i });
             console.log('    ✅ Approved.');
           } else if (choice === 'reject') {
             executor.skipStep(i);
-            logger.emit({ type: 'user_input', step: i, decision: 'rejected' });
+            logger.emit({
+              type: 'user_input',
+              action: 'rejected',
+              step: i,
+              actor: state.context.operator,
+            });
             console.log('    ❌ Rejected — step skipped.');
           } else {
             executor.skipStep(i);
@@ -483,13 +544,24 @@ class OperationRunner {
           }
         } else {
           await executor.executeStepManually(i, 'confirmed');
+          logger.emit({ type: 'step_complete', step: i });
         }
       }
 
       console.log(`\n${DIVIDER}`);
     } finally {
       rl.close();
-      logger.close();
+      const finalState = executor.getState();
+      const endStatus =
+        finalState.failedSteps > 0
+          ? 'failed'
+          : finalState.waitingSteps > 0
+            ? 'paused'
+            : 'completed';
+      logger.close({
+        status: endStatus,
+        steps_completed: finalState.completedSteps,
+      });
     }
   }
 
