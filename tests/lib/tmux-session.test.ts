@@ -129,7 +129,8 @@ describe('TmuxSession (issue #6)', () => {
 
   it('waitForPrompt returns timeout when deadline exceeded with idle disabled', async () => {
     const session = new TmuxSession('no-idle-1', 'samaritan-no-idle-1');
-    const result = await session.waitForPrompt('execution', 300, undefined, 0);
+    // 800ms gives ample room for 2–3 poll cycles (200ms each) on slow CI runners
+    const result = await session.waitForPrompt('execution', 800, undefined, 0);
     assert.strictEqual(
       result,
       'timeout',

@@ -599,6 +599,9 @@ class OperationRunner {
       console.log(`\n${DIVIDER}`);
     } finally {
       rl.close();
+      // Node 20 compat: readline/promises doesn't always unref stdin on close,
+      // which can keep the event loop alive. Unref so the process can exit.
+      if (!process.stdin.destroyed) process.stdin.unref();
       const finalState = executor.getState();
       const endStatus =
         finalState.failedSteps > 0
