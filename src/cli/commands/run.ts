@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createInterface as createReadlineInterface } from 'node:readline';
 import { Command } from 'commander';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
@@ -316,11 +317,12 @@ class OperationRunner {
     vars: Record<string, any>,
     tmuxSession?: TmuxSession,
   ): Promise<string> {
-    const { createInterface } = await import('node:readline/promises');
-    const rl = createInterface({
+    const rl = createReadlineInterface({
       input: process.stdin,
       output: process.stdout,
     });
+    const question = (prompt: string): Promise<string> =>
+      new Promise((resolve) => rl.question(prompt, resolve));
 
     const state = executor.getState();
     const logger = createEventLogger(state.context.sessionId);
@@ -426,7 +428,7 @@ class OperationRunner {
 
           if (controller && step.session && resolvedCommand) {
             // tmux-backed automatic step
-            const ans = await rl.question(
+            const ans = await question(
               '\n    ▶  Send to tmux? [Enter=yes / s=skip / r=rollback / q=quit]: ',
             );
             const choice = ans.trim().toLowerCase();
@@ -463,14 +465,12 @@ class OperationRunner {
                   `    ${icon} Assert (${assertResult.type}): expected "${assertResult.expected}"`,
                 );
                 if (!assertResult.pass) {
-                  const overrideAns = await rl.question(
+                  const overrideAns = await question(
                     '    ⚠️  Assertion failed. [o=override with reason / r=rollback / Enter=stop]: ',
                   );
                   const oc = overrideAns.trim().toLowerCase();
                   if (oc === 'o' || oc === 'override') {
-                    const reason = await rl.question(
-                      '    Reason for override: ',
-                    );
+                    const reason = await question('    Reason for override: ');
                     logger.emit({
                       type: 'user_input',
                       action: 'override',
@@ -499,7 +499,7 @@ class OperationRunner {
             controller.completeStep(i);
           } else {
             // prompt-only automatic step
-            const ans = await rl.question(
+            const ans = await question(
               '\n    ▶  Execute? [Enter=yes / s=skip / r=rollback / q=quit]: ',
             );
             const choice = ans.trim().toLowerCase();
@@ -530,7 +530,7 @@ class OperationRunner {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
           if (resolvedCommand)
             console.log(`\n    Command reference:\n    $ ${resolvedCommand}`);
-          const notes = await rl.question(
+          const notes = await question(
             '\n    ✋ Mark done (notes/Enter=confirm, "r"=rollback, "skip"=skip, "abort"=abort): ',
           );
           const choice = notes.trim().toLowerCase();
@@ -559,7 +559,7 @@ class OperationRunner {
           console.log('    ✅ Step marked complete.');
         } else if (step.type === 'approval') {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
-          const ans = await rl.question(
+          const ans = await question(
             '\n    ⚡ "approve" / "reject" / "r" (rollback) / "skip": ',
           );
           const choice = ans.trim().toLowerCase();
@@ -599,8 +599,6 @@ class OperationRunner {
       console.log(`\n${DIVIDER}`);
     } finally {
       rl.close();
-      // Node 20 compat: readline/promises doesn't always unref stdin on close,
-      // which can keep the event loop alive. Unref so the process can exit.
       if (!process.stdin.destroyed) process.stdin.unref();
       const finalState = executor.getState();
       const endStatus =

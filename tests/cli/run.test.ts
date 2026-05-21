@@ -254,7 +254,6 @@ describe('resume command: session persistence', () => {
     // Check that at least one session JSON was written
     const sessionDir = join(homedir(), '.samaritan', 'sessions');
     if (existsSync(sessionDir)) {
-      const { readdirSync } = require('node:fs');
       const files = readdirSync(sessionDir).filter((f: string) =>
         f.endsWith('.json'),
       );
