@@ -3,12 +3,13 @@ import { join } from 'node:path';
 import { Command } from 'commander';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
+import { generateReport } from '../../lib/report-generator';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import { SessionState } from '../../lib/session-state';
 import { bootstrapSessions, type TmuxSession } from '../../lib/tmux-session';
 import { StepController } from '../../lib/tui';
 import { resolveVars, resolveVarsSafe } from '../../lib/variable-resolver';
-import type { ExecutionMode, Operation } from '../../models/operation';
+import type { ExecutionMode, Operation, Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
 interface RunOptions {
@@ -161,13 +162,7 @@ class OperationRunner {
         executor.finalizeOperation();
 
         if (options.report && logPath) {
-          this.writeReport(
-            options.report,
-            session.id,
-            logPath,
-            operation,
-            absFile,
-          );
+          this.writeReport(options.report, session.id, logPath);
         }
 
         tmuxSession?.teardown();
@@ -385,6 +380,21 @@ class OperationRunner {
 
     const returnLogPath = logger.path;
 
+    const doRollback = async (step: Step, i: number): Promise<void> => {
+      if (controller) {
+        console.log('    🔄 Initiating rollback...');
+        await controller.rollback(step, i, state.context.operator);
+        console.log('    ↩  Rollback complete.');
+      } else if (step.rollback && step.rollback.length > 0) {
+        console.log('    🔄 Rollback steps (manual — no tmux session):');
+        for (const rb of step.rollback) {
+          console.log(`      $ ${rb.command}`);
+        }
+      } else {
+        console.log('    ℹ️  No rollback defined for this step.');
+      }
+    };
+
     try {
       const steps = executor.getState().steps;
 
@@ -420,21 +430,6 @@ class OperationRunner {
             `    Ticket   : ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`,
           );
 
-        const doRollback = async (): Promise<void> => {
-          if (controller) {
-            console.log('    🔄 Initiating rollback...');
-            await controller.rollback(step, i, state.context.operator);
-            console.log('    ↩  Rollback complete.');
-          } else if (step.rollback && step.rollback.length > 0) {
-            console.log('    🔄 Rollback steps (manual — no tmux session):');
-            for (const rb of step.rollback) {
-              console.log(`      $ ${rb.command}`);
-            }
-          } else {
-            console.log('    ℹ️  No rollback defined for this step.');
-          }
-        };
-
         if (step.type === 'automatic') {
           if (resolvedCommand) console.log(`\n    $ ${resolvedCommand}`);
 
@@ -449,7 +444,7 @@ class OperationRunner {
               break;
             }
             if (choice === 'r' || choice === 'rollback') {
-              await doRollback();
+              await doRollback(step, i);
               continue;
             }
             if (choice === 's' || choice === 'skip') {
@@ -494,7 +489,7 @@ class OperationRunner {
                     });
                     console.log('    ⚠️  Override accepted.');
                   } else if (oc === 'r' || oc === 'rollback') {
-                    await doRollback();
+                    await doRollback(step, i);
                     continue;
                   } else {
                     console.log('    ❌ Stopping due to failed assertion.');
@@ -522,7 +517,7 @@ class OperationRunner {
               break;
             }
             if (choice === 'r' || choice === 'rollback') {
-              await doRollback();
+              await doRollback(step, i);
               continue;
             }
             if (choice === 's' || choice === 'skip') {
@@ -553,7 +548,7 @@ class OperationRunner {
             break;
           }
           if (choice === 'r' || choice === 'rollback') {
-            await doRollback();
+            await doRollback(step, i);
             continue;
           }
           if (choice === 'skip') {
@@ -578,7 +573,7 @@ class OperationRunner {
           );
           const choice = ans.trim().toLowerCase();
           if (choice === 'r' || choice === 'rollback') {
-            await doRollback();
+            await doRollback(step, i);
             continue;
           }
           if (choice === 'approve') {
@@ -633,24 +628,10 @@ class OperationRunner {
     reportDir: string,
     sessionId: string,
     logPath: string,
-    operation: Operation,
-    operationFile: string,
   ): void {
     mkdirSync(reportDir, { recursive: true });
     const reportFile = join(reportDir, `samaritan-${sessionId}-report.md`);
-    const lines: string[] = [
-      `# Operation Report: ${operation.name}`,
-      '',
-      `**Session ID:** ${sessionId}  `,
-      `**Operation:** ${operationFile}  `,
-      `**Generated:** ${new Date().toISOString()}  `,
-      '',
-      '## Audit Log',
-      '',
-      `Audit log written to: \`${logPath}\``,
-      '',
-    ];
-    writeFileSync(reportFile, lines.join('\n'), 'utf-8');
+    writeFileSync(reportFile, generateReport(logPath), 'utf-8');
     console.log(`📄 Report: ${reportFile}`);
   }
 

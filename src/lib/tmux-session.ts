@@ -59,7 +59,7 @@ export class TmuxSession {
     const re = new RegExp(promptPattern ?? '\\$\\s*$', 'm');
     const pollMs = 50;
 
-    let lastSize = this.currentOffset(sessionName);
+    let lastSize = idleThresholdMs > 0 ? this.currentOffset(sessionName) : 0;
     let lastChangeTime = Date.now();
 
     while (Date.now() < deadline) {
