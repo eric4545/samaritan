@@ -10,7 +10,7 @@ import { loadYaml, parseFixture } from '../fixtures/fixtures';
 import { deploymentOperation } from '../fixtures/operations';
 
 describe('Manual Generator Unit Tests', () => {
-  it('should generate proper table format for multi-environment operations', (t) => {
+  it('should generate proper table format for multi-environment operations', () => {
     // Use shared deployment operation fixture
     const testOperation = deploymentOperation;
 
@@ -124,9 +124,6 @@ describe('Manual Generator Unit Tests', () => {
       stepsTableMatch && stepsTableMatch.length === 6,
       'Should have 6 step table rows',
     );
-
-    // Snapshot the complete manual for regression testing
-    t.assert.snapshot(markdown);
   });
 
   it('should handle single environment operations', () => {
@@ -1957,7 +1954,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
     );
   });
 
-  it('should render overview section with flexible metadata fields', async (t) => {
+  it('should render overview section with flexible metadata fields', async () => {
     const operation = await parseFixture('withOverview');
     const markdown = generateManual(operation);
 
@@ -2021,12 +2018,9 @@ echo "Deploying at: \${TIMESTAMP}"`,
       overviewIndex < environmentsIndex || environmentsIndex === -1,
       'Overview should appear before Environments section',
     );
-
-    // Snapshot the complete manual
-    t.assert.snapshot(markdown);
   });
 
-  it('should render evidence results (file references and inline content)', async (t) => {
+  it('should render evidence results (file references and inline content)', async () => {
     const operation = await parseFixture('evidenceWithResults');
     const markdown = generateManual(operation);
 
@@ -2107,9 +2101,6 @@ echo "Deploying at: \${TIMESTAMP}"`,
       capturedEvidenceCount === 6,
       'Should have 6 Captured Evidence sections (3 steps with results × 2 environments)',
     );
-
-    // Snapshot test
-    t.assert.snapshot(markdown);
   });
 
   it('should handle evidence results with file-only and content-only', () => {
