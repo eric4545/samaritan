@@ -57,7 +57,7 @@ export class TmuxSession {
     const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
     const deadline = Date.now() + timeoutMs;
     const re = new RegExp(promptPattern ?? '\\$\\s*$', 'm');
-    const pollMs = 50;
+    const pollMs = 200;
 
     let lastSize = idleThresholdMs > 0 ? this.currentOffset(sessionName) : 0;
     let lastChangeTime = Date.now();

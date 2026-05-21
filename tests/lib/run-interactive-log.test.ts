@@ -161,7 +161,8 @@ describe('Interactive run JSONL event log', () => {
     });
     const combined = result.stdout + result.stderr;
     assert.ok(
-      combined.toLowerCase().includes('audit log') || combined.includes('Audit log'),
+      combined.toLowerCase().includes('audit log') ||
+        combined.includes('Audit log'),
       'output should mention "Audit log"',
     );
     assert.ok(combined.includes('.jsonl'), 'output should include .jsonl path');

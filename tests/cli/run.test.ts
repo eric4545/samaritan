@@ -276,10 +276,10 @@ describe('run command: --report flag', () => {
     const reportDir = mkdtempSync(join(tmpdir(), 'samaritan-report-'));
 
     try {
-      runCli(
-        ['run', fixture, '--env', 'default', '--report', reportDir],
-        { input: 'q\n', timeout: 30_000 },
-      );
+      runCli(['run', fixture, '--env', 'default', '--report', reportDir], {
+        input: 'q\n',
+        timeout: 30_000,
+      });
 
       const files = readdirSync(reportDir);
       const mdFiles = files.filter((f) => f.endsWith('.md'));

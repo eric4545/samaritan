@@ -156,7 +156,6 @@ class OperationRunner {
           operation,
           absFile,
           resolvedVars,
-          executionMode,
           tmuxSession,
         );
         executor.finalizeOperation();
@@ -302,7 +301,6 @@ class OperationRunner {
       operation,
       session.operation_file,
       context.variables,
-      session.mode,
       tmuxSession,
     );
     executor.finalizeOperation();
@@ -316,7 +314,6 @@ class OperationRunner {
     operation: Operation,
     operationFile: string,
     vars: Record<string, any>,
-    _mode: ExecutionMode,
     tmuxSession?: TmuxSession,
   ): Promise<string> {
     const { createInterface } = await import('node:readline/promises');
@@ -325,16 +322,13 @@ class OperationRunner {
       output: process.stdout,
     });
 
-    // Set up event logger + session state + step controller for tmux-backed steps
     const state = executor.getState();
     const logger = createEventLogger(state.context.sessionId);
     console.log(`📝 Audit log: ${logger.path}`);
     const sessionState = new SessionState();
 
-    // Emit session_start so the audit log records the operation file
     logger.emit({ type: 'session_start', op: operationFile });
 
-    // Emit session_open for every bootstrapped tmux pane
     if (tmuxSession && operation.sessions) {
       for (const [name, pane] of tmuxSession.getPaneMap().entries()) {
         const cfg = operation.sessions[name];
@@ -347,7 +341,6 @@ class OperationRunner {
       }
     }
 
-    // Pre-populate session state with resolved operation variables
     for (const [key, value] of Object.entries(vars)) {
       sessionState.capture(key, String(value));
     }
@@ -377,8 +370,6 @@ class OperationRunner {
         return resolveVarsSafe(text, vars);
       }
     };
-
-    const returnLogPath = logger.path;
 
     const doRollback = async (step: Step, i: number): Promise<void> => {
       if (controller) {
@@ -621,7 +612,7 @@ class OperationRunner {
       });
     }
 
-    return returnLogPath;
+    return logger.path;
   }
 
   private writeReport(

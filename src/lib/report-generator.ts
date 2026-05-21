@@ -163,13 +163,9 @@ export function generateReport(jsonlPath: string): string {
   lines.push(`- Steps completed: ${stepsCompleted}/${steps.length}`);
   lines.push(`- Duration: ${duration}`);
 
-  const pics = [
-    ...new Set(steps.filter((s) => s.pic).map((s) => s.pic as string)),
-  ];
+  const pics = [...new Set(steps.flatMap((s) => (s.pic ? [s.pic] : [])))];
   const reviewers = [
-    ...new Set(
-      steps.filter((s) => s.reviewer).map((s) => s.reviewer as string),
-    ),
+    ...new Set(steps.flatMap((s) => (s.reviewer ? [s.reviewer] : []))),
   ];
   if (pics.length) lines.push(`- PIC: ${pics.join(', ')}`);
   if (reviewers.length) lines.push(`- Reviewer: ${reviewers.join(', ')}`);
