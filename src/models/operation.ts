@@ -220,7 +220,7 @@ export interface Step {
   evidence_types?: EvidenceType[]; // DEPRECATED: Use evidence.types instead
   validation?: StepValidation;
   session?: string;
-  verify?: string | VerifyConfig;
+  verify?: VerifyConfig;
   capture?: CaptureConfig;
   continue_on_error?: boolean;
   retry?: RetryConfig;

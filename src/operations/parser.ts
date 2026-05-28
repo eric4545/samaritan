@@ -14,6 +14,7 @@ import type {
   StepPhase,
   StepType,
   VariableMatrix,
+  VerifyConfig,
 } from '../models/operation';
 import {
   SchemaValidationError,
@@ -662,15 +663,12 @@ function resolveStepReferences(
   return resolvedSteps;
 }
 
-function normalizeVerify(
-  verify: any,
-  legacyExpect: any,
-): import('../models/operation').VerifyConfig | string | undefined {
-  if (verify !== undefined && verify !== null) {
-    return verify; // string shorthand or full object — pass through as-is
+function normalizeVerify(verify: any, legacyExpect: any): VerifyConfig | undefined {
+  if (verify != null) {
+    return typeof verify === 'string' ? { expect: verify } : verify;
   }
-  if (legacyExpect !== undefined && legacyExpect !== null) {
-    return { expect: legacyExpect }; // backward compat: step.expect → verify.expect
+  if (legacyExpect != null) {
+    return { expect: legacyExpect };
   }
   return undefined;
 }

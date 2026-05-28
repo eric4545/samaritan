@@ -95,8 +95,8 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
 
   it('renders string shorthand expect on step', async () => {
     const op = await parseFixture('withSessions');
-    const buildStep = op.steps[1]; // "Build Image" with verify: "Successfully built"
-    assert.strictEqual(buildStep.verify, 'Successfully built');
+    const buildStep = op.steps[1]; // "Build Image" with verify: "Successfully built" (normalized to { expect })
+    assert.deepStrictEqual(buildStep.verify, { expect: 'Successfully built' });
     const md = generateSingleEnvManual(op, 'production');
     assert.ok(md.includes('Successfully built'), 'renders verify string shorthand');
   });

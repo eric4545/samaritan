@@ -479,20 +479,19 @@ function generateStepRow(
     }
 
     // Add verify/expect
-    const verifyRaw = effectiveStep.verify;
-    if (verifyRaw) {
-      const verify = typeof verifyRaw === 'string' ? { expect: verifyRaw } : verifyRaw;
-      if (verify.command) {
-        let verifyCmd = verify.command;
+    if (effectiveStep.verify) {
+      const { command: verifyCmd, expect: verifyExpect } = effectiveStep.verify;
+      if (verifyCmd) {
+        let cmd = verifyCmd;
         if (resolveVariables && substituteVars) {
-          verifyCmd = substituteVariables(verifyCmd, env.variables || {}, effectiveStep.variables);
+          cmd = substituteVariables(cmd, env.variables || {}, effectiveStep.variables);
         }
-        const cleanVerifyCmd = verifyCmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
+        const cleanCmd = cmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
         const sep = cellContent ? '<br><br>' : '';
-        cellContent += `${sep}**Verify:** \`${cleanVerifyCmd}\``;
+        cellContent += `${sep}**Verify:** \`${cleanCmd}\``;
       }
-      if (verify.expect) {
-        const desc = renderExpectDescription(verify.expect);
+      if (verifyExpect) {
+        const desc = renderExpectDescription(verifyExpect);
         if (desc) cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
       }
     }
@@ -823,20 +822,19 @@ function generateSubStepRow(
     }
 
     // Add verify/expect
-    const verifyRaw = effectiveStep.verify;
-    if (verifyRaw) {
-      const verify = typeof verifyRaw === 'string' ? { expect: verifyRaw } : verifyRaw;
-      if (verify.command) {
-        let verifyCmd = verify.command;
+    if (effectiveStep.verify) {
+      const { command: verifyCmd, expect: verifyExpect } = effectiveStep.verify;
+      if (verifyCmd) {
+        let cmd = verifyCmd;
         if (resolveVariables && substituteVars) {
-          verifyCmd = substituteVariables(verifyCmd, env.variables || {}, effectiveStep.variables);
+          cmd = substituteVariables(cmd, env.variables || {}, effectiveStep.variables);
         }
-        const cleanVerifyCmd = verifyCmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
+        const cleanCmd = cmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
         const sep = cellContent ? '<br><br>' : '';
-        cellContent += `${sep}**Verify:** \`${cleanVerifyCmd}\``;
+        cellContent += `${sep}**Verify:** \`${cleanCmd}\``;
       }
-      if (verify.expect) {
-        const desc = renderExpectDescription(verify.expect);
+      if (verifyExpect) {
+        const desc = renderExpectDescription(verifyExpect);
         if (desc) cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
       }
     }
@@ -1597,20 +1595,24 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
-    const verifyRaw = effectiveStep.verify;
-    if (verifyRaw) {
-      const verify = typeof verifyRaw === 'string' ? { expect: verifyRaw } : verifyRaw;
-      if (verify.command) {
+    if (effectiveStep.verify) {
+      const { command, expect } = effectiveStep.verify;
+      let emitted = false;
+      if (command) {
         lines.push('**Verify**');
         lines.push('```bash');
-        lines.push(resolveCmd(verify.command));
+        lines.push(resolveCmd(command));
         lines.push('```');
+        emitted = true;
       }
-      if (verify.expect) {
-        const desc = renderExpectDescription(verify.expect);
-        if (desc) lines.push(`> Expected: ${desc}`);
+      if (expect) {
+        const desc = renderExpectDescription(expect);
+        if (desc) {
+          lines.push(`> Expected: ${desc}`);
+          emitted = true;
+        }
       }
-      lines.push('');
+      if (emitted) lines.push('');
     }
 
     // Recursively render sub_steps as deeper headings (Step N.1, N.1.1, etc.)
