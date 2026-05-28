@@ -4,6 +4,7 @@ import {
   type GenerationMetadata,
   generateYamlFrontmatter,
 } from '../lib/git-metadata';
+import { renderExpectDescription } from '../lib/assertions';
 import { indexToLetters } from '../lib/letter-sequence';
 import type { Environment, Operation, Step } from '../models/operation';
 
@@ -477,6 +478,25 @@ function generateStepRow(
       }
     }
 
+    // Add verify/expect
+    if (effectiveStep.verify) {
+      let verifyCmd = effectiveStep.verify.command;
+      if (resolveVariables && substituteVars) {
+        verifyCmd = substituteVariables(verifyCmd, env.variables || {}, effectiveStep.variables);
+      }
+      const cleanVerifyCmd = verifyCmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
+      const sep = cellContent ? '<br><br>' : '';
+      cellContent += `${sep}**Verify:** \`${cleanVerifyCmd}\``;
+      const expectVal = effectiveStep.verify.expect ?? effectiveStep.expect;
+      if (expectVal) {
+        const desc = renderExpectDescription(expectVal);
+        if (desc) cellContent += `<br>_Expected: ${desc}_`;
+      }
+    } else if (effectiveStep.expect) {
+      const desc = renderExpectDescription(effectiveStep.expect);
+      if (desc) cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
+    }
+
     // Fallback for steps with neither
     if (!cellContent) {
       if (effectiveStep.sub_steps && effectiveStep.sub_steps.length > 0) {
@@ -800,6 +820,25 @@ function generateSubStepRow(
         // Both present, inline mode
         cellContent += `<br><br>\`${cleanCommand}\``;
       }
+    }
+
+    // Add verify/expect
+    if (effectiveStep.verify) {
+      let verifyCmd = effectiveStep.verify.command;
+      if (resolveVariables && substituteVars) {
+        verifyCmd = substituteVariables(verifyCmd, env.variables || {}, effectiveStep.variables);
+      }
+      const cleanVerifyCmd = verifyCmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
+      const sep = cellContent ? '<br><br>' : '';
+      cellContent += `${sep}**Verify:** \`${cleanVerifyCmd}\``;
+      const expectVal = effectiveStep.verify.expect ?? effectiveStep.expect;
+      if (expectVal) {
+        const desc = renderExpectDescription(expectVal);
+        if (desc) cellContent += `<br>_Expected: ${desc}_`;
+      }
+    } else if (effectiveStep.expect) {
+      const desc = renderExpectDescription(effectiveStep.expect);
+      if (desc) cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
     }
 
     // Fallback for sub-steps with neither
@@ -1489,12 +1528,6 @@ export function generateSingleEnvManual(
   targetEnv: string,
   resolveVariables = false,
 ): string {
-  // Lazy import to avoid circular deps
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { renderExpectDescription } = require('../lib/assertions') as {
-    renderExpectDescription: (e: any) => string;
-  };
-
   const env = operation.environments.find((e) => e.name === targetEnv);
   const envVars = env?.variables ?? {};
 
