@@ -86,7 +86,9 @@ describe('Sessions / execution-engine schema (issue #5)', () => {
     it('parses verify string shorthand into { expect }', async () => {
       const op = await parseFixture('withSessions');
       const buildStep = op.steps[1];
-      assert.deepStrictEqual(buildStep.verify, { expect: 'Successfully built' });
+      assert.deepStrictEqual(buildStep.verify, {
+        expect: 'Successfully built',
+      });
     });
   });
 
