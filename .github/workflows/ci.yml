@@ -15,7 +15,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [20.x, 22.x, 24.x]
+        node-version: [22.x, 24.x, 26.x]
 
     steps:
     - name: Checkout code
@@ -47,6 +47,29 @@ jobs:
         path: |
           coverage/
           test-results.xml
+
+  test-bun:
+    name: Test (Bun)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Install dependencies
+      run: bun install
+
+    - name: Run tests
+      run: bun run test
+
+    - name: Test CLI commands
+      run: |
+        bun run start -- --help
+        bun run start -- validate examples/deployment.yaml
+        bun run start -- generate manual examples/deployment.yaml -o /tmp/test-manual.md
 
   lint:
     runs-on: ubuntu-latest
