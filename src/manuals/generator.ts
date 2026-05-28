@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { renderExpectDescription } from '../lib/assertions';
 import {
   type GenerationMetadata,
   generateYamlFrontmatter,
 } from '../lib/git-metadata';
-import { renderExpectDescription } from '../lib/assertions';
 import { indexToLetters } from '../lib/letter-sequence';
 import type { Environment, Operation, Step } from '../models/operation';
 
@@ -484,15 +484,24 @@ function generateStepRow(
       if (verifyCmd) {
         let cmd = verifyCmd;
         if (resolveVariables && substituteVars) {
-          cmd = substituteVariables(cmd, env.variables || {}, effectiveStep.variables);
+          cmd = substituteVariables(
+            cmd,
+            env.variables || {},
+            effectiveStep.variables,
+          );
         }
-        const cleanCmd = cmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
+        const cleanCmd = cmd
+          .trim()
+          .replace(/\n/g, '<br>')
+          .replace(/\|/g, '\\|')
+          .replace(/`/g, '\\`');
         const sep = cellContent ? '<br><br>' : '';
         cellContent += `${sep}**Verify:** \`${cleanCmd}\``;
       }
       if (verifyExpect) {
         const desc = renderExpectDescription(verifyExpect);
-        if (desc) cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
+        if (desc)
+          cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
       }
     }
 
@@ -827,15 +836,24 @@ function generateSubStepRow(
       if (verifyCmd) {
         let cmd = verifyCmd;
         if (resolveVariables && substituteVars) {
-          cmd = substituteVariables(cmd, env.variables || {}, effectiveStep.variables);
+          cmd = substituteVariables(
+            cmd,
+            env.variables || {},
+            effectiveStep.variables,
+          );
         }
-        const cleanCmd = cmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
+        const cleanCmd = cmd
+          .trim()
+          .replace(/\n/g, '<br>')
+          .replace(/\|/g, '\\|')
+          .replace(/`/g, '\\`');
         const sep = cellContent ? '<br><br>' : '';
         cellContent += `${sep}**Verify:** \`${cleanCmd}\``;
       }
       if (verifyExpect) {
         const desc = renderExpectDescription(verifyExpect);
-        if (desc) cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
+        if (desc)
+          cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
       }
     }
 

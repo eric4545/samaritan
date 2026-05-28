@@ -69,7 +69,7 @@ export function assertOutput(
 
   if (expect.any_line_contains !== undefined) {
     return {
-      pass: lines.some((l) => l.includes(expect.any_line_contains!)),
+      pass: lines.some((l) => l.includes(expect.any_line_contains as string)),
       actual: trimmed,
       expected: expect.any_line_contains,
       type: 'any_line_contains',
@@ -78,7 +78,7 @@ export function assertOutput(
 
   if (expect.no_line_contains !== undefined) {
     return {
-      pass: !lines.some((l) => l.includes(expect.no_line_contains!)),
+      pass: !lines.some((l) => l.includes(expect.no_line_contains as string)),
       actual: trimmed,
       expected: `no line contains "${expect.no_line_contains}"`,
       type: 'no_line_contains',

@@ -34,7 +34,7 @@ export class StepController {
   }
 
   async executeStep(step: Step, stepIndex: number): Promise<StepState> {
-    const { logger, tmux, sessionState, autoSend, autoExec } = this.opts;
+    const { logger, sessionState, autoSend } = this.opts;
 
     logger.emit({
       type: 'step_start',

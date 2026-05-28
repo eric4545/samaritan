@@ -663,7 +663,10 @@ function resolveStepReferences(
   return resolvedSteps;
 }
 
-function normalizeVerify(verify: any, legacyExpect: any): VerifyConfig | undefined {
+function normalizeVerify(
+  verify: any,
+  legacyExpect: any,
+): VerifyConfig | undefined {
   if (verify != null) {
     return typeof verify === 'string' ? { expect: verify } : verify;
   }
