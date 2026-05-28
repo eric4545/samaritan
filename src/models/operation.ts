@@ -44,7 +44,7 @@ export interface ExpectConfig {
 
 export interface VerifyConfig {
   session?: string;
-  command: string;
+  command?: string;
   expect?: ExpectConfig | string;
 }
 
@@ -222,7 +222,6 @@ export interface Step {
   session?: string;
   verify?: VerifyConfig;
   capture?: CaptureConfig;
-  expect?: ExpectConfig | string;
   continue_on_error?: boolean;
   retry?: RetryConfig;
   rollback?: RollbackStep[];

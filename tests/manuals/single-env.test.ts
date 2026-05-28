@@ -95,10 +95,13 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
 
   it('renders string shorthand expect on step', async () => {
     const op = await parseFixture('withSessions');
-    const buildStep = op.steps[1]; // "Build Image" with expect: "Successfully built"
-    assert.strictEqual(buildStep.expect, 'Successfully built');
+    const buildStep = op.steps[1]; // "Build Image" with verify: "Successfully built" (normalized to { expect })
+    assert.deepStrictEqual(buildStep.verify, { expect: 'Successfully built' });
     const md = generateSingleEnvManual(op, 'production');
-    assert.ok(md.includes('Successfully built'), 'renders string expect');
+    assert.ok(
+      md.includes('Successfully built'),
+      'renders verify string shorthand',
+    );
   });
 
   it('filters steps by when field for target env', async () => {
@@ -109,20 +112,16 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     assert.ok(md.includes('#'), 'has headings');
   });
 
-  it('snapshot: withCaptureExpect fixture renders all assertion types', async () => {
+  it('snapshot: withCaptureExpect — verify with command+expect, expect-only, and verify-only shapes', async (t) => {
     const op = await parseFixture('withCaptureExpect');
     const md = generateSingleEnvManual(op, 'staging');
+    t.assert.snapshot(md);
+  });
 
-    assert.ok(md.includes('## Step 1: Build image'), 'step 1 present');
-    assert.ok(md.includes('## Step 2: Check pod count'), 'step 2 present');
-    assert.ok(md.includes('Expected:'), 'has expected');
-    // Verify contains assertion rendered
-    assert.ok(
-      md.includes('healthy') ||
-        md.includes('"healthy"') ||
-        md.includes('equals'),
-      'renders expected value',
-    );
+  it('snapshot: withSessions — verify string shorthand rendered as expect block', async (t) => {
+    const op = await parseFixture('withSessions');
+    const md = generateSingleEnvManual(op, 'production');
+    t.assert.snapshot(md);
   });
 
   it('renders both instruction and command when both are present', async () => {

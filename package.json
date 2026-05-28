@@ -53,6 +53,6 @@
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
     "@types/js-yaml": "^4.0.5",
-    "tsx": "^4.20.5"
+    "tsx": "^4.22.3"
   }
 }

@@ -92,14 +92,19 @@ steps:
   - name: Scale Replicas
     type: automatic
     command: kubectl scale deployment/app --replicas=${REPLICAS} -n ${NAMESPACE}
+    verify:
+      command: kubectl get deployment app -n ${NAMESPACE} -o jsonpath='{.status.readyReplicas}'
+      expect:
+        equals: "${REPLICAS}"
 
   - name: Verify Deployment
     type: manual
     instruction: |
       Check that all pods are running:
       kubectl get pods -n ${NAMESPACE}
-    evidence_required: true
-    evidence_types: [screenshot]
+    evidence:
+      required: true
+      types: [screenshot]
 ```
 
 Then run:

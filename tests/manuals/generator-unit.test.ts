@@ -2371,3 +2371,17 @@ echo "Deploying at: \${TIMESTAMP}"`,
     );
   });
 });
+
+describe('Verify / expect rendering snapshots', () => {
+  it('multi-env table: verify with command+expect, expect-only, and verify-only-command', async (t) => {
+    const op = await parseFixture('withCaptureExpect');
+    const md = generateManual(op);
+    t.assert.snapshot(md);
+  });
+
+  it('multi-env table: verify string shorthand normalised to expect-only', async (t) => {
+    const op = await parseFixture('withSessions');
+    const md = generateManual(op);
+    t.assert.snapshot(md);
+  });
+});

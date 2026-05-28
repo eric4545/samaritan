@@ -87,13 +87,9 @@ steps:
     type: manual
     session: monitoring
     command: kubectl get pods -n ${NAMESPACE} -l app=web --no-headers | grep -c Running
-    expect:
-      numeric_gte: 1    # at least 1 pod running (override per-env via variants if needed)
     verify:
-      session: monitoring
-      command: kubectl get pods -n ${NAMESPACE} -l app=web -o wide
       expect:
-        no_line_contains: "CrashLoopBackOff"
+        numeric_gte: 1    # at least 1 pod running (override per-env via variants if needed)
 
   # ─── Step 4: Smoke test ────────────────────────────────────────────────────────
   - name: Smoke test
