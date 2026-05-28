@@ -44,7 +44,7 @@ export interface ExpectConfig {
 
 export interface VerifyConfig {
   session?: string;
-  command: string;
+  command?: string;
   expect?: ExpectConfig | string;
 }
 
@@ -220,9 +220,8 @@ export interface Step {
   evidence_types?: EvidenceType[]; // DEPRECATED: Use evidence.types instead
   validation?: StepValidation;
   session?: string;
-  verify?: VerifyConfig;
+  verify?: string | VerifyConfig;
   capture?: CaptureConfig;
-  expect?: ExpectConfig | string;
   continue_on_error?: boolean;
   retry?: RetryConfig;
   rollback?: RollbackStep[];

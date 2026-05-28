@@ -54,4 +54,4 @@ steps:
         group: 1
       LAST_LINE:
         line: last
-    expect: "Successfully built"
+    verify: "Successfully built"

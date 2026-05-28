@@ -662,6 +662,19 @@ function resolveStepReferences(
   return resolvedSteps;
 }
 
+function normalizeVerify(
+  verify: any,
+  legacyExpect: any,
+): import('../models/operation').VerifyConfig | string | undefined {
+  if (verify !== undefined && verify !== null) {
+    return verify; // string shorthand or full object — pass through as-is
+  }
+  if (legacyExpect !== undefined && legacyExpect !== null) {
+    return { expect: legacyExpect }; // backward compat: step.expect → verify.expect
+  }
+  return undefined;
+}
+
 function parseStep(
   stepData: any,
   _stepIndex: number,
@@ -750,9 +763,8 @@ function parseStep(
     evidence_types: stepData.evidence_types as EvidenceType[], // DEPRECATED: Use evidence.types instead
     validation: stepData.validation,
     session: stepData.session,
-    verify: stepData.verify,
+    verify: normalizeVerify(stepData.verify, stepData.expect),
     capture: stepData.capture,
-    expect: stepData.expect,
     continue_on_error: Boolean(stepData.continue_on_error),
     retry: stepData.retry,
     rollback: rollback,

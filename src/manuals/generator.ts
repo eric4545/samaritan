@@ -479,22 +479,22 @@ function generateStepRow(
     }
 
     // Add verify/expect
-    if (effectiveStep.verify) {
-      let verifyCmd = effectiveStep.verify.command;
-      if (resolveVariables && substituteVars) {
-        verifyCmd = substituteVariables(verifyCmd, env.variables || {}, effectiveStep.variables);
+    const verifyRaw = effectiveStep.verify;
+    if (verifyRaw) {
+      const verify = typeof verifyRaw === 'string' ? { expect: verifyRaw } : verifyRaw;
+      if (verify.command) {
+        let verifyCmd = verify.command;
+        if (resolveVariables && substituteVars) {
+          verifyCmd = substituteVariables(verifyCmd, env.variables || {}, effectiveStep.variables);
+        }
+        const cleanVerifyCmd = verifyCmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
+        const sep = cellContent ? '<br><br>' : '';
+        cellContent += `${sep}**Verify:** \`${cleanVerifyCmd}\``;
       }
-      const cleanVerifyCmd = verifyCmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
-      const sep = cellContent ? '<br><br>' : '';
-      cellContent += `${sep}**Verify:** \`${cleanVerifyCmd}\``;
-      const expectVal = effectiveStep.verify.expect ?? effectiveStep.expect;
-      if (expectVal) {
-        const desc = renderExpectDescription(expectVal);
-        if (desc) cellContent += `<br>_Expected: ${desc}_`;
+      if (verify.expect) {
+        const desc = renderExpectDescription(verify.expect);
+        if (desc) cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
       }
-    } else if (effectiveStep.expect) {
-      const desc = renderExpectDescription(effectiveStep.expect);
-      if (desc) cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
     }
 
     // Fallback for steps with neither
@@ -823,22 +823,22 @@ function generateSubStepRow(
     }
 
     // Add verify/expect
-    if (effectiveStep.verify) {
-      let verifyCmd = effectiveStep.verify.command;
-      if (resolveVariables && substituteVars) {
-        verifyCmd = substituteVariables(verifyCmd, env.variables || {}, effectiveStep.variables);
+    const verifyRaw = effectiveStep.verify;
+    if (verifyRaw) {
+      const verify = typeof verifyRaw === 'string' ? { expect: verifyRaw } : verifyRaw;
+      if (verify.command) {
+        let verifyCmd = verify.command;
+        if (resolveVariables && substituteVars) {
+          verifyCmd = substituteVariables(verifyCmd, env.variables || {}, effectiveStep.variables);
+        }
+        const cleanVerifyCmd = verifyCmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
+        const sep = cellContent ? '<br><br>' : '';
+        cellContent += `${sep}**Verify:** \`${cleanVerifyCmd}\``;
       }
-      const cleanVerifyCmd = verifyCmd.trim().replace(/\n/g, '<br>').replace(/\|/g, '\\|').replace(/`/g, '\\`');
-      const sep = cellContent ? '<br><br>' : '';
-      cellContent += `${sep}**Verify:** \`${cleanVerifyCmd}\``;
-      const expectVal = effectiveStep.verify.expect ?? effectiveStep.expect;
-      if (expectVal) {
-        const desc = renderExpectDescription(expectVal);
-        if (desc) cellContent += `<br>_Expected: ${desc}_`;
+      if (verify.expect) {
+        const desc = renderExpectDescription(verify.expect);
+        if (desc) cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
       }
-    } else if (effectiveStep.expect) {
-      const desc = renderExpectDescription(effectiveStep.expect);
-      if (desc) cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
     }
 
     // Fallback for sub-steps with neither
@@ -1597,24 +1597,20 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
-    if (effectiveStep.verify) {
-      lines.push('**Verify**');
-      lines.push('```bash');
-      lines.push(resolveCmd(effectiveStep.verify.command));
-      lines.push('```');
-
-      const expect = effectiveStep.verify.expect ?? effectiveStep.expect;
-      if (expect) {
-        const desc = renderExpectDescription(expect);
+    const verifyRaw = effectiveStep.verify;
+    if (verifyRaw) {
+      const verify = typeof verifyRaw === 'string' ? { expect: verifyRaw } : verifyRaw;
+      if (verify.command) {
+        lines.push('**Verify**');
+        lines.push('```bash');
+        lines.push(resolveCmd(verify.command));
+        lines.push('```');
+      }
+      if (verify.expect) {
+        const desc = renderExpectDescription(verify.expect);
         if (desc) lines.push(`> Expected: ${desc}`);
       }
       lines.push('');
-    } else if (effectiveStep.expect) {
-      const desc = renderExpectDescription(effectiveStep.expect);
-      if (desc) {
-        lines.push(`> Expected: ${desc}`);
-        lines.push('');
-      }
     }
 
     // Recursively render sub_steps as deeper headings (Step N.1, N.1.1, etc.)

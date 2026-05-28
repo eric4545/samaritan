@@ -83,10 +83,10 @@ describe('Sessions / execution-engine schema (issue #5)', () => {
       assert.strictEqual(buildStep.capture.LAST_LINE.line, 'last');
     });
 
-    it('parses step.expect as string shorthand', async () => {
+    it('parses verify string shorthand', async () => {
       const op = await parseFixture('withSessions');
       const buildStep = op.steps[1];
-      assert.strictEqual(buildStep.expect, 'Successfully built');
+      assert.strictEqual(buildStep.verify, 'Successfully built');
     });
   });
 
