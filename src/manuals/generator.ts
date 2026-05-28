@@ -1561,7 +1561,7 @@ export function generateSingleEnvManual(
     lines.push('');
 
     if (effectiveStep.description) {
-      const desc = effectiveStep.description.trim();
+      const desc = resolveCmd(effectiveStep.description.trim());
       lines.push(desc.includes('\n') ? desc : `_${desc}_`);
       lines.push('');
     }
