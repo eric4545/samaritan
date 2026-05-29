@@ -159,6 +159,33 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     );
   });
 
+  it('substitutes env variables in step description when resolveVariables=true', async () => {
+    const op = await parseFixture('withSessions');
+    op.steps[0].description = 'Deploy ${APP_NAME} to ${CLUSTER}';
+    op.environments[0].variables = {
+      ...op.environments[0].variables,
+      APP_NAME: 'web-server',
+      CLUSTER: 'prod-cluster',
+    };
+    const md = generateSingleEnvManual(op, 'production', true);
+
+    assert.ok(
+      md.includes('_Deploy web-server to prod-cluster_'),
+      'substitutes variables in description',
+    );
+  });
+
+  it('does not substitute variables in description when resolveVariables=false', async () => {
+    const op = await parseFixture('withSessions');
+    op.steps[0].description = 'Deploy ${APP_NAME} to ${CLUSTER}';
+    const md = generateSingleEnvManual(op, 'production', false);
+
+    assert.ok(
+      md.includes('_Deploy ${APP_NAME} to ${CLUSTER}_'),
+      'leaves variables unsubstituted',
+    );
+  });
+
   it('renders needs/dependencies when present', async () => {
     const op = await parseFixture('withSessions');
     op.steps[1].needs = ['deploy-app'];
