@@ -1,0 +1,5 @@
+name: Circular B
+version: 1.0.0
+description: Template that imports circular-a (for circular detection test)
+steps:
+  - template: ./circular-a.yaml

@@ -831,5 +831,192 @@ steps:
         unlinkSync(tmpPath);
       }
     });
+
+    it('should use common_variables defaults when with: omits them', async () => {
+      const { resolve } = await import('node:path');
+      const templateAbsPath = resolve(
+        'tests/fixtures/templates/with-defaults.yaml',
+      );
+      const yamlContent = `name: Defaults Test
+version: 1.0.0
+description: Omits TIMEOUT and RETRIES — should use template defaults
+environments:
+  - name: staging
+steps:
+  - template: ${templateAbsPath}
+    with:
+      ENDPOINT: https://staging.example.com
+`;
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const tmpPath = '/tmp/samaritan-defaults-test.yaml';
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        const operation = await parseOperation(tmpPath);
+        assert.strictEqual(operation.steps.length, 1);
+        assert.strictEqual(operation.steps[0].name, 'Check Service Health');
+        // TIMEOUT: 30 and RETRIES: 3 come from template common_variables
+        assert.strictEqual(operation.steps[0].timeout, 30);
+        assert.strictEqual(operation.steps[0].retry?.attempts, 3);
+      } finally {
+        unlinkSync(tmpPath);
+      }
+    });
+
+    it('should allow with: to override template common_variables defaults', async () => {
+      const { resolve } = await import('node:path');
+      const templateAbsPath = resolve(
+        'tests/fixtures/templates/with-defaults.yaml',
+      );
+      const yamlContent = `name: Override Test
+version: 1.0.0
+description: Override template defaults via with block
+environments:
+  - name: staging
+steps:
+  - template: ${templateAbsPath}
+    with:
+      ENDPOINT: https://staging.example.com
+      TIMEOUT: 120
+      RETRIES: 10
+`;
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const tmpPath = '/tmp/samaritan-override-test.yaml';
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        const operation = await parseOperation(tmpPath);
+        assert.strictEqual(
+          operation.steps[0].timeout,
+          120,
+          'with: should override default TIMEOUT',
+        );
+        assert.strictEqual(
+          operation.steps[0].retry?.attempts,
+          10,
+          'with: should override default RETRIES',
+        );
+      } finally {
+        unlinkSync(tmpPath);
+      }
+    });
+
+    it('should use defaults to fill gaps when with: only partially overrides', async () => {
+      const { resolve } = await import('node:path');
+      const templateAbsPath = resolve(
+        'tests/fixtures/templates/with-defaults.yaml',
+      );
+      const yamlContent = `name: Partial Override Test
+version: 1.0.0
+description: Partial override - RETRIES falls back to template default
+environments:
+  - name: staging
+steps:
+  - template: ${templateAbsPath}
+    with:
+      ENDPOINT: https://staging.example.com
+      TIMEOUT: 60
+`;
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const tmpPath = '/tmp/samaritan-partial-test.yaml';
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        const operation = await parseOperation(tmpPath);
+        assert.strictEqual(
+          operation.steps[0].timeout,
+          60,
+          'TIMEOUT overridden by with:',
+        );
+        assert.strictEqual(
+          operation.steps[0].retry?.attempts,
+          3,
+          'RETRIES uses template default',
+        );
+      } finally {
+        unlinkSync(tmpPath);
+      }
+    });
+
+    it('should detect circular template imports and throw', async () => {
+      const { resolve } = await import('node:path');
+      const circularAPath = resolve('tests/fixtures/templates/circular-a.yaml');
+      const yamlContent = `name: Circular Import Test
+version: 1.0.0
+description: Imports a template that eventually imports itself
+environments:
+  - name: staging
+steps:
+  - template: ${circularAPath}
+`;
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const tmpPath = '/tmp/samaritan-circular-test.yaml';
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        await assert.rejects(
+          async () => parseOperation(tmpPath),
+          (err: any) => {
+            // The circular error may be wrapped as "Operation validation failed"
+            // with the original message in err.errors
+            if (err.message.includes('Circular template import')) return true;
+            if (err.errors) {
+              return err.errors.some(
+                (e: any) =>
+                  (e.message || '').includes('Circular template import') ||
+                  (e.message || '').includes('circular'),
+              );
+            }
+            return false;
+          },
+          'Should throw on circular template import',
+        );
+      } finally {
+        unlinkSync(tmpPath);
+      }
+    });
+
+    it('should expand foreach inside a template step', async () => {
+      // Create an inline operation that imports a template containing foreach
+      const templateYaml = [
+        '- name: Deploy ${SERVICE}',
+        '  type: automatic',
+        '  foreach:',
+        '    var: ENV',
+        '    values: [staging, production]',
+        '  command: kubectl apply -f ${SERVICE}.yaml -n ${ENV}',
+      ].join('\n');
+
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const templatePath = '/tmp/samaritan-foreach-template.yaml';
+      const opPath = '/tmp/samaritan-foreach-op.yaml';
+      writeFileSync(templatePath, templateYaml);
+      writeFileSync(
+        opPath,
+        `name: Foreach Template Test
+version: 1.0.0
+description: foreach inside a template should be expanded
+environments:
+  - name: staging
+steps:
+  - template: ${templatePath}
+    with:
+      SERVICE: my-app
+`,
+      );
+      try {
+        const operation = await parseOperation(opPath);
+        // foreach with 2 values → 2 expanded steps
+        assert.strictEqual(
+          operation.steps.length,
+          2,
+          'foreach inside template should be expanded to 2 steps',
+        );
+        assert.strictEqual(operation.steps[0].name, 'Deploy my-app (staging)');
+        assert.strictEqual(
+          operation.steps[1].name,
+          'Deploy my-app (production)',
+        );
+      } finally {
+        unlinkSync(templatePath);
+        unlinkSync(opPath);
+      }
+    });
   });
 });
