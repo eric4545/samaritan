@@ -616,5 +616,220 @@ steps:
         'Should throw on network error',
       );
     });
+
+    it('should expand a template that has no variables without requiring with:', async () => {
+      const { resolve } = await import('node:path');
+      const templateAbsPath = resolve(
+        'tests/fixtures/templates/approval-gate.yaml',
+      );
+      const yamlContent = `name: Approval Gate Test
+version: 1.0.0
+description: Template with no variables
+environments:
+  - name: production
+steps:
+  - template: ${templateAbsPath}
+`;
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const tmpPath = '/tmp/samaritan-no-vars-test.yaml';
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        const operation = await parseOperation(tmpPath);
+        assert.strictEqual(operation.steps.length, 1);
+        assert.strictEqual(
+          operation.steps[0].name,
+          'Request Production Approval',
+        );
+        assert.strictEqual(operation.steps[0].type, 'approval');
+        assert.strictEqual(operation.steps[0].continue_on_error, false);
+        assert.strictEqual(operation.steps[0].evidence?.required, true);
+      } finally {
+        unlinkSync(tmpPath);
+      }
+    });
+
+    it('should preserve phase: preflight set inside a template step', async () => {
+      const { resolve } = await import('node:path');
+      const templateAbsPath = resolve(
+        'tests/fixtures/templates/preflight-checks.yaml',
+      );
+      const yamlContent = `name: Phase Preservation Test
+version: 1.0.0
+description: Template steps with explicit phase should keep it
+environments:
+  - name: staging
+steps:
+  - template: ${templateAbsPath}
+    with:
+      TOOL_NAME: kubectl
+`;
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const tmpPath = '/tmp/samaritan-phase-test.yaml';
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        const operation = await parseOperation(tmpPath);
+        assert.strictEqual(operation.steps.length, 2);
+        // Both steps declare phase: preflight explicitly — must be preserved
+        assert.strictEqual(
+          operation.steps[0].phase,
+          'preflight',
+          'First template step should keep phase: preflight',
+        );
+        assert.strictEqual(
+          operation.steps[1].phase,
+          'preflight',
+          'Second template step should keep phase: preflight',
+        );
+        // Variable was substituted
+        assert.ok(
+          operation.steps[1].command?.includes('kubectl'),
+          'TOOL_NAME should be substituted',
+        );
+      } finally {
+        unlinkSync(tmpPath);
+      }
+    });
+
+    it('should preserve evidence config from template steps', async () => {
+      // Use examples/deployment-with-templates.yaml which imports
+      // examples/templates/health-checks.yaml — those steps DO have evidence blocks
+      const operation = await parseOperation(
+        'examples/deployment-with-templates.yaml',
+      );
+      // First template import is the pre-deployment health checks
+      const healthStep = operation.steps.find(
+        (s) => s.name === 'Check API Health',
+      );
+      assert.ok(healthStep, 'Check API Health step should exist');
+      assert.strictEqual(
+        healthStep.evidence?.required,
+        true,
+        'evidence.required should be preserved from template',
+      );
+      assert.ok(
+        healthStep.evidence?.types?.includes('command_output'),
+        'evidence.types should be preserved from template',
+      );
+    });
+
+    it('should return independent step objects when same template is used twice', async () => {
+      const operation = await parseOperation(
+        'tests/fixtures/operations/valid/with-template-import.yaml',
+      );
+      // Steps 0 and 3 both come from health-checks template
+      const first = operation.steps[0];
+      const second = operation.steps[3];
+      assert.strictEqual(first.name, second.name);
+
+      // Mutating one should not affect the other
+      first.timeout = 999;
+      assert.notStrictEqual(
+        first.timeout,
+        second.timeout,
+        'Steps from repeated template import should be independent objects',
+      );
+    });
+
+    it('should cache the same remote URL and not fetch it twice', async () => {
+      const { fetchRemoteTemplate, clearRemoteTemplateCache } = await import(
+        '../../src/lib/template-fetcher'
+      );
+      clearRemoteTemplateCache();
+
+      let fetchCallCount = 0;
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (_url: string | URL | Request) => {
+        fetchCallCount++;
+        return new Response(
+          '- name: Cached Step\n  type: manual\n  instruction: test\n',
+          { status: 200 },
+        );
+      };
+
+      try {
+        const url = 'https://example.com/cached-template.yaml';
+        await fetchRemoteTemplate(url);
+        await fetchRemoteTemplate(url);
+        assert.strictEqual(
+          fetchCallCount,
+          1,
+          'fetch should only be called once for the same URL',
+        );
+      } finally {
+        globalThis.fetch = originalFetch;
+        clearRemoteTemplateCache();
+      }
+    });
+
+    it('should throw when remote template returns HTTP 404', async () => {
+      const { fetchRemoteTemplate, clearRemoteTemplateCache } = await import(
+        '../../src/lib/template-fetcher'
+      );
+      clearRemoteTemplateCache();
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (_url: string | URL | Request) =>
+        new Response('Not Found', { status: 404, statusText: 'Not Found' });
+
+      try {
+        await assert.rejects(
+          async () =>
+            fetchRemoteTemplate('https://example.com/missing-template.yaml'),
+          (err: any) =>
+            err.message.includes('HTTP 404') ||
+            err.message.includes('Failed to fetch'),
+          'Should throw for non-2xx response',
+        );
+      } finally {
+        globalThis.fetch = originalFetch;
+        clearRemoteTemplateCache();
+      }
+    });
+
+    it('should expand a remote template fetched via HTTPS (mocked)', async () => {
+      const { clearRemoteTemplateCache } = await import(
+        '../../src/lib/template-fetcher'
+      );
+      clearRemoteTemplateCache();
+
+      const remoteTemplateYaml = [
+        '- name: Remote Health Check',
+        '  type: automatic',
+        '  command: curl -f ${ENDPOINT}/health',
+        '  timeout: 30',
+      ].join('\n');
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (_url: string | URL | Request) =>
+        new Response(remoteTemplateYaml, { status: 200 });
+
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const tmpPath = '/tmp/samaritan-remote-template-test.yaml';
+      writeFileSync(
+        tmpPath,
+        `name: Remote Template Test
+version: 1.0.0
+description: Uses a mocked remote HTTPS template
+environments:
+  - name: staging
+steps:
+  - template: https://example.com/templates/health-check.yaml
+    with:
+      ENDPOINT: https://staging.example.com
+`,
+      );
+
+      try {
+        const operation = await parseOperation(tmpPath);
+        assert.strictEqual(operation.steps.length, 1);
+        assert.strictEqual(operation.steps[0].name, 'Remote Health Check');
+        assert.strictEqual(operation.steps[0].type, 'automatic');
+        assert.strictEqual(operation.steps[0].timeout, 30);
+      } finally {
+        globalThis.fetch = originalFetch;
+        clearRemoteTemplateCache();
+        unlinkSync(tmpPath);
+      }
+    });
   });
 });

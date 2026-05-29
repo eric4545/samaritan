@@ -1,0 +1,11 @@
+# Template: Approval Gate
+# Description: Require explicit sign-off before proceeding
+# Variables: none
+
+- name: Request Production Approval
+  type: approval
+  description: Explicit sign-off required before any production change
+  evidence:
+    required: true
+    types: [screenshot]
+  continue_on_error: false

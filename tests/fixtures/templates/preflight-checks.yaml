@@ -1,0 +1,14 @@
+# Template whose steps carry phase: preflight — phase should be preserved
+- name: Verify Git is Clean
+  type: automatic
+  phase: preflight
+  command: git status --porcelain
+  description: Ensure working tree has no uncommitted changes
+  timeout: 10
+
+- name: Check Required Tools
+  type: automatic
+  phase: preflight
+  command: which ${TOOL_NAME}
+  description: Verify ${TOOL_NAME} is installed
+  timeout: 10
