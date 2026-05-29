@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import yaml from 'js-yaml';
+import {
+  fetchRemoteTemplate,
+  isRemoteTemplate,
+  resolveGithubUrl,
+} from '../lib/template-fetcher';
 import type {
   Environment,
   EvidenceConfig,
@@ -126,10 +131,10 @@ export class OperationParseError extends Error {
 /**
  * Load and parse a step library file
  */
-function loadStepLibrary(
+async function loadStepLibrary(
   filePath: string,
   importContext: ImportContext,
-): StepLibrary {
+): Promise<StepLibrary> {
   const resolvedPath = resolve(importContext.baseDirectory, filePath);
 
   // Check for circular imports
@@ -171,9 +176,10 @@ function loadStepLibrary(
 
     // Parse steps
     const steps: Step[] = [];
-    data.steps.forEach((stepData: any, index: number) => {
+    for (let index = 0; index < data.steps.length; index++) {
+      const stepData = data.steps[index];
       try {
-        const step = parseStep(stepData, index, importContext);
+        const step = await parseStep(stepData, index, importContext);
         steps.push(step);
 
         // Add to step library registry
@@ -203,7 +209,7 @@ function loadStepLibrary(
           ],
         );
       }
-    });
+    }
 
     return {
       steps,
@@ -225,10 +231,10 @@ function loadStepLibrary(
 /**
  * Process all imports and build step library
  */
-function processImports(
+async function processImports(
   imports: string[],
   baseDirectory: string,
-): ImportContext {
+): Promise<ImportContext> {
   const importContext: ImportContext = {
     stepLibraries: new Map(),
     loadedFiles: new Set(),
@@ -251,7 +257,7 @@ function processImports(
       ]);
     }
 
-    loadStepLibrary(importPath, importContext);
+    await loadStepLibrary(importPath, importContext);
   }
 
   return importContext;
@@ -340,19 +346,43 @@ function formatVariableCombination(vars: Record<string, any>): string {
 }
 
 /**
- * Load template file and extract steps
- * Supports both array format (just steps) and operation format (extract .steps)
+ * Load template file and extract steps.
+ * Supports local file paths, HTTPS URLs, and github: shorthands.
+ * Local: relative paths resolved against baseDirectory.
+ * Remote: github:owner/repo//path@ref  or  https://...
  */
-function loadTemplateSteps(templatePath: string, baseDirectory: string): any[] {
-  const resolvedPath = resolve(baseDirectory, templatePath);
+async function loadTemplateSteps(
+  templatePath: string,
+  baseDirectory: string,
+): Promise<any[]> {
+  let templateContents: string;
 
-  if (!fs.existsSync(resolvedPath)) {
-    throw new OperationParseError(`Template file not found: ${templatePath}`, [
-      { field: 'template', message: `File not found: ${resolvedPath}` },
-    ]);
+  if (isRemoteTemplate(templatePath)) {
+    const url = templatePath.startsWith('github:')
+      ? resolveGithubUrl(templatePath)
+      : templatePath;
+
+    try {
+      templateContents = await fetchRemoteTemplate(url);
+    } catch (error) {
+      throw new OperationParseError(
+        `Failed to fetch remote template: ${templatePath}`,
+        [{ field: 'template', message: (error as Error).message }],
+      );
+    }
+  } else {
+    const resolvedPath = resolve(baseDirectory, templatePath);
+
+    if (!fs.existsSync(resolvedPath)) {
+      throw new OperationParseError(
+        `Template file not found: ${templatePath}`,
+        [{ field: 'template', message: `File not found: ${resolvedPath}` }],
+      );
+    }
+
+    templateContents = fs.readFileSync(resolvedPath, 'utf-8');
   }
 
-  const templateContents = fs.readFileSync(resolvedPath, 'utf-8');
   let templateData: unknown;
 
   try {
@@ -450,10 +480,10 @@ function substituteVariables(obj: any, context: Record<string, any>): any {
 /**
  * Resolve step references (use: step-name) to actual step definitions
  */
-function resolveStepReferences(
+async function resolveStepReferences(
   steps: any[],
   importContext: ImportContext,
-): Step[] {
+): Promise<Step[]> {
   const resolvedSteps: Step[] = [];
 
   for (let i = 0; i < steps.length; i++) {
@@ -528,7 +558,7 @@ function resolveStepReferences(
         const withVars = stepData.with || {};
 
         // Load template steps
-        const templateSteps = loadTemplateSteps(
+        const templateSteps = await loadTemplateSteps(
           templatePath,
           importContext.baseDirectory,
         );
@@ -559,7 +589,11 @@ function resolveStepReferences(
 
         // Parse and add each template step
         for (let j = 0; j < substitutedSteps.length; j++) {
-          const templateStep = parseStep(substitutedSteps[j], j, importContext);
+          const templateStep = await parseStep(
+            substitutedSteps[j],
+            j,
+            importContext,
+          );
 
           // Set default phase if not specified
           if (!templateStep.phase) {
@@ -585,7 +619,7 @@ function resolveStepReferences(
     } else {
       // This is a regular step definition
       try {
-        const step = parseStep(stepData, i, importContext);
+        const step = await parseStep(stepData, i, importContext);
 
         // Set default phase if not specified
         if (!step.phase) {
@@ -676,21 +710,23 @@ function normalizeVerify(
   return undefined;
 }
 
-function parseStep(
+async function parseStep(
   stepData: any,
   _stepIndex: number,
   importContext?: ImportContext,
-): Step {
+): Promise<Step> {
   // Parse sub-steps recursively
   let subSteps: Step[] | undefined;
   if (stepData.sub_steps && Array.isArray(stepData.sub_steps)) {
     // If we have an import context, use resolveStepReferences to handle use:/template: directives
     if (importContext) {
-      subSteps = resolveStepReferences(stepData.sub_steps, importContext);
+      subSteps = await resolveStepReferences(stepData.sub_steps, importContext);
     } else {
       // Fallback for cases without import context (shouldn't happen in normal flow)
-      subSteps = stepData.sub_steps.map((subStep: any, index: number) =>
-        parseStep(subStep, index),
+      subSteps = await Promise.all(
+        stepData.sub_steps.map((subStep: any, index: number) =>
+          parseStep(subStep, index),
+        ),
       );
     }
   }
@@ -975,7 +1011,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   // Process imports first
   let importContext: ImportContext;
   try {
-    importContext = processImports(rawOperation.imports, baseDirectory);
+    importContext = await processImports(rawOperation.imports, baseDirectory);
   } catch (error) {
     if (error instanceof OperationParseError) {
       errors.push(...error.errors);
@@ -1023,7 +1059,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   // Then process regular steps
   if (rawOperation.steps && Array.isArray(rawOperation.steps)) {
     try {
-      const regularSteps = resolveStepReferences(
+      const regularSteps = await resolveStepReferences(
         rawOperation.steps,
         importContext,
       );

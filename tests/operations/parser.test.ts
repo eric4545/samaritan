@@ -487,5 +487,134 @@ describe('Enhanced Operation Parser', () => {
         'Should have step from operation template',
       );
     });
+
+    it('should preserve numeric and boolean variable types', async () => {
+      const operation = await parseOperation(
+        'tests/fixtures/operations/valid/with-template-import.yaml',
+      );
+
+      // TIMEOUT: 60 and RETRIES: 5 are numbers in 'with:', should remain numbers
+      const step = operation.steps[0];
+      assert.strictEqual(
+        typeof step.timeout,
+        'number',
+        'timeout should be a number',
+      );
+      assert.strictEqual(step.timeout, 60);
+      assert.strictEqual(
+        typeof step.retry?.attempts,
+        'number',
+        'retry.attempts should be a number',
+      );
+      assert.strictEqual(step.retry?.attempts, 5);
+    });
+
+    it('should leave unmatched ${VAR} placeholders as-is', async () => {
+      const operation = await parseOperation(
+        'tests/fixtures/operations/valid/with-template-import.yaml',
+      );
+
+      // SLACK_WEBHOOK is not in 'with:' for the notification template — should be preserved
+      const slackStep = operation.steps.find(
+        (s) => s.name === 'Send Slack Notification',
+      );
+      assert.ok(slackStep, 'Slack step should exist');
+      assert.ok(
+        slackStep.command?.includes('${SLACK_WEBHOOK}'),
+        'Unmatched ${SLACK_WEBHOOK} should be preserved literally',
+      );
+    });
+
+    it('should expand sub_steps inside template steps', async () => {
+      const { resolve } = await import('node:path');
+      const templateAbsPath = resolve(
+        'tests/fixtures/templates/with-sub-steps.yaml',
+      );
+      const yamlContent = `name: Sub-steps Template Test
+version: 1.0.0
+description: Tests sub_steps expansion from templates
+environments:
+  - name: staging
+steps:
+  - template: ${templateAbsPath}
+    with:
+      SERVICE_NAME: my-app
+      NAMESPACE: staging
+      MANIFEST_PATH: ./k8s/deployment.yaml
+`;
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const tmpPath = '/tmp/samaritan-sub-steps-test.yaml';
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        const operation = await parseOperation(tmpPath);
+        assert.strictEqual(operation.steps.length, 1);
+        assert.strictEqual(operation.steps[0].name, 'Deploy my-app');
+        assert.ok(
+          Array.isArray(operation.steps[0].sub_steps),
+          'sub_steps should be an array',
+        );
+        assert.strictEqual(operation.steps[0].sub_steps?.length, 2);
+        assert.strictEqual(
+          operation.steps[0].sub_steps?.[0].name,
+          'Apply manifests',
+        );
+        assert.strictEqual(
+          operation.steps[0].sub_steps?.[1].name,
+          'Wait for rollout',
+        );
+      } finally {
+        unlinkSync(tmpPath);
+      }
+    });
+
+    it('should resolve github: shorthand to a raw GitHub URL', async () => {
+      const { resolveGithubUrl } = await import(
+        '../../src/lib/template-fetcher'
+      );
+
+      assert.strictEqual(
+        resolveGithubUrl('github:myorg/templates//deploy/k8s.yaml@v1.2.0'),
+        'https://raw.githubusercontent.com/myorg/templates/v1.2.0/deploy/k8s.yaml',
+      );
+      assert.strictEqual(
+        resolveGithubUrl('github:myorg/templates//deploy/k8s.yaml@abc1234'),
+        'https://raw.githubusercontent.com/myorg/templates/abc1234/deploy/k8s.yaml',
+      );
+      // Defaults to main when no @ref
+      assert.strictEqual(
+        resolveGithubUrl('github:myorg/templates//deploy/k8s.yaml'),
+        'https://raw.githubusercontent.com/myorg/templates/main/deploy/k8s.yaml',
+      );
+    });
+
+    it('should throw for invalid github: shorthand missing //', async () => {
+      const { resolveGithubUrl } = await import(
+        '../../src/lib/template-fetcher'
+      );
+
+      assert.throws(
+        () => resolveGithubUrl('github:myorg/templates/deploy/k8s.yaml@v1'),
+        /Invalid github: shorthand/,
+      );
+    });
+
+    it('should throw OperationParseError when remote template fetch fails', async () => {
+      const { fetchRemoteTemplate, clearRemoteTemplateCache } = await import(
+        '../../src/lib/template-fetcher'
+      );
+      clearRemoteTemplateCache();
+
+      // Use a URL that will fail (non-routable host)
+      await assert.rejects(
+        async () =>
+          fetchRemoteTemplate(
+            'https://this-host-does-not-exist.invalid/template.yaml',
+          ),
+        (err: any) =>
+          err.message.includes('Network error') ||
+          err.message.includes('fetch'),
+        'Should throw on network error',
+      );
+    });
   });
 });
