@@ -1,0 +1,19 @@
+# Template with common_variables providing default values.
+# TIMEOUT and RETRIES have defaults; ENDPOINT must be supplied via with:.
+name: Health Check with Defaults
+version: 1.0.0
+description: Health check template with sensible defaults
+
+common_variables:
+  TIMEOUT: 30
+  RETRIES: 3
+
+steps:
+  - name: Check Service Health
+    type: automatic
+    command: curl -f ${ENDPOINT}/health
+    description: Verify service endpoint is responding
+    timeout: ${TIMEOUT}
+    retry:
+      attempts: ${RETRIES}
+      delay: 5

@@ -1,0 +1,8 @@
+# Template with no variables — safe to import without 'with:'
+- name: Request Production Approval
+  type: approval
+  description: Require explicit sign-off before proceeding to production
+  evidence:
+    required: true
+    types: [screenshot]
+  continue_on_error: false

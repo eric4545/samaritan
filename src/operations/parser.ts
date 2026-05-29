@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import yaml from 'js-yaml';
+import {
+  fetchRemoteTemplate,
+  isRemoteTemplate,
+  resolveGithubUrl,
+} from '../lib/template-fetcher';
 import type {
   Environment,
   EvidenceConfig,
@@ -30,7 +35,8 @@ interface StepLibrary {
 
 interface ImportContext {
   stepLibraries: Map<string, Step>; // step name -> step definition
-  loadedFiles: Set<string>; // Prevent circular imports
+  loadedFiles: Set<string>; // Prevent circular step-library imports
+  templateFiles: Set<string>; // Prevent circular template imports
   baseDirectory: string; // Directory of the main operation file
 }
 
@@ -126,10 +132,10 @@ export class OperationParseError extends Error {
 /**
  * Load and parse a step library file
  */
-function loadStepLibrary(
+async function loadStepLibrary(
   filePath: string,
   importContext: ImportContext,
-): StepLibrary {
+): Promise<StepLibrary> {
   const resolvedPath = resolve(importContext.baseDirectory, filePath);
 
   // Check for circular imports
@@ -171,9 +177,10 @@ function loadStepLibrary(
 
     // Parse steps
     const steps: Step[] = [];
-    data.steps.forEach((stepData: any, index: number) => {
+    for (let index = 0; index < data.steps.length; index++) {
+      const stepData = data.steps[index];
       try {
-        const step = parseStep(stepData, index, importContext);
+        const step = await parseStep(stepData, index, importContext);
         steps.push(step);
 
         // Add to step library registry
@@ -203,7 +210,7 @@ function loadStepLibrary(
           ],
         );
       }
-    });
+    }
 
     return {
       steps,
@@ -225,13 +232,14 @@ function loadStepLibrary(
 /**
  * Process all imports and build step library
  */
-function processImports(
+async function processImports(
   imports: string[],
   baseDirectory: string,
-): ImportContext {
+): Promise<ImportContext> {
   const importContext: ImportContext = {
     stepLibraries: new Map(),
     loadedFiles: new Set(),
+    templateFiles: new Set(),
     baseDirectory,
   };
 
@@ -251,7 +259,7 @@ function processImports(
       ]);
     }
 
-    loadStepLibrary(importPath, importContext);
+    await loadStepLibrary(importPath, importContext);
   }
 
   return importContext;
@@ -340,44 +348,64 @@ function formatVariableCombination(vars: Record<string, any>): string {
 }
 
 /**
- * Load template file and extract steps
- * Supports both array format (just steps) and operation format (extract .steps)
+ * Parse template YAML content and extract steps + default variables.
+ * For bare step arrays: no defaults. For operation-format files: common_variables
+ * become defaults and legacy preflight steps are migrated to phase: preflight.
+ * The returned steps are still raw any[] — they go through resolveStepReferences
+ * in the caller so foreach, nested templates, and imports all work normally.
  */
-function loadTemplateSteps(templatePath: string, baseDirectory: string): any[] {
-  const resolvedPath = resolve(baseDirectory, templatePath);
-
-  if (!fs.existsSync(resolvedPath)) {
-    throw new OperationParseError(`Template file not found: ${templatePath}`, [
-      { field: 'template', message: `File not found: ${resolvedPath}` },
-    ]);
-  }
-
-  const templateContents = fs.readFileSync(resolvedPath, 'utf-8');
+async function parseTemplateContent(
+  yamlContent: string,
+  sourcePath: string,
+  importContext: ImportContext,
+): Promise<{ steps: any[]; defaultVars: Record<string, any> }> {
   let templateData: unknown;
-
   try {
-    templateData = yaml.load(templateContents);
+    templateData = yaml.load(yamlContent);
   } catch (error) {
-    throw new OperationParseError(`Invalid YAML in template: ${templatePath}`, [
+    throw new OperationParseError(`Invalid YAML in template: ${sourcePath}`, [
       { field: 'template', message: (error as Error).message },
     ]);
   }
 
-  // Handle array format (just steps)
+  // Bare array format — no defaults available
   if (Array.isArray(templateData)) {
-    return templateData;
+    return { steps: templateData, defaultVars: {} };
   }
 
-  // Handle operation format (extract .steps)
+  // Operation format — extract steps and common_variables
   if (typeof templateData === 'object' && templateData !== null) {
     const templateObj = templateData as any;
     if (templateObj.steps && Array.isArray(templateObj.steps)) {
-      return templateObj.steps;
+      const defaultVars: Record<string, any> =
+        templateObj.common_variables || {};
+
+      // Process template's own imports into the shared step library
+      if (templateObj.imports && Array.isArray(templateObj.imports)) {
+        const savedBase = importContext.baseDirectory;
+        importContext.baseDirectory = resolve(sourcePath, '..');
+        for (const importPath of templateObj.imports) {
+          if (typeof importPath === 'string') {
+            await loadStepLibrary(importPath, importContext);
+          }
+        }
+        importContext.baseDirectory = savedBase;
+      }
+
+      // Migrate legacy preflight array to phase: preflight steps
+      const legacyPreflight: any[] = (templateObj.preflight || []).map(
+        (p: any) => ({ ...p, phase: 'preflight' }),
+      );
+
+      return {
+        steps: [...legacyPreflight, ...templateObj.steps],
+        defaultVars,
+      };
     }
   }
 
   throw new OperationParseError(
-    `Invalid template format: ${templatePath}. Expected array of steps or operation with 'steps' field`,
+    `Invalid template format: ${sourcePath}. Expected array of steps or operation with 'steps' field`,
     [
       {
         field: 'template',
@@ -385,6 +413,50 @@ function loadTemplateSteps(templatePath: string, baseDirectory: string): any[] {
       },
     ],
   );
+}
+
+/**
+ * Load template content (local file, HTTPS URL, or github: shorthand) and
+ * extract its steps + default variable values. Detects circular imports via
+ * importContext.templateFiles.
+ */
+async function loadTemplateSteps(
+  templatePath: string,
+  baseDirectory: string,
+  importContext: ImportContext,
+): Promise<{ steps: any[]; defaultVars: Record<string, any> }> {
+  let templateContents: string;
+  let resolvedKey: string; // stable key for circular detection
+
+  if (isRemoteTemplate(templatePath)) {
+    const url = templatePath.startsWith('github:')
+      ? resolveGithubUrl(templatePath)
+      : templatePath;
+    resolvedKey = url;
+
+    try {
+      templateContents = await fetchRemoteTemplate(url);
+    } catch (error) {
+      throw new OperationParseError(
+        `Failed to fetch remote template: ${templatePath}`,
+        [{ field: 'template', message: (error as Error).message }],
+      );
+    }
+  } else {
+    const resolvedPath = resolve(baseDirectory, templatePath);
+    resolvedKey = resolvedPath;
+
+    if (!fs.existsSync(resolvedPath)) {
+      throw new OperationParseError(
+        `Template file not found: ${templatePath}`,
+        [{ field: 'template', message: `File not found: ${resolvedPath}` }],
+      );
+    }
+
+    templateContents = fs.readFileSync(resolvedPath, 'utf-8');
+  }
+
+  return parseTemplateContent(templateContents, resolvedKey, importContext);
 }
 
 /**
@@ -407,6 +479,32 @@ function extractVariables(
   } else if (typeof obj === 'object' && obj !== null) {
     for (const value of Object.values(obj)) {
       extractVariables(value, vars);
+    }
+  }
+  return vars;
+}
+
+/**
+ * Collect variable names that are self-declared by foreach in a step list.
+ * These are injected at expansion time and must NOT be required in with:.
+ */
+function extractForeachVars(
+  steps: any[],
+  vars: Set<string> = new Set(),
+): Set<string> {
+  for (const step of steps) {
+    if (step.foreach) {
+      if (typeof step.foreach.var === 'string') {
+        vars.add(step.foreach.var);
+      }
+      if (step.foreach.matrix && typeof step.foreach.matrix === 'object') {
+        for (const key of Object.keys(step.foreach.matrix)) {
+          vars.add(key);
+        }
+      }
+    }
+    if (Array.isArray(step.sub_steps)) {
+      extractForeachVars(step.sub_steps, vars);
     }
   }
   return vars;
@@ -450,10 +548,10 @@ function substituteVariables(obj: any, context: Record<string, any>): any {
 /**
  * Resolve step references (use: step-name) to actual step definitions
  */
-function resolveStepReferences(
+async function resolveStepReferences(
   steps: any[],
   importContext: ImportContext,
-): Step[] {
+): Promise<Step[]> {
   const resolvedSteps: Step[] = [];
 
   for (let i = 0; i < steps.length; i++) {
@@ -525,48 +623,91 @@ function resolveStepReferences(
       // This is a template import
       try {
         const templatePath = stepData.template;
-        const withVars = stepData.with || {};
+        const withVars: Record<string, any> = stepData.with || {};
 
-        // Load template steps
-        const templateSteps = loadTemplateSteps(
-          templatePath,
-          importContext.baseDirectory,
-        );
+        // Resolve canonical key for circular detection (URL or absolute path)
+        const resolvedKey = isRemoteTemplate(templatePath)
+          ? templatePath.startsWith('github:')
+            ? resolveGithubUrl(templatePath)
+            : templatePath
+          : resolve(importContext.baseDirectory, templatePath);
 
-        // Validate all template variables are provided
-        const templateVars = extractVariables(templateSteps);
-        const missingVars: string[] = [];
-        for (const varName of templateVars) {
-          if (!(varName in withVars)) {
-            missingVars.push(varName);
-          }
-        }
-
-        if (missingVars.length > 0) {
+        if (importContext.templateFiles.has(resolvedKey)) {
           throw new OperationParseError(
-            `Missing template variables for ${templatePath}: ${missingVars.join(', ')}`,
+            `Circular template import detected: ${templatePath}`,
             [
               {
-                field: `steps[${i}].with`,
-                message: `Required variables not provided: ${missingVars.join(', ')}`,
+                field: `steps[${i}].template`,
+                message: `Template "${templatePath}" is already being expanded (circular dependency)`,
               },
             ],
           );
         }
 
-        // Substitute variables in template steps
-        const substitutedSteps = substituteVariables(templateSteps, withVars);
+        importContext.templateFiles.add(resolvedKey);
+        // For local templates, update baseDirectory so nested relative paths
+        // inside the template resolve relative to the template's own location.
+        // Remote templates keep the parent baseDirectory.
+        const prevBaseDir = importContext.baseDirectory;
+        if (!isRemoteTemplate(templatePath)) {
+          importContext.baseDirectory = resolve(resolvedKey, '..');
+        }
+        try {
+          // Load template steps + default variable values
+          const { steps: templateSteps, defaultVars } = await loadTemplateSteps(
+            templatePath,
+            prevBaseDir,
+            importContext,
+          );
 
-        // Parse and add each template step
-        for (let j = 0; j < substitutedSteps.length; j++) {
-          const templateStep = parseStep(substitutedSteps[j], j, importContext);
+          // Composition: template defaults are the base; with: overrides them
+          const mergedVars = { ...defaultVars, ...withVars };
 
-          // Set default phase if not specified
-          if (!templateStep.phase) {
-            templateStep.phase = 'flight';
+          // Validate — only vars absent from BOTH defaults and with: are errors.
+          // Foreach loop variables are self-declared and injected at expansion time;
+          // they must NOT be required in with:.
+          const templateVars = extractVariables(templateSteps);
+          const foreachVars = extractForeachVars(templateSteps);
+          const missingVars = [...templateVars].filter(
+            (v) => !(v in mergedVars) && !foreachVars.has(v),
+          );
+
+          if (missingVars.length > 0) {
+            throw new OperationParseError(
+              `Missing template variables for ${templatePath}: ${missingVars.join(', ')}`,
+              [
+                {
+                  field: `steps[${i}].with`,
+                  message: `Required variables not provided: ${missingVars.join(', ')}`,
+                },
+              ],
+            );
           }
 
-          resolvedSteps.push(templateStep);
+          // Substitute merged variables in template steps
+          const substitutedSteps = substituteVariables(
+            templateSteps,
+            mergedVars,
+          );
+
+          // Recursively resolve nested templates, foreach, use: etc. through the
+          // full pipeline — circular-detection guard above prevents infinite loops.
+          // importContext.baseDirectory is now the template's own directory so any
+          // relative paths inside the template resolve correctly.
+          const expandedSteps = await resolveStepReferences(
+            substitutedSteps,
+            importContext,
+          );
+
+          for (const templateStep of expandedSteps) {
+            if (!templateStep.phase) {
+              templateStep.phase = 'flight';
+            }
+            resolvedSteps.push(templateStep);
+          }
+        } finally {
+          importContext.baseDirectory = prevBaseDir;
+          importContext.templateFiles.delete(resolvedKey);
         }
       } catch (error) {
         if (error instanceof OperationParseError) {
@@ -585,7 +726,7 @@ function resolveStepReferences(
     } else {
       // This is a regular step definition
       try {
-        const step = parseStep(stepData, i, importContext);
+        const step = await parseStep(stepData, i, importContext);
 
         // Set default phase if not specified
         if (!step.phase) {
@@ -676,21 +817,23 @@ function normalizeVerify(
   return undefined;
 }
 
-function parseStep(
+async function parseStep(
   stepData: any,
   _stepIndex: number,
   importContext?: ImportContext,
-): Step {
+): Promise<Step> {
   // Parse sub-steps recursively
   let subSteps: Step[] | undefined;
   if (stepData.sub_steps && Array.isArray(stepData.sub_steps)) {
     // If we have an import context, use resolveStepReferences to handle use:/template: directives
     if (importContext) {
-      subSteps = resolveStepReferences(stepData.sub_steps, importContext);
+      subSteps = await resolveStepReferences(stepData.sub_steps, importContext);
     } else {
       // Fallback for cases without import context (shouldn't happen in normal flow)
-      subSteps = stepData.sub_steps.map((subStep: any, index: number) =>
-        parseStep(subStep, index),
+      subSteps = await Promise.all(
+        stepData.sub_steps.map((subStep: any, index: number) =>
+          parseStep(subStep, index),
+        ),
       );
     }
   }
@@ -975,7 +1118,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   // Process imports first
   let importContext: ImportContext;
   try {
-    importContext = processImports(rawOperation.imports, baseDirectory);
+    importContext = await processImports(rawOperation.imports, baseDirectory);
   } catch (error) {
     if (error instanceof OperationParseError) {
       errors.push(...error.errors);
@@ -986,6 +1129,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     importContext = {
       stepLibraries: new Map(),
       loadedFiles: new Set(),
+      templateFiles: new Set(),
       baseDirectory,
     };
   }
@@ -1023,7 +1167,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   // Then process regular steps
   if (rawOperation.steps && Array.isArray(rawOperation.steps)) {
     try {
-      const regularSteps = resolveStepReferences(
+      const regularSteps = await resolveStepReferences(
         rawOperation.steps,
         importContext,
       );

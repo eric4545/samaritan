@@ -356,7 +356,7 @@
               "template": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Path to template file for step import/reuse (relative to operation file)"
+                "description": "Template reference: local path (relative to operation file), HTTPS URL, or github:owner/repo//path@ref shorthand"
               },
               "with": {
                 "type": "object",

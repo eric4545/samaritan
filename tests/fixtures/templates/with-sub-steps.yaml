@@ -1,0 +1,13 @@
+# Template with nested sub_steps
+- name: Deploy ${SERVICE_NAME}
+  type: manual
+  instruction: |
+    Deploy the service to ${NAMESPACE}
+  sub_steps:
+    - name: Apply manifests
+      type: automatic
+      command: kubectl apply -f ${MANIFEST_PATH} -n ${NAMESPACE}
+    - name: Wait for rollout
+      type: automatic
+      command: kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE}
+      timeout: 300
