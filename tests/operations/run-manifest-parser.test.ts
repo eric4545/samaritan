@@ -29,10 +29,10 @@ describe('parseRunManifest', () => {
   });
 
   it('parses step evidence', () => {
-    const manifest = parseRunManifest(FIXTURE);
-    assert.ok(manifest.steps, 'has steps');
-    assert.ok(manifest.steps!['deploy-application'], 'has deploy-application');
-    const step = manifest.steps!['deploy-application'];
+    const { steps } = parseRunManifest(FIXTURE);
+    assert.ok(steps, 'has steps');
+    const step = steps['deploy-application'];
+    assert.ok(step, 'has deploy-application');
     assert.strictEqual(step.evidence.length, 2);
     assert.strictEqual(step.evidence[0].type, 'command_output');
     assert.ok(step.evidence[0].content?.includes('web-server created'));
@@ -40,17 +40,15 @@ describe('parseRunManifest', () => {
   });
 
   it('resolves file paths to absolute', () => {
-    const manifest = parseRunManifest(FIXTURE);
-    const step = manifest.steps!['deploy-application'];
-    const screenshotItem = step.evidence[1];
-    assert.ok(screenshotItem.file, 'has file path');
-    assert.ok(screenshotItem.file!.startsWith('/'), 'file path is absolute');
+    const { steps } = parseRunManifest(FIXTURE);
+    const screenshotItem = steps?.['deploy-application']?.evidence[1];
+    assert.ok(screenshotItem?.file?.startsWith('/'), 'file path is absolute');
   });
 
   it('includes orphaned step evidence', () => {
-    const manifest = parseRunManifest(FIXTURE);
-    assert.ok(manifest.steps!['orphaned-step'], 'includes orphaned step');
-    const orphaned = manifest.steps!['orphaned-step'];
+    const { steps } = parseRunManifest(FIXTURE);
+    const orphaned = steps?.['orphaned-step'];
+    assert.ok(orphaned, 'includes orphaned step');
     assert.strictEqual(orphaned.evidence[0].type, 'command_output');
   });
 
