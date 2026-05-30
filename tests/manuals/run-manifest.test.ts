@@ -8,6 +8,11 @@ import {
 import { parseRunManifest } from '../../src/operations/run-manifest-parser';
 import { parseFixture } from '../fixtures/fixtures';
 
+const STEP_ID_RUN_FIXTURE = join(
+  process.cwd(),
+  'tests/fixtures/runs/step-id-lookup.yaml',
+);
+
 const RUN_FIXTURE = join(
   process.cwd(),
   'tests/fixtures/runs/staging-2025-10-16-v1.yaml',
@@ -121,55 +126,13 @@ describe('generateSingleEnvManual with run manifest', () => {
   });
 
   it('uses step.id for evidence lookup when available', async () => {
-    const { writeFile, unlink } = await import('node:fs/promises');
-    const opFixture = '/tmp/samaritan-test-op-with-id.yaml';
-    const runFixture = '/tmp/samaritan-test-run-id.yaml';
-
-    await writeFile(
-      opFixture,
-      `name: Test
-version: 1.0.0
-environments:
-  - name: staging
-    description: Staging
-    variables: {}
-    restrictions: []
-steps:
-  - id: my-step-id
-    name: My Step That Has A Different Name
-    type: manual
-    instruction: Do something
-`,
+    const op = await parseFixture('withStepIds');
+    const run = parseRunManifest(STEP_ID_RUN_FIXTURE);
+    const md = generateSingleEnvManual(op, 'staging', false, undefined, run);
+    assert.ok(
+      md.includes('Found via step.id'),
+      'resolves evidence via step.id not slugified name',
     );
-
-    await writeFile(
-      runFixture,
-      `id: test-run
-operation: ${opFixture}
-environment: staging
-status: completed
-steps:
-  my-step-id:
-    evidence:
-      - type: command_output
-        content: "output via step id"
-        description: "Found via step.id"
-`,
-    );
-
-    try {
-      const { parseOperation } = await import('../../src/operations/parser');
-      const op = await parseOperation(opFixture);
-      const run = parseRunManifest(runFixture);
-      const md = generateSingleEnvManual(op, 'staging', false, undefined, run);
-      assert.ok(
-        md.includes('Found via step.id'),
-        'resolves evidence via step.id not slugified name',
-      );
-    } finally {
-      await unlink(opFixture);
-      await unlink(runFixture);
-    }
   });
 
   it('falls back to slugified name when step has no id', async () => {

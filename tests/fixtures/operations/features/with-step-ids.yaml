@@ -1,0 +1,15 @@
+name: Step ID Lookup Test
+version: 1.0.0
+description: Operation where steps have explicit id fields
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables: {}
+    restrictions: []
+
+steps:
+  - id: my-step-id
+    name: My Step That Has A Different Name
+    type: manual
+    instruction: Do something
