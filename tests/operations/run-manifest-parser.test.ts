@@ -54,29 +54,20 @@ describe('parseRunManifest', () => {
     assert.strictEqual(orphaned.evidence[0].type, 'command_output');
   });
 
-  it('throws RunManifestValidationError for missing required fields', async () => {
-    const { writeFile, unlink } = await import('node:fs/promises');
-    const tmp = '/tmp/samaritan-test-invalid-run.yaml';
-    await writeFile(tmp, 'not_id: foo\noperation: test.yaml\n');
-    try {
-      assert.throws(() => parseRunManifest(tmp), RunManifestValidationError);
-    } finally {
-      await unlink(tmp);
-    }
+  it('throws RunManifestValidationError for missing required fields', () => {
+    const fixture = join(
+      process.cwd(),
+      'tests/fixtures/runs/invalid/missing-required-fields.yaml',
+    );
+    assert.throws(() => parseRunManifest(fixture), RunManifestValidationError);
   });
 
-  it('throws for invalid status value', async () => {
-    const { writeFile, unlink } = await import('node:fs/promises');
-    const tmp = '/tmp/samaritan-test-bad-status.yaml';
-    await writeFile(
-      tmp,
-      'id: x\noperation: op.yaml\nenvironment: prod\nstatus: invalid\n',
+  it('throws for invalid status value', () => {
+    const fixture = join(
+      process.cwd(),
+      'tests/fixtures/runs/invalid/bad-status.yaml',
     );
-    try {
-      assert.throws(() => parseRunManifest(tmp), RunManifestValidationError);
-    } finally {
-      await unlink(tmp);
-    }
+    assert.throws(() => parseRunManifest(fixture), RunManifestValidationError);
   });
 });
 
