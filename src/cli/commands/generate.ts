@@ -167,7 +167,9 @@ class DocumentationGenerator {
     // Load run manifest if provided
     const runManifest = options.run ? parseRunManifest(options.run) : undefined;
     if (runManifest) {
-      console.log(`📋 Using run manifest: ${runManifest.id} (${runManifest.status})`);
+      console.log(
+        `📋 Using run manifest: ${runManifest.id} (${runManifest.status})`,
+      );
     }
 
     // When --env is specified, use the single-env heading-based format (issue #15)
@@ -1878,7 +1880,10 @@ generateCommand
     'Resolve variables to actual values instead of showing placeholders',
   )
   .option('--gantt', 'Include Mermaid Gantt chart for timeline visualization')
-  .option('--run <manifest>', 'Path to a run manifest YAML to overlay run-specific evidence')
+  .option(
+    '--run <manifest>',
+    'Path to a run manifest YAML to overlay run-specific evidence',
+  )
   .action(async (operation: string, options: GenerateOptions) => {
     try {
       const generator = new DocumentationGenerator();
