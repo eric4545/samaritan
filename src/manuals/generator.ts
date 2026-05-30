@@ -7,6 +7,7 @@ import {
 } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
 import type { Environment, Operation, Step } from '../models/operation';
+import type { RunEvidenceItem, RunManifest } from '../models/run-manifest';
 
 function substituteVariables(
   command: string,
@@ -24,6 +25,119 @@ function substituteVariables(
   }
 
   return result;
+}
+
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function resolveStepKey(step: Step): string {
+  return step.id ?? slugify(step.name);
+}
+
+/**
+ * Merge run manifest evidence into the operation's steps and detect orphaned
+ * evidence (run manifest entries that don't match any step).
+ * Evidence file paths in the run manifest must already be absolute (resolved
+ * by the parser) so generators can read them regardless of operationDir.
+ */
+function augmentOperationWithRunManifest(
+  operation: Operation,
+  runManifest: RunManifest,
+): { operation: Operation; orphanedKeys: string[] } {
+  const runSteps = runManifest.steps ?? {};
+  const matchedKeys = new Set<string>();
+
+  const augmentedSteps = operation.steps.map((step) => {
+    const key = resolveStepKey(step);
+    const runStep = runSteps[key];
+    if (!runStep) return step;
+    matchedKeys.add(key);
+    return {
+      ...step,
+      evidence: {
+        ...step.evidence,
+        results: {
+          ...(step.evidence?.results ?? {}),
+          // Slot run evidence into the run's environment so formatEvidenceInfo picks it up
+          [runManifest.environment]: runStep.evidence as any,
+        },
+      },
+    };
+  });
+
+  const orphanedKeys = Object.keys(runSteps).filter((k) => !matchedKeys.has(k));
+  return { operation: { ...operation, steps: augmentedSteps }, orphanedKeys };
+}
+
+function buildRunInfoBlock(runManifest: RunManifest): string {
+  const parts: string[] = [`**Run**: ${runManifest.id}`];
+  if (runManifest.operator) parts.push(`**Operator**: ${runManifest.operator}`);
+  parts.push(`**Env**: ${runManifest.environment}`);
+  parts.push(`**Status**: ${runManifest.status}`);
+  if (runManifest.completed_at ?? runManifest.started_at) {
+    const ts = (runManifest.completed_at ?? runManifest.started_at) as string;
+    parts.push(`**Date**: ${ts.split('T')[0]}`);
+  }
+  return `> ${parts.join(' | ')}\n\n`;
+}
+
+function buildOrphanedEvidenceSection(
+  orphanedKeys: string[],
+  runManifest: RunManifest,
+  runDir?: string,
+): string {
+  if (orphanedKeys.length === 0) return '';
+  let md = '\n---\n\n## Orphaned Evidence\n\n';
+  md +=
+    '_The following evidence from the run manifest did not match any step in the current operation._\n\n';
+  for (const key of orphanedKeys) {
+    const step = runManifest.steps![key];
+    md += `### ${key}\n\n`;
+    for (const item of step.evidence) {
+      md += renderEvidenceItemMarkdown(item, runDir);
+    }
+  }
+  return md;
+}
+
+/**
+ * Render a single evidence item as plain markdown (used in heading-based
+ * single-env format and orphaned evidence sections).
+ */
+function renderEvidenceItemMarkdown(
+  item: RunEvidenceItem,
+  baseDir?: string,
+): string {
+  let md = '';
+  const label = item.description
+    ? `**${item.type}**: ${item.description}`
+    : `**${item.type}**`;
+  md += `${label}\n\n`;
+
+  if (item.file) {
+    if (item.type === 'screenshot' || item.type === 'photo') {
+      md += `![Evidence](${item.file})\n\n`;
+    } else if (item.type === 'command_output' || item.type === 'log') {
+      const lang = item.type === 'command_output' ? 'bash' : 'text';
+      try {
+        const resolved = baseDir ? path.resolve(baseDir, item.file) : item.file;
+        const content = fs.readFileSync(resolved, 'utf-8');
+        md += `\`\`\`${lang}\n${content.trimEnd()}\n\`\`\`\n\n`;
+      } catch {
+        md += `[View ${item.type}](${item.file})\n\n`;
+      }
+    } else {
+      md += `[View ${item.type}](${item.file})\n\n`;
+    }
+  } else if (item.content) {
+    const lang = item.type === 'command_output' ? 'bash' : 'text';
+    md += `\`\`\`${lang}\n${item.content.trimEnd()}\n\`\`\`\n\n`;
+  }
+  return md;
 }
 
 function formatTimelineForDisplay(timeline: any): string {
@@ -1059,7 +1173,8 @@ function generateSubStepRow(
 }
 
 /**
- * Enhanced manual generation with metadata and environment filtering
+ * Enhanced manual generation with metadata and environment filtering.
+ * Pass runManifest to overlay run-specific evidence onto the generated manual.
  */
 export function generateManualWithMetadata(
   operation: Operation,
@@ -1068,12 +1183,18 @@ export function generateManualWithMetadata(
   resolveVariables?: boolean,
   includeGantt?: boolean,
   operationDir?: string,
+  runManifest?: RunManifest,
 ): string {
   let markdown = '';
 
   // Add YAML frontmatter if metadata is provided
   if (metadata) {
     markdown += generateYamlFrontmatter(metadata);
+  }
+
+  // Run info block (before Gantt so it appears near the top)
+  if (runManifest) {
+    markdown += buildRunInfoBlock(runManifest);
   }
 
   // Add Gantt chart if requested and steps have timeline data
@@ -1088,15 +1209,27 @@ export function generateManualWithMetadata(
     }
   }
 
+  // Augment operation steps with run manifest evidence
+  let workingOperation = operation;
+  let orphanedKeys: string[] = [];
+  if (runManifest) {
+    const augmented = augmentOperationWithRunManifest(
+      workingOperation,
+      runManifest,
+    );
+    workingOperation = augmented.operation;
+    orphanedKeys = augmented.orphanedKeys;
+  }
+
   // Filter environments if specified
-  let environments = operation.environments;
+  let environments = workingOperation.environments;
   if (targetEnvironment) {
-    environments = operation.environments.filter(
+    environments = workingOperation.environments.filter(
       (env) => env.name === targetEnvironment,
     );
     if (environments.length === 0) {
       throw new Error(
-        `Environment '${targetEnvironment}' not found in operation. Available: ${operation.environments.map((e) => e.name).join(', ')}`,
+        `Environment '${targetEnvironment}' not found in operation. Available: ${workingOperation.environments.map((e) => e.name).join(', ')}`,
       );
     }
   }
@@ -1105,9 +1238,9 @@ export function generateManualWithMetadata(
   // Filter steps whose 'when' condition doesn't match any active environment
   const environmentNames = environments.map((e) => e.name);
   const filteredOperation = {
-    ...operation,
+    ...workingOperation,
     environments,
-    steps: filterStepsForEnvironments(operation.steps, environmentNames),
+    steps: filterStepsForEnvironments(workingOperation.steps, environmentNames),
   };
 
   markdown += generateManualContent(
@@ -1115,6 +1248,11 @@ export function generateManualWithMetadata(
     resolveVariables,
     operationDir,
   );
+
+  if (runManifest && orphanedKeys.length > 0) {
+    markdown += buildOrphanedEvidenceSection(orphanedKeys, runManifest);
+  }
+
   return markdown;
 }
 
@@ -1543,8 +1681,22 @@ export function generateSingleEnvManual(
   operation: Operation,
   targetEnv: string,
   resolveVariables = false,
+  operationDir?: string,
+  runManifest?: RunManifest,
 ): string {
-  const env = operation.environments.find((e) => e.name === targetEnv);
+  // Augment steps with run manifest evidence before rendering
+  let workingOperation = operation;
+  let orphanedKeys: string[] = [];
+  if (runManifest) {
+    const augmented = augmentOperationWithRunManifest(
+      workingOperation,
+      runManifest,
+    );
+    workingOperation = augmented.operation;
+    orphanedKeys = augmented.orphanedKeys;
+  }
+
+  const env = workingOperation.environments.find((e) => e.name === targetEnv);
   const envVars = env?.variables ?? {};
 
   function resolveCmd(cmd: string): string {
@@ -1633,6 +1785,17 @@ export function generateSingleEnvManual(
       if (emitted) lines.push('');
     }
 
+    // Render captured evidence results for this environment
+    const envResults = effectiveStep.evidence?.results?.[targetEnv];
+    if (envResults && envResults.length > 0) {
+      lines.push('**Evidence Captured**');
+      lines.push('');
+      for (const item of envResults as RunEvidenceItem[]) {
+        lines.push(renderEvidenceItemMarkdown(item, operationDir).trimEnd());
+        lines.push('');
+      }
+    }
+
     // Recursively render sub_steps as deeper headings (Step N.1, N.1.1, etc.)
     if (step.sub_steps && step.sub_steps.length > 0) {
       step.sub_steps
@@ -1684,10 +1847,15 @@ export function generateSingleEnvManual(
   }
 
   const lines: string[] = [];
-  lines.push(`# ${operation.name} — ${titleCase(targetEnv)}`);
+  lines.push(`# ${workingOperation.name} — ${titleCase(targetEnv)}`);
   lines.push('');
 
-  const allSteps = operation.steps ?? [];
+  if (runManifest) {
+    lines.push(buildRunInfoBlock(runManifest).trimEnd());
+    lines.push('');
+  }
+
+  const allSteps = workingOperation.steps ?? [];
   // Use original index for step numbers so "Step 6" means the same step
   // regardless of which environments skip earlier when-conditional steps.
   const visibleSteps = allSteps
@@ -1705,7 +1873,11 @@ export function generateSingleEnvManual(
     }
   });
 
-  return lines.join('\n');
+  let result = lines.join('\n');
+  if (runManifest && orphanedKeys.length > 0) {
+    result += buildOrphanedEvidenceSection(orphanedKeys, runManifest);
+  }
+  return result;
 }
 
 function titleCase(s: string): string {
