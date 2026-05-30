@@ -34,6 +34,10 @@ function slugify(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
+function evidenceLang(type: string): string {
+  return type === 'command_output' ? 'bash' : 'text';
+}
+
 function resolveStepKey(step: Step): string {
   return step.id ?? slugify(step.name);
 }
@@ -63,7 +67,7 @@ function augmentOperationWithRunManifest(
         results: {
           ...(step.evidence?.results ?? {}),
           // Slot run evidence into the run's environment so formatEvidenceInfo picks it up
-          [runManifest.environment]: runStep.evidence as any,
+          [runManifest.environment]: runStep.evidence,
         },
       },
     };
@@ -78,8 +82,8 @@ function buildRunInfoBlock(runManifest: RunManifest): string {
   if (runManifest.operator) parts.push(`**Operator**: ${runManifest.operator}`);
   parts.push(`**Env**: ${runManifest.environment}`);
   parts.push(`**Status**: ${runManifest.status}`);
-  if (runManifest.completed_at ?? runManifest.started_at) {
-    const ts = (runManifest.completed_at ?? runManifest.started_at) as string;
+  const ts = runManifest.completed_at ?? runManifest.started_at;
+  if (ts) {
     parts.push(`**Date**: ${ts.split('T')[0]}`);
   }
   return `> ${parts.join(' | ')}\n\n`;
@@ -88,17 +92,17 @@ function buildRunInfoBlock(runManifest: RunManifest): string {
 function buildOrphanedEvidenceSection(
   orphanedKeys: string[],
   runManifest: RunManifest,
-  runDir?: string,
 ): string {
   if (orphanedKeys.length === 0) return '';
+  const runSteps = runManifest.steps ?? {};
   let md = '\n---\n\n## Orphaned Evidence\n\n';
   md +=
     '_The following evidence from the run manifest did not match any step in the current operation._\n\n';
   for (const key of orphanedKeys) {
-    const step = runManifest.steps![key];
+    const step = runSteps[key];
     md += `### ${key}\n\n`;
     for (const item of step.evidence) {
-      md += renderEvidenceItemMarkdown(item, runDir);
+      md += renderEvidenceItemMarkdown(item);
     }
   }
   return md;
@@ -122,7 +126,7 @@ function renderEvidenceItemMarkdown(
     if (item.type === 'screenshot' || item.type === 'photo') {
       md += `![Evidence](${item.file})\n\n`;
     } else if (item.type === 'command_output' || item.type === 'log') {
-      const lang = item.type === 'command_output' ? 'bash' : 'text';
+      const lang = evidenceLang(item.type);
       try {
         const resolved = baseDir ? path.resolve(baseDir, item.file) : item.file;
         const content = fs.readFileSync(resolved, 'utf-8');
@@ -134,8 +138,7 @@ function renderEvidenceItemMarkdown(
       md += `[View ${item.type}](${item.file})\n\n`;
     }
   } else if (item.content) {
-    const lang = item.type === 'command_output' ? 'bash' : 'text';
-    md += `\`\`\`${lang}\n${item.content.trimEnd()}\n\`\`\`\n\n`;
+    md += `\`\`\`${evidenceLang(item.type)}\n${item.content.trimEnd()}\n\`\`\`\n\n`;
   }
   return md;
 }
@@ -229,8 +232,7 @@ function formatEvidenceInfo(
             try {
               const filePath = path.resolve(operationDir, evidenceResult.file);
               const fileContent = fs.readFileSync(filePath, 'utf-8');
-              const language =
-                evidenceResult.type === 'command_output' ? 'bash' : 'text';
+              const language = evidenceLang(evidenceResult.type);
               const escapedContent = fileContent
                 .replace(/\|/g, '\\|')
                 .replace(/\n/g, '<br>');
@@ -253,8 +255,7 @@ function formatEvidenceInfo(
           }
         } else if (evidenceResult.content) {
           // Inline content - render in code block
-          const language =
-            evidenceResult.type === 'command_output' ? 'bash' : 'text';
+          const language = evidenceLang(evidenceResult.type);
           // Escape pipe characters and convert newlines
           const escapedContent = evidenceResult.content
             .replace(/\|/g, '\\|')
