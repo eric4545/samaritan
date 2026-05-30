@@ -1,0 +1,37 @@
+id: staging-2025-10-16-v1
+operation: ../operations/features/evidence-with-results.yaml
+operation_commit: abc123def456
+environment: staging
+started_at: "2025-10-16T10:00:00Z"
+completed_at: "2025-10-16T11:30:00Z"
+operator: ops@example.com
+status: completed
+
+steps:
+  deploy-application:
+    captured_at: "2025-10-16T10:30:00Z"
+    evidence:
+      - type: command_output
+        content: |
+          deployment.apps/web-server created
+          service/web-server created
+          NAME      READY   STATUS    RESTARTS   AGE
+          pod/web-0 1/1     Running   0          10s
+        description: "Deployment command output (run 2025-10-16)"
+      - type: screenshot
+        file: ./evidence/staging-dashboard.png
+        description: "Dashboard screenshot at 10:30 UTC"
+
+  manual-verification:
+    captured_at: "2025-10-16T11:00:00Z"
+    evidence:
+      - type: screenshot
+        file: ./evidence/staging-homepage.png
+        description: "Homepage showing Welcome message"
+
+  orphaned-step:
+    captured_at: "2025-10-16T11:20:00Z"
+    evidence:
+      - type: command_output
+        content: "some output from a step that no longer exists"
+        description: "Evidence from removed step"

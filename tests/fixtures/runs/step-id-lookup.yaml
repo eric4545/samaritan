@@ -1,0 +1,11 @@
+id: test-run-step-id
+operation: ../operations/features/with-step-ids.yaml
+environment: staging
+status: completed
+
+steps:
+  my-step-id:
+    evidence:
+      - type: command_output
+        content: "output via step id"
+        description: "Found via step.id"
