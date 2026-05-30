@@ -9,7 +9,7 @@ Define operations once, execute anywhere with complete audit trails, evidence co
 
 ## 🚀 Quick Start
 
-**No installation required!** Run SAMARITAN directly from GitHub:
+**Requires Node.js 22+.** Run SAMARITAN directly from GitHub without installation:
 
 ```bash
 # Validate an operation definition
@@ -30,7 +30,7 @@ npx github:eric4545/samaritan#branch-name validate my-operation.yaml
 - [Core Concepts](#-core-concepts)
 - [CLI Commands](#-cli-commands)
 - [Operation Definition](#-operation-definition)
-- [Interactive Execution Engine](#-interactive-execution-engine)
+- [Interactive Execution & Run Commands](#-interactive-execution--run-commands)
 - [Execution Workflows](#-execution-workflows)
 - [Examples](#-examples)
 - [Roadmap](#-roadmap)
@@ -81,12 +81,20 @@ steps:
       required: true
       types: [screenshot, command_output]
       results:
-        - type: screenshot
-          file: ./evidence/deployment-dashboard.png
-          description: Kubernetes dashboard showing 3 pods running
-        - type: command_output
-          file: ./evidence/deployment-logs.txt
-          description: Deployment output from kubectl
+        staging:
+          - type: screenshot
+            file: ./evidence/staging-dashboard.png
+            description: Kubernetes dashboard showing 3 pods running
+          - type: command_output
+            file: ./evidence/staging-deploy.log
+            description: Deployment output from kubectl
+        production:
+          - type: screenshot
+            file: ./evidence/prod-dashboard.png
+            description: Kubernetes dashboard showing 5 pods running
+          - type: command_output
+            file: ./evidence/prod-deploy.log
+            description: Deployment output from kubectl
 ```
 
 **Example with inline content:**
@@ -99,20 +107,31 @@ steps:
       required: true
       types: [command_output, log]
       results:
-        - type: command_output
-          content: |
-            deployment.apps/web-server created
-            service/web-server created
-            NAME         READY   STATUS    RESTARTS   AGE
-            pod/web-0    1/1     Running   0          10s
-            pod/web-1    1/1     Running   0          10s
-          description: Successful deployment output
-        - type: log
-          content: |
-            [2025-10-16 10:30:00] INFO: Application started
-            [2025-10-16 10:30:05] INFO: Database connection established
-            [2025-10-16 10:30:10] INFO: Ready to accept connections
-          description: Application startup logs
+        staging:
+          - type: command_output
+            content: |
+              deployment.apps/web-server created
+              service/web-server created
+              NAME         READY   STATUS    RESTARTS   AGE
+              pod/web-0    1/1     Running   0          10s
+              pod/web-1    1/1     Running   0          10s
+            description: Successful staging deployment output
+          - type: log
+            content: |
+              [2025-10-16 10:30:00] INFO: Application started
+              [2025-10-16 10:30:05] INFO: Database connection established
+              [2025-10-16 10:30:10] INFO: Ready to accept connections
+            description: Application startup logs
+        production:
+          - type: command_output
+            content: |
+              deployment.apps/web-server created
+              service/web-server created
+              NAME         READY   STATUS    RESTARTS   AGE
+              pod/web-0    1/1     Running   0          10s
+              pod/web-1    1/1     Running   0          10s
+              pod/web-2    1/1     Running   0          10s
+            description: Production deployment output
 ```
 
 **Generated Manual Rendering:**
@@ -128,14 +147,19 @@ Evidence results are automatically rendered in generated manuals:
 evidence:
   required: true              # Optional: whether evidence is required
   types: [screenshot, log]    # Optional: expected evidence types
-  results:                    # Optional: pre-captured evidence
-    - type: screenshot        # Required: evidence type
-      file: ./path/to/file    # Either 'file' OR 'content' required
-      description: Description text  # Optional
-    - type: command_output
-      content: |              # Inline content (alternative to 'file')
-        Command output here
-      description: Description text  # Optional
+  results:                    # Optional: pre-captured evidence, keyed by environment name
+    staging:                  # Environment name (must match an environment defined in the operation)
+      - type: screenshot      # Required: evidence type
+        file: ./path/to/file  # Either 'file' OR 'content' required
+        description: Description text  # Optional
+      - type: command_output
+        content: |            # Inline content (alternative to 'file')
+          Command output here
+        description: Description text  # Optional
+    production:
+      - type: screenshot
+        file: ./evidence/prod/dashboard.png
+        description: Production dashboard
 ```
 
 **Supported Evidence Types:**
@@ -239,6 +263,25 @@ SAMARITAN supports importing reusable step templates using the `template:` direc
 - **Simplify maintenance** by updating templates in one place
 - **Share best practices** across teams
 
+#### Template Sources
+
+Templates can be loaded from three sources:
+
+```yaml
+steps:
+  # Local file (relative to the importing operation)
+  - template: ./templates/health-checks.yaml
+    with: { ENDPOINT: https://api.example.com }
+
+  # HTTPS URL
+  - template: https://raw.githubusercontent.com/org/repo/main/templates/deploy.yaml
+    with: { SERVICE: my-app }
+
+  # GitHub shorthand
+  - template: github:org/repo/path/to/template.yaml
+    with: { NAMESPACE: production }
+```
+
 #### Creating Templates
 
 Templates can be:
@@ -340,6 +383,13 @@ npx github:eric4545/samaritan validate <operation.yaml> [options]
   --env <environment>   Validate for specific environment
   -v, --verbose         Verbose output
 
+# Execute an operation interactively
+npx github:eric4545/samaritan run <operation.yaml> [options]
+  --env <environment>   Target environment (required)
+  --var KEY=VALUE       Override a variable (repeatable)
+  --dry-run             Preview steps without executing
+  --auto-approve        Skip manual approval prompts
+
 # Generate documentation
 npx github:eric4545/samaritan generate manual <operation.yaml> [options]
   --output <file>       Output file (default: stdout)
@@ -371,7 +421,7 @@ npx github:eric4545/samaritan schema [options]
 npx github:eric4545/samaritan init [directory]
 
 # Create operation from template
-npx github:eric4545/samaritan operation [options]
+npx github:eric4545/samaritan create operation [options]
   --template <type>     Operation template (deployment, backup, incident-response, maintenance)
   --env <environments>  Target environments (comma-separated)
 ```
@@ -413,6 +463,60 @@ steps:
     type: manual  # IDE shows available types
     instruction: Deploy the application
 ```
+
+### Quick Reference Handbook (QRH)
+
+The `qrh` command is a built-in emergency procedures database — aviation-style quick reference cards for P0/P1 incidents. QRH entries live in a `./qrh/` directory as YAML files and can be searched, listed, inspected, and executed without opening an operation file.
+
+```bash
+# Search procedures by keyword
+npx github:eric4545/samaritan qrh search "database" [--priority P0] [--category incident]
+
+# List all procedures (or filter by priority/category)
+npx github:eric4545/samaritan qrh list [--priority P0|P1|P2|P3] [--category incident|alert|maintenance|emergency]
+
+# Show a procedure's details
+npx github:eric4545/samaritan qrh show <procedure-id> [--verbose]
+
+# Execute a procedure
+npx github:eric4545/samaritan qrh run <procedure-id> [--env <environment>]
+```
+
+**QRH entry format** (`./qrh/db-failover.yaml`):
+```yaml
+qrh:
+  id: db-failover
+  title: Database Primary Failover
+  category: incident
+  priority: P0
+  keywords: [database, failover, postgres, primary, replica]
+  estimated_time: 15  # minutes
+  description: Promote replica to primary when primary becomes unavailable
+  prerequisites:
+    - Verify replica lag is < 5 minutes
+    - Alert on-call DBA
+  procedure:
+    - name: Check replication lag
+      type: manual
+      instruction: |
+        Check lag on all replicas:
+        ```bash
+        psql -h replica.db -c "SELECT now() - pg_last_xact_replay_timestamp() AS lag"
+        ```
+    - name: Promote replica
+      type: manual
+      instruction: |
+        ```bash
+        pg_ctl promote -D /var/lib/postgresql/data
+        ```
+  troubleshooting_tips:
+    - If promotion fails, check pg_hba.conf on the replica
+    - Verify no other replica has already been promoted
+  related_operations:
+    - ./operations/database-maintenance.yaml
+```
+
+Results are sorted by priority (P0 first). The `qrh run` subcommand converts the procedure into an operation and executes it.
 
 ## 📝 Operation Definition
 
@@ -736,6 +840,25 @@ steps:
       types: [screenshot]
 ```
 
+#### Person In Charge & Reviewer
+
+Aviation-inspired fields that identify who executes and who monitors each step. Generated manuals include sign-off checkboxes for both when these fields are set.
+
+```yaml
+steps:
+  - name: Deploy Application
+    type: manual
+    pic: ops-team@example.com       # Person In Charge — executes this step
+    reviewer: sre-lead@example.com  # Reviewer/buddy — monitors and signs off
+    instruction: |
+      Deploy the application to Kubernetes:
+      ```bash
+      kubectl apply -f deployment.yaml
+      ```
+```
+
+The `pic` and `reviewer` fields can also be set per-environment using `variants` (see [Environment-Specific Steps](#environment-specific-steps-when-and-variants) above).
+
 #### Reusable Step Libraries
 
 ```yaml
@@ -879,6 +1002,65 @@ Use `section_heading: true` to break up long operations into logical sections. S
 - Can be used at any nesting level
 
 See `examples/nested-deployment.yaml` for a complete multi-tier deployment example.
+
+#### Environment-Specific Steps (`when` and `variants`)
+
+Use `when` to restrict a step to specific environments, and `variants` to override step fields per environment — without duplicating the whole step.
+
+**`when` — show a step only in certain environments:**
+```yaml
+steps:
+  - name: Enable production monitoring
+    type: manual
+    when: [production]           # This step only appears in the production manual
+    instruction: Configure DataDog production alerts
+    pic: ops-lead@example.com
+```
+
+**`variants` — environment-specific overrides:**
+```yaml
+steps:
+  - name: Deploy application
+    type: manual
+    instruction: kubectl apply -f deployment.yaml   # default
+    command: kubectl apply -f deployment.yaml
+    variants:
+      production:
+        instruction: |
+          Deploy to production with blue-green strategy
+          ```bash
+          kubectl apply -f deployment.yaml --replicas=10 --strategy=blue-green
+          ```
+        command: kubectl apply -f deployment.yaml --replicas=10 --strategy=blue-green
+        timeout: 600
+        pic: senior-sre@example.com
+        reviewer: ops-manager@example.com
+      staging:
+        command: kubectl apply -f deployment-staging.yaml --replicas=2
+```
+
+**Combined `when` + `variants`:**
+```yaml
+steps:
+  - name: Database migration
+    type: manual
+    when: [preprod, production]  # skip staging entirely
+    instruction: Run migration
+    command: npm run migrate
+    variants:
+      production:
+        instruction: |
+          Run migration with backup first
+          ```bash
+          npm run db:backup && npm run migrate --safe-mode
+          ```
+        reviewer: senior-dba@example.com
+        timeout: 1800
+```
+
+Fields you can override in `variants`: `instruction`, `command`, `timeout`, `pic`, `reviewer`, `evidence`.
+
+See `tests/fixtures/operations/features/when-and-variants.yaml` for a complete example.
 
 #### Foreach Loops (Repeatable Steps)
 
@@ -1120,13 +1302,13 @@ gantt
 See `tests/fixtures/operations/confluence/gantt-timeline.yaml` for a complete example.
 
 
-## ⚡ Interactive Execution Engine *(In Development)*
+## ⚡ Interactive Execution & Run Commands
 
-> **Status**: The individual components (tmux bootstrap, TUI, JSONL event logger, assertions, capture) are implemented and tested. End-to-end wiring of `samaritan run` to the interactive engine is in progress — the current `run` command falls back to the basic `OperationExecutor`. The YAML schema, `report` command, and single-env manual generation are fully functional today.
+> **Status**: The YAML schema, `report` command, named sessions, assertions, capture, rollback, and single-env manual generation are fully functional today. End-to-end wiring of `samaritan run` to the interactive TUI is in progress — the `run` command currently uses the basic executor. The components below (tmux bootstrap, JSONL event logger, assertions, capture) are implemented and tested individually.
 
-SAMARITAN's interactive execution engine will let you run operations step-by-step with automated verification, output capture, and a full JSONL audit trail backed by `tmux`.
+SAMARITAN's execution engine lets you run operations step-by-step with automated verification, output capture, and a full JSONL audit trail backed by `tmux`.
 
-### Planned flow
+### Execution flow
 
 ```
 samaritan run deployment-with-run.yaml --env production

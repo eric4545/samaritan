@@ -16,7 +16,7 @@
 - ✅ Multi-environment support
 - ✅ Evidence requirement models
 - ✅ Template-based operation creation
-- ✅ Comprehensive test suite (154 tests passing)
+- ✅ Comprehensive test suite (161 tests passing)
 
 ### Documentation
 - ✅ README.md with examples and workflows
