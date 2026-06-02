@@ -1,5 +1,5 @@
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { readFileSync, statSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SessionConfig } from '../models/operation';
@@ -28,20 +28,16 @@ export class TmuxSession {
   }
 
   currentOffset(sessionName: string): number {
-    const pipeFile = this.getPipeFilePath(sessionName);
-    if (!existsSync(pipeFile)) return 0;
     try {
-      return statSync(pipeFile).size;
+      return statSync(this.getPipeFilePath(sessionName)).size;
     } catch {
       return 0;
     }
   }
 
   readOutput(sessionName: string, fromOffset: number): string {
-    const pipeFile = this.getPipeFilePath(sessionName);
-    if (!existsSync(pipeFile)) return '';
     try {
-      const buf = readFileSync(pipeFile);
+      const buf = readFileSync(this.getPipeFilePath(sessionName));
       return buf.slice(fromOffset).toString('utf-8');
     } catch {
       return '';
@@ -97,13 +93,10 @@ export class TmuxSession {
       // session may already be gone
     }
     for (const name of this.paneMap.keys()) {
-      const pipeFile = this.getPipeFilePath(name);
-      if (existsSync(pipeFile)) {
-        try {
-          unlinkSync(pipeFile);
-        } catch {
-          // best effort
-        }
+      try {
+        unlinkSync(this.getPipeFilePath(name));
+      } catch {
+        // best effort
       }
     }
   }

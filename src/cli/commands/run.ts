@@ -162,7 +162,13 @@ class OperationRunner {
         executor.finalizeOperation();
 
         if (options.report && logPath) {
-          this.writeReport(options.report, session.id, logPath);
+          mkdirSync(options.report, { recursive: true });
+          const reportFile = join(
+            options.report,
+            `samaritan-${session.id}-report.md`,
+          );
+          writeFileSync(reportFile, generateReport(logPath), 'utf-8');
+          console.log(`📄 Report: ${reportFile}`);
         }
 
         tmuxSession?.teardown();
@@ -362,6 +368,9 @@ class OperationRunner {
       : null;
 
     const DIVIDER = '─'.repeat(60);
+    const isQuit = (c: string) => c === 'q' || c === 'quit';
+    const isSkip = (c: string) => c === 's' || c === 'skip';
+    const isRollback = (c: string) => c === 'r' || c === 'rollback';
 
     const tryResolve = (text: string | undefined): string | undefined => {
       if (!text) return text;
@@ -432,15 +441,15 @@ class OperationRunner {
               '\n    ▶  Send to tmux? [Enter=yes / s=skip / r=rollback / q=quit]: ',
             );
             const choice = ans.trim().toLowerCase();
-            if (choice === 'q' || choice === 'quit') {
+            if (isQuit(choice)) {
               console.log('\n⛔ Execution aborted by operator.');
               break;
             }
-            if (choice === 'r' || choice === 'rollback') {
+            if (isRollback(choice)) {
               await doRollback(step, i);
               continue;
             }
-            if (choice === 's' || choice === 'skip') {
+            if (isSkip(choice)) {
               executor.skipStep(i);
               console.log('    ⏭  Skipped.');
               continue;
@@ -479,7 +488,7 @@ class OperationRunner {
                       reason: reason.trim(),
                     });
                     console.log('    ⚠️  Override accepted.');
-                  } else if (oc === 'r' || oc === 'rollback') {
+                  } else if (isRollback(oc)) {
                     await doRollback(step, i);
                     continue;
                   } else {
@@ -503,15 +512,15 @@ class OperationRunner {
               '\n    ▶  Execute? [Enter=yes / s=skip / r=rollback / q=quit]: ',
             );
             const choice = ans.trim().toLowerCase();
-            if (choice === 'q' || choice === 'quit') {
+            if (isQuit(choice)) {
               console.log('\n⛔ Execution aborted by operator.');
               break;
             }
-            if (choice === 'r' || choice === 'rollback') {
+            if (isRollback(choice)) {
               await doRollback(step, i);
               continue;
             }
-            if (choice === 's' || choice === 'skip') {
+            if (isSkip(choice)) {
               executor.skipStep(i);
               console.log('    ⏭  Skipped.');
               continue;
@@ -538,11 +547,11 @@ class OperationRunner {
             console.log('\n⛔ Execution aborted by operator.');
             break;
           }
-          if (choice === 'r' || choice === 'rollback') {
+          if (isRollback(choice)) {
             await doRollback(step, i);
             continue;
           }
-          if (choice === 'skip') {
+          if (isSkip(choice)) {
             executor.skipStep(i);
             console.log('    ⏭  Skipped.');
             continue;
@@ -563,7 +572,7 @@ class OperationRunner {
             '\n    ⚡ "approve" / "reject" / "r" (rollback) / "skip": ',
           );
           const choice = ans.trim().toLowerCase();
-          if (choice === 'r' || choice === 'rollback') {
+          if (isRollback(choice)) {
             await doRollback(step, i);
             continue;
           }
@@ -614,17 +623,6 @@ class OperationRunner {
     }
 
     return logger.path;
-  }
-
-  private writeReport(
-    reportDir: string,
-    sessionId: string,
-    logPath: string,
-  ): void {
-    mkdirSync(reportDir, { recursive: true });
-    const reportFile = join(reportDir, `samaritan-${sessionId}-report.md`);
-    writeFileSync(reportFile, generateReport(logPath), 'utf-8');
-    console.log(`📄 Report: ${reportFile}`);
   }
 
   private async parseOperationFile(filePath: string): Promise<Operation> {
