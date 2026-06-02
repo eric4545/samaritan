@@ -124,7 +124,7 @@ describe('Manual Generator Unit Tests', () => {
       stepsTableMatch && stepsTableMatch.length === 6,
       'Should have 6 step table rows',
     );
-    if (typeof t.assert?.snapshot === 'function') t.assert.snapshot(markdown);
+    t.assert.snapshot(markdown);
   });
 
   it('should handle single environment operations', () => {
@@ -2019,7 +2019,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
       overviewIndex < environmentsIndex || environmentsIndex === -1,
       'Overview should appear before Environments section',
     );
-    if (typeof t.assert?.snapshot === 'function') t.assert.snapshot(markdown);
+    t.assert.snapshot(markdown);
   });
 
   it('should render evidence results (file references and inline content)', async (t) => {
@@ -2103,7 +2103,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
       capturedEvidenceCount === 6,
       'Should have 6 Captured Evidence sections (3 steps with results × 2 environments)',
     );
-    if (typeof t.assert?.snapshot === 'function') t.assert.snapshot(markdown);
+    t.assert.snapshot(markdown);
   });
 
   it('should handle evidence results with file-only and content-only', () => {
@@ -2373,13 +2373,13 @@ describe('Verify / expect rendering snapshots', () => {
     const op = await parseFixture('withCaptureExpect');
     const md = generateManual(op);
     assert.ok(md.includes('#'), 'renders headings');
-    if (typeof t.assert?.snapshot === 'function') t.assert.snapshot(md);
+    t.assert.snapshot(md);
   });
 
   it('multi-env table: verify string shorthand normalised to expect-only', async (t) => {
     const op = await parseFixture('withSessions');
     const md = generateManual(op);
     assert.ok(md.includes('#'), 'renders headings');
-    if (typeof t.assert?.snapshot === 'function') t.assert.snapshot(md);
+    t.assert.snapshot(md);
   });
 });
