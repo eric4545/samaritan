@@ -8,8 +8,8 @@ overview:
   Release Ticket: "DEPLOY-1042"
   EPIC Tickets: "https://github.com/project/issues/152"
   Manual Status: "APPROVED"
-  War Room: "https://zoom.us/j/warroom-rehearsal"
-  Production Release War Room: "https://zoom.us/j/warroom-prod"
+  War Room: "https://meet.example.com/rehearsal-room"
+  Production Release War Room: "https://meet.example.com/prod-room"
 
 environments:
   - name: production

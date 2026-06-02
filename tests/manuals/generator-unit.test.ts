@@ -2000,12 +2000,14 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should show Manual Status field',
     );
     assert(
-      markdown.includes('| War Room | https://zoom.us/j/warroom-rehearsal |'),
+      markdown.includes(
+        '| War Room | https://meet.example.com/rehearsal-room |',
+      ),
       'Should show War Room field',
     );
     assert(
       markdown.includes(
-        '| Production Release War Room | https://zoom.us/j/warroom-prod |',
+        '| Production Release War Room | https://meet.example.com/prod-room |',
       ),
       'Should show Production Release War Room field',
     );

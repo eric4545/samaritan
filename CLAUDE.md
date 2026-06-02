@@ -557,7 +557,7 @@ The `.gitignore` contains `manuals/` which also matches `src/manuals/`, so plain
 ---
 
 **Last Updated**: 2025-10-17
-**Maintainer**: @eric4545
+**Maintainer**: @sre-team
 
 For questions or clarifications, check:
 1. This file (CLAUDE.md)
