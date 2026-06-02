@@ -30,7 +30,7 @@ export type LogEvent = Omit<BaseEvent, 'ts' | 'session_id'> &
 
 export interface EventLogger {
   emit(event: LogEvent): void;
-  close(): void;
+  close(extra?: Record<string, unknown>): void;
   path: string;
 }
 
@@ -46,8 +46,8 @@ export function createEventLogger(sessionId: string): EventLogger {
     appendFileSync(logPath, `${JSON.stringify(fullEvent)}\n`, 'utf-8');
   }
 
-  function close(): void {
-    emit({ type: 'session_end' });
+  function close(extra?: Record<string, unknown>): void {
+    emit({ type: 'session_end', ...extra });
   }
 
   return { emit, close, path: logPath };

@@ -68,19 +68,21 @@ export function assertOutput(
   }
 
   if (expect.any_line_contains !== undefined) {
+    const target = expect.any_line_contains;
     return {
-      pass: lines.some((l) => l.includes(expect.any_line_contains as string)),
+      pass: lines.some((l) => l.includes(target)),
       actual: trimmed,
-      expected: expect.any_line_contains,
+      expected: target,
       type: 'any_line_contains',
     };
   }
 
   if (expect.no_line_contains !== undefined) {
+    const target = expect.no_line_contains;
     return {
-      pass: !lines.some((l) => l.includes(expect.no_line_contains as string)),
+      pass: !lines.some((l) => l.includes(target)),
       actual: trimmed,
-      expected: `no line contains "${expect.no_line_contains}"`,
+      expected: `no line contains "${target}"`,
       type: 'no_line_contains',
     };
   }

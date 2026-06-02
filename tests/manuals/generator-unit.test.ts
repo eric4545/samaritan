@@ -124,8 +124,6 @@ describe('Manual Generator Unit Tests', () => {
       stepsTableMatch && stepsTableMatch.length === 6,
       'Should have 6 step table rows',
     );
-
-    // Snapshot the complete manual for regression testing
     t.assert.snapshot(markdown);
   });
 
@@ -2021,8 +2019,6 @@ echo "Deploying at: \${TIMESTAMP}"`,
       overviewIndex < environmentsIndex || environmentsIndex === -1,
       'Overview should appear before Environments section',
     );
-
-    // Snapshot the complete manual
     t.assert.snapshot(markdown);
   });
 
@@ -2107,8 +2103,6 @@ echo "Deploying at: \${TIMESTAMP}"`,
       capturedEvidenceCount === 6,
       'Should have 6 Captured Evidence sections (3 steps with results × 2 environments)',
     );
-
-    // Snapshot test
     t.assert.snapshot(markdown);
   });
 
@@ -2378,12 +2372,14 @@ describe('Verify / expect rendering snapshots', () => {
   it('multi-env table: verify with command+expect, expect-only, and verify-only-command', async (t) => {
     const op = await parseFixture('withCaptureExpect');
     const md = generateManual(op);
+    assert.ok(md.includes('#'), 'renders headings');
     t.assert.snapshot(md);
   });
 
   it('multi-env table: verify string shorthand normalised to expect-only', async (t) => {
     const op = await parseFixture('withSessions');
     const md = generateManual(op);
+    assert.ok(md.includes('#'), 'renders headings');
     t.assert.snapshot(md);
   });
 });

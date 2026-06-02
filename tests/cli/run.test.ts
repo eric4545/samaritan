@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
@@ -254,7 +254,6 @@ describe('resume command: session persistence', () => {
     // Check that at least one session JSON was written
     const sessionDir = join(homedir(), '.samaritan', 'sessions');
     if (existsSync(sessionDir)) {
-      const { readdirSync } = require('node:fs');
       const files = readdirSync(sessionDir).filter((f: string) =>
         f.endsWith('.json'),
       );
@@ -265,5 +264,49 @@ describe('resume command: session persistence', () => {
     }
     // If the directory doesn't exist yet, the feature isn't broken — just skipped.
     // The real persistence check is that resume works across processes (next test).
+  });
+});
+
+// ─── --report flag ───────────────────────────────────────────────────────────
+
+describe('run command: --report flag', () => {
+  it('--report flag creates Markdown evidence report in specified directory', () => {
+    const fixture = fixturePath('minimal');
+    const reportDir = mkdtempSync(join(tmpdir(), 'samaritan-report-'));
+
+    try {
+      runCli(['run', fixture, '--env', 'default', '--report', reportDir], {
+        input: 'q\n',
+        timeout: 30_000,
+      });
+
+      const files = readdirSync(reportDir);
+      const mdFiles = files.filter((f) => f.endsWith('.md'));
+      assert.ok(
+        mdFiles.length > 0,
+        `should create at least one .md file in report dir, got: [${files.join(', ')}]`,
+      );
+    } finally {
+      rmSync(reportDir, { recursive: true, force: true });
+    }
+  });
+
+  it('--report flag prints report path to stdout', () => {
+    const fixture = fixturePath('minimal');
+    const reportDir = mkdtempSync(join(tmpdir(), 'samaritan-report-'));
+
+    try {
+      const result = runCli(
+        ['run', fixture, '--env', 'default', '--report', reportDir],
+        { input: 'q\n', timeout: 30_000 },
+      );
+      const combined = result.stdout + result.stderr;
+      assert.ok(
+        combined.includes('.md') || combined.includes('report'),
+        'output should mention the report file or "report"',
+      );
+    } finally {
+      rmSync(reportDir, { recursive: true, force: true });
+    }
   });
 });

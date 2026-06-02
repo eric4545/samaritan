@@ -1,5 +1,5 @@
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { readFileSync, statSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SessionConfig } from '../models/operation';
@@ -24,24 +24,20 @@ export class TmuxSession {
 
   send(sessionName: string, command: string): void {
     const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
-    execSync(`tmux send-keys -t ${pane} ${JSON.stringify(command)} Enter`);
+    spawnSync('tmux', ['send-keys', '-t', pane, command, 'Enter']);
   }
 
   currentOffset(sessionName: string): number {
-    const pipeFile = this.getPipeFilePath(sessionName);
-    if (!existsSync(pipeFile)) return 0;
     try {
-      return statSync(pipeFile).size;
+      return statSync(this.getPipeFilePath(sessionName)).size;
     } catch {
       return 0;
     }
   }
 
   readOutput(sessionName: string, fromOffset: number): string {
-    const pipeFile = this.getPipeFilePath(sessionName);
-    if (!existsSync(pipeFile)) return '';
     try {
-      const buf = readFileSync(pipeFile);
+      const buf = readFileSync(this.getPipeFilePath(sessionName));
       return buf.slice(fromOffset).toString('utf-8');
     } catch {
       return '';
@@ -51,23 +47,43 @@ export class TmuxSession {
   async waitForPrompt(
     sessionName: string,
     timeoutMs: number,
-    promptPattern = '\\$\\s*$',
-  ): Promise<'done' | 'timeout'> {
+    promptPattern?: string,
+    idleThresholdMs = 0,
+  ): Promise<'done' | 'timeout' | 'idle'> {
     const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
     const deadline = Date.now() + timeoutMs;
-    const re = new RegExp(promptPattern, 'm');
+    const re = new RegExp(promptPattern ?? '\\$\\s*$', 'm');
+    const pollMs = 200;
+
+    let lastSize = idleThresholdMs > 0 ? this.currentOffset(sessionName) : 0;
+    let lastChangeTime = Date.now();
 
     while (Date.now() < deadline) {
       const result = spawnSync('tmux', ['capture-pane', '-p', '-t', pane]);
       const output = result.stdout?.toString() ?? '';
       if (re.test(output)) return 'done';
-      await sleep(500);
+
+      if (idleThresholdMs > 0) {
+        const size = this.currentOffset(sessionName);
+        if (size !== lastSize) {
+          lastSize = size;
+          lastChangeTime = Date.now();
+        } else if (Date.now() - lastChangeTime >= idleThresholdMs) {
+          return 'idle';
+        }
+      }
+
+      await sleep(pollMs);
     }
     return 'timeout';
   }
 
   registerPane(sessionName: string, paneTarget: string): void {
     this.paneMap.set(sessionName, paneTarget);
+  }
+
+  getPaneMap(): ReadonlyMap<string, string> {
+    return this.paneMap;
   }
 
   teardown(): void {
@@ -77,13 +93,10 @@ export class TmuxSession {
       // session may already be gone
     }
     for (const name of this.paneMap.keys()) {
-      const pipeFile = this.getPipeFilePath(name);
-      if (existsSync(pipeFile)) {
-        try {
-          unlinkSync(pipeFile);
-        } catch {
-          // best effort
-        }
+      try {
+        unlinkSync(this.getPipeFilePath(name));
+      } catch {
+        // best effort
       }
     }
   }
@@ -121,9 +134,13 @@ export async function bootstrapSessions(
       const userAtHost = config.user
         ? `${config.user}@${config.host}`
         : config.host;
-      execSync(
-        `tmux send-keys -t ${paneTarget} ${JSON.stringify(`ssh ${userAtHost}`)} Enter`,
-      );
+      spawnSync('tmux', [
+        'send-keys',
+        '-t',
+        paneTarget,
+        `ssh ${userAtHost}`,
+        'Enter',
+      ]);
     }
 
     // Wait for prompt after connecting

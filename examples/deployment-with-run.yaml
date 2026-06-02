@@ -4,6 +4,12 @@ description: |
   Production Kubernetes deployment with automated verification, rollback,
   and a separate monitoring session for read-only validation.
 
+  Run interactively:
+    samaritan run deployment-with-run.yaml --env production --report ./evidence
+
+  Dry-run (preview only):
+    samaritan run deployment-with-run.yaml --env production --dry-run
+
 # ─── Named tmux sessions ───────────────────────────────────────────────────────
 # SAMARITAN bootstraps one tmux pane per session. SSH sessions open automatically.
 # Local sessions (no host) run on the operator's machine.

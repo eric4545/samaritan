@@ -139,4 +139,12 @@ describe('Rollback support (issue #9)', () => {
 
     cleanLogger(logger);
   });
+
+  it('StepController has waitForCompletion method', () => {
+    assert.strictEqual(
+      typeof StepController.prototype.waitForCompletion,
+      'function',
+      'StepController must have waitForCompletion method',
+    );
+  });
 });

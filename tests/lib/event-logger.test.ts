@@ -115,4 +115,28 @@ describe('EventLogger (issue #7)', () => {
 
     if (existsSync(logger.path)) unlinkSync(logger.path);
   });
+
+  it('close() includes extra fields in session_end event', () => {
+    const logger = createEventLogger('test-close-meta');
+    logger.emit({ type: 'step_start', step: 0, name: 'Deploy' });
+    logger.close({ status: 'completed', steps_completed: 1 });
+
+    const content = readFileSync(logger.path, 'utf-8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const last = JSON.parse(lines[lines.length - 1]);
+    assert.strictEqual(last.type, 'session_end');
+    assert.strictEqual(last.status, 'completed');
+    assert.strictEqual(last.steps_completed, 1);
+    if (existsSync(logger.path)) unlinkSync(logger.path);
+  });
+
+  it('close() without extra fields still emits session_end', () => {
+    const logger = createEventLogger('test-close-bare');
+    logger.close();
+    const content = readFileSync(logger.path, 'utf-8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const last = JSON.parse(lines[lines.length - 1]);
+    assert.strictEqual(last.type, 'session_end');
+    if (existsSync(logger.path)) unlinkSync(logger.path);
+  });
 });

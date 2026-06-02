@@ -192,6 +192,19 @@ export class StepController {
     });
   }
 
+  async waitForCompletion(
+    sessionName: string,
+    timeoutMs: number,
+    idleThresholdMs = 0,
+  ): Promise<'done' | 'timeout' | 'idle'> {
+    return this.opts.tmux.waitForPrompt(
+      sessionName,
+      timeoutMs,
+      undefined,
+      idleThresholdMs,
+    );
+  }
+
   completeStep(stepIndex: number): void {
     this.opts.logger.emit({ type: 'step_complete', step: stepIndex });
   }

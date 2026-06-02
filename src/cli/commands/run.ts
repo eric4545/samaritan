@@ -1,13 +1,16 @@
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { createInterface as createReadlineInterface } from 'node:readline';
 import { Command } from 'commander';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
+import { generateReport } from '../../lib/report-generator';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import { SessionState } from '../../lib/session-state';
 import { bootstrapSessions, type TmuxSession } from '../../lib/tmux-session';
 import { StepController } from '../../lib/tui';
 import { resolveVars, resolveVarsSafe } from '../../lib/variable-resolver';
-import type { ExecutionMode, Operation } from '../../models/operation';
+import type { ExecutionMode, Operation, Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
 interface RunOptions {
@@ -20,6 +23,7 @@ interface RunOptions {
   verbose?: boolean;
   withAi?: boolean;
   continueOnError?: boolean;
+  report?: string;
 }
 
 interface ResumeOptions {
@@ -71,12 +75,24 @@ class OperationRunner {
     const executionMode: ExecutionMode =
       options.mode ?? (options.autoApprove ? 'automatic' : 'manual');
 
+    const operator = process.env.USER || 'unknown';
+
+    // Create session first so its ID can serve as the JSONL log identifier
+    const session = sessionManager.createSession(
+      operation.id,
+      targetEnv,
+      operator,
+      executionMode,
+      resolvedVars,
+      absFile,
+    );
+
     const context = {
       operationId: operation.id,
       environment: targetEnv,
       variables: resolvedVars,
-      operator: process.env.USER || 'unknown',
-      sessionId: `run-${operation.id}-${Date.now()}`,
+      operator,
+      sessionId: session.id,
       dryRun: options.dryRun || false,
       autoMode: executionMode === 'automatic' || options.autoApprove || false,
     };
@@ -98,15 +114,6 @@ class OperationRunner {
         '💡 Use --auto-approve to skip approval prompts or ensure approvals are pre-authorized.',
       );
     }
-
-    const session = sessionManager.createSession(
-      operation.id,
-      targetEnv,
-      context.operator,
-      executionMode,
-      resolvedVars,
-      absFile,
-    );
 
     console.log(`📋 Session: ${session.id}\n`);
 
@@ -145,15 +152,24 @@ class OperationRunner {
 
         console.log('▶️  Starting interactive operation execution...\n');
         executor.startInteractive();
-        await this.runInteractiveStepLoop(
+        const logPath = await this.runInteractiveStepLoop(
           executor,
           operation,
           absFile,
           resolvedVars,
-          executionMode,
           tmuxSession,
         );
         executor.finalizeOperation();
+
+        if (options.report && logPath) {
+          mkdirSync(options.report, { recursive: true });
+          const reportFile = join(
+            options.report,
+            `samaritan-${session.id}-report.md`,
+          );
+          writeFileSync(reportFile, generateReport(logPath), 'utf-8');
+          console.log(`📄 Report: ${reportFile}`);
+        }
 
         tmuxSession?.teardown();
       } else {
@@ -292,7 +308,6 @@ class OperationRunner {
       operation,
       session.operation_file,
       context.variables,
-      session.mode,
       tmuxSession,
     );
     executor.finalizeOperation();
@@ -304,23 +319,36 @@ class OperationRunner {
   private async runInteractiveStepLoop(
     executor: OperationExecutor,
     operation: Operation,
-    _operationFile: string,
+    operationFile: string,
     vars: Record<string, any>,
-    _mode: ExecutionMode,
     tmuxSession?: TmuxSession,
-  ): Promise<void> {
-    const { createInterface } = await import('node:readline/promises');
-    const rl = createInterface({
+  ): Promise<string> {
+    const rl = createReadlineInterface({
       input: process.stdin,
       output: process.stdout,
     });
+    const question = (prompt: string): Promise<string> =>
+      new Promise((resolve) => rl.question(prompt, resolve));
 
-    // Set up event logger + session state + step controller for tmux-backed steps
     const state = executor.getState();
     const logger = createEventLogger(state.context.sessionId);
+    console.log(`📝 Audit log: ${logger.path}`);
     const sessionState = new SessionState();
 
-    // Pre-populate session state with resolved operation variables
+    logger.emit({ type: 'session_start', op: operationFile });
+
+    if (tmuxSession && operation.sessions) {
+      for (const [name, pane] of tmuxSession.getPaneMap().entries()) {
+        const cfg = operation.sessions[name];
+        logger.emit({
+          type: 'session_open',
+          name,
+          host: cfg?.host ?? 'local',
+          pane,
+        });
+      }
+    }
+
     for (const [key, value] of Object.entries(vars)) {
       sessionState.capture(key, String(value));
     }
@@ -340,6 +368,9 @@ class OperationRunner {
       : null;
 
     const DIVIDER = '─'.repeat(60);
+    const isQuit = (c: string) => c === 'q' || c === 'quit';
+    const isSkip = (c: string) => c === 's' || c === 'skip';
+    const isRollback = (c: string) => c === 'r' || c === 'rollback';
 
     const tryResolve = (text: string | undefined): string | undefined => {
       if (!text) return text;
@@ -348,6 +379,21 @@ class OperationRunner {
       } catch {
         // Fall back to safe resolution (display with unresolved markers)
         return resolveVarsSafe(text, vars);
+      }
+    };
+
+    const doRollback = async (step: Step, i: number): Promise<void> => {
+      if (controller) {
+        console.log('    🔄 Initiating rollback...');
+        await controller.rollback(step, i, state.context.operator);
+        console.log('    ↩  Rollback complete.');
+      } else if (step.rollback && step.rollback.length > 0) {
+        console.log('    🔄 Rollback steps (manual — no tmux session):');
+        for (const rb of step.rollback) {
+          console.log(`      $ ${rb.command}`);
+        }
+      } else {
+        console.log('    ℹ️  No rollback defined for this step.');
       }
     };
 
@@ -366,6 +412,15 @@ class OperationRunner {
         const resolvedCommand = tryResolve(step.command);
         const resolvedInstruction = tryResolve(step.instruction);
 
+        // Emit step_start for every step so the report can reconstruct the timeline
+        logger.emit({
+          type: 'step_start',
+          step: i,
+          name: step.name,
+          pic: step.pic,
+          reviewer: step.reviewer,
+        });
+
         console.log(`\n${DIVIDER}`);
         console.log(`${stepNum} ${typeLabel}: ${step.name}`);
         if (step.description) console.log(`    ${step.description}`);
@@ -382,15 +437,19 @@ class OperationRunner {
 
           if (controller && step.session && resolvedCommand) {
             // tmux-backed automatic step
-            const ans = await rl.question(
-              '\n    ▶  Send to tmux? [Enter=yes / s=skip / q=quit]: ',
+            const ans = await question(
+              '\n    ▶  Send to tmux? [Enter=yes / s=skip / r=rollback / q=quit]: ',
             );
             const choice = ans.trim().toLowerCase();
-            if (choice === 'q' || choice === 'quit') {
+            if (isQuit(choice)) {
               console.log('\n⛔ Execution aborted by operator.');
               break;
             }
-            if (choice === 's' || choice === 'skip') {
+            if (isRollback(choice)) {
+              await doRollback(step, i);
+              continue;
+            }
+            if (isSkip(choice)) {
               executor.skipStep(i);
               console.log('    ⏭  Skipped.');
               continue;
@@ -415,67 +474,126 @@ class OperationRunner {
                   `    ${icon} Assert (${assertResult.type}): expected "${assertResult.expected}"`,
                 );
                 if (!assertResult.pass) {
-                  const override = await rl.question(
-                    '    ⚠️  Assertion failed. Override and continue? [y/N]: ',
+                  const overrideAns = await question(
+                    '    ⚠️  Assertion failed. [o=override with reason / r=rollback / Enter=stop]: ',
                   );
-                  if (override.trim().toLowerCase() !== 'y') {
+                  const oc = overrideAns.trim().toLowerCase();
+                  if (oc === 'o' || oc === 'override') {
+                    const reason = await question('    Reason for override: ');
+                    logger.emit({
+                      type: 'user_input',
+                      action: 'override',
+                      step: i,
+                      actor: state.context.operator,
+                      reason: reason.trim(),
+                    });
+                    console.log('    ⚠️  Override accepted.');
+                  } else if (isRollback(oc)) {
+                    await doRollback(step, i);
+                    continue;
+                  } else {
                     console.log('    ❌ Stopping due to failed assertion.');
                     break;
                   }
                 }
               }
               console.log(`    ✅ Verify: ${vState}`);
+              logger.emit({
+                type: 'user_input',
+                action: 'verify_ok',
+                step: i,
+                actor: state.context.operator,
+              });
             }
+            controller.completeStep(i);
           } else {
             // prompt-only automatic step
-            const ans = await rl.question(
-              '\n    ▶  Execute? [Enter=yes / s=skip / q=quit]: ',
+            const ans = await question(
+              '\n    ▶  Execute? [Enter=yes / s=skip / r=rollback / q=quit]: ',
             );
             const choice = ans.trim().toLowerCase();
-            if (choice === 'q' || choice === 'quit') {
+            if (isQuit(choice)) {
               console.log('\n⛔ Execution aborted by operator.');
               break;
             }
-            if (choice === 's' || choice === 'skip') {
+            if (isRollback(choice)) {
+              await doRollback(step, i);
+              continue;
+            }
+            if (isSkip(choice)) {
               executor.skipStep(i);
               console.log('    ⏭  Skipped.');
               continue;
             }
             await executor.executeStepManually(i, 'confirmed');
+            logger.emit({
+              type: 'user_input',
+              action: 'confirmed',
+              step: i,
+              actor: state.context.operator,
+            });
+            logger.emit({ type: 'step_complete', step: i });
             console.log('    ✅ Step marked complete.');
           }
         } else if (step.type === 'manual') {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
           if (resolvedCommand)
             console.log(`\n    Command reference:\n    $ ${resolvedCommand}`);
-          const notes = await rl.question(
-            '\n    ✋ Mark done (notes/Enter=confirm, "skip"=skip, "abort"=abort): ',
+          const notes = await question(
+            '\n    ✋ Mark done (notes/Enter=confirm, "r"=rollback, "skip"=skip, "abort"=abort): ',
           );
           const choice = notes.trim().toLowerCase();
           if (choice === 'abort') {
             console.log('\n⛔ Execution aborted by operator.');
             break;
           }
-          if (choice === 'skip') {
+          if (isRollback(choice)) {
+            await doRollback(step, i);
+            continue;
+          }
+          if (isSkip(choice)) {
             executor.skipStep(i);
             console.log('    ⏭  Skipped.');
             continue;
           }
           await executor.executeStepManually(i, notes.trim() || 'confirmed');
+          logger.emit({
+            type: 'user_input',
+            action: 'confirmed',
+            step: i,
+            actor: state.context.operator,
+            notes: notes.trim() || undefined,
+          });
+          logger.emit({ type: 'step_complete', step: i });
           console.log('    ✅ Step marked complete.');
         } else if (step.type === 'approval') {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
-          const ans = await rl.question(
-            '\n    ⚡ "approve" / "reject" / "skip": ',
+          const ans = await question(
+            '\n    ⚡ "approve" / "reject" / "r" (rollback) / "skip": ',
           );
           const choice = ans.trim().toLowerCase();
+          if (isRollback(choice)) {
+            await doRollback(step, i);
+            continue;
+          }
           if (choice === 'approve') {
             await executor.executeStepManually(i, 'approved');
-            logger.emit({ type: 'user_input', step: i, decision: 'approved' });
+            logger.emit({
+              type: 'user_input',
+              action: 'approved',
+              step: i,
+              actor: state.context.operator,
+            });
+            logger.emit({ type: 'step_complete', step: i });
             console.log('    ✅ Approved.');
           } else if (choice === 'reject') {
             executor.skipStep(i);
-            logger.emit({ type: 'user_input', step: i, decision: 'rejected' });
+            logger.emit({
+              type: 'user_input',
+              action: 'rejected',
+              step: i,
+              actor: state.context.operator,
+            });
             console.log('    ❌ Rejected — step skipped.');
           } else {
             executor.skipStep(i);
@@ -483,14 +601,28 @@ class OperationRunner {
           }
         } else {
           await executor.executeStepManually(i, 'confirmed');
+          logger.emit({ type: 'step_complete', step: i });
         }
       }
 
       console.log(`\n${DIVIDER}`);
     } finally {
       rl.close();
-      logger.close();
+      if (!process.stdin.destroyed) process.stdin.unref();
+      const finalState = executor.getState();
+      const endStatus =
+        finalState.failedSteps > 0
+          ? 'failed'
+          : finalState.waitingSteps > 0
+            ? 'paused'
+            : 'completed';
+      logger.close({
+        status: endStatus,
+        steps_completed: finalState.completedSteps,
+      });
     }
+
+    return logger.path;
   }
 
   private async parseOperationFile(filePath: string): Promise<Operation> {
@@ -626,6 +758,7 @@ const runCommand = new Command('run')
   .option('-v, --verbose', 'Verbose output')
   .option('--with-ai', 'Enable AI assistance during execution')
   .option('--continue-on-error', 'Continue execution even if steps fail')
+  .option('--report <dir>', 'Write Markdown evidence report to directory')
   .action(async (operation: string, options: RunOptions) => {
     try {
       const runner = new OperationRunner();

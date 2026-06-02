@@ -86,6 +86,57 @@ describe('TmuxSession (issue #6)', () => {
     // The intent is that the function exists and has the right signature
     assert.strictEqual(typeof session.send, 'function');
   });
+
+  it('getPaneMap returns registered panes as a ReadonlyMap', () => {
+    const session = new TmuxSession('pane-map-test', 'samaritan-pane-map-test');
+    session.registerPane('execution', 'samaritan-pane-map-test:0.0');
+    session.registerPane('verification', 'samaritan-pane-map-test:0.1');
+    const paneMap = session.getPaneMap();
+    assert.strictEqual(paneMap.get('execution'), 'samaritan-pane-map-test:0.0');
+    assert.strictEqual(
+      paneMap.get('verification'),
+      'samaritan-pane-map-test:0.1',
+    );
+    assert.strictEqual(paneMap.size, 2);
+  });
+
+  it('getPaneMap returns empty map when no panes registered', () => {
+    const session = new TmuxSession('no-panes', 'samaritan-no-panes');
+    const paneMap = session.getPaneMap();
+    assert.strictEqual(paneMap.size, 0);
+  });
+
+  it('waitForPrompt returns idle when pipe file stops growing', async () => {
+    const session = new TmuxSession('idle-detect-1', 'samaritan-idle-detect-1');
+    const pipeFile = session.getPipeFilePath('execution');
+    writeFileSync(pipeFile, 'initial output\n', 'utf-8');
+    try {
+      const result = await session.waitForPrompt(
+        'execution',
+        5_000,
+        undefined,
+        200,
+      );
+      assert.strictEqual(
+        result,
+        'idle',
+        'should detect idle when pipe stops growing',
+      );
+    } finally {
+      if (existsSync(pipeFile)) unlinkSync(pipeFile);
+    }
+  });
+
+  it('waitForPrompt returns timeout when deadline exceeded with idle disabled', async () => {
+    const session = new TmuxSession('no-idle-1', 'samaritan-no-idle-1');
+    // 800ms gives ample room for 2–3 poll cycles (200ms each) on slow CI runners
+    const result = await session.waitForPrompt('execution', 800, undefined, 0);
+    assert.strictEqual(
+      result,
+      'timeout',
+      'should return timeout with idle disabled',
+    );
+  });
 });
 
 describe('isLocalSession (issue #6)', () => {
