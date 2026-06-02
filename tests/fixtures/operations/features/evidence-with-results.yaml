@@ -26,25 +26,13 @@ steps:
             file: ./evidence/deployment-dashboard.png
             description: Kubernetes dashboard showing 3 pods running
           - type: command_output
-            content: |
-              deployment.apps/web-server created
-              service/web-server created
-              NAME         READY   STATUS    RESTARTS   AGE
-              pod/web-0    1/1     Running   0          10s
-              pod/web-1    1/1     Running   0          10s
-              pod/web-2    1/1     Running   0          10s
+            file: ./evidence/staging-deploy.log
         production:
           - type: screenshot
             file: ./evidence/production-dashboard.png
             description: Kubernetes dashboard showing all pods healthy
           - type: command_output
-            content: |
-              deployment.apps/web-server created
-              service/web-server created
-              NAME         READY   STATUS    RESTARTS   AGE
-              pod/web-0    1/1     Running   0          15s
-              pod/web-1    1/1     Running   0          15s
-              pod/web-2    1/1     Running   0          15s
+            file: ./evidence/production-deploy.log
 
   - name: Manual Verification
     type: manual
@@ -76,17 +64,11 @@ steps:
       results:
         staging:
           - type: log
-            content: |
-              [2025-10-16 10:30:00] INFO: Application started
-              [2025-10-16 10:30:05] INFO: Database connection established
-              [2025-10-16 10:30:10] INFO: Ready to accept connections
+            file: ./evidence/staging-app.log
             description: Application startup logs
         production:
           - type: log
-            content: |
-              [2025-10-16 14:00:00] INFO: Application started
-              [2025-10-16 14:00:02] INFO: Database connection established
-              [2025-10-16 14:00:03] INFO: Ready to accept connections
+            file: ./evidence/production-app.log
             description: Production startup logs
 
   - name: No Evidence Results

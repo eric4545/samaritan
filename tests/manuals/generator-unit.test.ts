@@ -2026,7 +2026,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
     t.assert.snapshot(markdown);
   });
 
-  it('should render evidence results (file references and inline content)', async (t) => {
+  it('should render evidence results (file references)', async (t) => {
     const operation = await parseFixture('evidenceWithResults');
     const markdown = generateManual(operation);
 
@@ -2056,39 +2056,29 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should render screenshot as image',
     );
 
-    // Should render command_output in code block
+    // Should render command_output as file link (no operationDir → no file reading)
     assert(
       markdown.includes('**command_output**:'),
       'Should show command_output label',
     );
     assert(
-      markdown.includes('```bash'),
-      'Should use bash code block for command_output',
-    );
-    assert(
-      markdown.includes('deployment.apps/web-server created'),
-      'Should include command output content',
-    );
-    assert(
-      markdown.includes('pod/web-0    1/1     Running'),
-      'Should include pod status output',
+      markdown.includes('[View command_output](./evidence/staging-deploy.log)'),
+      'Should render command_output as file link',
     );
 
-    // Should render log content
+    // Should render log as file link with description
     assert(
       markdown.includes('**log**: Application startup logs'),
       'Should show log description',
     );
     assert(
-      markdown.includes('[2025-10-16 10:30:00] INFO: Application started'),
-      'Should include log content',
+      markdown.includes('[View log](./evidence/staging-app.log)'),
+      'Should render log as file link',
     );
 
     // Should render file reference for non-image types
     assert(
-      markdown.includes(
-        '[View screenshot](./evidence/homepage-screenshot.png)',
-      ) || markdown.includes('![Evidence](./evidence/homepage-screenshot.png)'),
+      markdown.includes('![Evidence](./evidence/homepage-screenshot.png)'),
       'Should render screenshot file reference',
     );
 
@@ -2238,8 +2228,10 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should show preprod screenshot description',
     );
     assert(
-      markdown.includes('HTTP/1.1 200 OK'),
-      'Should show preprod command output',
+      markdown.includes(
+        '[View command_output](./evidence/preprod/afd-health-cmd.log)',
+      ),
+      'Should render preprod command output as file link',
     );
 
     // Check prod evidence for step 1
@@ -2252,8 +2244,10 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should show prod screenshot description',
     );
     assert(
-      markdown.includes('us-east-1, us-west-2'),
-      'Should show prod-specific content',
+      markdown.includes(
+        '[View command_output](./evidence/prod/afd-health-cmd.log)',
+      ),
+      'Should render prod command output as file link',
     );
 
     // Step 2: verify-dns (with evidence override)
@@ -2264,18 +2258,25 @@ echo "Deploying at: \${TIMESTAMP}"`,
 
     // Check preprod DNS evidence
     assert(
-      markdown.includes('preprod.example.com'),
-      'Should show preprod DNS in evidence',
+      markdown.includes(
+        '[View command_output](./evidence/preprod/dns-verify.log)',
+      ),
+      'Should render preprod DNS evidence as file link',
     );
-    assert(markdown.includes('10.0.1.100'), 'Should show preprod IP address');
 
     // Check prod DNS evidence
     assert(
-      markdown.includes('example.com'),
-      'Should show prod domain in evidence',
+      markdown.includes(
+        '[View command_output](./evidence/prod/dns-verify.log)',
+      ),
+      'Should render prod DNS evidence as file link',
     );
-    assert(markdown.includes('10.0.2.100'), 'Should show prod IP addresses');
-    assert(markdown.includes('10.0.2.101'), 'Should show second prod IP');
+    assert(
+      markdown.includes(
+        '[View command_output](./evidence/prod/dns-verify.log)',
+      ),
+      'Should render prod DNS file link (not raw content)',
+    );
 
     // Step 3: Regular step (no evidence override)
     assert(

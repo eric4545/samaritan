@@ -583,7 +583,7 @@ steps:
       'Expand block should contain screenshot file reference',
     );
 
-    // Should include command output code block inside expand
+    // Should include command output file link inside expand
     assert.match(
       evidenceContent,
       /\*command_output:\*/,
@@ -592,8 +592,8 @@ steps:
 
     assert.match(
       evidenceContent,
-      /\{code:bash\}[\s\S]*deployment\.apps\/web-server created[\s\S]*?\{code\}/,
-      'Expand block should contain command output code block',
+      /\[View command_output\|\.\/evidence\/staging-deploy\.log\]/,
+      'Expand block should contain command output file link',
     );
 
     // Evidence should NOT appear in step column

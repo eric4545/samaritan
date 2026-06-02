@@ -57,8 +57,10 @@ describe('Evidence Override in use: Directive', () => {
       'Preprod AFD health dashboard (2025-10-10)',
     );
     assert.strictEqual(preprodEvidence[1].type, 'command_output');
-    assert.ok(preprodEvidence[1].content);
-    assert.ok(preprodEvidence[1].content.includes('HTTP/1.1 200 OK'));
+    assert.strictEqual(
+      preprodEvidence[1].file,
+      './evidence/preprod/afd-health-cmd.log',
+    );
 
     // Check prod evidence
     const prodEvidence = afdHealthStep.evidence.results.prod;
@@ -70,8 +72,10 @@ describe('Evidence Override in use: Directive', () => {
       'Production AFD health dashboard (2025-10-20)',
     );
     assert.strictEqual(prodEvidence[1].type, 'command_output');
-    assert.ok(prodEvidence[1].content);
-    assert.ok(prodEvidence[1].content.includes('us-east-1, us-west-2'));
+    assert.strictEqual(
+      prodEvidence[1].file,
+      './evidence/prod/afd-health-cmd.log',
+    );
 
     // Step 2: verify-dns (imported with evidence override)
     const dnsStep = operation.steps[1];
@@ -92,15 +96,19 @@ describe('Evidence Override in use: Directive', () => {
     const preprodDnsEvidence = dnsStep.evidence.results.preprod;
     assert.strictEqual(preprodDnsEvidence.length, 1);
     assert.strictEqual(preprodDnsEvidence[0].type, 'command_output');
-    assert.ok(preprodDnsEvidence[0].content);
-    assert.ok(preprodDnsEvidence[0].content.includes('preprod.example.com'));
+    assert.strictEqual(
+      preprodDnsEvidence[0].file,
+      './evidence/preprod/dns-verify.log',
+    );
 
     // Check prod DNS evidence
     const prodDnsEvidence = dnsStep.evidence.results.prod;
     assert.strictEqual(prodDnsEvidence.length, 1);
     assert.strictEqual(prodDnsEvidence[0].type, 'command_output');
-    assert.ok(prodDnsEvidence[0].content);
-    assert.ok(prodDnsEvidence[0].content.includes('example.com'));
+    assert.strictEqual(
+      prodDnsEvidence[0].file,
+      './evidence/prod/dns-verify.log',
+    );
 
     // Step 3: Regular step (no evidence override)
     const deployStep = operation.steps[2];

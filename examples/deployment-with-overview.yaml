@@ -58,12 +58,10 @@ preflight:
       results:
         staging:
           - type: command_output
-            content: |
-              2025-01-14 23:00  backup-staging-20250114.tar.gz
+            file: ./evidence/staging-backup.log
         production:
           - type: command_output
-            content: |
-              2025-01-14 23:00  backup-prod-20250114.tar.gz
+            file: ./evidence/prod-backup.log
     pic: db-admin@example.com
     reviewer: ops-lead@example.com
     timeline: "2025-01-15 08:00"

@@ -1,0 +1,6 @@
+deployment.apps/web-server created
+service/web-server created
+NAME         READY   STATUS    RESTARTS   AGE
+pod/web-0    1/1     Running   0          15s
+pod/web-1    1/1     Running   0          15s
+pod/web-2    1/1     Running   0          15s

@@ -1,0 +1,6 @@
+Server:  8.8.8.8
+Address: 8.8.8.8#53
+
+Name:    example.com
+Address: 10.0.2.100
+Address: 10.0.2.101

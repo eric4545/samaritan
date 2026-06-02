@@ -32,27 +32,14 @@ steps:
       results:
         staging:
           - type: command_output
-            content: |
-              deployment.apps/app created
-              deployment.apps/app scaled
-              NAME      READY   STATUS    RESTARTS   AGE
-              app-0     1/1     Running   0          10s
-              app-1     1/1     Running   0          10s
+            file: ./evidence/staging-deploy.log
             description: Staging deployment output showing 2 pods
         production:
           - type: screenshot
             file: ./evidence/prod-dashboard.png
             description: Production dashboard showing 5 healthy pods
           - type: command_output
-            content: |
-              deployment.apps/app created
-              deployment.apps/app scaled
-              NAME      READY   STATUS    RESTARTS   AGE
-              app-0     1/1     Running   0          15s
-              app-1     1/1     Running   0          15s
-              app-2     1/1     Running   0          15s
-              app-3     1/1     Running   0          15s
-              app-4     1/1     Running   0          15s
+            file: ./evidence/production-deploy.log
             description: Production deployment output showing 5 pods
 
   - name: Verify Health Checks
@@ -71,20 +58,10 @@ steps:
       results:
         staging:
           - type: command_output
-            content: |
-              {
-                "status": "healthy",
-                "version": "1.0.0",
-                "environment": "staging"
-              }
+            file: ./evidence/staging-health.json
         production:
           - type: command_output
-            content: |
-              {
-                "status": "healthy",
-                "version": "1.0.0",
-                "environment": "production"
-              }
+            file: ./evidence/production-health.json
           - type: screenshot
             file: ./evidence/prod-health-dashboard.png
             description: Health check dashboard

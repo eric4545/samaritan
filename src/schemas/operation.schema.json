@@ -203,7 +203,7 @@
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "required": ["type"],
+                    "required": ["type", "file"],
                     "properties": {
                       "type": {
                         "type": "string",
@@ -220,19 +220,11 @@
                         "type": "string",
                         "description": "File path reference (relative to operation file)"
                       },
-                      "content": {
-                        "type": "string",
-                        "description": "Inline content (for text-based evidence)"
-                      },
                       "description": {
                         "type": "string",
                         "description": "Optional description or context"
                       }
-                    },
-                    "oneOf": [
-                      { "required": ["file"] },
-                      { "required": ["content"] }
-                    ]
+                    }
                   }
                 }
               }
@@ -305,7 +297,7 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": ["type"],
+                        "required": ["type", "file"],
                         "properties": {
                           "type": {
                             "type": "string",
@@ -322,19 +314,11 @@
                             "type": "string",
                             "description": "File path reference (relative to operation file)"
                           },
-                          "content": {
-                            "type": "string",
-                            "description": "Inline content (for text-based evidence)"
-                          },
                           "description": {
                             "type": "string",
                             "description": "Optional description or context"
                           }
-                        },
-                        "oneOf": [
-                          { "required": ["file"] },
-                          { "required": ["content"] }
-                        ]
+                        }
                       }
                     }
                   }
@@ -448,7 +432,7 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": ["type"],
+                        "required": ["type", "file"],
                         "properties": {
                           "type": {
                             "type": "string",
@@ -465,19 +449,11 @@
                             "type": "string",
                             "description": "File path reference (relative to operation file)"
                           },
-                          "content": {
-                            "type": "string",
-                            "description": "Inline content (for text-based evidence)"
-                          },
                           "description": {
                             "type": "string",
                             "description": "Optional description or context"
                           }
-                        },
-                        "oneOf": [
-                          { "required": ["file"] },
-                          { "required": ["content"] }
-                        ]
+                        }
                       }
                     }
                   }

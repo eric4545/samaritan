@@ -1,0 +1,5 @@
+Server:  8.8.8.8
+Address: 8.8.8.8#53
+
+Name:    preprod.example.com
+Address: 10.0.1.100
