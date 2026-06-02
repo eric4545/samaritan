@@ -346,7 +346,7 @@ describe('Enhanced Operation Parser', () => {
     );
     assert.strictEqual(
       operation.overview['Release Ticket'],
-      'INPDRP-2489',
+      'DEPLOY-1042',
       'Should have Release Ticket',
     );
     assert.strictEqual(

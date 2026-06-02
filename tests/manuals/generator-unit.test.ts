@@ -1986,7 +1986,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should show Release Notes field',
     );
     assert(
-      markdown.includes('| Release Ticket | INPDRP-2489 |'),
+      markdown.includes('| Release Ticket | DEPLOY-1042 |'),
       'Should show Release Ticket field',
     );
     assert(
