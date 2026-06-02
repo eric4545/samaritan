@@ -859,6 +859,43 @@ steps:
 
 The `pic` and `reviewer` fields can also be set per-environment using `variants` (see [Environment-Specific Steps](#environment-specific-steps-when-and-variants) above).
 
+#### External Script Files (`script`)
+
+Reference an external shell script file. The generator reads the file at manual-generation time and embeds the full script content as a `bash` code block — so the operator can review what will run before executing it.
+
+```yaml
+steps:
+  - name: Deploy Application
+    type: manual
+    instruction: Review the deployment script below, then run it.
+    script: ./scripts/deploy.sh   # Path relative to the operation YAML file
+```
+
+**Generated manual output:**
+```
+| **Deploy Application** | Run the deployment script to update the application.
+
+**Script:** `./scripts/deploy.sh`
+```bash
+#!/bin/bash
+set -e
+kubectl apply -f k8s/deployment.yaml
+kubectl rollout status deployment/web-server --timeout=300s
+``` |
+```
+
+**`script` vs `command`:**
+| | `command` | `script` |
+|---|---|---|
+| **Use for** | Short inline commands (`kubectl apply -f ...`) | Multi-step shell scripts in `.sh` files |
+| **Value** | Inline string | Path to `.sh` file (relative to operation) |
+| **In manual** | Inline code snippet | Full script content as bash code block |
+| **DRY** | No (script lives in YAML) | Yes (one file, used by many operations) |
+
+> **Mutual exclusivity**: A step cannot have both `command` and `script`. The schema validator will reject it.
+
+**Example:** See `examples/deployment-with-scripts.yaml` and `examples/scripts/deploy.sh`.
+
 #### Reusable Step Libraries
 
 ```yaml

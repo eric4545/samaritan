@@ -22,6 +22,18 @@ SAMARITAN converts YAML operation definitions into comprehensive manuals (Markdo
 
 ---
 
+## 🚨 Non-Negotiable Rules
+
+These rules apply to every code change, no exceptions:
+
+1. **Tests ship with code** — every new feature or bug fix must include tests in the same commit; never commit implementation without tests
+2. **Examples + docs for every feature** — every new feature must include a working example in `examples/` and updated user documentation in `README.md`; never commit a feature without both
+3. **Lint clean before commit** — run `npx @biomejs/biome check --write <changed files>` and fix all errors before committing; never commit with lint errors
+4. **StepContent is the shared base** — never add execution/content fields directly to `Step` or `RollbackStep`; add them to `StepContent` so both types benefit automatically
+5. **Check ROADMAP.md** — before implementing any "auto", "run", or execution feature, verify it's in scope; most execution features are roadmap items, not v1.0
+
+---
+
 ## 🏗️ Architecture
 
 ```
@@ -360,6 +372,62 @@ steps:
 - **`reviewer`** (Reviewer/Buddy): The person who monitors and verifies the PIC's work
 - **Sign-off Checkboxes**: Generated manuals include checkboxes for PIC and Reviewer sign-off when these fields are set
 
+### Script File Import (script)
+
+**✅ Implemented in v1.0+**
+
+The `script:` field references an external shell script file. The generator reads the file at generation time and embeds its full content as a `bash` code block in the manual.
+
+```yaml
+steps:
+  - name: Deploy Application
+    type: manual
+    instruction: Review the script below, then run it.
+    script: ./scripts/deploy.sh   # Path relative to operation file
+```
+
+**Use `script` vs `command`:**
+- `command:` → short inline command typed directly into a terminal
+- `script:` → path to an external `.sh` file whose full content is embedded in the manual
+- **Mutually exclusive**: a step cannot have both `command` and `script` (schema validation error)
+
+**Rendering:**
+- Shows `**Script:** \`./path/to/script.sh\`` label in the manual
+- Reads and embeds full script content as a `bash` fenced code block
+- Operators can either run the script directly (`bash ./scripts/deploy.sh`) or copy-paste the content
+- If the file is missing at generation time, shows a graceful error message in the manual
+
+**Example:** `examples/deployment-with-scripts.yaml` + `examples/scripts/deploy.sh`
+
+**Implementation Notes:**
+- Path is relative to the operation file (same as `evidence.results[env].file`)
+- File reading happens at generation time (not parse time)
+- Both `operationDir` threading in `generator.ts` and `adf-generator.ts` required for file reading
+- `adf-generator.ts` receives `operationDir` via `generateADF` → `createStepsTable` call chain
+- `script:` works on both `Step` and `RollbackStep` (via the shared `StepContent` base)
+
+### Data Model: StepContent Base Interface
+
+`StepContent` is the shared base interface for both `Step` and `RollbackStep`, containing all "what to do / who does it" fields. Adding a field to `StepContent` automatically propagates to both.
+
+**Fields in `StepContent` (shared by Step and RollbackStep):**
+- `command` — inline terminal command
+- `script` — path to external shell script
+- `instruction` — markdown instructions
+- `timeout` — step timeout in seconds
+- `description` — step description
+- `evidence` / `evidence_required` — evidence config
+- `options` — step options (substitute_vars, show_command_separately)
+- `session` — execution session reference
+- `pic` — Person In Charge
+- `reviewer` — Reviewer/buddy
+- `verify` — output verification config
+
+**Fields that remain `Step`-only (structural/organizational):**
+`name`, `type`, `id`, `phase`, `if`/`condition`, `foreach`, `sub_steps`, `when`, `variants`, `approval`, `needs`, `template`/`with`, `variables`, `capture`, `retry`, `rollback`, `section_heading`, `timeline`, `ticket`, `manual_override`, `manual_instructions`, `validation`, `estimated_duration`, `env`
+
+**Rule**: Never add a content/execution field directly to `Step` or `RollbackStep` — add it to `StepContent` so both types benefit automatically.
+
 ### Template Import (template)
 
 **✅ Implemented in v1.0+**
@@ -536,7 +604,11 @@ The `.gitignore` contains `manuals/` which also matches `src/manuals/`, so plain
 5. Add test YAML fixture in `tests/fixtures/operations/features/`
 6. Add fixture mapping entry in `tests/fixtures/fixtures.ts`
 7. Add snapshot test in `tests/manuals/`
-8. Update README.md examples
+8. **Add example YAML in `examples/`** demonstrating the feature
+9. Update README.md and USAGE.md with the new field/usage
+10. Update CLAUDE.md with any new patterns
+
+> **Rule**: Every new feature MUST include a working example file in `examples/` and updated user documentation. The example should demonstrate the golden path usage clearly.
 
 ### Updating Manual Format
 1. Modify generator in `src/manuals/generator.ts` or `adf-generator.ts`

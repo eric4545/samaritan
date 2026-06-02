@@ -1,0 +1,33 @@
+name: Deploy Web Server (with Scripts)
+version: 1.0.0
+description: Demonstrates the script field for embedding external shell scripts in generated manuals.
+environments:
+  - name: staging
+    variables:
+      REPLICAS: 2
+      NAMESPACE: staging
+  - name: production
+    variables:
+      REPLICAS: 5
+      NAMESPACE: production
+steps:
+  - name: Deploy Application
+    type: manual
+    phase: flight
+    instruction: |
+      Run the deployment script. Review the script content below before proceeding.
+    script: ./scripts/deploy.sh
+    evidence:
+      required: true
+      types: [command_output]
+
+  - name: Verify Deployment
+    type: manual
+    phase: flight
+    instruction: Check that all pods are running and the health endpoint responds.
+    command: kubectl get pods -n ${NAMESPACE} && curl -f http://web-server/health
+    rollback:
+      - instruction: Run the rollback script to revert to the previous version.
+        script: ./scripts/rollback.sh
+        pic: ops-lead@example.com
+        reviewer: sre-lead@example.com

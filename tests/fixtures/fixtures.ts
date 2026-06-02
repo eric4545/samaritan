@@ -91,6 +91,9 @@ export const FIXTURES = {
   nestedSubstepWithRollback:
     'tests/fixtures/operations/features/nested-substep-with-rollback.yaml',
 
+  // Script file import
+  withScript: 'tests/fixtures/operations/features/with-script.yaml',
+
   // When and Variants
   whenAndVariants: 'tests/fixtures/operations/features/when-and-variants.yaml',
 
