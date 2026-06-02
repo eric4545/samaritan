@@ -451,9 +451,10 @@ function renderTableInstruction(
   substituteVarsEnabled: boolean,
 ): string {
   if (!instruction) return '';
-  let display = resolveVariables && substituteVarsEnabled
-    ? substituteVariables(instruction, envVars || {}, stepVars)
-    : instruction;
+  const display =
+    resolveVariables && substituteVarsEnabled
+      ? substituteVariables(instruction, envVars || {}, stepVars)
+      : instruction;
   return `**Instructions:**<br>${display.trim().replace(/\|/g, '\\|').replace(/\n/g, '<br>')}`;
 }
 
@@ -555,7 +556,13 @@ function generateStepRow(
     const showCommandSeparately =
       effectiveStep.options?.show_command_separately ?? false;
 
-    cellContent += renderTableInstruction(effectiveStep.instruction, env.variables, effectiveStep.variables, resolveVariables, substituteVars);
+    cellContent += renderTableInstruction(
+      effectiveStep.instruction,
+      env.variables,
+      effectiveStep.variables,
+      resolveVariables,
+      substituteVars,
+    );
 
     // Process command (code content)
     if (effectiveStep.command) {
@@ -725,7 +732,13 @@ function generateStepRow(
           const showCommandSeparately =
             rb.options?.show_command_separately ?? false;
 
-          cellContent += renderTableInstruction(rb.instruction, env.variables, subStep.variables, resolveVariables, substituteVars);
+          cellContent += renderTableInstruction(
+            rb.instruction,
+            env.variables,
+            subStep.variables,
+            resolveVariables,
+            substituteVars,
+          );
 
           // Process rollback command (code content)
           if (rb.command) {
@@ -871,7 +884,13 @@ function generateSubStepRow(
     const showCommandSeparately =
       effectiveStep.options?.show_command_separately ?? false;
 
-    cellContent += renderTableInstruction(effectiveStep.instruction, env.variables, effectiveStep.variables, resolveVariables, substituteVars);
+    cellContent += renderTableInstruction(
+      effectiveStep.instruction,
+      env.variables,
+      effectiveStep.variables,
+      resolveVariables,
+      substituteVars,
+    );
 
     // Process command (code content)
     if (effectiveStep.command) {
@@ -1058,7 +1077,13 @@ function generateSubStepRow(
           const showCommandSeparately =
             rb.options?.show_command_separately ?? false;
 
-          cellContent += renderTableInstruction(rb.instruction, env.variables, nestedSubStep.variables, resolveVariables, substituteVars);
+          cellContent += renderTableInstruction(
+            rb.instruction,
+            env.variables,
+            nestedSubStep.variables,
+            resolveVariables,
+            substituteVars,
+          );
 
           // Process rollback command (code content)
           if (rb.command) {
@@ -1443,7 +1468,13 @@ function generateManualContent(
             const showCommandSeparately =
               rb.options?.show_command_separately ?? false;
 
-            cellContent += renderTableInstruction(rb.instruction, env.variables, step.variables, resolveVariables, substituteVars);
+            cellContent += renderTableInstruction(
+              rb.instruction,
+              env.variables,
+              step.variables,
+              resolveVariables,
+              substituteVars,
+            );
 
             // Process rollback command (code content)
             if (rb.command) {
@@ -1533,7 +1564,13 @@ function generateManualContent(
           const showCommandSeparately =
             rb.options?.show_command_separately ?? false;
 
-          cellContent += renderTableInstruction(rb.instruction, env.variables, step.variables, resolveVariables, substituteVars);
+          cellContent += renderTableInstruction(
+            rb.instruction,
+            env.variables,
+            step.variables,
+            resolveVariables,
+            substituteVars,
+          );
 
           // Process rollback command (code content)
           if (rb.command) {
