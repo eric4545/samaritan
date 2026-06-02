@@ -853,10 +853,15 @@ async function parseStep(
     if (Array.isArray(stepData.rollback)) {
       rollback = stepData.rollback.map((r: any) => ({
         command: r.command,
+        script: r.script,
         session: r.session,
         instruction: r.instruction,
+        description: r.description,
         timeout: r.timeout,
+        pic: r.pic,
+        reviewer: r.reviewer,
         evidence: r.evidence ? parseEvidence(r) : undefined,
+        verify: normalizeVerify(r.verify, r.expect),
         options: r.options
           ? {
               substitute_vars: r.options.substitute_vars ?? true,
@@ -869,10 +874,18 @@ async function parseStep(
       rollback = [
         {
           command: stepData.rollback.command,
+          script: stepData.rollback.script,
           instruction: stepData.rollback.instruction,
+          description: stepData.rollback.description,
           timeout: stepData.rollback.timeout,
+          pic: stepData.rollback.pic,
+          reviewer: stepData.rollback.reviewer,
           evidence: parseEvidence(stepData.rollback),
           evidence_required: Boolean(stepData.rollback.evidence_required),
+          verify: normalizeVerify(
+            stepData.rollback.verify,
+            stepData.rollback.expect,
+          ),
           options: stepData.rollback.options
             ? {
                 substitute_vars:

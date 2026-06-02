@@ -729,7 +729,7 @@ function generateStepRow(
     // Render rollbacks for all sub-steps AFTER all sub-steps are rendered
     step.sub_steps.forEach((subStep, subIndex) => {
       const rb = subStep.rollback?.[0];
-      if (rb && (rb.command || rb.instruction)) {
+      if (rb && (rb.command || rb.instruction || rb.script)) {
         const subStepLetter = indexToLetters(subIndex);
         const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
 
@@ -786,6 +786,34 @@ function generateStepRow(
             } else {
               cellContent += `<br><br>\`${cleanCommand}\``;
             }
+          }
+
+          // Process rollback script (external shell script file)
+          if (rb.script) {
+            const sep = cellContent ? '<br><br>' : '';
+            cellContent += `${sep}**Script:** \`${rb.script}\``;
+            if (operationDir) {
+              try {
+                const scriptPath = path.resolve(operationDir, rb.script);
+                const scriptContent = fs
+                  .readFileSync(scriptPath, 'utf-8')
+                  .trimEnd()
+                  .replace(/\|/g, '\\|')
+                  .replace(/\n/g, '<br>');
+                cellContent += `<br>\`\`\`bash<br>${scriptContent}<br>\`\`\``;
+              } catch {
+                cellContent += ` <em>(file not found)</em>`;
+              }
+            }
+          }
+
+          // Rollback sign-off checkboxes
+          if (rb.pic || rb.reviewer) {
+            const sep = cellContent ? '<br><br>' : '';
+            cellContent += `${sep}**Sign-off:**`;
+            if (rb.pic) cellContent += `<br>- [ ] PIC (${rb.pic})`;
+            if (rb.reviewer)
+              cellContent += `<br>- [ ] Reviewer (${rb.reviewer})`;
           }
 
           // Fallback
@@ -1087,7 +1115,7 @@ function generateSubStepRow(
     // Render rollbacks for all nested sub-steps AFTER all nested sub-steps are rendered
     step.sub_steps.forEach((nestedSubStep, nestedIndex) => {
       const rb = nestedSubStep.rollback?.[0];
-      if (rb && (rb.command || rb.instruction)) {
+      if (rb && (rb.command || rb.instruction || rb.script)) {
         let nestedStepId: string;
         if (depth % 2 === 1) {
           nestedStepId = `${stepId}${nestedIndex + 1}`;
@@ -1149,6 +1177,34 @@ function generateSubStepRow(
             } else {
               cellContent += `<br><br>\`${cleanCommand}\``;
             }
+          }
+
+          // Process rollback script (external shell script file)
+          if (rb.script) {
+            const sep = cellContent ? '<br><br>' : '';
+            cellContent += `${sep}**Script:** \`${rb.script}\``;
+            if (operationDir) {
+              try {
+                const scriptPath = path.resolve(operationDir, rb.script);
+                const scriptContent = fs
+                  .readFileSync(scriptPath, 'utf-8')
+                  .trimEnd()
+                  .replace(/\|/g, '\\|')
+                  .replace(/\n/g, '<br>');
+                cellContent += `<br>\`\`\`bash<br>${scriptContent}<br>\`\`\``;
+              } catch {
+                cellContent += ` <em>(file not found)</em>`;
+              }
+            }
+          }
+
+          // Rollback sign-off checkboxes
+          if (rb.pic || rb.reviewer) {
+            const sep = cellContent ? '<br><br>' : '';
+            cellContent += `${sep}**Sign-off:**`;
+            if (rb.pic) cellContent += `<br>- [ ] PIC (${rb.pic})`;
+            if (rb.reviewer)
+              cellContent += `<br>- [ ] Reviewer (${rb.reviewer})`;
           }
 
           // Fallback
@@ -1487,7 +1543,7 @@ function generateManualContent(
 
         // Inline rollback rendering - render immediately after step if present
         const rb = step.rollback?.[0];
-        if (rb && (rb.command || rb.instruction)) {
+        if (rb && (rb.command || rb.instruction || rb.script)) {
           // Close current table
           markdown += '\n';
 
@@ -1543,6 +1599,34 @@ function generateManualContent(
               }
             }
 
+            // Process rollback script (external shell script file)
+            if (rb.script) {
+              const sep = cellContent ? '<br><br>' : '';
+              cellContent += `${sep}**Script:** \`${rb.script}\``;
+              if (operationDir) {
+                try {
+                  const scriptPath = path.resolve(operationDir, rb.script);
+                  const scriptContent = fs
+                    .readFileSync(scriptPath, 'utf-8')
+                    .trimEnd()
+                    .replace(/\|/g, '\\|')
+                    .replace(/\n/g, '<br>');
+                  cellContent += `<br>\`\`\`bash<br>${scriptContent}<br>\`\`\``;
+                } catch {
+                  cellContent += ` <em>(file not found)</em>`;
+                }
+              }
+            }
+
+            // Rollback sign-off checkboxes
+            if (rb.pic || rb.reviewer) {
+              const sep = cellContent ? '<br><br>' : '';
+              cellContent += `${sep}**Sign-off:**`;
+              if (rb.pic) cellContent += `<br>- [ ] PIC (${rb.pic})`;
+              if (rb.reviewer)
+                cellContent += `<br>- [ ] Reviewer (${rb.reviewer})`;
+            }
+
             // Fallback
             if (!cellContent) {
               cellContent = '-';
@@ -1590,7 +1674,7 @@ function generateManualContent(
 
       markdown += `### Rollback for: ${step.name}\n\n`;
 
-      if (rb.command || rb.instruction) {
+      if (rb.command || rb.instruction || rb.script) {
         markdown += '| Environment | Rollback Action |\n';
         markdown += '|-------------|----------------|\n';
 
@@ -1637,6 +1721,34 @@ function generateManualContent(
             } else {
               cellContent += `<br><br>\`${cleanCommand}\``;
             }
+          }
+
+          // Process rollback script (external shell script file)
+          if (rb.script) {
+            const sep = cellContent ? '<br><br>' : '';
+            cellContent += `${sep}**Script:** \`${rb.script}\``;
+            if (operationDir) {
+              try {
+                const scriptPath = path.resolve(operationDir, rb.script);
+                const scriptContent = fs
+                  .readFileSync(scriptPath, 'utf-8')
+                  .trimEnd()
+                  .replace(/\|/g, '\\|')
+                  .replace(/\n/g, '<br>');
+                cellContent += `<br>\`\`\`bash<br>${scriptContent}<br>\`\`\``;
+              } catch {
+                cellContent += ` <em>(file not found)</em>`;
+              }
+            }
+          }
+
+          // Rollback sign-off checkboxes
+          if (rb.pic || rb.reviewer) {
+            const sep = cellContent ? '<br><br>' : '';
+            cellContent += `${sep}**Sign-off:**`;
+            if (rb.pic) cellContent += `<br>- [ ] PIC (${rb.pic})`;
+            if (rb.reviewer)
+              cellContent += `<br>- [ ] Reviewer (${rb.reviewer})`;
           }
 
           // Fallback
@@ -1815,7 +1927,7 @@ export function generateSingleEnvManual(
 
     // Render rollback AFTER sub_steps (mirrors multi-env inline rollback position)
     const rb = effectiveStep.rollback?.[0];
-    if (rb && (rb.command || rb.instruction)) {
+    if (rb && (rb.command || rb.instruction || rb.script)) {
       const rbHashes = '#'.repeat(Math.min(headingLevel + 1, 6));
       lines.push(`${rbHashes} 🔄 Rollback`);
       lines.push('');
@@ -1841,6 +1953,32 @@ export function generateSingleEnvManual(
             : cmd,
         );
         lines.push('```');
+        lines.push('');
+      }
+
+      if (rb.script) {
+        lines.push(`**Script:** \`${rb.script}\``);
+        lines.push('');
+        if (operationDir) {
+          try {
+            const scriptPath = path.resolve(operationDir, rb.script);
+            const scriptContent = fs
+              .readFileSync(scriptPath, 'utf-8')
+              .trimEnd();
+            lines.push('```bash');
+            lines.push(scriptContent);
+            lines.push('```');
+          } catch {
+            lines.push(`_Script file not found: ${rb.script}_`);
+          }
+        }
+        lines.push('');
+      }
+
+      if (rb.pic || rb.reviewer) {
+        lines.push('**Sign-off:**');
+        if (rb.pic) lines.push(`- [ ] PIC (${rb.pic})`);
+        if (rb.reviewer) lines.push(`- [ ] Reviewer (${rb.reviewer})`);
         lines.push('');
       }
     }

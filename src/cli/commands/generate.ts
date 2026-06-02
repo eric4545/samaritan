@@ -1397,7 +1397,7 @@ ${filteredOperation.environments
         // For parent steps with sub_steps, this renders after sub-steps
         // For regular steps, this renders after the step row
         const rb = step.rollback?.[0];
-        if (rb && (rb.command || rb.instruction)) {
+        if (rb && (rb.command || rb.instruction || rb.script)) {
           content += renderInlineRollback(
             rb,
             `${stepNumber}`,
@@ -1486,6 +1486,39 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
             } else {
               cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
             }
+          }
+
+          // Process rollback script
+          if (rollbackStep.script) {
+            const sep = cellContent ? '\n' : '';
+            cellContent += `${sep}*Script:* \`${rollbackStep.script}\``;
+            if (operationDir) {
+              try {
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const fs = require('node:fs');
+                const nodePath = require('node:path');
+                const scriptPath = nodePath.resolve(
+                  operationDir,
+                  rollbackStep.script,
+                );
+                const scriptContent = fs
+                  .readFileSync(scriptPath, 'utf-8')
+                  .trimEnd();
+                cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
+              } catch {
+                cellContent += ' _(file not found)_';
+              }
+            }
+          }
+
+          // Process rollback pic/reviewer sign-off
+          if (rollbackStep.pic || rollbackStep.reviewer) {
+            const sep = cellContent ? '\n' : '';
+            cellContent += `${sep}*Sign-off:*`;
+            if (rollbackStep.pic)
+              cellContent += `\n- [ ] PIC (${rollbackStep.pic})`;
+            if (rollbackStep.reviewer)
+              cellContent += `\n- [ ] Reviewer (${rollbackStep.reviewer})`;
           }
 
           // Fallback
@@ -1606,6 +1639,31 @@ function renderInlineRollback(
       } else {
         cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
       }
+    }
+
+    if (rollback?.script) {
+      const sep = cellContent ? '\n' : '';
+      cellContent += `${sep}*Script:* \`${rollback.script}\``;
+      if (operationDir) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const fs = require('node:fs');
+          const nodePath = require('node:path');
+          const scriptPath = nodePath.resolve(operationDir, rollback.script);
+          const scriptContent = fs.readFileSync(scriptPath, 'utf-8').trimEnd();
+          cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
+        } catch {
+          cellContent += ' _(file not found)_';
+        }
+      }
+    }
+
+    if (rollback?.pic || rollback?.reviewer) {
+      const sep = cellContent ? '\n' : '';
+      cellContent += `${sep}*Sign-off:*`;
+      if (rollback.pic) cellContent += `\n- [ ] PIC (${rollback.pic})`;
+      if (rollback.reviewer)
+        cellContent += `\n- [ ] Reviewer (${rollback.reviewer})`;
     }
 
     if (!cellContent) {

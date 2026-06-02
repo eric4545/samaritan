@@ -28,4 +28,6 @@ steps:
     command: kubectl get pods -n ${NAMESPACE} && curl -f http://web-server/health
     rollback:
       - instruction: Run the rollback script to revert to the previous version.
-        command: bash ./scripts/rollback.sh
+        script: ./scripts/rollback.sh
+        pic: ops-lead@example.com
+        reviewer: sre-lead@example.com

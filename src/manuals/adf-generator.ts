@@ -236,7 +236,7 @@ export function generateADF(
 
       content.push(heading({ level: 3 })(text(`Rollback for: ${step.name}`)));
 
-      if (rb.command || rb.instruction) {
+      if (rb.command || rb.instruction || rb.script) {
         const rollbackRows = environments.map((env) => {
           const cellContent = [];
 
@@ -280,6 +280,39 @@ export function generateADF(
             cellContent.push(
               codeBlock({ language: 'bash' })(text(displayCommand)),
             );
+          }
+
+          // Process rollback script (external shell script file)
+          if (rb.script) {
+            cellContent.push(
+              paragraph(strong(text('Script:')), text(` ${rb.script}`)),
+            );
+            if (operationDir) {
+              try {
+                const scriptPath = path.resolve(operationDir, rb.script);
+                const scriptContent = fs
+                  .readFileSync(scriptPath, 'utf-8')
+                  .trimEnd();
+                cellContent.push(
+                  codeBlock({ language: 'bash' })(text(scriptContent)),
+                );
+              } catch {
+                cellContent.push(
+                  paragraph(em(text(`Script file not found: ${rb.script}`))),
+                );
+              }
+            }
+          }
+
+          // Rollback sign-off checkboxes
+          if (rb.pic || rb.reviewer) {
+            cellContent.push(paragraph(strong(text('Sign-off:'))));
+            if (rb.pic)
+              cellContent.push(paragraph(text(`- [ ] PIC (${rb.pic})`)));
+            if (rb.reviewer)
+              cellContent.push(
+                paragraph(text(`- [ ] Reviewer (${rb.reviewer})`)),
+              );
           }
 
           // Fallback
@@ -670,6 +703,7 @@ function createStepsTable(
         1,
         resolveVariables,
         dataRows,
+        operationDir,
       );
     }
   });
@@ -693,6 +727,7 @@ function addSubStepRows(
   depth: number,
   resolveVariables: boolean | undefined,
   dataRows: any[],
+  operationDir?: string,
 ): void {
   // First loop: render all sub-step rows
   subSteps.forEach((subStep, subIndex) => {
@@ -913,6 +948,7 @@ function addSubStepRows(
         depth + 1,
         resolveVariables,
         dataRows,
+        operationDir,
       );
     }
   });
@@ -920,7 +956,7 @@ function addSubStepRows(
   // Second loop: render all rollback rows
   subSteps.forEach((subStep, subIndex) => {
     const rb = subStep.rollback?.[0];
-    if (rb && (rb.command || rb.instruction)) {
+    if (rb && (rb.command || rb.instruction || rb.script)) {
       // Determine numbering based on depth
       let subStepId: string;
       if (depth % 2 === 1) {
@@ -981,6 +1017,39 @@ function addSubStepRows(
           cellContent.push(
             codeBlock({ language: 'bash' })(text(displayCommand)),
           );
+        }
+
+        // Process rollback script (external shell script file)
+        if (rb.script) {
+          cellContent.push(
+            paragraph(strong(text('Script:')), text(` ${rb.script}`)),
+          );
+          if (operationDir) {
+            try {
+              const scriptPath = path.resolve(operationDir, rb.script);
+              const scriptContent = fs
+                .readFileSync(scriptPath, 'utf-8')
+                .trimEnd();
+              cellContent.push(
+                codeBlock({ language: 'bash' })(text(scriptContent)),
+              );
+            } catch {
+              cellContent.push(
+                paragraph(em(text(`Script file not found: ${rb.script}`))),
+              );
+            }
+          }
+        }
+
+        // Rollback sign-off checkboxes
+        if (rb.pic || rb.reviewer) {
+          cellContent.push(paragraph(strong(text('Sign-off:'))));
+          if (rb.pic)
+            cellContent.push(paragraph(text(`- [ ] PIC (${rb.pic})`)));
+          if (rb.reviewer)
+            cellContent.push(
+              paragraph(text(`- [ ] Reviewer (${rb.reviewer})`)),
+            );
         }
 
         // Fallback

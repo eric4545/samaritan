@@ -163,14 +163,23 @@ export interface PreflightCheck {
   expect_empty?: boolean;
 }
 
-export interface RollbackStep {
+export interface StepContent {
   command?: string;
+  script?: string;
   instruction?: string;
   timeout?: number;
+  description?: string;
   evidence?: EvidenceConfig;
   evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
   options?: StepOptions;
   session?: string;
+  pic?: string;
+  reviewer?: string;
+  verify?: VerifyConfig;
+}
+
+export interface RollbackStep extends StepContent {
+  // All content fields inherited from StepContent
 }
 
 export interface RollbackPlan {
@@ -199,29 +208,20 @@ export interface TimelineConfig {
   status?: 'active' | 'done' | 'crit'; // Mermaid status
 }
 
-export interface Step {
+export interface Step extends StepContent {
   id?: string;
   name: string;
   type: StepType;
   phase?: StepPhase;
-  description?: string;
   if?: string;
-  command?: string;
-  script?: string;
-  instruction?: string;
   condition?: string;
-  timeout?: number;
   estimated_duration?: number;
   env?: Record<string, any>;
   template?: string; // Path to template file for step import/reuse
   with?: Record<string, any>; // Variables to pass to template (also used for parameterized steps)
   variables?: Record<string, any>; // Step-scoped variables (override env and common vars)
-  evidence?: EvidenceConfig;
-  evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
   evidence_types?: EvidenceType[]; // DEPRECATED: Use evidence.types instead
   validation?: StepValidation;
-  session?: string;
-  verify?: VerifyConfig;
   capture?: CaptureConfig;
   continue_on_error?: boolean;
   retry?: RetryConfig;
@@ -234,10 +234,7 @@ export interface Step {
   ticket?: string | string[]; // Bug/issue ticket references (e.g., "JIRA-123" or ["BUG-456", "TASK-789"])
   foreach?: StepForeach; // Loop/matrix support for repeatable steps
   section_heading?: boolean; // If true, render as a new markdown heading instead of table row
-  pic?: string; // Person In Charge for this step
-  reviewer?: string; // Reviewer/buddy who monitors and verifies the PIC's work
   timeline?: string | TimelineConfig; // Expected date/time or duration for this step
-  options?: StepOptions; // Step-level rendering and substitution options
   when?: string[]; // Conditional rendering: only show for these environments
   variants?: Record<string, Partial<Omit<Step, 'variants' | 'when'>>>; // Environment-specific overrides
 }

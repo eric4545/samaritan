@@ -22,6 +22,18 @@ SAMARITAN converts YAML operation definitions into comprehensive manuals (Markdo
 
 ---
 
+## 🚨 Non-Negotiable Rules
+
+These rules apply to every code change, no exceptions:
+
+1. **Tests ship with code** — every new feature or bug fix must include tests in the same commit; never commit implementation without tests
+2. **Examples + docs for every feature** — every new feature must include a working example in `examples/` and updated user documentation in `README.md`; never commit a feature without both
+3. **Lint clean before commit** — run `npx @biomejs/biome check --write <changed files>` and fix all errors before committing; never commit with lint errors
+4. **StepContent is the shared base** — never add execution/content fields directly to `Step` or `RollbackStep`; add them to `StepContent` so both types benefit automatically
+5. **Check ROADMAP.md** — before implementing any "auto", "run", or execution feature, verify it's in scope; most execution features are roadmap items, not v1.0
+
+---
+
 ## 🏗️ Architecture
 
 ```
@@ -392,6 +404,29 @@ steps:
 - File reading happens at generation time (not parse time)
 - Both `operationDir` threading in `generator.ts` and `adf-generator.ts` required for file reading
 - `adf-generator.ts` receives `operationDir` via `generateADF` → `createStepsTable` call chain
+- `script:` works on both `Step` and `RollbackStep` (via the shared `StepContent` base)
+
+### Data Model: StepContent Base Interface
+
+`StepContent` is the shared base interface for both `Step` and `RollbackStep`, containing all "what to do / who does it" fields. Adding a field to `StepContent` automatically propagates to both.
+
+**Fields in `StepContent` (shared by Step and RollbackStep):**
+- `command` — inline terminal command
+- `script` — path to external shell script
+- `instruction` — markdown instructions
+- `timeout` — step timeout in seconds
+- `description` — step description
+- `evidence` / `evidence_required` — evidence config
+- `options` — step options (substitute_vars, show_command_separately)
+- `session` — execution session reference
+- `pic` — Person In Charge
+- `reviewer` — Reviewer/buddy
+- `verify` — output verification config
+
+**Fields that remain `Step`-only (structural/organizational):**
+`name`, `type`, `id`, `phase`, `if`/`condition`, `foreach`, `sub_steps`, `when`, `variants`, `approval`, `needs`, `template`/`with`, `variables`, `capture`, `retry`, `rollback`, `section_heading`, `timeline`, `ticket`, `manual_override`, `manual_instructions`, `validation`, `estimated_duration`, `env`
+
+**Rule**: Never add a content/execution field directly to `Step` or `RollbackStep` — add it to `StepContent` so both types benefit automatically.
 
 ### Template Import (template)
 

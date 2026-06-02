@@ -8,6 +8,11 @@ steps:
     type: manual
     instruction: Run the deployment script to update the application.
     script: ./deploy.sh
+    rollback:
+      - script: ./deploy.sh
+        pic: ops-lead@example.com
+        reviewer: sre-buddy@example.com
+        instruction: Revert the deployment using the rollback script.
   - name: Rollback Application
     type: manual
     script: ./deploy.sh

@@ -771,6 +771,10 @@
                       "type": "object",
                       "properties": {
                         "command": { "type": "string" },
+                        "script": {
+                          "type": "string",
+                          "description": "Path to an external shell script (relative to operation file). Content is read and embedded in generated manuals."
+                        },
                         "instruction": { "type": "string" },
                         "timeout": { "type": "number", "minimum": 0 },
                         "session": {
@@ -778,6 +782,8 @@
                           "description": "Session to run rollback in (defaults to step session)"
                         },
                         "description": { "type": "string" },
+                        "pic": { "type": "string" },
+                        "reviewer": { "type": "string" },
                         "type": { "type": "string" },
                         "options": {
                           "type": "object",
@@ -793,6 +799,9 @@
                           },
                           "additionalProperties": false
                         }
+                      },
+                      "not": {
+                        "required": ["command", "script"]
                       }
                     },
                     "description": "Rollback steps (preferred format)"
@@ -802,9 +811,15 @@
                     "description": "Single rollback step (backward-compatible object format)",
                     "properties": {
                       "command": { "type": "string" },
+                      "script": {
+                        "type": "string",
+                        "description": "Path to an external shell script (relative to operation file). Content is read and embedded in generated manuals."
+                      },
                       "instruction": { "type": "string" },
                       "timeout": { "type": "number", "minimum": 0 },
                       "description": { "type": "string" },
+                      "pic": { "type": "string" },
+                      "reviewer": { "type": "string" },
                       "type": { "type": "string" },
                       "options": {
                         "type": "object",
@@ -820,6 +835,9 @@
                         },
                         "additionalProperties": false
                       }
+                    },
+                    "not": {
+                      "required": ["command", "script"]
                     }
                   }
                 ]

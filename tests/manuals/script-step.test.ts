@@ -149,4 +149,80 @@ describe('Script step field', () => {
       );
     });
   });
+
+  describe('Rollback with script, pic, and reviewer', () => {
+    it('parses rollback script, pic, reviewer from YAML', async () => {
+      const op = await parseFixture('withScript');
+      const rollback = op.steps[0].rollback?.[0];
+      assert.strictEqual(rollback?.script, './deploy.sh');
+      assert.strictEqual(rollback?.pic, 'ops-lead@example.com');
+      assert.strictEqual(rollback?.reviewer, 'sre-buddy@example.com');
+    });
+
+    it('renders rollback script in multi-env table format', async () => {
+      const op = await parseFixture('withScript');
+      const md = generateManualWithMetadata(
+        op,
+        undefined,
+        undefined,
+        false,
+        false,
+        FIXTURE_DIR,
+      );
+      assert.ok(
+        md.includes('**Script:** `./deploy.sh`'),
+        'rollback should include script label',
+      );
+      assert.ok(
+        md.includes('kubectl apply -f k8s/deployment.yaml'),
+        'rollback should embed script content',
+      );
+    });
+
+    it('renders rollback pic and reviewer sign-off checkboxes in multi-env format', async () => {
+      const op = await parseFixture('withScript');
+      const md = generateManualWithMetadata(
+        op,
+        undefined,
+        undefined,
+        false,
+        false,
+        FIXTURE_DIR,
+      );
+      assert.ok(
+        md.includes('- [ ] PIC (ops-lead@example.com)'),
+        'rollback should have PIC checkbox',
+      );
+      assert.ok(
+        md.includes('- [ ] Reviewer (sre-buddy@example.com)'),
+        'rollback should have Reviewer checkbox',
+      );
+    });
+
+    it('renders rollback script in single-env heading format', async () => {
+      const op = await parseFixture('withScript');
+      const md = generateSingleEnvManual(op, 'staging', false, FIXTURE_DIR);
+      assert.ok(
+        md.includes('**Script:** `./deploy.sh`'),
+        'rollback single-env should include script label',
+      );
+      assert.ok(
+        md.includes('kubectl apply -f k8s/deployment.yaml'),
+        'rollback single-env should embed script content',
+      );
+    });
+
+    it('renders rollback pic and reviewer in single-env heading format', async () => {
+      const op = await parseFixture('withScript');
+      const md = generateSingleEnvManual(op, 'staging', false, FIXTURE_DIR);
+      assert.ok(
+        md.includes('- [ ] PIC (ops-lead@example.com)'),
+        'rollback single-env should have PIC checkbox',
+      );
+      assert.ok(
+        md.includes('- [ ] Reviewer (sre-buddy@example.com)'),
+        'rollback single-env should have Reviewer checkbox',
+      );
+    });
+  });
 });
