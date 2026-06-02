@@ -19,10 +19,13 @@ npx github:eric4545/samaritan generate manual examples/deployment.yaml --output 
 # Generate single-environment heading-based manual (for use during execution)
 npx github:eric4545/samaritan generate manual examples/deployment.yaml --env staging --output staging-manual.md
 
-# Execute operation with interactive tmux TUI
-npx github:eric4545/samaritan run examples/deployment-with-run.yaml --env production
+# Preview operation plan without executing (dry run)
+npx github:eric4545/samaritan run examples/deployment-with-run.yaml --env production --dry-run
 
-# Generate evidence report from a completed session log
+# Execute operation with interactive prompts, auto-generating an evidence report
+npx github:eric4545/samaritan run examples/deployment-with-run.yaml --env production --report ./evidence
+
+# Generate evidence report from an existing session log
 npx github:eric4545/samaritan report /tmp/samaritan-<id>.jsonl --output evidence.md
 ```
 
@@ -38,14 +41,11 @@ npx github:eric4545/samaritan validate my-deployment.yaml --strict --env product
 # 3. Generate single-env manual for staging (resolved variables, heading format)
 npx github:eric4545/samaritan generate manual my-deployment.yaml --env staging --resolve-vars --output staging-runbook.md
 
-# 4. Execute in staging with interactive TUI
-npx github:eric4545/samaritan run my-deployment.yaml --env staging
+# 4. Execute in staging with interactive prompts; report auto-generated on completion
+npx github:eric4545/samaritan run my-deployment.yaml --env staging --report ./staging-evidence
 
-# 5. Generate evidence report for the staging run
-npx github:eric4545/samaritan report /tmp/samaritan-<id>.jsonl --output staging-evidence.md
-
-# 6. Execute in production
-npx github:eric4545/samaritan run my-deployment.yaml --env production
+# 5. Execute in production (report written to ./production-evidence/)
+npx github:eric4545/samaritan run my-deployment.yaml --env production --report ./production-evidence
 ```
 
 

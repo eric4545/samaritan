@@ -387,8 +387,11 @@ npx github:eric4545/samaritan validate <operation.yaml> [options]
 npx github:eric4545/samaritan run <operation.yaml> [options]
   --env <environment>   Target environment (required)
   --var KEY=VALUE       Override a variable (repeatable)
-  --dry-run             Preview steps without executing
+  --dry-run             Preview full plan without executing
   --auto-approve        Skip manual approval prompts
+  -m, --mode <mode>     Execution mode: manual | automatic | hybrid (default: manual)
+  --report <dir>        Write Markdown evidence report to directory after run
+  --continue-on-error   Continue execution even if a step fails
 
 # Generate documentation
 npx github:eric4545/samaritan generate manual <operation.yaml> [options]
@@ -1341,9 +1344,7 @@ See `tests/fixtures/operations/confluence/gantt-timeline.yaml` for a complete ex
 
 ## ⚡ Interactive Execution & Run Commands
 
-> **Status**: The YAML schema, `report` command, named sessions, assertions, capture, rollback, and single-env manual generation are fully functional today. End-to-end wiring of `samaritan run` to the interactive TUI is in progress — the `run` command currently uses the basic executor. The components below (tmux bootstrap, JSONL event logger, assertions, capture) are implemented and tested individually.
-
-SAMARITAN's execution engine lets you run operations step-by-step with automated verification, output capture, and a full JSONL audit trail backed by `tmux`.
+SAMARITAN's execution engine runs operations step-by-step with operator prompts, automated verification, output capture, and a full JSONL audit trail backed by `tmux`.
 
 ### Execution flow
 
@@ -1357,6 +1358,25 @@ samaritan run deployment-with-run.yaml --env production
 ```
 
 In iTerm2, panes open as native vertical splits automatically. In any other terminal with tmux, panes are split inside the current window.
+
+### Interactive prompts
+
+At each step, SAMARITAN pauses and shows the step details, then prompts based on step type:
+
+| Step type | Prompt | Keys |
+|---|---|---|
+| `automatic` (tmux-backed) | `▶  Send to tmux?` | `Enter`=send, `s`=skip, `r`=rollback, `q`=quit |
+| `automatic` (prompt-only) | `▶  Execute?` | `Enter`=confirm, `s`=skip, `r`=rollback, `q`=quit |
+| `manual` | `✋ Mark done` | `Enter`/notes=confirm, `r`=rollback, `skip`=skip, `abort`=quit |
+| `approval` | `⚡ approve/reject` | `approve`, `reject`, `r`=rollback, `skip` |
+
+When a verify assertion fails, a secondary prompt appears:
+
+```
+⚠️  Assertion failed. [o=override with reason / r=rollback / Enter=stop]:
+```
+
+Type `o` to record an override reason in the audit log and continue, `r` to trigger rollback, or press Enter to stop.
 
 ### Named sessions
 
@@ -1515,13 +1535,16 @@ cat /tmp/samaritan-f3a9b2.jsonl | jq 'select(.type=="assert_result" and .pass==f
 
 ### Evidence report
 
-Generate a human-readable Markdown report from any JSONL log:
+Generate a human-readable Markdown report from any JSONL log. Two ways to get one:
 
 ```bash
-# Print to stdout
+# Auto-generate at run time (report written to ./reports/ when run completes)
+samaritan run deployment.yaml --env production --report ./reports
+
+# Generate after the fact from an existing JSONL log
 samaritan report /tmp/samaritan-f3a9b2.jsonl
 
-# Save to file
+# Save to a specific file
 samaritan report /tmp/samaritan-f3a9b2.jsonl --output evidence-report.md
 ```
 
@@ -1549,6 +1572,18 @@ See [`examples/deployment-with-run.yaml`](examples/deployment-with-run.yaml) for
 - `verify` with `expect` + `retry` on the monitoring session
 - Array-format `rollback` steps on multiple steps
 - `run.auto_send: false` / `run.auto_exec: false` (operator confirms each step)
+
+Run it and automatically produce an evidence report:
+
+```bash
+samaritan run examples/deployment-with-run.yaml --env production --report ./evidence
+```
+
+Or preview the full plan without executing:
+
+```bash
+samaritan run examples/deployment-with-run.yaml --env production --dry-run
+```
 
 
 ## 🔄 Execution Workflows
