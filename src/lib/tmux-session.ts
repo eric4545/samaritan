@@ -24,7 +24,7 @@ export class TmuxSession {
 
   send(sessionName: string, command: string): void {
     const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
-    execSync(`tmux send-keys -t ${pane} ${JSON.stringify(command)} Enter`);
+    spawnSync('tmux', ['send-keys', '-t', pane, command, 'Enter']);
   }
 
   currentOffset(sessionName: string): number {
@@ -141,9 +141,13 @@ export async function bootstrapSessions(
       const userAtHost = config.user
         ? `${config.user}@${config.host}`
         : config.host;
-      execSync(
-        `tmux send-keys -t ${paneTarget} ${JSON.stringify(`ssh ${userAtHost}`)} Enter`,
-      );
+      spawnSync('tmux', [
+        'send-keys',
+        '-t',
+        paneTarget,
+        `ssh ${userAtHost}`,
+        'Enter',
+      ]);
     }
 
     // Wait for prompt after connecting
