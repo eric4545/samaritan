@@ -558,7 +558,7 @@ function generateStepRow(
         .trim()
         .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
         .replace(/\n/g, '<br>');
-      cellContent += cleanInstruction;
+      cellContent += `**Instructions:**<br>${cleanInstruction}`;
     }
 
     // Process command (code content)
@@ -746,7 +746,7 @@ function generateStepRow(
               .trim()
               .replace(/\|/g, '\\|')
               .replace(/\n/g, '<br>');
-            cellContent += cleanInstruction;
+            cellContent += `**Instructions:**<br>${cleanInstruction}`;
           }
 
           // Process rollback command (code content)
@@ -910,7 +910,7 @@ function generateSubStepRow(
         .trim()
         .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
         .replace(/\n/g, '<br>');
-      cellContent += cleanInstruction;
+      cellContent += `**Instructions:**<br>${cleanInstruction}`;
     }
 
     // Process command (code content)
@@ -1114,7 +1114,7 @@ function generateSubStepRow(
               .trim()
               .replace(/\|/g, '\\|')
               .replace(/\n/g, '<br>');
-            cellContent += cleanInstruction;
+            cellContent += `**Instructions:**<br>${cleanInstruction}`;
           }
 
           // Process rollback command (code content)
@@ -1517,7 +1517,7 @@ function generateManualContent(
                 .trim()
                 .replace(/\|/g, '\\|')
                 .replace(/\n/g, '<br>');
-              cellContent += cleanInstruction;
+              cellContent += `**Instructions:**<br>${cleanInstruction}`;
             }
 
             // Process rollback command (code content)
@@ -1625,7 +1625,7 @@ function generateManualContent(
               .trim()
               .replace(/\|/g, '\\|')
               .replace(/\n/g, '<br>');
-            cellContent += cleanInstruction;
+            cellContent += `**Instructions:**<br>${cleanInstruction}`;
           }
 
           // Process rollback command (code content)

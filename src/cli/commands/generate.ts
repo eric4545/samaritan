@@ -1296,7 +1296,7 @@ ${filteredOperation.environments
             }
 
             const trimmed = displayInstruction.replace(/\s+$/, '');
-            cellContent += `{markdown}\n${trimmed}\n{markdown}`;
+            cellContent += `*Instructions:*\n{markdown}\n${trimmed}\n{markdown}`;
           }
 
           // Process command (always render as code block)
@@ -1450,7 +1450,7 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
             }
 
             const trimmed = displayInstruction.replace(/\s+$/, '');
-            cellContent += `{markdown}\n${trimmed}\n{markdown}`;
+            cellContent += `*Instructions:*\n{markdown}\n${trimmed}\n{markdown}`;
           }
 
           // Process rollback command (always code block)
@@ -1573,7 +1573,7 @@ function renderInlineRollback(
         );
       }
       const trimmed = displayInstruction.replace(/\s+$/, '');
-      cellContent += `{markdown}\n${trimmed}\n{markdown}`;
+      cellContent += `*Instructions:*\n{markdown}\n${trimmed}\n{markdown}`;
     }
 
     if (rollback?.command) {
@@ -1756,7 +1756,7 @@ function addConfluenceSubStepRows(
         }
 
         const trimmed = displayInstruction.replace(/\s+$/, '');
-        cellContent += `{markdown}\n${trimmed}\n{markdown}`;
+        cellContent += `*Instructions:*\n{markdown}\n${trimmed}\n{markdown}`;
       }
 
       // Process command (always render as code block)
