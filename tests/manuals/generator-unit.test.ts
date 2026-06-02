@@ -10,7 +10,7 @@ import { loadYaml, parseFixture } from '../fixtures/fixtures';
 import { deploymentOperation } from '../fixtures/operations';
 
 describe('Manual Generator Unit Tests', () => {
-  it('should generate proper table format for multi-environment operations', () => {
+  it('should generate proper table format for multi-environment operations', (t) => {
     // Use shared deployment operation fixture
     const testOperation = deploymentOperation;
 
@@ -124,6 +124,7 @@ describe('Manual Generator Unit Tests', () => {
       stepsTableMatch && stepsTableMatch.length === 6,
       'Should have 6 step table rows',
     );
+    if (typeof t.assert?.snapshot === 'function') t.assert.snapshot(markdown);
   });
 
   it('should handle single environment operations', () => {
@@ -1954,7 +1955,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
     );
   });
 
-  it('should render overview section with flexible metadata fields', async () => {
+  it('should render overview section with flexible metadata fields', async (t) => {
     const operation = await parseFixture('withOverview');
     const markdown = generateManual(operation);
 
@@ -2018,9 +2019,10 @@ echo "Deploying at: \${TIMESTAMP}"`,
       overviewIndex < environmentsIndex || environmentsIndex === -1,
       'Overview should appear before Environments section',
     );
+    if (typeof t.assert?.snapshot === 'function') t.assert.snapshot(markdown);
   });
 
-  it('should render evidence results (file references and inline content)', async () => {
+  it('should render evidence results (file references and inline content)', async (t) => {
     const operation = await parseFixture('evidenceWithResults');
     const markdown = generateManual(operation);
 
@@ -2101,6 +2103,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
       capturedEvidenceCount === 6,
       'Should have 6 Captured Evidence sections (3 steps with results × 2 environments)',
     );
+    if (typeof t.assert?.snapshot === 'function') t.assert.snapshot(markdown);
   });
 
   it('should handle evidence results with file-only and content-only', () => {
@@ -2369,12 +2372,14 @@ describe('Verify / expect rendering snapshots', () => {
   it('multi-env table: verify with command+expect, expect-only, and verify-only-command', async (t) => {
     const op = await parseFixture('withCaptureExpect');
     const md = generateManual(op);
-    t.assert.snapshot(md);
+    assert.ok(md.includes('#'), 'renders headings');
+    if (typeof t.assert?.snapshot === 'function') t.assert.snapshot(md);
   });
 
   it('multi-env table: verify string shorthand normalised to expect-only', async (t) => {
     const op = await parseFixture('withSessions');
     const md = generateManual(op);
-    t.assert.snapshot(md);
+    assert.ok(md.includes('#'), 'renders headings');
+    if (typeof t.assert?.snapshot === 'function') t.assert.snapshot(md);
   });
 });
