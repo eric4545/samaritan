@@ -1986,7 +1986,7 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should show Release Notes field',
     );
     assert(
-      markdown.includes('| Release Ticket | INPDRP-2489 |'),
+      markdown.includes('| Release Ticket | DEPLOY-1042 |'),
       'Should show Release Ticket field',
     );
     assert(
@@ -2000,12 +2000,14 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Should show Manual Status field',
     );
     assert(
-      markdown.includes('| War Room | https://zoom.us/j/warroom-rehearsal |'),
+      markdown.includes(
+        '| War Room | https://meet.example.com/rehearsal-room |',
+      ),
       'Should show War Room field',
     );
     assert(
       markdown.includes(
-        '| Production Release War Room | https://zoom.us/j/warroom-prod |',
+        '| Production Release War Room | https://meet.example.com/prod-room |',
       ),
       'Should show Production Release War Room field',
     );

@@ -313,7 +313,7 @@ describe('ADF Generator', () => {
       'Should include Release Notes',
     );
     assert.ok(
-      adfString.includes('INPDRP-2489'),
+      adfString.includes('DEPLOY-1042'),
       'Should include Release Ticket value',
     );
     assert.ok(

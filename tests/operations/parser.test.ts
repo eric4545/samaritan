@@ -346,7 +346,7 @@ describe('Enhanced Operation Parser', () => {
     );
     assert.strictEqual(
       operation.overview['Release Ticket'],
-      'INPDRP-2489',
+      'DEPLOY-1042',
       'Should have Release Ticket',
     );
     assert.strictEqual(
@@ -361,12 +361,12 @@ describe('Enhanced Operation Parser', () => {
     );
     assert.strictEqual(
       operation.overview['War Room'],
-      'https://zoom.us/j/warroom-rehearsal',
+      'https://meet.example.com/rehearsal-room',
       'Should have War Room link',
     );
     assert.strictEqual(
       operation.overview['Production Release War Room'],
-      'https://zoom.us/j/warroom-prod',
+      'https://meet.example.com/prod-room',
       'Should have Production Release War Room link',
     );
 

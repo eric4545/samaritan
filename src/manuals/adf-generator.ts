@@ -251,6 +251,7 @@ export function generateADF(
               );
             }
 
+            cellContent.push(paragraph(strong(text('Instructions:'))));
             cellContent.push(paragraph(text(displayInstruction)));
           }
 
@@ -566,6 +567,7 @@ function createStepsTable(
           );
         }
 
+        cellContent.push(paragraph(strong(text('Instructions:'))));
         cellContent.push(paragraph(text(displayInstruction)));
       }
 
@@ -785,6 +787,7 @@ function addSubStepRows(
           );
         }
 
+        cellContent.push(paragraph(strong(text('Instructions:'))));
         cellContent.push(paragraph(text(displayInstruction)));
       }
 
@@ -894,6 +897,7 @@ function addSubStepRows(
             );
           }
 
+          cellContent.push(paragraph(strong(text('Instructions:'))));
           cellContent.push(paragraph(text(displayInstruction)));
         }
 
