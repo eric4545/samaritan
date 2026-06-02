@@ -443,6 +443,20 @@ function filterStepsForEnvironments(
     });
 }
 
+function renderTableInstruction(
+  instruction: string | undefined,
+  envVars: Record<string, any> | undefined,
+  stepVars: Record<string, any> | undefined,
+  resolveVariables: boolean,
+  substituteVarsEnabled: boolean,
+): string {
+  if (!instruction) return '';
+  let display = resolveVariables && substituteVarsEnabled
+    ? substituteVariables(instruction, envVars || {}, stepVars)
+    : instruction;
+  return `**Instructions:**<br>${display.trim().replace(/\|/g, '\\|').replace(/\n/g, '<br>')}`;
+}
+
 function generateStepRow(
   step: Step,
   stepNumber: number,
@@ -541,25 +555,7 @@ function generateStepRow(
     const showCommandSeparately =
       effectiveStep.options?.show_command_separately ?? false;
 
-    // Process instruction (markdown content)
-    if (effectiveStep.instruction) {
-      let displayInstruction = effectiveStep.instruction;
-
-      if (resolveVariables && substituteVars) {
-        displayInstruction = substituteVariables(
-          displayInstruction,
-          env.variables || {},
-          effectiveStep.variables,
-        );
-      }
-
-      // Preserve markdown formatting and escape only pipes
-      const cleanInstruction = displayInstruction
-        .trim()
-        .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
-        .replace(/\n/g, '<br>');
-      cellContent += `**Instructions:**<br>${cleanInstruction}`;
-    }
+    cellContent += renderTableInstruction(effectiveStep.instruction, env.variables, effectiveStep.variables, resolveVariables, substituteVars);
 
     // Process command (code content)
     if (effectiveStep.command) {
@@ -729,25 +725,7 @@ function generateStepRow(
           const showCommandSeparately =
             rb.options?.show_command_separately ?? false;
 
-          // Process rollback instruction (markdown content)
-          if (rb.instruction) {
-            let displayInstruction = rb.instruction;
-
-            if (resolveVariables && substituteVars) {
-              displayInstruction = substituteVariables(
-                displayInstruction,
-                env.variables || {},
-                subStep.variables,
-              );
-            }
-
-            // Preserve markdown formatting and escape only pipes
-            const cleanInstruction = displayInstruction
-              .trim()
-              .replace(/\|/g, '\\|')
-              .replace(/\n/g, '<br>');
-            cellContent += `**Instructions:**<br>${cleanInstruction}`;
-          }
+          cellContent += renderTableInstruction(rb.instruction, env.variables, subStep.variables, resolveVariables, substituteVars);
 
           // Process rollback command (code content)
           if (rb.command) {
@@ -893,25 +871,7 @@ function generateSubStepRow(
     const showCommandSeparately =
       effectiveStep.options?.show_command_separately ?? false;
 
-    // Process instruction (markdown content)
-    if (effectiveStep.instruction) {
-      let displayInstruction = effectiveStep.instruction;
-
-      if (resolveVariables && substituteVars) {
-        displayInstruction = substituteVariables(
-          displayInstruction,
-          env.variables || {},
-          effectiveStep.variables,
-        );
-      }
-
-      // Preserve markdown formatting and escape only pipes
-      const cleanInstruction = displayInstruction
-        .trim()
-        .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
-        .replace(/\n/g, '<br>');
-      cellContent += `**Instructions:**<br>${cleanInstruction}`;
-    }
+    cellContent += renderTableInstruction(effectiveStep.instruction, env.variables, effectiveStep.variables, resolveVariables, substituteVars);
 
     // Process command (code content)
     if (effectiveStep.command) {
@@ -1098,24 +1058,7 @@ function generateSubStepRow(
           const showCommandSeparately =
             rb.options?.show_command_separately ?? false;
 
-          // Process rollback instruction (markdown content)
-          if (rb.instruction) {
-            let displayInstruction = rb.instruction;
-
-            if (resolveVariables && substituteVars) {
-              displayInstruction = substituteVariables(
-                displayInstruction,
-                env.variables || {},
-                nestedSubStep.variables,
-              );
-            }
-
-            const cleanInstruction = displayInstruction
-              .trim()
-              .replace(/\|/g, '\\|')
-              .replace(/\n/g, '<br>');
-            cellContent += `**Instructions:**<br>${cleanInstruction}`;
-          }
+          cellContent += renderTableInstruction(rb.instruction, env.variables, nestedSubStep.variables, resolveVariables, substituteVars);
 
           // Process rollback command (code content)
           if (rb.command) {
@@ -1500,25 +1443,7 @@ function generateManualContent(
             const showCommandSeparately =
               rb.options?.show_command_separately ?? false;
 
-            // Process rollback instruction (markdown content)
-            if (rb.instruction) {
-              let displayInstruction = rb.instruction;
-
-              if (resolveVariables && substituteVars) {
-                displayInstruction = substituteVariables(
-                  displayInstruction,
-                  env.variables || {},
-                  step.variables,
-                );
-              }
-
-              // Preserve markdown formatting and escape only pipes
-              const cleanInstruction = displayInstruction
-                .trim()
-                .replace(/\|/g, '\\|')
-                .replace(/\n/g, '<br>');
-              cellContent += `**Instructions:**<br>${cleanInstruction}`;
-            }
+            cellContent += renderTableInstruction(rb.instruction, env.variables, step.variables, resolveVariables, substituteVars);
 
             // Process rollback command (code content)
             if (rb.command) {
@@ -1608,25 +1533,7 @@ function generateManualContent(
           const showCommandSeparately =
             rb.options?.show_command_separately ?? false;
 
-          // Process rollback instruction (markdown content)
-          if (rb.instruction) {
-            let displayInstruction = rb.instruction;
-
-            if (resolveVariables && substituteVars) {
-              displayInstruction = substituteVariables(
-                displayInstruction,
-                env.variables || {},
-                step.variables,
-              );
-            }
-
-            // Preserve markdown formatting and escape only pipes
-            const cleanInstruction = displayInstruction
-              .trim()
-              .replace(/\|/g, '\\|')
-              .replace(/\n/g, '<br>');
-            cellContent += `**Instructions:**<br>${cleanInstruction}`;
-          }
+          cellContent += renderTableInstruction(rb.instruction, env.variables, step.variables, resolveVariables, substituteVars);
 
           // Process rollback command (code content)
           if (rb.command) {

@@ -252,7 +252,7 @@ export function generateADF(
             }
 
             cellContent.push(paragraph(strong(text('Instructions:'))));
-        cellContent.push(paragraph(text(displayInstruction)));
+            cellContent.push(paragraph(text(displayInstruction)));
           }
 
           // Process rollback command (code block)
@@ -898,7 +898,7 @@ function addSubStepRows(
           }
 
           cellContent.push(paragraph(strong(text('Instructions:'))));
-        cellContent.push(paragraph(text(displayInstruction)));
+          cellContent.push(paragraph(text(displayInstruction)));
         }
 
         // Process rollback command (code block)
