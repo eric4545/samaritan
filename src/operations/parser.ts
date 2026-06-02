@@ -894,6 +894,7 @@ async function parseStep(
     description: stepData.description,
     if: stepData.if,
     command: stepData.command,
+    script: stepData.script,
     instruction: stepData.instruction,
     condition: stepData.condition,
     timeout: stepData.timeout,

@@ -117,6 +117,7 @@ class DocumentationGenerator {
           operationName,
           envFileSuffix,
           options,
+          operationFile,
         );
         break;
       case 'html':
@@ -237,8 +238,10 @@ class DocumentationGenerator {
     operationName: string,
     envFileSuffix: string,
     options: GenerateOptions,
+    operationFile: string,
   ): Promise<void> {
     const targetEnv = getTargetEnvironment(options);
+    const operationDir = dirname(operationFile);
     const metadata = await createGenerationMetadata(
       operationName,
       operation.id,
@@ -251,6 +254,7 @@ class DocumentationGenerator {
       metadata,
       targetEnv,
       options.resolveVars,
+      operationDir,
     );
     const outputFile =
       options.output || `manuals/${operationName}${envFileSuffix}-manual.json`;
@@ -317,7 +321,12 @@ class DocumentationGenerator {
         );
         break;
       case 'adf':
-        await this.generateADFDocs(operation, operationName, options);
+        await this.generateADFDocs(
+          operation,
+          operationName,
+          options,
+          operationFile,
+        );
         break;
       case 'html':
         await this.generateHtmlDocs(operation, operationName, options);
@@ -385,8 +394,10 @@ class DocumentationGenerator {
     operation: any,
     operationName: string,
     options: GenerateOptions,
+    operationFile: string,
   ): Promise<void> {
     const targetEnv = getTargetEnvironment(options);
+    const operationDir = dirname(operationFile);
     const metadata = await createGenerationMetadata(
       operationName,
       operation.id,
@@ -399,6 +410,7 @@ class DocumentationGenerator {
       metadata,
       targetEnv,
       options.resolveVars,
+      operationDir,
     );
     const envSuffix = targetEnv ? `-${targetEnv}` : '';
     const outputFile =

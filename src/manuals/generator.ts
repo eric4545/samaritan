@@ -596,6 +596,25 @@ function generateStepRow(
       }
     }
 
+    // Process script (external shell script file)
+    if (effectiveStep.script) {
+      const sep = cellContent ? '<br><br>' : '';
+      cellContent += `${sep}**Script:** \`${effectiveStep.script}\``;
+      if (operationDir) {
+        try {
+          const scriptPath = path.resolve(operationDir, effectiveStep.script);
+          const scriptContent = fs
+            .readFileSync(scriptPath, 'utf-8')
+            .trimEnd()
+            .replace(/\|/g, '\\|')
+            .replace(/\n/g, '<br>');
+          cellContent += `<br>\`\`\`bash<br>${scriptContent}<br>\`\`\``;
+        } catch {
+          cellContent += ` <em>(file not found)</em>`;
+        }
+      }
+    }
+
     // Add verify/expect
     if (effectiveStep.verify) {
       const { command: verifyCmd, expect: verifyExpect } = effectiveStep.verify;
@@ -921,6 +940,25 @@ function generateSubStepRow(
       } else {
         // Both present, inline mode
         cellContent += `<br><br>\`${cleanCommand}\``;
+      }
+    }
+
+    // Process script (external shell script file)
+    if (effectiveStep.script) {
+      const sep = cellContent ? '<br><br>' : '';
+      cellContent += `${sep}**Script:** \`${effectiveStep.script}\``;
+      if (operationDir) {
+        try {
+          const scriptPath = path.resolve(operationDir, effectiveStep.script);
+          const scriptContent = fs
+            .readFileSync(scriptPath, 'utf-8')
+            .trimEnd()
+            .replace(/\|/g, '\\|')
+            .replace(/\n/g, '<br>');
+          cellContent += `<br>\`\`\`bash<br>${scriptContent}<br>\`\`\``;
+        } catch {
+          cellContent += ` <em>(file not found)</em>`;
+        }
       }
     }
 
@@ -1706,6 +1744,23 @@ export function generateSingleEnvManual(
         lines.push('```bash');
         lines.push(resolvedCmd);
         lines.push('```');
+      }
+      lines.push('');
+    }
+
+    if (effectiveStep.script) {
+      lines.push(`**Script:** \`${effectiveStep.script}\``);
+      lines.push('');
+      if (operationDir) {
+        try {
+          const scriptPath = path.resolve(operationDir, effectiveStep.script);
+          const scriptContent = fs.readFileSync(scriptPath, 'utf-8').trimEnd();
+          lines.push('```bash');
+          lines.push(scriptContent);
+          lines.push('```');
+        } catch {
+          lines.push(`_Script file not found: ${effectiveStep.script}_`);
+        }
       }
       lines.push('');
     }

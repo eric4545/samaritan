@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { PanelType } from '@atlaskit/adf-schema';
 import {
   bulletList,
@@ -64,6 +66,7 @@ export function generateADF(
   metadata?: GenerationMetadata,
   targetEnvironment?: string,
   resolveVariables?: boolean,
+  operationDir?: string,
 ): object {
   // Filter environments if specified
   let environments = operation.environments;
@@ -179,6 +182,7 @@ export function generateADF(
           environments,
           resolveVariables,
           'preflight',
+          operationDir,
         ),
       );
     }
@@ -194,6 +198,7 @@ export function generateADF(
           environments,
           resolveVariables,
           'flight',
+          operationDir,
         ),
       );
     }
@@ -207,6 +212,7 @@ export function generateADF(
           environments,
           resolveVariables,
           'postflight',
+          operationDir,
         ),
       );
     }
@@ -434,6 +440,7 @@ function createStepsTable(
   environments: Environment[],
   resolveVariables?: boolean,
   currentPhase?: string,
+  operationDir?: string,
 ): any {
   // Build header row
   const headerCells = [tableHeader()(paragraph(text('Step')))];
@@ -588,6 +595,30 @@ function createStepsTable(
         }
 
         cellContent.push(codeBlock({ language: 'bash' })(text(displayCommand)));
+      }
+
+      // Process script (external shell script file)
+      if (effectiveStep.script) {
+        cellContent.push(
+          paragraph(strong(text('Script:')), text(` ${effectiveStep.script}`)),
+        );
+        if (operationDir) {
+          try {
+            const scriptPath = path.resolve(operationDir, effectiveStep.script);
+            const scriptContent = fs
+              .readFileSync(scriptPath, 'utf-8')
+              .trimEnd();
+            cellContent.push(
+              codeBlock({ language: 'bash' })(text(scriptContent)),
+            );
+          } catch {
+            cellContent.push(
+              paragraph(
+                em(text(`Script file not found: ${effectiveStep.script}`)),
+              ),
+            );
+          }
+        }
       }
 
       // Fallback for steps with neither
@@ -808,6 +839,36 @@ function addSubStepRows(
         }
 
         cellContent.push(codeBlock({ language: 'bash' })(text(displayCommand)));
+      }
+
+      // Process script (external shell script file)
+      if (effectiveSubStep.script) {
+        cellContent.push(
+          paragraph(
+            strong(text('Script:')),
+            text(` ${effectiveSubStep.script}`),
+          ),
+        );
+        if (operationDir) {
+          try {
+            const scriptPath = path.resolve(
+              operationDir,
+              effectiveSubStep.script,
+            );
+            const scriptContent = fs
+              .readFileSync(scriptPath, 'utf-8')
+              .trimEnd();
+            cellContent.push(
+              codeBlock({ language: 'bash' })(text(scriptContent)),
+            );
+          } catch {
+            cellContent.push(
+              paragraph(
+                em(text(`Script file not found: ${effectiveSubStep.script}`)),
+              ),
+            );
+          }
+        }
       }
 
       // Fallback for sub-steps with neither
@@ -1034,12 +1095,14 @@ export function generateADFString(
   metadata?: GenerationMetadata,
   targetEnvironment?: string,
   resolveVariables?: boolean,
+  operationDir?: string,
 ): string {
   const adf = generateADF(
     operation,
     metadata,
     targetEnvironment,
     resolveVariables,
+    operationDir,
   );
   return JSON.stringify(adf, null, 2);
 }

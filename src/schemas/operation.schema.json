@@ -391,6 +391,10 @@
               "command": {
                 "type": "string"
               },
+              "script": {
+                "type": "string",
+                "description": "Path to an external shell script (relative to operation file). Content is read and embedded in generated manuals."
+              },
               "instruction": {
                 "type": "string"
               },
@@ -854,6 +858,9 @@
                   }
                 }
               }
+            },
+            "not": {
+              "required": ["command", "script"]
             }
           }
         ]

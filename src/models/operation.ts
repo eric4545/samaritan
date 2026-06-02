@@ -207,6 +207,7 @@ export interface Step {
   description?: string;
   if?: string;
   command?: string;
+  script?: string;
   instruction?: string;
   condition?: string;
   timeout?: number;

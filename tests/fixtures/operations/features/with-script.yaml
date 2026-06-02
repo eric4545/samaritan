@@ -1,0 +1,13 @@
+name: Script Step Test
+version: 1.0.0
+environments:
+  - name: staging
+  - name: production
+steps:
+  - name: Deploy Application
+    type: manual
+    instruction: Run the deployment script to update the application.
+    script: ./deploy.sh
+  - name: Rollback Application
+    type: manual
+    script: ./deploy.sh
