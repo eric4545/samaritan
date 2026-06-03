@@ -210,7 +210,7 @@ export class StepController {
   }
 }
 
-function interpolateExpect(
+export function interpolateExpect(
   expect: ExpectConfig | string,
   state: SessionState,
 ): ExpectConfig | string {
@@ -219,8 +219,17 @@ function interpolateExpect(
   }
   const result: ExpectConfig = { ...expect };
   if (result.contains) result.contains = state.interpolate(result.contains);
+  if (result.not_contains)
+    result.not_contains = state.interpolate(result.not_contains);
   if (result.equals) result.equals = state.interpolate(result.equals);
   if (result.matches) result.matches = state.interpolate(result.matches);
+  if (result.any_line_contains)
+    result.any_line_contains = state.interpolate(result.any_line_contains);
+  if (result.no_line_contains)
+    result.no_line_contains = state.interpolate(result.no_line_contains);
+  if (result.all_lines_match)
+    result.all_lines_match = state.interpolate(result.all_lines_match);
+  if (result.jsonpath) result.jsonpath = state.interpolate(result.jsonpath);
   if (result.equals_captured) {
     const val = state.get(result.equals_captured);
     if (val !== undefined) {
