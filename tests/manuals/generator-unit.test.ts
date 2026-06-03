@@ -2458,4 +2458,38 @@ describe('Expect field ${VAR} substitution in generated manuals', () => {
       'resolved not_contains value should appear',
     );
   });
+
+  it('single-env: step-level variables are substituted in expect', () => {
+    const opWithStepVars: Operation = {
+      name: 'Step Vars Test',
+      version: '1.0.0',
+      environments: [
+        {
+          name: 'staging',
+          variables: { NAMESPACE: 'staging-ns' },
+          approval_required: false,
+          validation_required: false,
+          restrictions: [],
+        },
+      ],
+      steps: [
+        {
+          name: 'Deploy',
+          type: 'manual',
+          variables: { IMAGE_TAG: 'v1.2.3' },
+          verify: {
+            command: 'kubectl rollout status -n ${NAMESPACE}',
+            expect: { contains: '${IMAGE_TAG}' },
+          },
+        },
+      ],
+      metadata: {},
+    };
+    const md = generateSingleEnvManual(opWithStepVars, 'staging', true);
+    assert.ok(
+      !md.includes('${IMAGE_TAG}'),
+      'step-level var should be resolved',
+    );
+    assert.ok(md.includes('v1.2.3'), 'resolved value should appear');
+  });
 });
