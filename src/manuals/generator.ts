@@ -1936,7 +1936,7 @@ export function generateSingleEnvManual(
       }
       if (expect) {
         const resolvedExpect = resolveVariables
-          ? substituteExpectVars(expect, envVars)
+          ? substituteExpectVars(expect, envVars, effectiveStep.variables)
           : expect;
         const desc = renderExpectDescription(resolvedExpect);
         if (desc) {
