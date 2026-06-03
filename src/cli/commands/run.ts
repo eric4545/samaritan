@@ -2,13 +2,14 @@ import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface as createReadlineInterface } from 'node:readline';
 import { Command } from 'commander';
+import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
 import { generateReport } from '../../lib/report-generator';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import { SessionState } from '../../lib/session-state';
 import { bootstrapSessions, type TmuxSession } from '../../lib/tmux-session';
-import { StepController } from '../../lib/tui';
+import { renderCodeBlock, renderKeyHints, StepController } from '../../lib/tui';
 import { resolveVars, resolveVarsSafe } from '../../lib/variable-resolver';
 import type { ExecutionMode, Operation, Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
@@ -407,6 +408,25 @@ class OperationRunner {
       }
     };
 
+    const promptAction = async (
+      hints: Array<{ key: string; label: string }>,
+      commandToCopy?: string,
+    ): Promise<string> => {
+      while (true) {
+        console.log(`\n${renderKeyHints(hints)}`);
+        const ans = await question('  > ');
+        const choice = ans.trim().toLowerCase();
+        if (commandToCopy && (choice === 'c' || choice === 'copy')) {
+          const ok = await copyToClipboard(commandToCopy);
+          console.log(
+            ok ? '  ✅ Copied to clipboard!' : '  ⚠️  Clipboard unavailable',
+          );
+          continue;
+        }
+        return choice;
+      }
+    };
+
     try {
       const steps = executor.getState().steps;
 
@@ -443,14 +463,21 @@ class OperationRunner {
           );
 
         if (step.type === 'automatic') {
-          if (resolvedCommand) console.log(`\n    $ ${resolvedCommand}`);
+          if (resolvedCommand)
+            console.log(`\n${renderCodeBlock(resolvedCommand)}`);
 
           if (controller && step.session && resolvedCommand) {
             // tmux-backed automatic step
-            const ans = await question(
-              '\n    ▶  Send to tmux? [Enter=yes / s=skip / r=rollback / q=quit]: ',
+            const choice = await promptAction(
+              [
+                { key: '↵', label: 'send' },
+                { key: 'c', label: 'copy' },
+                { key: 's', label: 'skip' },
+                { key: 'r', label: 'rollback' },
+                { key: 'q', label: 'quit' },
+              ],
+              resolvedCommand,
             );
-            const choice = ans.trim().toLowerCase();
             if (isQuit(choice)) {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
@@ -519,10 +546,16 @@ class OperationRunner {
             controller.completeStep(i);
           } else {
             // prompt-only automatic step
-            const ans = await question(
-              '\n    ▶  Execute? [Enter=yes / s=skip / r=rollback / q=quit]: ',
+            const choice = await promptAction(
+              [
+                { key: '↵', label: 'confirm' },
+                ...(resolvedCommand ? [{ key: 'c', label: 'copy' }] : []),
+                { key: 's', label: 'skip' },
+                { key: 'r', label: 'rollback' },
+                { key: 'q', label: 'quit' },
+              ],
+              resolvedCommand,
             );
-            const choice = ans.trim().toLowerCase();
             if (isQuit(choice)) {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
@@ -549,12 +582,38 @@ class OperationRunner {
           }
         } else if (step.type === 'manual') {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
-          if (resolvedCommand)
-            console.log(`\n    Command reference:\n    $ ${resolvedCommand}`);
-          const notes = await question(
-            '\n    ✋ Mark done (notes/Enter=confirm, "r"=rollback, "skip"=skip, "abort"=abort): ',
-          );
-          const choice = notes.trim().toLowerCase();
+          if (resolvedCommand) {
+            console.log('\n    Command reference:');
+            console.log(renderCodeBlock(resolvedCommand));
+          }
+          let manualNotes = '';
+          while (true) {
+            console.log(
+              '\n' +
+                renderKeyHints([
+                  { key: '↵', label: 'done' },
+                  ...(resolvedCommand ? [{ key: 'c', label: 'copy' }] : []),
+                  { key: 's', label: 'skip' },
+                  { key: 'r', label: 'rollback' },
+                  { key: 'abort', label: 'abort' },
+                ]),
+            );
+            const input = await question('  > ');
+            const inputChoice = input.trim().toLowerCase();
+            if (
+              resolvedCommand &&
+              (inputChoice === 'c' || inputChoice === 'copy')
+            ) {
+              const ok = await copyToClipboard(resolvedCommand);
+              console.log(
+                ok ? '  ✅ Copied to clipboard!' : '  ⚠️  Clipboard unavailable',
+              );
+              continue;
+            }
+            manualNotes = input;
+            break;
+          }
+          const choice = manualNotes.trim().toLowerCase();
           if (choice === 'abort') {
             executor.cancel();
             console.log('\n⛔ Execution aborted by operator.');
@@ -569,22 +628,27 @@ class OperationRunner {
             console.log('    ⏭  Skipped.');
             continue;
           }
-          await executor.executeStepManually(i, notes.trim() || 'confirmed');
+          await executor.executeStepManually(
+            i,
+            manualNotes.trim() || 'confirmed',
+          );
           logger.emit({
             type: 'user_input',
             action: 'confirmed',
             step: i,
             actor: state.context.operator,
-            notes: notes.trim() || undefined,
+            notes: manualNotes.trim() || undefined,
           });
           logger.emit({ type: 'step_complete', step: i });
           console.log('    ✅ Step marked complete.');
         } else if (step.type === 'approval') {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
-          const ans = await question(
-            '\n    ⚡ "approve" / "reject" / "r" (rollback) / "skip": ',
-          );
-          const choice = ans.trim().toLowerCase();
+          const choice = await promptAction([
+            { key: 'approve', label: 'approve' },
+            { key: 'reject', label: 'reject' },
+            { key: 'r', label: 'rollback' },
+            { key: 's', label: 'skip' },
+          ]);
           if (isRollback(choice)) {
             await doRollback(step, i);
             continue;
