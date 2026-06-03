@@ -6,7 +6,12 @@ import {
   generateYamlFrontmatter,
 } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
-import type { Environment, Operation, Step } from '../models/operation';
+import type {
+  Environment,
+  ExpectConfig,
+  Operation,
+  Step,
+} from '../models/operation';
 import type { RunEvidenceItem, RunManifest } from '../models/run-manifest';
 
 function substituteVariables(
@@ -24,6 +29,32 @@ function substituteVariables(
     result = result.replace(regex, mergedVariables[key]);
   }
 
+  return result;
+}
+
+const EXPECT_STRING_FIELDS = [
+  'contains',
+  'not_contains',
+  'equals',
+  'matches',
+  'any_line_contains',
+  'no_line_contains',
+  'all_lines_match',
+  'jsonpath',
+] as const satisfies ReadonlyArray<keyof ExpectConfig>;
+
+function substituteExpectVars(
+  expect: ExpectConfig | string,
+  envVars: Record<string, any>,
+  stepVars?: Record<string, any>,
+): ExpectConfig | string {
+  if (typeof expect === 'string')
+    return substituteVariables(expect, envVars, stepVars);
+  const result: ExpectConfig = { ...expect };
+  for (const field of EXPECT_STRING_FIELDS) {
+    if (result[field])
+      result[field] = substituteVariables(result[field], envVars, stepVars);
+  }
   return result;
 }
 
@@ -636,7 +667,15 @@ function generateStepRow(
         cellContent += `${sep}**Verify:** \`${cleanCmd}\``;
       }
       if (verifyExpect) {
-        const desc = renderExpectDescription(verifyExpect);
+        const resolvedExpect =
+          resolveVariables && substituteVars
+            ? substituteExpectVars(
+                verifyExpect,
+                env.variables || {},
+                effectiveStep.variables,
+              )
+            : verifyExpect;
+        const desc = renderExpectDescription(resolvedExpect);
         if (desc)
           cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
       }
@@ -1011,7 +1050,15 @@ function generateSubStepRow(
         cellContent += `${sep}**Verify:** \`${cleanCmd}\``;
       }
       if (verifyExpect) {
-        const desc = renderExpectDescription(verifyExpect);
+        const resolvedExpect =
+          resolveVariables && substituteVars
+            ? substituteExpectVars(
+                verifyExpect,
+                env.variables || {},
+                effectiveStep.variables,
+              )
+            : verifyExpect;
+        const desc = renderExpectDescription(resolvedExpect);
         if (desc)
           cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
       }
@@ -1888,7 +1935,10 @@ export function generateSingleEnvManual(
         emitted = true;
       }
       if (expect) {
-        const desc = renderExpectDescription(expect);
+        const resolvedExpect = resolveVariables
+          ? substituteExpectVars(expect, envVars)
+          : expect;
+        const desc = renderExpectDescription(resolvedExpect);
         if (desc) {
           lines.push(`> Expected: ${desc}`);
           emitted = true;
