@@ -389,6 +389,10 @@ export class OperationExecutor {
   finalizeOperation(): void {
     this.state.endTime = new Date();
 
+    if (this.state.status === 'cancelled') {
+      return;
+    }
+
     if (this.state.waitingSteps > 0) {
       this.state.status = 'paused';
       this.emitEvent({

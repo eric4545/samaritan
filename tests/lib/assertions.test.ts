@@ -207,3 +207,22 @@ describe('SessionState (issue #12)', () => {
     assert.strictEqual(state.get('FIRST'), 'firstline');
   });
 });
+
+describe('assertOutput — equals_captured fallback (bug fix)', () => {
+  it('returns pass:false when equals_captured key was not resolved', () => {
+    const result = assertOutput('some output', {
+      equals_captured: 'missing_var',
+    });
+    assert.strictEqual(result.pass, false);
+    assert.strictEqual(result.type, 'equals_captured');
+    assert.ok(
+      result.expected.includes('missing_var'),
+      'expected message should name the missing variable',
+    );
+  });
+
+  it('returns pass:false regardless of actual output content', () => {
+    const result = assertOutput('', { equals_captured: 'unset_capture' });
+    assert.strictEqual(result.pass, false);
+  });
+});

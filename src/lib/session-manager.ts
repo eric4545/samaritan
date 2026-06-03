@@ -283,6 +283,10 @@ export class SessionManager {
       this.updateSessionFromExecutor(sessionId, executor.getState());
     });
 
+    executor.on('step_skipped', (_event) => {
+      this.updateSessionFromExecutor(sessionId, executor.getState());
+    });
+
     executor.on('operation_completed', (_event) => {
       this.completeSession(sessionId, true);
     });

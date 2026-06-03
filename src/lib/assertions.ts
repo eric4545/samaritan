@@ -141,6 +141,15 @@ export function assertOutput(
     return evalJsonPath(output, expect.jsonpath, undefined);
   }
 
+  if (expect.equals_captured !== undefined) {
+    return {
+      pass: false,
+      actual: trimmed,
+      expected: `captured variable "${expect.equals_captured}" (not found in session state)`,
+      type: 'equals_captured',
+    };
+  }
+
   return {
     pass: true,
     actual: trimmed,
