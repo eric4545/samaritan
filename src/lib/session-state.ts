@@ -12,12 +12,18 @@ export class SessionState {
   }
 
   interpolate(template: string): string {
-    return template.replace(/\$\{([^}]+)\}/g, (_, name) => {
+    // ${VAR} → strict: throw if not captured
+    const step1 = template.replace(/\$\{([^}]+)\}/g, (_match, name) => {
       const value = this.vars.get(name);
       if (value === undefined) {
         throw new Error(`Undefined captured variable: ${name}`);
       }
       return value;
+    });
+    // $VAR → lenient: resolve if captured, otherwise leave for shell expansion
+    return step1.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, name) => {
+      const value = this.vars.get(name);
+      return value ?? match;
     });
   }
 

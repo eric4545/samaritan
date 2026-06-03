@@ -459,3 +459,64 @@ describe('Executor Utils', () => {
     assert.strictEqual(ExecutorUtils.getStatusEmoji('paused'), '⏸️');
   });
 });
+
+describe('Bug fixes — review findings', () => {
+  const twoStepOperation: Operation = {
+    id: 'bug-fix-op',
+    name: 'Bug Fix Test Op',
+    version: '1.0.0',
+    description: 'Two-step op for bug-fix tests',
+    environments: [
+      {
+        name: 'test',
+        description: 'Test env',
+        variables: {},
+        restrictions: [],
+        approval_required: false,
+        validation_required: false,
+      },
+    ],
+    variables: { test: {} },
+    steps: [
+      { name: 'Step A', type: 'manual', description: 'First step' },
+      { name: 'Step B', type: 'manual', description: 'Second step' },
+    ],
+    preflight: [],
+    metadata: {
+      created_at: new Date(),
+      updated_at: new Date(),
+      execution_count: 0,
+    },
+  };
+
+  it('finalizeOperation retains cancelled status when cancel() was called first', () => {
+    const context = ExecutorUtils.createContext(
+      'bug-fix-op',
+      'test',
+      {},
+      'tester',
+    );
+    const executor = createExecutor(twoStepOperation, context);
+    executor.startInteractive();
+    executor.cancel();
+    executor.finalizeOperation();
+    assert.strictEqual(executor.getState().status, 'cancelled');
+  });
+
+  it('resumeFromIndex marks prior steps completed and sets currentStepIndex', () => {
+    const context = ExecutorUtils.createContext(
+      'bug-fix-op',
+      'test',
+      {},
+      'tester',
+    );
+    const executor = createExecutor(twoStepOperation, context);
+    executor.resumeFromIndex(1);
+    const state = executor.getState();
+    assert.strictEqual(state.currentStepIndex, 1);
+    assert.strictEqual(state.completedSteps, 1);
+    assert.strictEqual(state.steps[0].status, 'completed');
+    assert.strictEqual(state.steps[1].status, 'pending');
+    assert.strictEqual(state.status, 'running');
+  });
+});

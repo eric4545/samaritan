@@ -186,6 +186,34 @@ describe('SessionState (issue #12)', () => {
     assert.strictEqual(result, 'hello world');
   });
 
+  it('interpolates bare $VAR when captured', () => {
+    const state = new SessionState();
+    state.capture('APP_VERSION', '1.2.3');
+    const result = state.interpolate('$APP_VERSION');
+    assert.strictEqual(result, '1.2.3');
+  });
+
+  it('leaves bare $VAR untouched when not captured (for shell expansion)', () => {
+    const state = new SessionState();
+    const result = state.interpolate('$HOME and $USER');
+    assert.strictEqual(result, '$HOME and $USER');
+  });
+
+  it('resolves bare $VAR in expect equals while leaving unknown shell vars', () => {
+    const state = new SessionState();
+    state.capture('STATUS', 'Running');
+    const result = state.interpolate('$STATUS vs $SHELL_VAR');
+    assert.strictEqual(result, 'Running vs $SHELL_VAR');
+  });
+
+  it('resolves mixed ${VAR} and $VAR in same string', () => {
+    const state = new SessionState();
+    state.capture('A', 'alpha');
+    state.capture('B', 'beta');
+    const result = state.interpolate('${A} and $B');
+    assert.strictEqual(result, 'alpha and beta');
+  });
+
   it('extractCapture with pattern and group', () => {
     const state = new SessionState();
     state.extractCapture('ID', 'Successfully built abc123def', {
@@ -205,5 +233,24 @@ describe('SessionState (issue #12)', () => {
     const state = new SessionState();
     state.extractCapture('FIRST', 'firstline\nline2\nline3', { line: 'first' });
     assert.strictEqual(state.get('FIRST'), 'firstline');
+  });
+});
+
+describe('assertOutput — equals_captured fallback (bug fix)', () => {
+  it('returns pass:false when equals_captured key was not resolved', () => {
+    const result = assertOutput('some output', {
+      equals_captured: 'missing_var',
+    });
+    assert.strictEqual(result.pass, false);
+    assert.strictEqual(result.type, 'equals_captured');
+    assert.ok(
+      result.expected.includes('missing_var'),
+      'expected message should name the missing variable',
+    );
+  });
+
+  it('returns pass:false regardless of actual output content', () => {
+    const result = assertOutput('', { equals_captured: 'unset_capture' });
+    assert.strictEqual(result.pass, false);
   });
 });

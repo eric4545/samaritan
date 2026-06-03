@@ -392,3 +392,55 @@ test('SessionManager - SessionUtils.getSessionStatusEmoji', () => {
   assert.strictEqual(SessionUtils.getSessionStatusEmoji('failed'), '❌');
   assert.strictEqual(SessionUtils.getSessionStatusEmoji('cancelled'), '🚫');
 });
+
+test('SessionManager - associateExecutor updates session on step_skipped event', () => {
+  const sessionManager = new SessionManager();
+
+  const operation: Operation = {
+    id: 'skip-test-op',
+    name: 'Skip Test',
+    version: '1.0.0',
+    description: 'Tests skip event persistence',
+    environments: [
+      {
+        name: 'staging',
+        description: 'Staging',
+        variables: {},
+        restrictions: [],
+        approval_required: false,
+        validation_required: false,
+      },
+    ],
+    variables: { staging: {} },
+    steps: [
+      { name: 'Step 1', type: 'manual', description: 'First' },
+      { name: 'Step 2', type: 'manual', description: 'Second' },
+    ],
+    preflight: [],
+    metadata: { created_at: new Date(), updated_at: new Date() },
+  };
+
+  const context = {
+    operationId: 'skip-test-op',
+    environment: 'staging',
+    variables: {},
+    operator: 'tester',
+    sessionId: 'skip-session',
+    dryRun: false,
+    autoMode: false,
+  };
+
+  const executor = new OperationExecutor(operation, context);
+  const session = sessionManager.createSession(
+    'skip-test-op',
+    'staging',
+    'tester',
+  );
+  sessionManager.associateExecutor(session.id, executor);
+
+  executor.startInteractive();
+  executor.skipStep(0);
+
+  const updated = sessionManager.getSession(session.id);
+  assert.strictEqual(updated?.current_step_index, 1);
+});

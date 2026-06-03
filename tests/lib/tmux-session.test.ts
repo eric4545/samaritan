@@ -2,7 +2,11 @@ import assert from 'node:assert';
 import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { describe, it } from 'node:test';
-import { isLocalSession, TmuxSession } from '../../src/lib/tmux-session';
+import {
+  isLocalSession,
+  sanitizeSessionName,
+  TmuxSession,
+} from '../../src/lib/tmux-session';
 
 describe('TmuxSession (issue #6)', () => {
   it('getPipeFilePath follows naming convention', () => {
@@ -152,5 +156,42 @@ describe('isLocalSession (issue #6)', () => {
       isLocalSession({ host: 'monitoring.example.com', user: 'sre' }),
       false,
     );
+  });
+});
+
+describe('sanitizeSessionName — shell injection prevention (bug fix)', () => {
+  it('strips semicolons', () => {
+    assert.strictEqual(sanitizeSessionName('foo;bar'), 'foo_bar');
+  });
+
+  it('strips spaces', () => {
+    assert.strictEqual(sanitizeSessionName('foo bar'), 'foo_bar');
+  });
+
+  it('strips shell expansion characters', () => {
+    // $, (, ), spaces, / are stripped; letters, digits, -, _ are kept
+    assert.strictEqual(sanitizeSessionName('$(rm -rf /)'), '__rm_-rf___');
+    assert.strictEqual(sanitizeSessionName('`whoami`'), '_whoami_');
+  });
+
+  it('strips backtick command substitution', () => {
+    assert.strictEqual(
+      sanitizeSessionName('name`cmd`suffix'),
+      'name_cmd_suffix',
+    );
+  });
+
+  it('preserves safe characters unchanged', () => {
+    assert.strictEqual(sanitizeSessionName('my-session_01'), 'my-session_01');
+    assert.strictEqual(sanitizeSessionName('deploy'), 'deploy');
+  });
+
+  it('resulting name produces a shell-safe pipe file path', () => {
+    const session = new TmuxSession('sid', 'samaritan-sid');
+    const dangerous = 'foo; touch /tmp/pwned';
+    const safe = sanitizeSessionName(dangerous);
+    const path = session.getPipeFilePath(safe);
+    assert.ok(!path.includes(';'), 'no semicolons in pipe file path');
+    assert.ok(!path.includes(' '), 'no spaces in pipe file path');
   });
 });

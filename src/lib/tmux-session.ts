@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, statSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,9 +22,12 @@ export class TmuxSession {
     return join(tmpdir(), `samaritan-${this.sessionId}-${sessionName}.pipe`);
   }
 
-  send(sessionName: string, command: string): void {
+  send(sessionName: string, command: string, sendEnter = true): void {
     const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
-    spawnSync('tmux', ['send-keys', '-t', pane, command, 'Enter']);
+    const args = sendEnter
+      ? ['send-keys', '-t', pane, command, 'Enter']
+      : ['send-keys', '-t', pane, command];
+    spawnSync('tmux', args);
   }
 
   currentOffset(sessionName: string): number {
@@ -88,7 +91,9 @@ export class TmuxSession {
 
   teardown(): void {
     try {
-      execSync(`tmux kill-session -t ${this.tmuxName}`, { stdio: 'ignore' });
+      spawnSync('tmux', ['kill-session', '-t', this.tmuxName], {
+        stdio: 'ignore',
+      });
     } catch {
       // session may already be gone
     }
@@ -102,6 +107,10 @@ export class TmuxSession {
   }
 }
 
+export function sanitizeSessionName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
 export async function bootstrapSessions(
   sessionId: string,
   sessions: Record<string, SessionConfig>,
@@ -110,22 +119,28 @@ export async function bootstrapSessions(
   const tmuxName = `samaritan-${sessionId}`;
   const tmuxSession = new TmuxSession(sessionId, tmuxName);
 
-  execSync(`tmux new-session -d -s ${tmuxName}`);
+  spawnSync('tmux', ['new-session', '-d', '-s', tmuxName]);
 
   const sessionNames = Object.keys(sessions);
   for (let i = 0; i < sessionNames.length; i++) {
-    const name = sessionNames[i];
-    const config = sessions[name];
+    const name = sanitizeSessionName(sessionNames[i]);
+    const config = sessions[sessionNames[i]];
     // Each session gets its own window; the first pane in window i is :i.0
     const paneTarget = `${tmuxName}:${i}.0`;
 
     if (i > 0) {
-      execSync(`tmux new-window -t ${tmuxName}`);
+      spawnSync('tmux', ['new-window', '-t', tmuxName]);
     }
 
-    // Start pipe-pane capture
+    // Start pipe-pane capture; pipeFile uses sanitized name so no shell injection
     const pipeFile = tmuxSession.getPipeFilePath(name);
-    execSync(`tmux pipe-pane -t ${paneTarget} -o 'cat >> ${pipeFile}'`);
+    spawnSync('tmux', [
+      'pipe-pane',
+      '-t',
+      paneTarget,
+      '-o',
+      `cat >> ${pipeFile}`,
+    ]);
 
     tmuxSession.registerPane(name, paneTarget);
 

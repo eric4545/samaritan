@@ -174,6 +174,12 @@ class OperationRunner {
         tmuxSession?.teardown();
       } else {
         console.log('▶️  Starting operation execution...\n');
+        console.log(
+          '⚠️  Note: command execution is not yet implemented in v1.0.',
+        );
+        console.log(
+          '   Steps will be marked complete without running commands.\n',
+        );
         await executor.execute();
       }
 
@@ -301,7 +307,11 @@ class OperationRunner {
     }
 
     console.log('\n▶️  Resuming operation execution...\n');
-    executor.resumeFromIndex(session.current_step_index);
+    const startIndex =
+      options.fromStep !== undefined
+        ? options.fromStep - 1
+        : session.current_step_index;
+    executor.resumeFromIndex(startIndex);
 
     await this.runInteractiveStepLoop(
       executor,
@@ -442,6 +452,7 @@ class OperationRunner {
             );
             const choice = ans.trim().toLowerCase();
             if (isQuit(choice)) {
+              executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
               break;
             }
@@ -513,6 +524,7 @@ class OperationRunner {
             );
             const choice = ans.trim().toLowerCase();
             if (isQuit(choice)) {
+              executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
               break;
             }
@@ -544,6 +556,7 @@ class OperationRunner {
           );
           const choice = notes.trim().toLowerCase();
           if (choice === 'abort') {
+            executor.cancel();
             console.log('\n⛔ Execution aborted by operator.');
             break;
           }
@@ -611,11 +624,13 @@ class OperationRunner {
       if (!process.stdin.destroyed) process.stdin.unref();
       const finalState = executor.getState();
       const endStatus =
-        finalState.failedSteps > 0
-          ? 'failed'
-          : finalState.waitingSteps > 0
-            ? 'paused'
-            : 'completed';
+        finalState.status === 'cancelled'
+          ? 'cancelled'
+          : finalState.failedSteps > 0
+            ? 'failed'
+            : finalState.waitingSteps > 0
+              ? 'paused'
+              : 'completed';
       logger.close({
         status: endStatus,
         steps_completed: finalState.completedSteps,
@@ -785,4 +800,4 @@ const resumeCommand = new Command('resume')
     }
   });
 
-export { runCommand, resumeCommand };
+export { resumeCommand, runCommand };

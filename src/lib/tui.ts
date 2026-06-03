@@ -77,11 +77,7 @@ export class StepController {
     logger.emit({ type: 'command_sent', session: sessionName, command });
 
     if (tmux) {
-      tmux.send(sessionName, command);
-    }
-
-    if (!autoExec) {
-      // Operator presses Enter in terminal — nothing more to do here
+      tmux.send(sessionName, command, autoExec);
     }
   }
 
