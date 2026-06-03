@@ -4,6 +4,7 @@ import * as yaml from 'js-yaml';
 import {
   generateManual,
   generateManualWithMetadata,
+  generateSingleEnvManual,
 } from '../../src/manuals/generator';
 import type { Operation } from '../../src/models/operation';
 import { loadYaml, parseFixture } from '../fixtures/fixtures';
@@ -2381,5 +2382,80 @@ describe('Verify / expect rendering snapshots', () => {
     const md = generateManual(op);
     assert.ok(md.includes('#'), 'renders headings');
     t.assert.snapshot(md);
+  });
+});
+
+describe('Expect field ${VAR} substitution in generated manuals', () => {
+  const opWithExpectVars: Operation = {
+    name: 'Expect Var Test',
+    version: '1.0.0',
+    environments: [
+      {
+        name: 'staging',
+        variables: { NAMESPACE: 'staging-ns', IMAGE: 'myapp:v2' },
+        approval_required: false,
+        validation_required: false,
+        restrictions: [],
+      },
+    ],
+    steps: [
+      {
+        name: 'Deploy',
+        type: 'manual',
+        command: 'kubectl apply -f deploy.yaml',
+        verify: {
+          command: 'kubectl rollout status deployment/web -n ${NAMESPACE}',
+          expect: { contains: '${IMAGE}' },
+        },
+      },
+      {
+        name: 'Check pods',
+        type: 'manual',
+        verify: {
+          command: 'kubectl get pods -n ${NAMESPACE}',
+          expect: { not_contains: 'Error in ${NAMESPACE}' },
+        },
+      },
+    ],
+    metadata: {},
+  };
+
+  it('multi-env table: expect.contains with ${VAR} is resolved', () => {
+    const md = generateManual(opWithExpectVars);
+    assert.ok(
+      !md.includes('${IMAGE}'),
+      'raw ${IMAGE} should not appear in output',
+    );
+    assert.ok(md.includes('myapp:v2'), 'resolved value should appear');
+  });
+
+  it('multi-env table: expect.not_contains with ${VAR} is resolved', () => {
+    const md = generateManual(opWithExpectVars);
+    assert.ok(
+      !md.includes('Error in ${NAMESPACE}'),
+      'raw ${NAMESPACE} in not_contains should not appear',
+    );
+    assert.ok(
+      md.includes('Error in staging-ns'),
+      'resolved not_contains value should appear',
+    );
+  });
+
+  it('single-env: expect.contains with ${VAR} is resolved', () => {
+    const md = generateSingleEnvManual(opWithExpectVars, 'staging', true);
+    assert.ok(!md.includes('${IMAGE}'), 'raw ${IMAGE} should not appear');
+    assert.ok(md.includes('myapp:v2'), 'resolved value should appear');
+  });
+
+  it('single-env: expect.not_contains with ${VAR} is resolved', () => {
+    const md = generateSingleEnvManual(opWithExpectVars, 'staging', true);
+    assert.ok(
+      !md.includes('Error in ${NAMESPACE}'),
+      'raw ${NAMESPACE} in not_contains should not appear',
+    );
+    assert.ok(
+      md.includes('Error in staging-ns'),
+      'resolved not_contains value should appear',
+    );
   });
 });
