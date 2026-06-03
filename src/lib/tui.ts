@@ -242,6 +242,46 @@ export function interpolateExpect(
   return result;
 }
 
+const DIM = '\x1b[2m';
+const CYAN_BOLD = '\x1b[36;1m';
+const BOLD = '\x1b[1m';
+const RESET = '\x1b[0m';
+
+export function renderCodeBlock(code: string, language = 'bash'): string {
+  const rawLines = code.split('\n');
+  while (rawLines.length > 0 && rawLines[rawLines.length - 1].trim() === '') {
+    rawLines.pop();
+  }
+  const lines = rawLines.length > 0 ? rawLines : [''];
+
+  const MIN_FILL = language.length + 4;
+  const maxLineLen = Math.max(...lines.map((l) => l.length));
+  const fillWidth = Math.min(Math.max(maxLineLen + 2, MIN_FILL), 72);
+
+  const topDashes = '─'.repeat(fillWidth - language.length - 3);
+  const top = `  ${DIM}╭─ ${RESET}${CYAN_BOLD}${language}${RESET}${DIM} ${topDashes}╮${RESET}`;
+  const bottom = `  ${DIM}╰${'─'.repeat(fillWidth)}╯${RESET}`;
+
+  const codeLines = lines.map((line) => {
+    const truncated =
+      line.length > fillWidth - 2 ? line.slice(0, fillWidth - 2) : line;
+    const padding = ' '.repeat(fillWidth - truncated.length - 2);
+    return `  ${DIM}│${RESET} ${truncated}${padding} ${DIM}│${RESET}`;
+  });
+
+  return [top, ...codeLines, bottom].join('\n');
+}
+
+export function renderKeyHints(
+  hints: Array<{ key: string; label: string }>,
+): string {
+  const separator = `  ${DIM}·${RESET}  `;
+  const parts = hints.map(
+    ({ key, label }) => `${BOLD}${key}${RESET} ${DIM}${label}${RESET}`,
+  );
+  return `  ${parts.join(separator)}`;
+}
+
 export function renderTuiPending(
   step: Step,
   stepIndex: number,
@@ -259,8 +299,7 @@ export function renderTuiPending(
   if (step.reviewer) lines.push(` Reviewer:  ${step.reviewer}`);
   if (step.command) {
     lines.push('');
-    lines.push(' Command:');
-    lines.push(`   ${step.command}`);
+    lines.push(renderCodeBlock(step.command));
   }
   if (step.verify) {
     lines.push('');
@@ -268,7 +307,11 @@ export function renderTuiPending(
     lines.push(`   ${step.verify.command}`);
   }
   lines.push('─'.repeat(49));
-  lines.push(autoSend ? ' ⟳ Sending command...' : ' [s] send command');
+  if (autoSend) {
+    lines.push(' ⟳ Sending command...');
+  } else {
+    lines.push(renderKeyHints([{ key: 's', label: 'send' }]));
+  }
   lines.push('─'.repeat(49));
   return lines.join('\n');
 }
