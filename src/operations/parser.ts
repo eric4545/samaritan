@@ -213,7 +213,6 @@ function formatVariableCombination(vars: Record<string, any>): string {
 async function parseTemplateContent(
   yamlContent: string,
   sourcePath: string,
-  _importContext: ImportContext,
 ): Promise<{ steps: any[]; defaultVars: Record<string, any> }> {
   let templateData: unknown;
   try {
@@ -260,14 +259,12 @@ async function parseTemplateContent(
 }
 
 /**
- * Load template content (local file, HTTPS URL, or github: shorthand) and
- * extract its steps + default variable values. Detects circular imports via
- * importContext.templateFiles.
+ * Load file content (local file, HTTPS URL, or github: shorthand) and
+ * extract its steps + default variable values.
  */
 async function loadTemplateSteps(
   templatePath: string,
   baseDirectory: string,
-  importContext: ImportContext,
 ): Promise<{ steps: any[]; defaultVars: Record<string, any> }> {
   let templateContents: string;
   let resolvedKey: string; // stable key for circular detection
@@ -282,25 +279,24 @@ async function loadTemplateSteps(
       templateContents = await fetchRemoteTemplate(url);
     } catch (error) {
       throw new OperationParseError(
-        `Failed to fetch remote template: ${templatePath}`,
-        [{ field: 'template', message: (error as Error).message }],
+        `Failed to fetch remote file: ${templatePath}`,
+        [{ field: 'uses', message: (error as Error).message }],
       );
     }
   } else {
     const resolvedPath = resolve(baseDirectory, templatePath);
     resolvedKey = resolvedPath;
 
-    if (!fs.existsSync(resolvedPath)) {
-      throw new OperationParseError(
-        `Template file not found: ${templatePath}`,
-        [{ field: 'template', message: `File not found: ${resolvedPath}` }],
-      );
+    try {
+      templateContents = fs.readFileSync(resolvedPath, 'utf-8');
+    } catch {
+      throw new OperationParseError(`File not found: ${templatePath}`, [
+        { field: 'uses', message: `File not found: ${resolvedPath}` },
+      ]);
     }
-
-    templateContents = fs.readFileSync(resolvedPath, 'utf-8');
   }
 
-  return parseTemplateContent(templateContents, resolvedKey, importContext);
+  return parseTemplateContent(templateContents, resolvedKey);
 }
 
 /**
@@ -421,7 +417,7 @@ async function resolveStepReferences(
           },
         ],
       );
-    } else if (stepData.uses) {
+    } else if (stepData.uses !== undefined) {
       // Inline step composition — expand all steps from the referenced file here
       try {
         const templatePath = stepData.uses;
@@ -459,7 +455,6 @@ async function resolveStepReferences(
           const { steps: templateSteps, defaultVars } = await loadTemplateSteps(
             templatePath,
             prevBaseDir,
-            importContext,
           );
 
           // Composition: template defaults are the base; with: overrides them
@@ -706,7 +701,7 @@ async function parseStep(
     timeout: stepData.timeout,
     estimated_duration: stepData.estimated_duration,
     env: stepData.env,
-    template: stepData.template,
+    uses: stepData.uses,
     with: stepData.with,
     variables: stepData.variables,
     evidence: parseEvidence(stepData),
