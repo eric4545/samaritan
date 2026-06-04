@@ -27,15 +27,8 @@ import {
 } from '../validation/schema-validator';
 import { EnvironmentLoader } from './environment-loader';
 
-interface StepLibrary {
-  steps: Step[];
-  source: string;
-}
-
 interface ImportContext {
-  stepLibraries: Map<string, Step>; // step name -> step definition
-  loadedFiles: Set<string>; // Prevent circular step-library imports
-  templateFiles: Set<string>; // Prevent circular template imports
+  templateFiles: Set<string>; // Prevent circular uses: imports
   baseDirectory: string; // Directory of the main operation file
 }
 
@@ -126,142 +119,6 @@ export class OperationParseError extends Error {
     this.name = 'OperationParseError';
     this.errors = errors;
   }
-}
-
-/**
- * Load and parse a step library file
- */
-async function loadStepLibrary(
-  filePath: string,
-  importContext: ImportContext,
-): Promise<StepLibrary> {
-  const resolvedPath = resolve(importContext.baseDirectory, filePath);
-
-  // Check for circular imports
-  if (importContext.loadedFiles.has(resolvedPath)) {
-    throw new OperationParseError(`Circular import detected: ${filePath}`, [
-      {
-        field: 'imports',
-        message: `File ${filePath} creates a circular dependency`,
-      },
-    ]);
-  }
-
-  // Check if file exists
-  if (!fs.existsSync(resolvedPath)) {
-    throw new OperationParseError(`Import file not found: ${filePath}`, [
-      { field: 'imports', message: `File ${filePath} does not exist` },
-    ]);
-  }
-
-  // Mark file as being loaded
-  importContext.loadedFiles.add(resolvedPath);
-
-  try {
-    // Read and parse YAML
-    const content = fs.readFileSync(resolvedPath, 'utf8');
-    const data = yaml.load(content) as any;
-
-    if (!data || !data.steps || !Array.isArray(data.steps)) {
-      throw new OperationParseError(
-        `Invalid step library format: ${filePath}`,
-        [
-          {
-            field: 'imports',
-            message: `File ${filePath} must contain a 'steps' array`,
-          },
-        ],
-      );
-    }
-
-    // Parse steps
-    const steps: Step[] = [];
-    for (let index = 0; index < data.steps.length; index++) {
-      const stepData = data.steps[index];
-      try {
-        const step = await parseStep(stepData, index, importContext);
-        steps.push(step);
-
-        // Add to step library registry
-        if (importContext.stepLibraries.has(step.name)) {
-          throw new OperationParseError(
-            `Duplicate step name in imports: ${step.name}`,
-            [
-              {
-                field: 'imports',
-                message: `Step name '${step.name}' is defined in multiple imported files`,
-              },
-            ],
-          );
-        }
-        importContext.stepLibraries.set(step.name, step);
-      } catch (error) {
-        if (error instanceof OperationParseError) {
-          throw error;
-        }
-        throw new OperationParseError(
-          `Error parsing step ${index} in ${filePath}`,
-          [
-            {
-              field: `imports.${filePath}.steps[${index}]`,
-              message: (error as Error).message,
-            },
-          ],
-        );
-      }
-    }
-
-    return {
-      steps,
-      source: resolvedPath,
-    };
-  } catch (error) {
-    if (error instanceof OperationParseError) {
-      throw error;
-    }
-    throw new OperationParseError(`Failed to load step library: ${filePath}`, [
-      { field: 'imports', message: (error as Error).message },
-    ]);
-  } finally {
-    // Remove from loading set
-    importContext.loadedFiles.delete(resolvedPath);
-  }
-}
-
-/**
- * Process all imports and build step library
- */
-async function processImports(
-  imports: string[],
-  baseDirectory: string,
-): Promise<ImportContext> {
-  const importContext: ImportContext = {
-    stepLibraries: new Map(),
-    loadedFiles: new Set(),
-    templateFiles: new Set(),
-    baseDirectory,
-  };
-
-  if (!imports || imports.length === 0) {
-    return importContext;
-  }
-
-  // Load all step libraries
-  for (const importPath of imports) {
-    if (typeof importPath !== 'string') {
-      throw new OperationParseError('Invalid import format', [
-        {
-          field: 'imports',
-          message: 'Import paths must be strings',
-          value: importPath,
-        },
-      ]);
-    }
-
-    await loadStepLibrary(importPath, importContext);
-  }
-
-  return importContext;
 }
 
 /**
@@ -356,14 +213,14 @@ function formatVariableCombination(vars: Record<string, any>): string {
 async function parseTemplateContent(
   yamlContent: string,
   sourcePath: string,
-  importContext: ImportContext,
+  _importContext: ImportContext,
 ): Promise<{ steps: any[]; defaultVars: Record<string, any> }> {
   let templateData: unknown;
   try {
     templateData = yaml.load(yamlContent);
   } catch (error) {
-    throw new OperationParseError(`Invalid YAML in template: ${sourcePath}`, [
-      { field: 'template', message: (error as Error).message },
+    throw new OperationParseError(`Invalid YAML in file: ${sourcePath}`, [
+      { field: 'uses', message: (error as Error).message },
     ]);
   }
 
@@ -379,18 +236,6 @@ async function parseTemplateContent(
       const defaultVars: Record<string, any> =
         templateObj.common_variables || {};
 
-      // Process template's own imports into the shared step library
-      if (templateObj.imports && Array.isArray(templateObj.imports)) {
-        const savedBase = importContext.baseDirectory;
-        importContext.baseDirectory = resolve(sourcePath, '..');
-        for (const importPath of templateObj.imports) {
-          if (typeof importPath === 'string') {
-            await loadStepLibrary(importPath, importContext);
-          }
-        }
-        importContext.baseDirectory = savedBase;
-      }
-
       // Migrate legacy preflight array to phase: preflight steps
       const legacyPreflight: any[] = (templateObj.preflight || []).map(
         (p: any) => ({ ...p, phase: 'preflight' }),
@@ -404,11 +249,11 @@ async function parseTemplateContent(
   }
 
   throw new OperationParseError(
-    `Invalid template format: ${sourcePath}. Expected array of steps or operation with 'steps' field`,
+    `Invalid file format: ${sourcePath}. Expected array of steps or operation with 'steps' field`,
     [
       {
-        field: 'template',
-        message: 'Template must be array or object with steps field',
+        field: 'uses',
+        message: 'File must be array of steps or object with steps field',
       },
     ],
   );
@@ -556,72 +401,30 @@ async function resolveStepReferences(
   for (let i = 0; i < steps.length; i++) {
     const stepData = steps[i];
 
-    if (stepData.use) {
-      // This is a step reference
-      const stepName = stepData.use;
-      const referencedStep = importContext.stepLibraries.get(stepName);
-
-      if (!referencedStep) {
-        throw new OperationParseError(`Step reference not found: ${stepName}`, [
+    if (stepData.use !== undefined) {
+      throw new OperationParseError(
+        `'use:' has been removed — use 'uses: ./path/to/file.yaml' to include steps from a file`,
+        [
           {
             field: `steps[${i}].use`,
-            message: `Step '${stepName}' is not defined in any imported library`,
+            message: `'use: ${stepData.use}' is no longer supported. Replace with 'uses: ./path/to/file.yaml'`,
           },
-        ]);
-      }
-
-      // Clone the referenced step and apply any overrides
-      const clonedStep: Step = { ...referencedStep };
-
-      // Allow overriding certain properties
-      if (stepData.timeout !== undefined) clonedStep.timeout = stepData.timeout;
-      if (stepData.phase !== undefined)
-        clonedStep.phase = stepData.phase as StepPhase;
-      if (stepData.env !== undefined)
-        clonedStep.env = { ...clonedStep.env, ...stepData.env };
-      if (stepData.with !== undefined)
-        clonedStep.with = { ...clonedStep.with, ...stepData.with };
-      if (stepData.variables !== undefined)
-        clonedStep.variables = {
-          ...clonedStep.variables,
-          ...stepData.variables,
-        };
-      if (stepData.evidence_required !== undefined)
-        clonedStep.evidence_required = stepData.evidence_required;
-      if (stepData.continue_on_error !== undefined)
-        clonedStep.continue_on_error = stepData.continue_on_error;
-
-      // Allow overriding evidence (new format)
-      if (stepData.evidence !== undefined) {
-        const evidenceData = stepData.evidence;
-        clonedStep.evidence = {
-          required:
-            evidenceData.required !== undefined
-              ? Boolean(evidenceData.required)
-              : (clonedStep.evidence?.required ?? false),
-          types: evidenceData.types ?? clonedStep.evidence?.types ?? [],
-          // Override results if provided, otherwise keep original
-          results: evidenceData.results ?? clonedStep.evidence?.results,
-        };
-      }
-
-      // Allow overriding timeline, pic, and reviewer (Bug fix: these were missing)
-      if (stepData.timeline !== undefined)
-        clonedStep.timeline = stepData.timeline;
-      if (stepData.pic !== undefined) clonedStep.pic = stepData.pic;
-      if (stepData.reviewer !== undefined)
-        clonedStep.reviewer = stepData.reviewer;
-
-      // Set default phase if not specified
-      if (!clonedStep.phase) {
-        clonedStep.phase = 'flight';
-      }
-
-      resolvedSteps.push(clonedStep);
-    } else if (stepData.template) {
-      // This is a template import
+        ],
+      );
+    } else if (stepData.template !== undefined) {
+      throw new OperationParseError(
+        `'template:' was renamed to 'uses:' — update your operation file`,
+        [
+          {
+            field: `steps[${i}].template`,
+            message: `Replace 'template: ${stepData.template}' with 'uses: ${stepData.template}'`,
+          },
+        ],
+      );
+    } else if (stepData.uses) {
+      // Inline step composition — expand all steps from the referenced file here
       try {
-        const templatePath = stepData.template;
+        const templatePath = stepData.uses;
         const withVars: Record<string, any> = stepData.with || {};
 
         // Resolve canonical key for circular detection (URL or absolute path)
@@ -633,20 +436,20 @@ async function resolveStepReferences(
 
         if (importContext.templateFiles.has(resolvedKey)) {
           throw new OperationParseError(
-            `Circular template import detected: ${templatePath}`,
+            `Circular uses: detected: ${templatePath}`,
             [
               {
-                field: `steps[${i}].template`,
-                message: `Template "${templatePath}" is already being expanded (circular dependency)`,
+                field: `steps[${i}].uses`,
+                message: `File "${templatePath}" is already being expanded (circular dependency)`,
               },
             ],
           );
         }
 
         importContext.templateFiles.add(resolvedKey);
-        // For local templates, update baseDirectory so nested relative paths
-        // inside the template resolve relative to the template's own location.
-        // Remote templates keep the parent baseDirectory.
+        // For local files, update baseDirectory so nested relative paths
+        // inside the file resolve relative to its own location.
+        // Remote files keep the parent baseDirectory.
         const prevBaseDir = importContext.baseDirectory;
         if (!isRemoteTemplate(templatePath)) {
           importContext.baseDirectory = resolve(resolvedKey, '..');
@@ -673,7 +476,7 @@ async function resolveStepReferences(
 
           if (missingVars.length > 0) {
             throw new OperationParseError(
-              `Missing template variables for ${templatePath}: ${missingVars.join(', ')}`,
+              `Missing variables for ${templatePath}: ${missingVars.join(', ')}`,
               [
                 {
                   field: `steps[${i}].with`,
@@ -689,10 +492,10 @@ async function resolveStepReferences(
             mergedVars,
           );
 
-          // Recursively resolve nested templates, foreach, use: etc. through the
+          // Recursively resolve nested uses:, foreach, etc. through the
           // full pipeline — circular-detection guard above prevents infinite loops.
-          // importContext.baseDirectory is now the template's own directory so any
-          // relative paths inside the template resolve correctly.
+          // importContext.baseDirectory is now the file's own directory so any
+          // relative paths inside it resolve correctly.
           const expandedSteps = await resolveStepReferences(
             substitutedSteps,
             importContext,
@@ -712,15 +515,12 @@ async function resolveStepReferences(
         if (error instanceof OperationParseError) {
           throw error;
         }
-        throw new OperationParseError(
-          `Failed to load template: ${stepData.template}`,
-          [
-            {
-              field: `steps[${i}].template`,
-              message: (error as Error).message,
-            },
-          ],
-        );
+        throw new OperationParseError(`Failed to load file: ${stepData.uses}`, [
+          {
+            field: `steps[${i}].uses`,
+            message: (error as Error).message,
+          },
+        ]);
       }
     } else {
       // This is a regular step definition
@@ -1122,24 +922,10 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     ];
   }
 
-  // Process imports first
-  let importContext: ImportContext;
-  try {
-    importContext = await processImports(rawOperation.imports, baseDirectory);
-  } catch (error) {
-    if (error instanceof OperationParseError) {
-      errors.push(...error.errors);
-    } else {
-      errors.push({ field: 'imports', message: (error as Error).message });
-    }
-    // Create empty import context to continue parsing
-    importContext = {
-      stepLibraries: new Map(),
-      loadedFiles: new Set(),
-      templateFiles: new Set(),
-      baseDirectory,
-    };
-  }
+  const importContext: ImportContext = {
+    templateFiles: new Set(),
+    baseDirectory,
+  };
 
   // Parse unified steps (includes migrated preflight checks + regular steps)
   const steps: Step[] = [];

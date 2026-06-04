@@ -33,13 +33,6 @@
       "type": "object",
       "description": "Flexible overview/metadata section with custom fields (e.g., Release Date, Release Notes, etc.)"
     },
-    "imports": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Import paths for reusable step libraries"
-    },
     "needs": {
       "type": "array",
       "items": {
@@ -252,118 +245,19 @@
         "oneOf": [
           {
             "type": "object",
-            "required": ["use"],
+            "required": ["uses"],
             "properties": {
-              "use": {
+              "uses": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Reference to imported step"
-              },
-              "timeout": {
-                "type": "number",
-                "minimum": 0
-              },
-              "phase": {
-                "type": "string",
-                "enum": ["preflight", "flight", "postflight"],
-                "description": "Execution phase of the step"
-              },
-              "env": {
-                "type": "object"
-              },
-              "with": {
-                "type": "object"
-              },
-              "variables": {
-                "type": "object",
-                "description": "Step-scoped variables that override environment and common variables"
-              },
-              "evidence": {
-                "type": "object",
-                "properties": {
-                  "required": {
-                    "type": "boolean"
-                  },
-                  "types": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "enum": [
-                        "screenshot",
-                        "log",
-                        "command_output",
-                        "file",
-                        "photo",
-                        "video"
-                      ]
-                    }
-                  },
-                  "results": {
-                    "type": "object",
-                    "description": "Environment-keyed evidence results (e.g., { staging: [...], production: [...] })",
-                    "additionalProperties": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": ["type"],
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "enum": [
-                              "screenshot",
-                              "log",
-                              "command_output",
-                              "file",
-                              "photo",
-                              "video"
-                            ]
-                          },
-                          "file": {
-                            "type": "string",
-                            "description": "File path reference (relative to operation file)"
-                          },
-                          "content": {
-                            "type": "string",
-                            "description": "Inline content (for text-based evidence)"
-                          },
-                          "description": {
-                            "type": "string",
-                            "description": "Optional description or context"
-                          }
-                        },
-                        "oneOf": [
-                          { "required": ["file"] },
-                          { "required": ["content"] }
-                        ]
-                      }
-                    }
-                  }
-                }
-              },
-              "evidence_required": {
-                "type": "boolean",
-                "description": "DEPRECATED: Use evidence.required instead"
-              },
-              "continue_on_error": {
-                "type": "boolean"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": ["template"],
-            "properties": {
-              "template": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Template reference: local path (relative to operation file), HTTPS URL, or github:owner/repo//path@ref shorthand"
+                "description": "File whose steps are expanded inline here: local path (relative to operation file), HTTPS URL, or github:owner/repo//path@ref shorthand"
               },
               "with": {
                 "type": "object",
-                "description": "Variables to pass to template (all template variables must be provided)"
+                "description": "Variables to pass to the included file (all ${VAR} placeholders must be provided)"
               }
             },
-            "description": "Template import - loads steps from external template file with variable substitution"
+            "description": "Inline step composition — expands all steps from the referenced file at this position"
           },
           {
             "type": "object",
@@ -726,25 +620,25 @@
                     "env": { "type": "object" },
                     "variables": { "type": "object" },
                     "evidence": {
-                      "$ref": "#/properties/steps/items/oneOf/2/properties/evidence"
+                      "$ref": "#/properties/steps/items/oneOf/1/properties/evidence"
                     },
                     "continue_on_error": { "type": "boolean" },
                     "pic": { "type": "string" },
                     "reviewer": { "type": "string" },
                     "ticket": {
-                      "$ref": "#/properties/steps/items/oneOf/2/properties/ticket"
+                      "$ref": "#/properties/steps/items/oneOf/1/properties/ticket"
                     },
                     "rollback": {
-                      "$ref": "#/properties/steps/items/oneOf/2/properties/rollback"
+                      "$ref": "#/properties/steps/items/oneOf/1/properties/rollback"
                     },
                     "retry": {
-                      "$ref": "#/properties/steps/items/oneOf/2/properties/retry"
+                      "$ref": "#/properties/steps/items/oneOf/1/properties/retry"
                     },
                     "approval": {
-                      "$ref": "#/properties/steps/items/oneOf/2/properties/approval"
+                      "$ref": "#/properties/steps/items/oneOf/1/properties/approval"
                     },
                     "options": {
-                      "$ref": "#/properties/steps/items/oneOf/2/properties/options"
+                      "$ref": "#/properties/steps/items/oneOf/1/properties/options"
                     }
                   },
                   "additionalProperties": false

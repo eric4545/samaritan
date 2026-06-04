@@ -606,48 +606,6 @@ steps:
     );
   });
 
-  it('should handle use: directive in sub_steps', async () => {
-    // Need to use parseFixture instead of yaml.load to resolve use: directives
-    const operation = await import('../fixtures/fixtures').then((m) =>
-      m.parseFixture('useInSubSteps'),
-    );
-    const content = generateConfluenceContent(operation);
-
-    // Should have parent step
-    assert.match(content, /Step 1: Parent Deployment Step/);
-
-    // Should have sub-steps resolved from library
-    assert.match(
-      content,
-      /Step 1a: check-afd-health/,
-      'Should have first sub-step from library',
-    );
-    assert.match(
-      content,
-      /Step 1b: verify-dns/,
-      'Should have second sub-step from library',
-    );
-
-    // Sub-steps should have instructions from library
-    assert.match(
-      content,
-      /Check AFD health status/,
-      'Should have AFD health check instruction',
-    );
-    assert.match(
-      content,
-      /Verify DNS/,
-      'Should have DNS verification instruction',
-    );
-
-    // Should NOT have grouped rollback section (inline only now)
-    // The rollback should appear inline, not in aggregated section at the end
-    assert.match(
-      content,
-      /h4\. \(<\) Rollback for Step 1: Parent Deployment Step/,
-    );
-  });
-
   it('should have rollback with correct heading hierarchy (h4 for parent, h5 for sub-steps)', () => {
     const content = generateConfluence(deploymentOperationYaml);
 

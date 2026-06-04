@@ -1427,17 +1427,6 @@ function generateManualContent(
     markdown += '\n';
   }
 
-  // Show imported step libraries
-  if ((operation as any).imports && Array.isArray((operation as any).imports)) {
-    markdown += '## Imported Step Libraries\n\n';
-    markdown +=
-      'This operation uses reusable steps from the following libraries:\n\n';
-    (operation as any).imports.forEach((importPath: string) => {
-      markdown += `- \`${importPath}\`\n`;
-    });
-    markdown += '\n';
-  }
-
   // Environments Overview Table
   if (operation.environments && operation.environments.length > 0) {
     markdown += '## Environments Overview\n\n';
