@@ -68,12 +68,20 @@ describe('renderCodeBlock', () => {
     );
   });
 
-  it('caps width at 74 for very long lines', () => {
+  it('does not truncate long lines — full content is preserved', () => {
     const longCmd = 'a'.repeat(100);
     const out = stripAnsi(renderCodeBlock(longCmd));
     const lines = out.split('\n');
-    // top line width = 2 (indent) + 1 (╭) + fillWidth (capped 72) + 1 (╮) = 76
-    assert.ok(lines[0].length <= 76, 'top border does not exceed 76 chars');
+    assert.ok(lines[1].includes(longCmd), 'full long line is not truncated');
+  });
+
+  it('preserves comment lines in full', () => {
+    const code = '# deploy the application\nkubectl apply -f deployment.yaml';
+    const out = stripAnsi(renderCodeBlock(code));
+    assert.ok(
+      out.includes('# deploy the application'),
+      'comment line is not stripped or truncated',
+    );
   });
 });
 
