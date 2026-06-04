@@ -9,10 +9,23 @@ export interface AssertResult {
 
 export function assertOutput(
   output: string,
-  expect: ExpectConfig | string,
+  expect: ExpectConfig | ExpectConfig[] | string,
 ): AssertResult {
   if (typeof expect === 'string') {
     return assertOutput(output, { contains: expect });
+  }
+
+  if (Array.isArray(expect)) {
+    for (const check of expect) {
+      const result = assertOutput(output, check);
+      if (!result.pass) return result;
+    }
+    return {
+      pass: true,
+      actual: output.trim(),
+      expected: '(all checks passed)',
+      type: 'all',
+    };
   }
 
   const trimmed = output.trim();
@@ -220,10 +233,16 @@ function resolveSimpleJsonPath(obj: unknown, path: string): unknown {
  * Avoids escaped regex artifacts and doubled quotes.
  */
 export function renderExpectDescription(
-  expect: ExpectConfig | string | undefined,
+  expect: ExpectConfig | ExpectConfig[] | string | undefined,
 ): string {
   if (!expect) return '';
   if (typeof expect === 'string') return expect;
+  if (Array.isArray(expect)) {
+    return expect
+      .map((e) => renderExpectDescription(e))
+      .filter(Boolean)
+      .join('; ');
+  }
   if (expect.equals !== undefined) {
     if (expect.jsonpath) return `${expect.jsonpath} equals ${expect.equals}`;
     return `equals ${expect.equals}`;

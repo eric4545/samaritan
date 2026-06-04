@@ -1,6 +1,9 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { assertOutput } from '../../src/lib/assertions';
+import {
+  assertOutput,
+  renderExpectDescription,
+} from '../../src/lib/assertions';
 import { SessionState } from '../../src/lib/session-state';
 
 describe('assertOutput (issue #12)', () => {
@@ -233,6 +236,76 @@ describe('SessionState (issue #12)', () => {
     const state = new SessionState();
     state.extractCapture('FIRST', 'firstline\nline2\nline3', { line: 'first' });
     assert.strictEqual(state.get('FIRST'), 'firstline');
+  });
+});
+
+describe('assertOutput — array expect (AND semantics)', () => {
+  it('passes when all checks pass', () => {
+    const r = assertOutput('Running pods: 5', [
+      { contains: 'Running' },
+      { not_contains: 'Error' },
+    ]);
+    assert.strictEqual(r.pass, true);
+    assert.strictEqual(r.type, 'all');
+  });
+
+  it('fails fast on first failing check and reports its type', () => {
+    const r = assertOutput('Running pods: 1', [
+      { contains: 'Running' },
+      { numeric_gte: 3 },
+    ]);
+    assert.strictEqual(r.pass, false);
+    assert.strictEqual(r.type, 'numeric_gte');
+  });
+
+  it('fails on second check when first passes', () => {
+    const r = assertOutput('healthy\nerror detected', [
+      { contains: 'healthy' },
+      { not_contains: 'error' },
+    ]);
+    assert.strictEqual(r.pass, false);
+    assert.strictEqual(r.type, 'not_contains');
+  });
+
+  it('allows multiple contains checks', () => {
+    const r = assertOutput('pod Running\nservice Ready', [
+      { contains: 'Running' },
+      { contains: 'Ready' },
+    ]);
+    assert.strictEqual(r.pass, true);
+  });
+
+  it('fails when one of multiple contains checks fails', () => {
+    const r = assertOutput('pod Running', [
+      { contains: 'Running' },
+      { contains: 'Ready' },
+    ]);
+    assert.strictEqual(r.pass, false);
+    assert.strictEqual(r.type, 'contains');
+  });
+});
+
+describe('renderExpectDescription — array expect', () => {
+  it('joins multiple descriptions with semicolons', () => {
+    const desc = renderExpectDescription([
+      { contains: 'Running' },
+      { not_contains: 'Error' },
+      { line_count_gte: 3 },
+    ]);
+    assert.strictEqual(
+      desc,
+      'contains: Running; does not contain: Error; at least 3 line(s)',
+    );
+  });
+
+  it('filters out empty descriptions', () => {
+    const desc = renderExpectDescription([{ contains: 'ok' }, {} as any]);
+    assert.strictEqual(desc, 'contains: ok');
+  });
+
+  it('returns empty string for empty array', () => {
+    const desc = renderExpectDescription([]);
+    assert.strictEqual(desc, '');
   });
 });
 

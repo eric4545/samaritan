@@ -45,7 +45,7 @@ export interface ExpectConfig {
 export interface VerifyConfig {
   session?: string;
   command?: string;
-  expect?: ExpectConfig | string;
+  expect?: ExpectConfig | ExpectConfig[] | string;
 }
 
 export interface RunConfig {

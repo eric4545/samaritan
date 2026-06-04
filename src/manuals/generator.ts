@@ -44,12 +44,16 @@ const EXPECT_STRING_FIELDS = [
 ] as const satisfies ReadonlyArray<keyof ExpectConfig>;
 
 function substituteExpectVars(
-  expect: ExpectConfig | string,
+  expect: ExpectConfig | ExpectConfig[] | string,
   envVars: Record<string, any>,
   stepVars?: Record<string, any>,
-): ExpectConfig | string {
+): ExpectConfig | ExpectConfig[] | string {
   if (typeof expect === 'string')
     return substituteVariables(expect, envVars, stepVars);
+  if (Array.isArray(expect))
+    return expect.map(
+      (e) => substituteExpectVars(e, envVars, stepVars) as ExpectConfig,
+    );
   const result: ExpectConfig = { ...expect };
   for (const field of EXPECT_STRING_FIELDS) {
     if (result[field])

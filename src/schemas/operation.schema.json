@@ -652,7 +652,12 @@
                       "expect": {
                         "oneOf": [
                           { "type": "string" },
-                          { "$ref": "#/definitions/expectConfig" }
+                          { "$ref": "#/definitions/expectConfig" },
+                          {
+                            "type": "array",
+                            "items": { "$ref": "#/definitions/expectConfig" },
+                            "minItems": 1
+                          }
                         ]
                       }
                     },
