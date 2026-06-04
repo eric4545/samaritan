@@ -1,4 +1,11 @@
 # Reusable Kubernetes deployment steps
+common_variables:
+  SECRETS_DIR: ""
+  DOCKER_REGISTRY_SECRET: ""
+  DOCKER_REGISTRY: ""
+  DOCKER_USERNAME: ""
+  DOCKER_PASSWORD: ""
+
 steps:
   - name: docker-build-and-push
     type: automatic

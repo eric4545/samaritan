@@ -25,6 +25,7 @@ environments:
       K8S_MANIFESTS_DIR: ./k8s/staging
       BUILD_CONTEXT: .
       APP_DIR: ./app
+      BACKUP_FILE: /tmp/staging-backup.sql
     approval_required: false
 
   - name: production
@@ -47,6 +48,7 @@ environments:
       K8S_MANIFESTS_DIR: ./k8s/production
       BUILD_CONTEXT: .
       APP_DIR: ./app
+      BACKUP_FILE: /tmp/production-backup.sql
     approval_required: true
 
 preflight:
@@ -61,8 +63,15 @@ preflight:
     description: Verify Docker is available
 
 steps:
-  # Expand all database steps inline
+  # Expand all database steps inline — pass env vars explicitly
   - uses: ./common/database-steps.yaml
+    with:
+      DB_HOST: ${DB_HOST}
+      DB_USER: ${DB_USER}
+      DB_NAME: ${DB_NAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      BACKUP_FILE: ${BACKUP_FILE}
+      APP_DIR: ${APP_DIR}
 
   # Custom step specific to this operation
   - name: update-config-map
@@ -79,14 +88,27 @@ steps:
     evidence_required: true
     evidence_types: ["command_output"]
 
-  # Expand all Kubernetes steps inline
+  # Expand all Kubernetes steps inline — pass env vars explicitly
   - uses: ./common/kubernetes-steps.yaml
+    with:
+      IMAGE_NAME: ${IMAGE_NAME}
+      VERSION: ${VERSION}
+      BUILD_CONTEXT: ${BUILD_CONTEXT}
+      K8S_MANIFESTS_DIR: ${K8S_MANIFESTS_DIR}
+      CLUSTER: ${CLUSTER}
+      NAMESPACE: ${NAMESPACE}
+      DEPLOYMENT_NAME: ${DEPLOYMENT_NAME}
+      CONTAINER_NAME: ${CONTAINER_NAME}
+      REPLICAS: ${REPLICAS}
 
   # Health checks with variables
   - uses: ./common/health-checks.yaml
     with:
       API_ENDPOINT: ${API_ENDPOINT}
       FRONTEND_URL: ${FRONTEND_URL}
+      DB_HOST: ${DB_HOST}
+      REDIS_HOST: ${REDIS_HOST}
+      CLUSTER: ${CLUSTER}
 
 metadata:
   created_at: "2024-01-20T10:00:00Z"
