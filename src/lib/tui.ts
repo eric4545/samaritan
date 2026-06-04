@@ -226,7 +226,7 @@ export function interpolateExpect(
   state: SessionState,
 ): ExpectConfig | ExpectConfig[] | string {
   if (Array.isArray(expect)) {
-    return expect.map((e) => interpolateExpect(e, state) as ExpectConfig)
+    return expect.map((e) => interpolateExpect(e, state) as ExpectConfig);
   }
   if (typeof expect === 'string') {
     return state.interpolate(expect);

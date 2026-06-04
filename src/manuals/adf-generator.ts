@@ -664,7 +664,9 @@ function createStepsTable(
           } else {
             cellContent.push(paragraph(strong(text('Expected:'))));
             cellContent.push(
-              bulletList(...parts.map((p) => listItem([paragraph(em(text(p)))]))),
+              bulletList(
+                ...parts.map((p) => listItem([paragraph(em(text(p)))])),
+              ),
             );
           }
         }

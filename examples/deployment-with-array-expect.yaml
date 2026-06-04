@@ -37,7 +37,7 @@ steps:
     type: automatic
     command: kubectl get deployment web-server -n ${NAMESPACE} -o jsonpath='{.status.readyReplicas}'
     expect:
-      - numeric_gte: ${MIN_REPLICAS}
+      - numeric_gte: 3
       - not_empty: true
 
   - name: Health check
