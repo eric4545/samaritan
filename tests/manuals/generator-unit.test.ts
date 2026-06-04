@@ -2403,18 +2403,18 @@ describe('Expect field ${VAR} substitution in generated manuals', () => {
         name: 'Deploy',
         type: 'manual',
         command: 'kubectl apply -f deploy.yaml',
-        verify: {
-          command: 'kubectl rollout status deployment/web -n ${NAMESPACE}',
-          expect: { contains: '${IMAGE}' },
-        },
+      },
+      {
+        name: 'Check rollout',
+        type: 'manual',
+        command: 'kubectl rollout status deployment/web -n ${NAMESPACE}',
+        expect: { contains: '${IMAGE}' },
       },
       {
         name: 'Check pods',
         type: 'manual',
-        verify: {
-          command: 'kubectl get pods -n ${NAMESPACE}',
-          expect: { not_contains: 'Error in ${NAMESPACE}' },
-        },
+        command: 'kubectl get pods -n ${NAMESPACE}',
+        expect: { not_contains: 'Error in ${NAMESPACE}' },
       },
     ],
     metadata: {},

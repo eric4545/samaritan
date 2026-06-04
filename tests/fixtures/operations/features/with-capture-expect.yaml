@@ -23,28 +23,28 @@ steps:
 
   - name: Check pod count
     type: manual
-    verify:
-      command: kubectl get pods -n prod | grep -c Running
-      expect:
-        line_count_gte: 1
-        numeric_gte: 3
+    command: kubectl get pods -n prod | grep -c Running
+    expect:
+      line_count_gte: 1
+      numeric_gte: 3
 
   - name: Deploy
     type: manual
     session: execution
     command: kubectl set image deployment/myapp myapp=myapp:latest
-    verify:
-      session: verification
-      command: kubectl get pod -l app=myapp -o jsonpath='{.items[0].spec.containers[0].imageID}'
-      expect:
-        contains: "${IMAGE_ID}"
-        retry:
-          interval: 5s
-          max: 6
+
+  - name: Verify image
+    type: manual
+    session: verification
+    command: "kubectl get pod -l app=myapp -o jsonpath='{.items[0].spec.containers[0].imageID}'"
+    expect:
+      contains: "${IMAGE_ID}"
+      retry:
+        interval: 5s
+        max: 6
 
   - name: Health check
     type: manual
-    verify:
-      command: curl -s https://staging.example.com/health | jq .status
-      expect:
-        equals: '"healthy"'
+    command: "curl -s https://staging.example.com/health | jq .status"
+    expect:
+      equals: '"healthy"'

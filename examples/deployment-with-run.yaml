@@ -61,11 +61,13 @@ steps:
     capture:
       CURRENT_IMAGE:
         line: last    # store the entire output as CURRENT_IMAGE for rollback reference
-    verify:
-      session: monitoring
-      command: kubectl get deployment web -n ${NAMESPACE} --no-headers
-      expect:
-        not_empty: true
+
+  - name: Check deployment exists
+    type: manual
+    session: monitoring
+    command: kubectl get deployment web -n ${NAMESPACE} --no-headers
+    expect:
+      not_empty: true
 
   # ─── Step 2: Deploy new image ─────────────────────────────────────────────────
   - name: Deploy new image
@@ -74,39 +76,39 @@ steps:
     pic: ops@example.com
     reviewer: sre-lead@example.com
     command: kubectl set image deployment/web web=myapp:${IMAGE_TAG} -n ${NAMESPACE}
-    verify:
-      session: monitoring
-      command: kubectl rollout status deployment/web -n ${NAMESPACE} --timeout=120s
-      expect:
-        contains: "successfully rolled out"
-        retry:
-          interval: 10s
-          max: 12         # poll up to 12 × 10s = 2 minutes
     rollback:
       - command: kubectl rollout undo deployment/web -n ${NAMESPACE}
         session: execution
       - command: kubectl rollout status deployment/web -n ${NAMESPACE} --timeout=60s
         session: monitoring
 
+  - name: Verify rollout
+    type: manual
+    session: monitoring
+    command: kubectl rollout status deployment/web -n ${NAMESPACE} --timeout=120s
+    expect:
+      contains: "successfully rolled out"
+      retry:
+        interval: 10s
+        max: 12         # poll up to 12 × 10s = 2 minutes
+
   # ─── Step 3: Verify pod count ─────────────────────────────────────────────────
   - name: Check pod readiness
     type: manual
     session: monitoring
     command: kubectl get pods -n ${NAMESPACE} -l app=web --no-headers | grep -c Running
-    verify:
-      expect:
-        numeric_gte: 1    # at least 1 pod running (override per-env via variants if needed)
+    expect:
+      numeric_gte: 1    # at least 1 pod running (override per-env via variants if needed)
 
   # ─── Step 4: Smoke test ────────────────────────────────────────────────────────
   - name: Smoke test
     type: manual
-    verify:
-      command: curl -sf https://api.${NAMESPACE}.example.com/health | jq -r .status
-      expect:
-        equals: "ok"
-        retry:
-          interval: 5s
-          max: 6
+    command: curl -sf https://api.${NAMESPACE}.example.com/health | jq -r .status
+    expect:
+      equals: "ok"
+      retry:
+        interval: 5s
+        max: 6
     rollback:
       - command: kubectl rollout undo deployment/web -n ${NAMESPACE}
         session: execution

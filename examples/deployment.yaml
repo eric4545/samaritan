@@ -54,19 +54,23 @@ steps:
     type: automatic
     description: Scale the Kubernetes deployment to the specified replica count.
     command: kubectl scale deployment web-server --replicas=${REPLICAS}
-    verify:
-      command: kubectl get deployment web-server -o jsonpath='{.status.readyReplicas}'
-      expect:
-        equals: "${REPLICAS}"
+
+  - name: Check replica count
+    type: automatic
+    command: kubectl get deployment web-server -o jsonpath='{.status.readyReplicas}'
+    expect:
+      equals: "${REPLICAS}"
 
   - name: Manual Verification
     type: manual
     description: Manually verify deployment health.
     command: curl https://web-server.example.com/health
-    verify:
-      command: curl -s -o /dev/null -w "%{http_code}" https://web-server.example.com/health
-      expect:
-        equals: "200"
+
+  - name: Check HTTP status
+    type: automatic
+    command: curl -s -o /dev/null -w "%{http_code}" https://web-server.example.com/health
+    expect:
+      equals: "200"
 
   - name: Deploy to Kubernetes
     type: automatic

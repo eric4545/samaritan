@@ -1,6 +1,6 @@
 name: Deploy with Sessions
 version: 1.0.0
-description: Tests sessions, verify, rollback array, capture, and expect
+description: Tests sessions, rollback array, capture, and expect
 
 sessions:
   execution:
@@ -30,19 +30,21 @@ steps:
     type: manual
     session: execution
     command: kubectl apply -f deployment.yaml
-    verify:
-      session: verification
-      command: kubectl get pods -n prod
-      expect:
-        contains: Running
-        retry:
-          interval: 5s
-          max: 12
     rollback:
       - command: kubectl rollout undo deployment/web
         session: execution
       - command: kubectl delete pod -l app=web --force
         session: execution
+
+  - name: Check Deployment
+    type: manual
+    session: verification
+    command: kubectl get pods -n prod
+    expect:
+      contains: Running
+      retry:
+        interval: 5s
+        max: 12
 
   - name: Build Image
     type: manual
@@ -54,4 +56,4 @@ steps:
         group: 1
       LAST_LINE:
         line: last
-    verify: "Successfully built"
+    expect: "Successfully built"

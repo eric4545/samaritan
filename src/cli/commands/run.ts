@@ -498,9 +498,9 @@ class OperationRunner {
             console.log(`    📤 Sent to tmux pane [${step.session}].`);
 
             // Run verify if defined
-            if (step.verify) {
+            if (step.command && step.expect) {
               console.log(
-                `    🔍 Running verify: ${tryResolve(step.verify.command) ?? step.verify.command}`,
+                `    🔍 Checking expected output for: ${tryResolve(step.command) ?? step.command}`,
               );
               const { state: vState, assertResult } =
                 await controller.runVerify(step, i);

@@ -105,6 +105,7 @@ export const FIXTURES = {
   withSessions: 'tests/fixtures/operations/features/with-sessions.yaml',
   withCaptureExpect:
     'tests/fixtures/operations/features/with-capture-expect.yaml',
+  withArrayExpect: 'tests/fixtures/operations/features/with-array-expect.yaml',
 
   // ===== Confluence Generator Tests =====
   multiLineCommand:

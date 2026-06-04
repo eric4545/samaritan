@@ -1,0 +1,49 @@
+name: Deploy with Multi-Check Verification
+version: 1.0.0
+description: |
+  Demonstrates using an array of expect checks on steps.
+  All checks in the array must pass (AND semantics).
+  A verification step is just a regular step with command + expect.
+
+environments:
+  - name: staging
+    variables:
+      NAMESPACE: staging
+      MIN_REPLICAS: "3"
+  - name: production
+    variables:
+      NAMESPACE: production
+      MIN_REPLICAS: "5"
+
+steps:
+  - name: Deploy application
+    type: manual
+    instruction: |
+      Apply the deployment manifest:
+      ```bash
+      kubectl apply -f deployment.yaml -n ${NAMESPACE}
+      ```
+
+  - name: Check pods are ready
+    type: automatic
+    command: kubectl get pods -n ${NAMESPACE} -l app=web-server
+    expect:
+      # All three checks must pass
+      - contains: "Running"
+      - not_contains: "Error"
+      - not_contains: "CrashLoopBackOff"
+
+  - name: Verify replica count
+    type: automatic
+    command: kubectl get deployment web-server -n ${NAMESPACE} -o jsonpath='{.status.readyReplicas}'
+    expect:
+      - numeric_gte: 3
+      - not_empty: true
+
+  - name: Health check
+    type: automatic
+    command: curl -s https://web-server.${NAMESPACE}.example.com/health
+    expect:
+      - contains: "healthy"
+      - not_contains: "error"
+      - not_contains: "degraded"
