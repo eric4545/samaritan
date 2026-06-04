@@ -31,144 +31,155 @@ export function assertOutput(
   const trimmed = output.trim();
   const lines = trimmed.split('\n').filter((l) => l.trim() !== '');
 
-  if (expect.equals !== undefined) {
-    if (expect.jsonpath !== undefined) {
-      return evalJsonPath(output, expect.jsonpath, expect.equals);
-    }
-    return {
+  // Build all checks for each active field, return the first failure
+  const checks: AssertResult[] = [];
+
+  if (expect.jsonpath !== undefined) {
+    checks.push(evalJsonPath(output, expect.jsonpath, expect.equals));
+  } else if (expect.equals !== undefined) {
+    checks.push({
       pass: trimmed === expect.equals,
       actual: trimmed,
       expected: expect.equals,
       type: 'equals',
-    };
+    });
   }
 
   if (expect.contains !== undefined) {
-    return {
+    checks.push({
       pass: output.includes(expect.contains),
       actual: trimmed,
       expected: expect.contains,
       type: 'contains',
-    };
+    });
   }
 
   if (expect.not_contains !== undefined) {
-    return {
+    checks.push({
       pass: !output.includes(expect.not_contains),
       actual: trimmed,
       expected: `not contains "${expect.not_contains}"`,
       type: 'not_contains',
-    };
+    });
   }
 
   if (expect.matches !== undefined) {
     const re = new RegExp(expect.matches);
-    return {
+    checks.push({
       pass: re.test(output),
       actual: trimmed,
       expected: expect.matches,
       type: 'matches',
-    };
+    });
   }
 
   if (expect.not_empty !== undefined) {
-    return {
+    checks.push({
       pass: trimmed.length > 0,
       actual: trimmed,
       expected: 'non-empty',
       type: 'not_empty',
-    };
+    });
   }
 
   if (expect.any_line_contains !== undefined) {
     const target = expect.any_line_contains;
-    return {
+    checks.push({
       pass: lines.some((l) => l.includes(target)),
       actual: trimmed,
       expected: target,
       type: 'any_line_contains',
-    };
+    });
   }
 
   if (expect.no_line_contains !== undefined) {
     const target = expect.no_line_contains;
-    return {
+    checks.push({
       pass: !lines.some((l) => l.includes(target)),
       actual: trimmed,
       expected: `no line contains "${target}"`,
       type: 'no_line_contains',
-    };
+    });
   }
 
   if (expect.all_lines_match !== undefined) {
     const re = new RegExp(expect.all_lines_match);
-    return {
+    checks.push({
       pass: lines.every((l) => re.test(l)),
       actual: trimmed,
       expected: expect.all_lines_match,
       type: 'all_lines_match',
-    };
+    });
   }
 
   if (expect.line_count !== undefined) {
-    return {
+    checks.push({
       pass: lines.length === expect.line_count,
       actual: String(lines.length),
       expected: String(expect.line_count),
       type: 'line_count',
-    };
+    });
   }
 
   if (expect.line_count_gte !== undefined) {
-    return {
+    checks.push({
       pass: lines.length >= expect.line_count_gte,
       actual: String(lines.length),
       expected: `>= ${expect.line_count_gte}`,
       type: 'line_count_gte',
-    };
+    });
   }
 
   if (expect.numeric_gte !== undefined) {
     const match = output.match(/[-\d.]+/);
     const num = match ? Number(match[0]) : Number.NaN;
-    return {
+    checks.push({
       pass: !Number.isNaN(num) && num >= expect.numeric_gte,
       actual: String(num),
       expected: `>= ${expect.numeric_gte}`,
       type: 'numeric_gte',
-    };
+    });
   }
 
   if (expect.numeric_lte !== undefined) {
     const match = output.match(/[-\d.]+/);
     const num = match ? Number(match[0]) : Number.NaN;
-    return {
+    checks.push({
       pass: !Number.isNaN(num) && num <= expect.numeric_lte,
       actual: String(num),
       expected: `<= ${expect.numeric_lte}`,
       type: 'numeric_lte',
-    };
-  }
-
-  if (expect.jsonpath !== undefined) {
-    return evalJsonPath(output, expect.jsonpath, undefined);
+    });
   }
 
   if (expect.equals_captured !== undefined) {
-    return {
+    checks.push({
       pass: false,
       actual: trimmed,
       expected: `captured variable "${expect.equals_captured}" (not found in session state)`,
       type: 'equals_captured',
+    });
+  }
+
+  if (checks.length === 0) {
+    return {
+      pass: true,
+      actual: trimmed,
+      expected: '(no assertion)',
+      type: 'none',
     };
   }
 
-  return {
-    pass: true,
-    actual: trimmed,
-    expected: '(no assertion)',
-    type: 'none',
-  };
+  const failure = checks.find((r) => !r.pass);
+  if (failure) return failure;
+  return checks.length === 1
+    ? checks[0]
+    : {
+        pass: true,
+        actual: trimmed,
+        expected: '(all checks passed)',
+        type: 'all',
+      };
 }
 
 function evalJsonPath(
@@ -229,60 +240,73 @@ function resolveSimpleJsonPath(obj: unknown, path: string): unknown {
 }
 
 /**
+ * Returns all active assertion fields as human-readable strings.
+ * Used by generators to render bullet lists of checks.
+ */
+export function renderExpectParts(
+  expect: ExpectConfig | ExpectConfig[] | string | undefined,
+): string[] {
+  if (!expect) return [];
+  if (typeof expect === 'string') return [expect];
+  if (Array.isArray(expect)) {
+    return expect.flatMap((e) => renderExpectParts(e)).filter(Boolean);
+  }
+  const parts: string[] = [];
+  if (expect.jsonpath !== undefined) {
+    parts.push(
+      expect.equals !== undefined
+        ? `${expect.jsonpath} equals ${expect.equals}`
+        : `${expect.jsonpath} exists`,
+    );
+  } else if (expect.equals !== undefined) {
+    parts.push(`equals ${expect.equals}`);
+  }
+  if (expect.contains !== undefined) {
+    const val = String(expect.contains).replace(/^"|"$/g, '');
+    parts.push(`contains: ${val}`);
+  }
+  if (expect.not_contains !== undefined) {
+    const val = String(expect.not_contains).replace(/^"|"$/g, '');
+    parts.push(`does not contain: ${val}`);
+  }
+  if (expect.matches !== undefined) {
+    const pattern = String(expect.matches);
+    const altMatch = pattern.match(/\(([^)]+)\)/);
+    if (altMatch) {
+      parts.push(`matches ${altMatch[1].split('|').join(' or ')}`);
+    } else {
+      const readable = pattern
+        .replace(/\\[^\\]/g, '')
+        .replace(/[\\^$.*+?[\]{}|]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      parts.push(`matches: ${readable}`);
+    }
+  }
+  if (expect.not_empty) parts.push('is not empty');
+  if (expect.any_line_contains !== undefined)
+    parts.push(`any line contains: ${expect.any_line_contains}`);
+  if (expect.no_line_contains !== undefined)
+    parts.push(`no line contains: ${expect.no_line_contains}`);
+  if (expect.all_lines_match !== undefined)
+    parts.push(`all lines match: ${expect.all_lines_match}`);
+  if (expect.line_count !== undefined)
+    parts.push(`exactly ${expect.line_count} line(s)`);
+  if (expect.line_count_gte !== undefined)
+    parts.push(`at least ${expect.line_count_gte} line(s)`);
+  if (expect.numeric_gte !== undefined)
+    parts.push(`value ≥ ${expect.numeric_gte}`);
+  if (expect.numeric_lte !== undefined)
+    parts.push(`value ≤ ${expect.numeric_lte}`);
+  return parts;
+}
+
+/**
  * Convert an assertion expectation to clean, human-readable text for manuals.
- * Avoids escaped regex artifacts and doubled quotes.
+ * Thin wrapper over renderExpectParts — joins with '; '.
  */
 export function renderExpectDescription(
   expect: ExpectConfig | ExpectConfig[] | string | undefined,
 ): string {
-  if (!expect) return '';
-  if (typeof expect === 'string') return expect;
-  if (Array.isArray(expect)) {
-    return expect
-      .map((e) => renderExpectDescription(e))
-      .filter(Boolean)
-      .join('; ');
-  }
-  if (expect.equals !== undefined) {
-    if (expect.jsonpath) return `${expect.jsonpath} equals ${expect.equals}`;
-    return `equals ${expect.equals}`;
-  }
-  if (expect.contains !== undefined) {
-    // Strip surrounding quotes added by JSON serialisation
-    const val = String(expect.contains).replace(/^"|"$/g, '');
-    return `contains: ${val}`;
-  }
-  if (expect.not_contains !== undefined) {
-    const val = String(expect.not_contains).replace(/^"|"$/g, '');
-    return `does not contain: ${val}`;
-  }
-  if (expect.matches !== undefined) {
-    // Extract human-readable alternatives from regex groups like (A|B|C)
-    const pattern = String(expect.matches);
-    const altMatch = pattern.match(/\(([^)]+)\)/);
-    if (altMatch) {
-      return `matches ${altMatch[1].split('|').join(' or ')}`;
-    }
-    // Strip common metacharacters for a readable approximation
-    const readable = pattern
-      .replace(/\\[^\\]/g, '')
-      .replace(/[\\^$.*+?[\]{}|]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    return `matches: ${readable}`;
-  }
-  if (expect.not_empty) return 'is not empty';
-  if (expect.any_line_contains !== undefined)
-    return `any line contains: ${expect.any_line_contains}`;
-  if (expect.no_line_contains !== undefined)
-    return `no line contains: ${expect.no_line_contains}`;
-  if (expect.all_lines_match !== undefined)
-    return `all lines match: ${expect.all_lines_match}`;
-  if (expect.line_count !== undefined)
-    return `exactly ${expect.line_count} line(s)`;
-  if (expect.line_count_gte !== undefined)
-    return `at least ${expect.line_count_gte} line(s)`;
-  if (expect.numeric_gte !== undefined) return `value ≥ ${expect.numeric_gte}`;
-  if (expect.numeric_lte !== undefined) return `value ≤ ${expect.numeric_lte}`;
-  return '';
+  return renderExpectParts(expect).join('; ');
 }

@@ -21,7 +21,8 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     const md = generateSingleEnvManual(op, 'production');
 
     assert.ok(md.includes('## Step 1: Deploy App'), 'step 1 heading');
-    assert.ok(md.includes('## Step 2: Build Image'), 'step 2 heading');
+    assert.ok(md.includes('## Step 2: Check Deployment'), 'step 2 heading');
+    assert.ok(md.includes('## Step 3: Build Image'), 'step 3 heading');
   });
 
   it('renders **Command** block', async () => {
@@ -36,18 +37,12 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     assert.ok(md.includes('```'), 'has code fence');
   });
 
-  it('renders **Verify** block when verify.command defined', async () => {
+  it('renders verify step command and Expected block', async () => {
     const op = await parseFixture('withSessions');
     const md = generateSingleEnvManual(op, 'production');
 
-    assert.ok(md.includes('**Verify**'), 'has Verify block');
-    assert.ok(md.includes('kubectl get pods -n prod'), 'has verify command');
-  });
-
-  it('renders Expected: line from verify.expect', async () => {
-    const op = await parseFixture('withSessions');
-    const md = generateSingleEnvManual(op, 'production');
-
+    // "Check Deployment" step has command + expect
+    assert.ok(md.includes('kubectl get pods -n prod'), 'has command');
     assert.ok(md.includes('Expected:'), 'has Expected line');
     assert.ok(md.includes('Running'), 'shows expected value');
   });
@@ -95,12 +90,13 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
 
   it('renders string shorthand expect on step', async () => {
     const op = await parseFixture('withSessions');
-    const buildStep = op.steps[1]; // "Build Image" with verify: "Successfully built" (normalized to { expect })
-    assert.deepStrictEqual(buildStep.verify, { expect: 'Successfully built' });
+    const buildStep = op.steps[2]; // "Build Image" — now step index 2 after "Check Deployment" added
+    assert.strictEqual(buildStep.name, 'Build Image');
+    assert.strictEqual(buildStep.expect, 'Successfully built');
     const md = generateSingleEnvManual(op, 'production');
     assert.ok(
       md.includes('Successfully built'),
-      'renders verify string shorthand',
+      'renders string shorthand expect',
     );
   });
 

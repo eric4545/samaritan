@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { renderExpectDescription } from '../lib/assertions';
+import { renderExpectParts } from '../lib/assertions';
 import {
   type GenerationMetadata,
   generateYamlFrontmatter,
@@ -650,38 +650,25 @@ function generateStepRow(
       }
     }
 
-    // Add verify/expect
-    if (effectiveStep.verify) {
-      const { command: verifyCmd, expect: verifyExpect } = effectiveStep.verify;
-      if (verifyCmd) {
-        let cmd = verifyCmd;
-        if (resolveVariables && substituteVars) {
-          cmd = substituteVariables(
-            cmd,
-            env.variables || {},
-            effectiveStep.variables,
-          );
+    // Add expect
+    if (effectiveStep.expect) {
+      const resolvedExpect =
+        resolveVariables && substituteVars
+          ? substituteExpectVars(
+              effectiveStep.expect,
+              env.variables || {},
+              effectiveStep.variables,
+            )
+          : effectiveStep.expect;
+      const parts = renderExpectParts(resolvedExpect);
+      if (parts.length > 0) {
+        const sep = cellContent ? '<br>' : '';
+        if (parts.length === 1) {
+          cellContent += `${sep}_Expected: ${parts[0]}_`;
+        } else {
+          cellContent += `${sep}_Expected:_`;
+          for (const p of parts) cellContent += `<br>- _${p}_`;
         }
-        const cleanCmd = cmd
-          .trim()
-          .replace(/\n/g, '<br>')
-          .replace(/\|/g, '\\|')
-          .replace(/`/g, '\\`');
-        const sep = cellContent ? '<br><br>' : '';
-        cellContent += `${sep}**Verify:** \`${cleanCmd}\``;
-      }
-      if (verifyExpect) {
-        const resolvedExpect =
-          resolveVariables && substituteVars
-            ? substituteExpectVars(
-                verifyExpect,
-                env.variables || {},
-                effectiveStep.variables,
-              )
-            : verifyExpect;
-        const desc = renderExpectDescription(resolvedExpect);
-        if (desc)
-          cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
       }
     }
 
@@ -1033,38 +1020,25 @@ function generateSubStepRow(
       }
     }
 
-    // Add verify/expect
-    if (effectiveStep.verify) {
-      const { command: verifyCmd, expect: verifyExpect } = effectiveStep.verify;
-      if (verifyCmd) {
-        let cmd = verifyCmd;
-        if (resolveVariables && substituteVars) {
-          cmd = substituteVariables(
-            cmd,
-            env.variables || {},
-            effectiveStep.variables,
-          );
+    // Add expect
+    if (effectiveStep.expect) {
+      const resolvedExpect =
+        resolveVariables && substituteVars
+          ? substituteExpectVars(
+              effectiveStep.expect,
+              env.variables || {},
+              effectiveStep.variables,
+            )
+          : effectiveStep.expect;
+      const parts = renderExpectParts(resolvedExpect);
+      if (parts.length > 0) {
+        const sep = cellContent ? '<br>' : '';
+        if (parts.length === 1) {
+          cellContent += `${sep}_Expected: ${parts[0]}_`;
+        } else {
+          cellContent += `${sep}_Expected:_`;
+          for (const p of parts) cellContent += `<br>- _${p}_`;
         }
-        const cleanCmd = cmd
-          .trim()
-          .replace(/\n/g, '<br>')
-          .replace(/\|/g, '\\|')
-          .replace(/`/g, '\\`');
-        const sep = cellContent ? '<br><br>' : '';
-        cellContent += `${sep}**Verify:** \`${cleanCmd}\``;
-      }
-      if (verifyExpect) {
-        const resolvedExpect =
-          resolveVariables && substituteVars
-            ? substituteExpectVars(
-                verifyExpect,
-                env.variables || {},
-                effectiveStep.variables,
-              )
-            : verifyExpect;
-        const desc = renderExpectDescription(resolvedExpect);
-        if (desc)
-          cellContent += `${cellContent ? '<br>' : ''}_Expected: ${desc}_`;
       }
     }
 
@@ -1928,27 +1902,20 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
-    if (effectiveStep.verify) {
-      const { command, expect } = effectiveStep.verify;
-      let emitted = false;
-      if (command) {
-        lines.push('**Verify**');
-        lines.push('```bash');
-        lines.push(resolveCmd(command));
-        lines.push('```');
-        emitted = true;
-      }
-      if (expect) {
-        const resolvedExpect = resolveVariables
-          ? substituteExpectVars(expect, envVars)
-          : expect;
-        const desc = renderExpectDescription(resolvedExpect);
-        if (desc) {
-          lines.push(`> Expected: ${desc}`);
-          emitted = true;
+    if (effectiveStep.expect) {
+      const resolvedExpect = resolveVariables
+        ? substituteExpectVars(effectiveStep.expect, envVars)
+        : effectiveStep.expect;
+      const parts = renderExpectParts(resolvedExpect);
+      if (parts.length > 0) {
+        if (parts.length === 1) {
+          lines.push(`> Expected: ${parts[0]}`);
+        } else {
+          lines.push('> Expected:');
+          for (const p of parts) lines.push(`> - ${p}`);
         }
+        lines.push('');
       }
-      if (emitted) lines.push('');
     }
 
     // Render captured evidence results for this environment

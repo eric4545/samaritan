@@ -1,24 +1,21 @@
 name: Array Expect Test
 version: 1.0.0
-description: Tests that verify.expect accepts an array of checks (all must pass)
+description: Tests that expect accepts an array of checks (all must pass)
 environments:
   - name: staging
 
 steps:
   - name: Check cluster health
     type: automatic
-    command: kubectl get pods -n staging
-    verify:
-      command: kubectl get pods -n staging | grep -c Running
-      expect:
-        - contains: "Running"
-        - not_contains: "Error"
-        - line_count_gte: 3
+    command: kubectl get pods -n staging | grep -c Running
+    expect:
+      - contains: "Running"
+      - not_contains: "Error"
+      - line_count_gte: 3
 
   - name: Verify API is up
     type: automatic
     command: curl -s https://staging.example.com/health
-    verify:
-      expect:
-        - contains: "healthy"
-        - not_contains: "error"
+    expect:
+      - contains: "healthy"
+      - not_contains: "error"

@@ -18,6 +18,7 @@ import {
   tableRow,
   text,
 } from '@atlaskit/adf-utils/builders';
+import { renderExpectParts } from '../lib/assertions';
 import type { GenerationMetadata } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
 import type { Environment, Operation, Step } from '../models/operation';
@@ -649,6 +650,21 @@ function createStepsTable(
               paragraph(
                 em(text(`Script file not found: ${effectiveStep.script}`)),
               ),
+            );
+          }
+        }
+      }
+
+      // Add expect assertions
+      if (effectiveStep.expect) {
+        const parts = renderExpectParts(effectiveStep.expect);
+        if (parts.length > 0) {
+          if (parts.length === 1) {
+            cellContent.push(paragraph(em(text(`Expected: ${parts[0]}`))));
+          } else {
+            cellContent.push(paragraph(strong(text('Expected:'))));
+            cellContent.push(
+              bulletList(...parts.map((p) => listItem(paragraph(em(text(p)))))),
             );
           }
         }

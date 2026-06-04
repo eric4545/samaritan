@@ -37,13 +37,13 @@ describe('Sessions / execution-engine schema (issue #5)', () => {
       assert.strictEqual(deployStep.session, 'execution');
     });
 
-    it('parses step.verify with session and expect (object form)', async () => {
+    it('parses verify step with session, command, and expect', async () => {
       const op = await parseFixture('withSessions');
-      const deployStep = op.steps[0];
-      assert.ok(deployStep.verify, 'verify should be present');
-      assert.strictEqual(deployStep.verify.session, 'verification');
-      assert.strictEqual(deployStep.verify.command, 'kubectl get pods -n prod');
-      const expect = deployStep.verify.expect as any;
+      const checkStep = op.steps[1];
+      assert.strictEqual(checkStep.name, 'Check Deployment');
+      assert.strictEqual(checkStep.session, 'verification');
+      assert.strictEqual(checkStep.command, 'kubectl get pods -n prod');
+      const expect = checkStep.expect as any;
       assert.ok(expect, 'expect should be present');
       assert.strictEqual(expect.contains, 'Running');
       assert.ok(expect.retry, 'retry should be present');
@@ -70,7 +70,7 @@ describe('Sessions / execution-engine schema (issue #5)', () => {
 
     it('parses step.capture config', async () => {
       const op = await parseFixture('withSessions');
-      const buildStep = op.steps[1];
+      const buildStep = op.steps[2]; // "Build Image" is now step 2 (after "Check Deployment")
       assert.strictEqual(buildStep.name, 'Build Image');
       assert.ok(buildStep.capture, 'capture should be present');
       assert.ok(buildStep.capture.IMAGE_ID, 'IMAGE_ID capture should exist');
@@ -83,12 +83,11 @@ describe('Sessions / execution-engine schema (issue #5)', () => {
       assert.strictEqual(buildStep.capture.LAST_LINE.line, 'last');
     });
 
-    it('parses verify string shorthand into { expect }', async () => {
+    it('parses string shorthand expect into step.expect', async () => {
       const op = await parseFixture('withSessions');
-      const buildStep = op.steps[1];
-      assert.deepStrictEqual(buildStep.verify, {
-        expect: 'Successfully built',
-      });
+      const buildStep = op.steps[2]; // "Build Image" is now step 2
+      assert.strictEqual(buildStep.name, 'Build Image');
+      assert.strictEqual(buildStep.expect, 'Successfully built');
     });
   });
 
@@ -97,22 +96,23 @@ describe('Sessions / execution-engine schema (issue #5)', () => {
       const op = await parseFixture('withCaptureExpect');
       assert.ok(op);
       assert.strictEqual(op.name, 'Capture and Expect Test');
-      assert.strictEqual(op.steps.length, 4);
+      assert.strictEqual(op.steps.length, 5);
     });
 
-    it('parses verify.expect with numeric assertions', async () => {
+    it('parses step.expect with numeric assertions', async () => {
       const op = await parseFixture('withCaptureExpect');
-      const podStep = op.steps[1];
-      assert.ok(podStep.verify?.expect);
-      const expect = podStep.verify?.expect as any;
+      const podStep = op.steps[1]; // "Check pod count"
+      assert.ok(podStep.expect);
+      const expect = podStep.expect as any;
       assert.strictEqual(expect.line_count_gte, 1);
       assert.strictEqual(expect.numeric_gte, 3);
     });
 
-    it('parses verify with retry and captured var reference', async () => {
+    it('parses step.expect with retry and captured var reference', async () => {
       const op = await parseFixture('withCaptureExpect');
-      const deployStep = op.steps[2];
-      const expect = deployStep.verify?.expect as any;
+      const verifyStep = op.steps[3]; // "Verify image"
+      assert.strictEqual(verifyStep.name, 'Verify image');
+      const expect = verifyStep.expect as any;
       assert.strictEqual(expect.contains, '${IMAGE_ID}');
       assert.strictEqual(expect.retry.max, 6);
     });

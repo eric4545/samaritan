@@ -42,12 +42,6 @@ export interface ExpectConfig {
   retry?: RetryAssertConfig;
 }
 
-export interface VerifyConfig {
-  session?: string;
-  command?: string;
-  expect?: ExpectConfig | ExpectConfig[] | string;
-}
-
 export interface RunConfig {
   auto_send?: boolean;
   auto_exec?: boolean;
@@ -175,7 +169,7 @@ export interface StepContent {
   session?: string;
   pic?: string;
   reviewer?: string;
-  verify?: VerifyConfig;
+  expect?: ExpectConfig | ExpectConfig[] | string;
 }
 
 export interface RollbackStep extends StepContent {

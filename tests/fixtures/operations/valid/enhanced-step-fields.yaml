@@ -50,8 +50,6 @@ steps:
     type: automatic
     description: Complex deployment with verification
     command: kubectl apply -f complex-deployment.yaml
-    verify:
-      command: kubectl get pods -l app=myapp | grep Running
     sub_steps:
       - name: Wait for pods
         type: automatic

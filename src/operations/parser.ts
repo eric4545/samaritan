@@ -19,7 +19,6 @@ import type {
   StepPhase,
   StepType,
   VariableMatrix,
-  VerifyConfig,
 } from '../models/operation';
 import {
   SchemaValidationError,
@@ -804,15 +803,12 @@ async function resolveStepReferences(
   return resolvedSteps;
 }
 
-function normalizeVerify(
-  verify: any,
-  legacyExpect: any,
-): VerifyConfig | undefined {
-  if (verify != null) {
-    return typeof verify === 'string' ? { expect: verify } : verify;
-  }
-  if (legacyExpect != null) {
-    return { expect: legacyExpect };
+function extractExpect(stepData: any): any {
+  if (stepData.expect != null) return stepData.expect;
+  // Backward compat: lift verify.expect or string verify shorthand
+  if (stepData.verify != null) {
+    if (typeof stepData.verify === 'string') return stepData.verify;
+    if (stepData.verify.expect != null) return stepData.verify.expect;
   }
   return undefined;
 }
@@ -861,7 +857,7 @@ async function parseStep(
         pic: r.pic,
         reviewer: r.reviewer,
         evidence: r.evidence ? parseEvidence(r) : undefined,
-        verify: normalizeVerify(r.verify, r.expect),
+        expect: extractExpect(r),
         options: r.options
           ? {
               substitute_vars: r.options.substitute_vars ?? true,
@@ -882,10 +878,7 @@ async function parseStep(
           reviewer: stepData.rollback.reviewer,
           evidence: parseEvidence(stepData.rollback),
           evidence_required: Boolean(stepData.rollback.evidence_required),
-          verify: normalizeVerify(
-            stepData.rollback.verify,
-            stepData.rollback.expect,
-          ),
+          expect: extractExpect(stepData.rollback),
           options: stepData.rollback.options
             ? {
                 substitute_vars:
@@ -921,7 +914,7 @@ async function parseStep(
     evidence_types: stepData.evidence_types as EvidenceType[], // DEPRECATED: Use evidence.types instead
     validation: stepData.validation,
     session: stepData.session,
-    verify: normalizeVerify(stepData.verify, stepData.expect),
+    expect: extractExpect(stepData),
     capture: stepData.capture,
     continue_on_error: Boolean(stepData.continue_on_error),
     retry: stepData.retry,

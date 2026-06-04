@@ -53,7 +53,7 @@ describe('Enhanced Operation Parser', () => {
 
     // Verify steps are preserved (preflight migrated to steps with phase)
     assert.ok(operation.steps);
-    assert.strictEqual(operation.steps.length, 8); // 2 preflight + 6 original steps
+    assert.strictEqual(operation.steps.length, 10); // 2 preflight + 8 original steps (verify cmds now separate steps)
 
     // Check preflight steps (now in unified steps with phase)
     const preflightSteps = operation.steps.filter(
@@ -67,7 +67,7 @@ describe('Enhanced Operation Parser', () => {
     const regularSteps = operation.steps.filter(
       (step) => step.phase !== 'preflight',
     );
-    assert.strictEqual(regularSteps.length, 6);
+    assert.strictEqual(regularSteps.length, 8); // 6 original + 2 added for verify commands
     assert.strictEqual(regularSteps[0].name, 'Build Docker Image');
     assert.strictEqual(regularSteps[0].type, 'automatic');
 

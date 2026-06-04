@@ -10,8 +10,8 @@ describe('Array expect rendering', () => {
   it('parses array expect from YAML fixture', async () => {
     const op = await parseFixture('withArrayExpect');
     const step = op.steps[0];
-    assert.ok(Array.isArray(step.verify?.expect), 'expect should be an array');
-    assert.strictEqual((step.verify?.expect as any[]).length, 3);
+    assert.ok(Array.isArray(step.expect), 'expect should be an array');
+    assert.strictEqual((step.expect as any[]).length, 3);
   });
 
   it('renders joined expect descriptions in multi-env table format', async () => {

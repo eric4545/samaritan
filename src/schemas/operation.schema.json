@@ -637,31 +637,15 @@
                   "additionalProperties": false
                 }
               },
-              "verify": {
-                "description": "Verify step output. String shorthand = expect contains. Object allows separate verify command.",
+              "expect": {
+                "description": "Assert this step's output. String shorthand = expect contains.",
                 "oneOf": [
                   { "type": "string" },
+                  { "$ref": "#/definitions/expectConfig" },
                   {
-                    "type": "object",
-                    "properties": {
-                      "session": {
-                        "type": "string",
-                        "description": "Session to run verify command in"
-                      },
-                      "command": { "type": "string" },
-                      "expect": {
-                        "oneOf": [
-                          { "type": "string" },
-                          { "$ref": "#/definitions/expectConfig" },
-                          {
-                            "type": "array",
-                            "items": { "$ref": "#/definitions/expectConfig" },
-                            "minItems": 1
-                          }
-                        ]
-                      }
-                    },
-                    "additionalProperties": false
+                    "type": "array",
+                    "items": { "$ref": "#/definitions/expectConfig" },
+                    "minItems": 1
                   }
                 ]
               },

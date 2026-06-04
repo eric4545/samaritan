@@ -1,5 +1,5 @@
 import type { ExpectConfig, Step } from '../models/operation';
-import { assertOutput } from './assertions';
+import { assertOutput, renderExpectDescription } from './assertions';
 import type { EventLogger } from './event-logger';
 import type { SessionState } from './session-state';
 import type { TmuxSession } from './tmux-session';
@@ -90,38 +90,38 @@ export class StepController {
   }> {
     const { logger, tmux, sessionState } = this.opts;
 
-    if (!step.verify) return { state: 'complete' };
+    if (!step.command) return { state: 'complete' };
 
-    const verifySessionName = step.verify.session ?? step.session ?? 'default';
-    const verifySessionConfig = this.opts.sessions?.[verifySessionName];
-    const isSSH = !isLocalSession(verifySessionConfig);
+    const sessionName = step.session ?? 'default';
+    const sessionConfig = this.opts.sessions?.[sessionName];
+    const isSSH = !isLocalSession(sessionConfig);
 
     const command = sessionState
-      ? sessionState.interpolate(step.verify.command)
-      : step.verify.command;
+      ? sessionState.interpolate(step.command)
+      : step.command;
 
     logger.emit({
       type: 'command_sent',
-      session: verifySessionName,
+      session: sessionName,
       command,
     });
 
     if (tmux) {
-      const offset = tmux.currentOffset(verifySessionName);
-      tmux.send(verifySessionName, command);
-      await tmux.waitForPrompt(verifySessionName, 30_000);
-      const output = tmux.readOutput(verifySessionName, offset);
+      const offset = tmux.currentOffset(sessionName);
+      tmux.send(sessionName, command);
+      await tmux.waitForPrompt(sessionName, 30_000);
+      const output = tmux.readOutput(sessionName, offset);
 
       logger.emit({
         type: 'pane_captured',
-        session: verifySessionName,
+        session: sessionName,
         output,
       });
 
-      if (!isSSH && step.verify.expect) {
+      if (!isSSH && step.expect) {
         const expect = sessionState
-          ? interpolateExpect(step.verify.expect, sessionState)
-          : step.verify.expect;
+          ? interpolateExpect(step.expect, sessionState)
+          : step.expect;
         const result = assertOutput(output, expect);
 
         logger.emit({
@@ -299,10 +299,9 @@ export function renderTuiPending(
     lines.push('');
     lines.push(renderCodeBlock(step.command));
   }
-  if (step.verify) {
+  if (step.expect) {
     lines.push('');
-    lines.push(' Verify:');
-    lines.push(`   ${step.verify.command}`);
+    lines.push(` Expected: ${renderExpectDescription(step.expect)}`);
   }
   lines.push('─'.repeat(49));
   if (autoSend) {

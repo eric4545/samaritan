@@ -50,14 +50,9 @@ describe('Enhanced Operation Parser', () => {
       "Execute the command and verify the response contains 'success'",
     );
 
-    // Test step with verify and sub_steps
+    // Test step with sub_steps
     const complexStep = operation.steps[4];
     assert.strictEqual(complexStep.type, 'automatic');
-    assert.ok(complexStep.verify);
-    assert.strictEqual(
-      complexStep.verify.command,
-      'kubectl get pods -l app=myapp | grep Running',
-    );
     assert.ok(complexStep.sub_steps);
     assert.strictEqual(complexStep.sub_steps.length, 2);
 
