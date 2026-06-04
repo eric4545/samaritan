@@ -256,17 +256,15 @@ export function renderCodeBlock(code: string, language = 'bash'): string {
 
   const MIN_FILL = language.length + 4;
   const maxLineLen = Math.max(...lines.map((l) => l.length));
-  const fillWidth = Math.min(Math.max(maxLineLen + 2, MIN_FILL), 72);
+  const fillWidth = Math.max(maxLineLen + 2, MIN_FILL);
 
   const topDashes = '─'.repeat(fillWidth - language.length - 3);
   const top = `  ${DIM}╭─ ${RESET}${CYAN_BOLD}${language}${RESET}${DIM} ${topDashes}╮${RESET}`;
   const bottom = `  ${DIM}╰${'─'.repeat(fillWidth)}╯${RESET}`;
 
   const codeLines = lines.map((line) => {
-    const truncated =
-      line.length > fillWidth - 2 ? line.slice(0, fillWidth - 2) : line;
-    const padding = ' '.repeat(fillWidth - truncated.length - 2);
-    return `  ${DIM}│${RESET} ${truncated}${padding} ${DIM}│${RESET}`;
+    const padding = ' '.repeat(fillWidth - line.length - 2);
+    return `  ${DIM}│${RESET} ${line}${padding} ${DIM}│${RESET}`;
   });
 
   return [top, ...codeLines, bottom].join('\n');

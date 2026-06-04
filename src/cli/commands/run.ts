@@ -421,7 +421,7 @@ class OperationRunner {
           console.log(
             ok ? '  ✅ Copied to clipboard!' : '  ⚠️  Clipboard unavailable',
           );
-          continue;
+          return '';
         }
         return choice;
       }
@@ -608,7 +608,8 @@ class OperationRunner {
               console.log(
                 ok ? '  ✅ Copied to clipboard!' : '  ⚠️  Clipboard unavailable',
               );
-              continue;
+              manualNotes = '';
+              break;
             }
             manualNotes = input;
             break;
