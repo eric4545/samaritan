@@ -222,9 +222,12 @@ const EXPECT_STRING_FIELDS = [
 ] as const satisfies ReadonlyArray<keyof ExpectConfig>;
 
 export function interpolateExpect(
-  expect: ExpectConfig | string,
+  expect: ExpectConfig | ExpectConfig[] | string,
   state: SessionState,
-): ExpectConfig | string {
+): ExpectConfig | ExpectConfig[] | string {
+  if (Array.isArray(expect)) {
+    return expect.map((e) => interpolateExpect(e, state) as ExpectConfig)
+  }
   if (typeof expect === 'string') {
     return state.interpolate(expect);
   }
