@@ -412,19 +412,17 @@ class OperationRunner {
       hints: Array<{ key: string; label: string }>,
       commandToCopy?: string,
     ): Promise<string> => {
-      while (true) {
-        console.log(`\n${renderKeyHints(hints)}`);
-        const ans = await question('  > ');
-        const choice = ans.trim().toLowerCase();
-        if (commandToCopy && (choice === 'c' || choice === 'copy')) {
-          const ok = await copyToClipboard(commandToCopy);
-          console.log(
-            ok ? '  ✅ Copied to clipboard!' : '  ⚠️  Clipboard unavailable',
-          );
-          return '';
-        }
-        return choice;
+      console.log(`\n${renderKeyHints(hints)}`);
+      const ans = await question('  > ');
+      const choice = ans.trim().toLowerCase();
+      if (commandToCopy && (choice === 'c' || choice === 'copy')) {
+        const ok = await copyToClipboard(commandToCopy);
+        console.log(
+          ok ? '  ✅ Copied to clipboard!' : '  ⚠️  Clipboard unavailable',
+        );
+        return '';
       }
+      return choice;
     };
 
     try {
