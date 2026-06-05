@@ -69,13 +69,8 @@ export const FIXTURES = {
   // Evidence with results
   evidenceWithResults:
     'tests/fixtures/operations/features/evidence-with-results.yaml',
-  evidenceOverrideInUse:
-    'tests/fixtures/operations/features/evidence-override-in-use.yaml',
   reviewerAndEnvEvidence:
     'tests/fixtures/operations/features/reviewer-and-env-evidence.yaml',
-
-  // Step library imports (use: directive)
-  useInSubSteps: 'tests/fixtures/operations/features/use-in-substeps.yaml',
 
   // Run manifest: operation with explicit step ids
   withStepIds: 'tests/fixtures/operations/features/with-step-ids.yaml',

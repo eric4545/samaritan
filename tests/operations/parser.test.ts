@@ -536,7 +536,7 @@ description: Tests sub_steps expansion from templates
 environments:
   - name: staging
 steps:
-  - template: ${templateAbsPath}
+  - uses: ${templateAbsPath}
     with:
       SERVICE_NAME: my-app
       NAMESPACE: staging
@@ -628,7 +628,7 @@ description: Template with no variables
 environments:
   - name: production
 steps:
-  - template: ${templateAbsPath}
+  - uses: ${templateAbsPath}
 `;
       const { writeFileSync, unlinkSync } = await import('node:fs');
       const tmpPath = '/tmp/samaritan-no-vars-test.yaml';
@@ -659,7 +659,7 @@ description: Template steps with explicit phase should keep it
 environments:
   - name: staging
 steps:
-  - template: ${templateAbsPath}
+  - uses: ${templateAbsPath}
     with:
       TOOL_NAME: kubectl
 `;
@@ -813,7 +813,7 @@ description: Uses a mocked remote HTTPS template
 environments:
   - name: staging
 steps:
-  - template: https://example.com/templates/health-check.yaml
+  - uses: https://example.com/templates/health-check.yaml
     with:
       ENDPOINT: https://staging.example.com
 `,
@@ -843,7 +843,7 @@ description: Omits TIMEOUT and RETRIES — should use template defaults
 environments:
   - name: staging
 steps:
-  - template: ${templateAbsPath}
+  - uses: ${templateAbsPath}
     with:
       ENDPOINT: https://staging.example.com
 `;
@@ -873,7 +873,7 @@ description: Override template defaults via with block
 environments:
   - name: staging
 steps:
-  - template: ${templateAbsPath}
+  - uses: ${templateAbsPath}
     with:
       ENDPOINT: https://staging.example.com
       TIMEOUT: 120
@@ -910,7 +910,7 @@ description: Partial override - RETRIES falls back to template default
 environments:
   - name: staging
 steps:
-  - template: ${templateAbsPath}
+  - uses: ${templateAbsPath}
     with:
       ENDPOINT: https://staging.example.com
       TIMEOUT: 60
@@ -944,7 +944,7 @@ description: Imports a template that eventually imports itself
 environments:
   - name: staging
 steps:
-  - template: ${circularAPath}
+  - uses: ${circularAPath}
 `;
       const { writeFileSync, unlinkSync } = await import('node:fs');
       const tmpPath = '/tmp/samaritan-circular-test.yaml';
@@ -995,7 +995,7 @@ description: foreach inside a template should be expanded
 environments:
   - name: staging
 steps:
-  - template: ${templatePath}
+  - uses: ${templatePath}
     with:
       SERVICE: my-app
 `,

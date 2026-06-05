@@ -1,14 +1,8 @@
-name: Web Application Deployment with Imports
+name: Web Application Deployment with Step Composition
 version: 1.0.0
-description: Deploy web application using reusable step libraries
+description: Deploy web application using inline step composition
 author: SRE Team
 category: deployment
-
-# Import reusable step libraries
-imports:
-  - "./common/database-steps.yaml"
-  - "./common/health-checks.yaml"
-  - "./common/kubernetes-steps.yaml"
 
 environments:
   - name: staging
@@ -31,8 +25,9 @@ environments:
       K8S_MANIFESTS_DIR: ./k8s/staging
       BUILD_CONTEXT: .
       APP_DIR: ./app
+      BACKUP_FILE: /tmp/staging-backup.sql
     approval_required: false
-    
+
   - name: production
     description: Production environment
     variables:
@@ -53,6 +48,7 @@ environments:
       K8S_MANIFESTS_DIR: ./k8s/production
       BUILD_CONTEXT: .
       APP_DIR: ./app
+      BACKUP_FILE: /tmp/production-backup.sql
     approval_required: true
 
 preflight:
@@ -60,26 +56,24 @@ preflight:
     type: command
     command: git status --porcelain
     description: Ensure working directory is clean
-    
+
   - name: Check Docker
     type: command
     command: docker version
     description: Verify Docker is available
 
 steps:
-  # Step 1: Database backup (imported)
-  - use: database-backup
-  
-  # Step 2: Build and push Docker image (imported)
-  - use: docker-build-and-push
-  
-  # Step 3: Create namespace (imported)
-  - use: k8s-create-namespace
-  
-  # Step 4: Apply secrets (imported)
-  - use: k8s-apply-secrets
-  
-  # Step 5: Custom step - specific to this operation
+  # Expand all database steps inline — pass env vars explicitly
+  - uses: ./common/database-steps.yaml
+    with:
+      DB_HOST: ${DB_HOST}
+      DB_USER: ${DB_USER}
+      DB_NAME: ${DB_NAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      BACKUP_FILE: ${BACKUP_FILE}
+      APP_DIR: ${APP_DIR}
+
+  # Custom step specific to this operation
   - name: update-config-map
     type: automatic
     description: Update application configuration
@@ -93,26 +87,28 @@ steps:
     timeout: 30
     evidence_required: true
     evidence_types: ["command_output"]
-  
-  # Step 6: Deploy to Kubernetes (imported)
-  - use: k8s-deploy
-  
-  # Step 7: Wait for rollout (imported)
-  - use: k8s-wait-for-rollout
-  
-  # Step 8: Scale deployment (imported) 
-  - use: k8s-scale-deployment
-  
-  # Step 9: Run database migrations (imported)
-  - use: database-migrate
-  
-  # Step 10: Health checks (imported)
-  - use: database-connectivity-check
-  - use: redis-connectivity-check
-  - use: api-health-check
-  
-  # Step 11: Comprehensive smoke test (imported)
-  - use: comprehensive-smoke-test
+
+  # Expand all Kubernetes steps inline — pass env vars explicitly
+  - uses: ./common/kubernetes-steps.yaml
+    with:
+      IMAGE_NAME: ${IMAGE_NAME}
+      VERSION: ${VERSION}
+      BUILD_CONTEXT: ${BUILD_CONTEXT}
+      K8S_MANIFESTS_DIR: ${K8S_MANIFESTS_DIR}
+      CLUSTER: ${CLUSTER}
+      NAMESPACE: ${NAMESPACE}
+      DEPLOYMENT_NAME: ${DEPLOYMENT_NAME}
+      CONTAINER_NAME: ${CONTAINER_NAME}
+      REPLICAS: ${REPLICAS}
+
+  # Health checks with variables
+  - uses: ./common/health-checks.yaml
+    with:
+      API_ENDPOINT: ${API_ENDPOINT}
+      FRONTEND_URL: ${FRONTEND_URL}
+      DB_HOST: ${DB_HOST}
+      REDIS_HOST: ${REDIS_HOST}
+      CLUSTER: ${CLUSTER}
 
 metadata:
   created_at: "2024-01-20T10:00:00Z"

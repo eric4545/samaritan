@@ -211,8 +211,8 @@ export interface Step extends StepContent {
   condition?: string;
   estimated_duration?: number;
   env?: Record<string, any>;
-  template?: string; // Path to template file for step import/reuse
-  with?: Record<string, any>; // Variables to pass to template (also used for parameterized steps)
+  uses?: string; // Path to a file whose steps are expanded inline here
+  with?: Record<string, any>; // Variables to pass to uses: (also used for parameterized steps)
   variables?: Record<string, any>; // Step-scoped variables (override env and common vars)
   evidence_types?: EvidenceType[]; // DEPRECATED: Use evidence.types instead
   validation?: StepValidation;

@@ -2,20 +2,20 @@
 # SAMARITAN — Reusable Steps Guide
 # ============================================================
 # This file demonstrates all the ways to reuse steps across
-# operations using the `template:` directive.
+# operations using the `uses:` directive.
 #
 # Three template sources are supported:
 #
 #   1. Local file (relative path)
-#      template: ./templates/health-checks.yaml
+#      uses: ./templates/health-checks.yaml
 #
 #   2. HTTPS URL
-#      template: https://example.com/ops-templates/health-checks.yaml
+#      uses: https://example.com/ops-templates/health-checks.yaml
 #
 #   3. GitHub shorthand  github:owner/repo//path@ref
-#      template: github:myorg/ops-templates//health-checks.yaml@v2.1.0
-#      template: github:myorg/ops-templates//health-checks.yaml@abc1234
-#      template: github:myorg/ops-templates//health-checks.yaml@main
+#      uses: github:myorg/ops-templates//health-checks.yaml@v2.1.0
+#      uses: github:myorg/ops-templates//health-checks.yaml@abc1234
+#      uses: github:myorg/ops-templates//health-checks.yaml@main
 #
 # Variables are passed via `with:` and substituted for every
 # ${VAR} placeholder found inside the template file.
@@ -62,7 +62,7 @@ steps:
   #     (kubernetes-deployment.yaml below)
   # ----------------------------------------------------------
   - name: Pre-deployment Checks (local template)
-    template: ./templates/health-checks.yaml
+    uses: ./templates/health-checks.yaml
     with:
       ENDPOINT: ${ENDPOINT}      # pass env var through unchanged
       DB_HOST: ${DB_HOST}
@@ -76,7 +76,7 @@ steps:
   # `with:` values produce independent, fully substituted steps.
   # ----------------------------------------------------------
   - name: Post-deployment Checks (same template, stricter timeouts)
-    template: ./templates/health-checks.yaml
+    uses: ./templates/health-checks.yaml
     with:
       ENDPOINT: ${ENDPOINT}
       DB_HOST: ${DB_HOST}
@@ -90,7 +90,7 @@ steps:
   # The parser extracts its `steps:` array automatically.
   # ----------------------------------------------------------
   - name: Deploy to Kubernetes (operation-format template)
-    template: ./templates/kubernetes-deployment.yaml
+    uses: ./templates/kubernetes-deployment.yaml
     with:
       SERVICE_NAME: ${SERVICE_NAME}
       NAMESPACE: ${NAMESPACE}
@@ -103,7 +103,7 @@ steps:
   # optional and can be omitted entirely.
   # ----------------------------------------------------------
   - name: Request Approval (no-variable template)
-    template: ./templates/approval-gate.yaml
+    uses: ./templates/approval-gate.yaml
 
   # ----------------------------------------------------------
   # Pattern 5: HTTPS URL template
@@ -113,7 +113,7 @@ steps:
   # ----------------------------------------------------------
   # Uncomment to use (requires network access):
   # - name: HTTPS Remote Template Example
-  #   template: https://raw.githubusercontent.com/myorg/ops-templates/v2.0.0/health-checks.yaml
+  #   uses: https://raw.githubusercontent.com/myorg/ops-templates/v2.0.0/health-checks.yaml
   #   with:
   #     ENDPOINT: ${ENDPOINT}
   #     DB_HOST: ${DB_HOST}
@@ -135,7 +135,7 @@ steps:
   # ----------------------------------------------------------
   # Uncomment to use (requires network access):
   # - name: GitHub Shorthand Template (pinned to tag)
-  #   template: github:myorg/ops-templates//deploy/health-checks.yaml@v2.1.0
+  #   uses: github:myorg/ops-templates//deploy/health-checks.yaml@v2.1.0
   #   with:
   #     ENDPOINT: ${ENDPOINT}
   #     DB_HOST: ${DB_HOST}
@@ -144,7 +144,7 @@ steps:
   #     RETRIES: 3
 
   # - name: GitHub Shorthand Template (pinned to commit hash)
-  #   template: github:myorg/ops-templates//deploy/health-checks.yaml@abc1234def5678
+  #   uses: github:myorg/ops-templates//deploy/health-checks.yaml@abc1234def5678
   #   with:
   #     ENDPOINT: ${ENDPOINT}
   #     DB_HOST: ${DB_HOST}
@@ -156,7 +156,7 @@ steps:
   # Pattern 7: Notifications template (operation format, remote-ready)
   # ----------------------------------------------------------
   - name: Notify Team
-    template: ./templates/notifications.yaml
+    uses: ./templates/notifications.yaml
     with:
       SLACK_WEBHOOK: ${SLACK_WEBHOOK}
       MESSAGE: "Deployment of ${SERVICE_NAME}:${IMAGE_TAG} to ${NAMESPACE} completed"

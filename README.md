@@ -174,120 +174,78 @@ evidence:
 
 See `tests/fixtures/operations/features/evidence-with-results.yaml` for a complete example.
 
-#### Environment-Specific Evidence Override
+#### Environment-Specific Evidence in Shared Steps
 
-When using reusable steps with the `use:` directive, you can override evidence results to provide environment-specific evidence. This is particularly useful when:
-- Running rehearsals in staging/preprod before production execution
-- Collecting different evidence for different environments
-- Keeping common step definitions clean and reusable
-
-**Example:**
+When defining shared steps that will be included via `uses:`, define evidence types in the step file as documentation. Each operation that includes the file adds its own `evidence.results` with environment-specific captured evidence:
 
 ```yaml
 # ./common/health-checks.yaml
-steps:
-  - name: check-afd-health
-    type: manual
-    instruction: |
-      Check AFD health status:
-      ```bash
-      curl https://${AFD_ENDPOINT}/health
-      ```
-    evidence:
-      required: true
-      types: [command_output, screenshot]
-      # NO results - this is a template
+- name: Check AFD Health
+  type: manual
+  instruction: |
+    Check AFD health status:
+    ```bash
+    curl https://${AFD_ENDPOINT}/health
+    ```
+  evidence:
+    required: true
+    types: [command_output, screenshot]
 ```
 
 ```yaml
 # main-operation.yaml
-name: Service Migration
-version: 1.0.0
-
-imports:
-  - "./common/health-checks.yaml"
-
-environments:
-  - name: preprod
-    variables:
-      AFD_ENDPOINT: preprod-afd.example.com
-  - name: prod
-    variables:
-      AFD_ENDPOINT: prod-afd.example.com
-
 steps:
-  # Reuse imported step with environment-specific evidence override
-  - use: check-afd-health
-    phase: preflight
-    evidence:
-      types: [command_output, screenshot]  # Can override types
-      results:  # Add environment-specific evidence results
-        preprod:
-          - type: screenshot
-            file: ./evidence/preprod/afd-health.png
-            description: "Preprod AFD health dashboard (2025-10-10)"
-          - type: command_output
-            content: |
-              HTTP/1.1 200 OK
-              Status: healthy
-              Region: us-east-1
-            description: "Preprod AFD health check output"
-        prod:
-          - type: screenshot
-            file: ./evidence/prod/afd-health.png
-            description: "Production AFD health dashboard (2025-10-20)"
-          - type: command_output
-            content: |
-              HTTP/1.1 200 OK
-              Status: healthy
-              Region: us-east-1, us-west-2
-            description: "Production AFD health check output"
+  - uses: ./common/health-checks.yaml
+    with:
+      AFD_ENDPOINT: ${AFD_ENDPOINT}
+
+  # Steps from the file expand inline; add evidence.results
+  # directly on individual steps or via variants for per-env evidence
 ```
 
-**What gets overridden:**
-- `evidence.types` - Optional: override expected evidence types
-- `evidence.results` - Environment-specific evidence keyed by environment name
-- `evidence.required` - Optional: override whether evidence is required
+See `tests/fixtures/operations/features/evidence-with-results.yaml` for a complete example.
 
-**What's preserved:**
-- Step `instruction`, `description`, and other fields from the imported step
-- Original evidence types if not explicitly overridden
+### Step Composition (`uses:`)
 
-See `tests/fixtures/operations/features/evidence-override-in-use.yaml` for a complete example.
-
-### Template Import and Reuse
-
-SAMARITAN supports importing reusable step templates using the `template:` directive. This allows you to:
-- **Eliminate duplication** by defining common steps once
-- **Ensure consistency** across operations
-- **Simplify maintenance** by updating templates in one place
-- **Share best practices** across teams
-
-#### Template Sources
-
-Templates can be loaded from three sources:
+SAMARITAN supports inline step composition using the `uses:` directive — inspired by GitHub Actions. Point at a file, and all its steps expand inline at that position. No registration, no IDs to remember.
 
 ```yaml
 steps:
-  # Local file (relative to the importing operation)
-  - template: ./templates/health-checks.yaml
+  - uses: ./tasks/database-backup.yaml        # all steps from file expand here
+  - uses: ./tasks/health-checks.yaml          # same file, with variables
+    with:
+      ENDPOINT: ${ENDPOINT}
+      TIMEOUT: 60
+  - uses: ./tasks/health-checks.yaml          # same file again, different vars
+    with:
+      TIMEOUT: 120
+```
+
+#### File Sources
+
+`uses:` accepts local paths, HTTPS URLs, or GitHub shorthands:
+
+```yaml
+steps:
+  # Local file (relative to this operation)
+  - uses: ./templates/health-checks.yaml
     with: { ENDPOINT: https://api.example.com }
 
   # HTTPS URL
-  - template: https://raw.githubusercontent.com/org/repo/main/templates/deploy.yaml
+  - uses: https://raw.githubusercontent.com/org/repo/main/templates/deploy.yaml
     with: { SERVICE: my-app }
 
-  # GitHub shorthand
-  - template: github:org/repo/path/to/template.yaml
+  # GitHub shorthand  github:owner/repo//path@ref
+  - uses: github:org/ops-templates//health-checks.yaml@v2.1.0
     with: { NAMESPACE: production }
 ```
 
-#### Creating Templates
+#### Writing Reusable Step Files
 
-Templates can be:
-1. **Step arrays** (simple format):
+Step files can be a bare step array or a full operation file:
+
 ```yaml
-# templates/health-checks.yaml
+# tasks/health-checks.yaml — bare step array
 - name: Check API Health
   type: automatic
   command: curl -f ${ENDPOINT}/health
@@ -298,31 +256,26 @@ Templates can be:
   command: kubectl exec ${SERVICE_NAME} -- nc -zv ${DB_HOST} 5432
 ```
 
-2. **Full operations** (with metadata):
 ```yaml
-# templates/kubernetes-deployment.yaml
-name: Kubernetes Deployment Template
+# tasks/k8s-deploy.yaml — full operation format (steps: field is extracted)
+name: Kubernetes Deployment Steps
 version: 1.0.0
-description: Standard K8s deployment workflow
-
+common_variables:
+  REPLICAS: 2          # default — overridable via with:
 steps:
-  - name: Apply Deployment
+  - name: Apply Manifests
     type: automatic
     command: kubectl apply -f k8s/${SERVICE_NAME}.yaml -n ${NAMESPACE}
-
   - name: Wait for Rollout
     type: automatic
     command: kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE}
 ```
 
-#### Using Templates
-
-Import templates with `template:` and pass variables with `with:`:
+#### Complete Example
 
 ```yaml
 name: Microservice Deployment
 version: 2.0.0
-
 environments:
   - name: staging
     variables:
@@ -330,12 +283,18 @@ environments:
       DB_HOST: staging-db
       SERVICE_NAME: my-service
       NAMESPACE: staging
+  - name: production
+    variables:
+      ENDPOINT: https://api.example.com
+      DB_HOST: prod-db
+      SERVICE_NAME: my-service
+      NAMESPACE: production
 
 steps:
-  # Import template steps
-  - template: ./templates/health-checks.yaml
+  # Pre-deployment health checks
+  - uses: ./tasks/health-checks.yaml
     with:
-      ENDPOINT: ${ENDPOINT}    # Pass environment variables to template
+      ENDPOINT: ${ENDPOINT}
       DB_HOST: ${DB_HOST}
       SERVICE_NAME: ${SERVICE_NAME}
       TIMEOUT: 60
@@ -344,31 +303,31 @@ steps:
     type: manual
     instruction: Deploy the app
 
-  # Reuse the same template with different parameters
-  - template: ./templates/health-checks.yaml
+  # Post-deployment health checks (same file, stricter timeout)
+  - uses: ./tasks/health-checks.yaml
     with:
       ENDPOINT: ${ENDPOINT}
       DB_HOST: ${DB_HOST}
       SERVICE_NAME: ${SERVICE_NAME}
-      TIMEOUT: 120  # Longer timeout for post-deployment checks
+      TIMEOUT: 120
 ```
 
 **How it works:**
-1. Template file is loaded (relative to parent operation)
-2. Steps are extracted (from array or `steps` field)
-3. Variables (`${VAR}`) are substituted with values from `with:`
-4. Template steps are inserted inline at the import location
-5. Generated manuals show expanded steps with substituted values
+1. File is loaded (local, HTTPS, or GitHub)
+2. Steps are extracted (from bare array or `steps:` field)
+3. `${VAR}` placeholders are substituted with values from `with:`
+4. Steps expand inline at the `uses:` position
+5. Generated manuals show the fully expanded, substituted steps
 
 **Variable substitution:**
-- `${VAR}` placeholders in templates are replaced with values from `with:`
-- All template variables must be provided (validation enforced)
-- Type preservation: `timeout: ${TIMEOUT}` with `TIMEOUT: 60` yields `timeout: 60` (number)
+- All `${VAR}` placeholders must be satisfied by `with:` or `common_variables` defaults
+- Type-preserving: `timeout: ${TIMEOUT}` with `TIMEOUT: 60` → `timeout: 60` (number, not string)
+- Omit `with:` entirely if the file has no `${VAR}` placeholders
 
-**Example templates:**
-- `examples/templates/health-checks.yaml` - Service health verification
-- `examples/templates/kubernetes-deployment.yaml` - K8s deployment workflow
-- `examples/templates/notifications.yaml` - Team notification steps
+**Example files:**
+- `examples/templates/health-checks.yaml` — service health verification
+- `examples/templates/kubernetes-deployment.yaml` — K8s deployment workflow
+- `examples/templates/notifications.yaml` — team notification steps
 
 See `examples/deployment-with-templates.yaml` for a complete example.
 
@@ -899,19 +858,16 @@ kubectl rollout status deployment/web-server --timeout=300s
 
 **Example:** See `examples/deployment-with-scripts.yaml` and `examples/scripts/deploy.sh`.
 
-#### Reusable Step Libraries
+#### Reusable Step Files
 
 ```yaml
 # operation.yaml
 name: Complex Deployment
 version: 2.0.0
-imports:
-  - ./lib/database-steps.yaml
-  - ./lib/monitoring-steps.yaml
 
 steps:
-  - use: backup-database    # From imported library
-    timeout: 600           # Override timeout
+  # Expand all database steps inline
+  - uses: ./lib/database-steps.yaml
 
   - name: Custom Step
     type: manual
@@ -921,7 +877,8 @@ steps:
       echo "Custom logic"
       ```
 
-  - use: setup-monitoring   # From imported library
+  # Expand all monitoring steps inline
+  - uses: ./lib/monitoring-steps.yaml
 ```
 
 #### Conditional Execution
