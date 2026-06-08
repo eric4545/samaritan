@@ -21,43 +21,12 @@ import {
 import { renderExpectParts } from '../lib/assertions';
 import type { GenerationMetadata } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
+import {
+  mergeStepVariant,
+  shouldRenderStepForEnvironment,
+  substituteVariables,
+} from '../lib/step-resolution';
 import type { Environment, Operation, Step } from '../models/operation';
-
-/**
- * Merge step variants for a specific environment with base step properties
- * Returns the merged step (base + variant overrides) for the given environment
- */
-function mergeStepVariant(step: Step, environmentName: string): Step {
-  if (!step.variants || !step.variants[environmentName]) {
-    return step;
-  }
-
-  const variant = step.variants[environmentName];
-  return {
-    ...step,
-    ...variant,
-    // Preserve base properties that shouldn't be overridden
-    when: step.when,
-    variants: step.variants,
-  };
-}
-
-/**
- * Check if a step should be rendered for a specific environment
- * Returns true if the step applies to this environment
- */
-function shouldRenderStepForEnvironment(
-  step: Step,
-  environmentName: string,
-): boolean {
-  // If 'when' is not defined, step applies to all environments
-  if (!step.when || step.when.length === 0) {
-    return true;
-  }
-
-  // Check if this environment is in the 'when' list
-  return step.when.includes(environmentName);
-}
 
 /**
  * Convert Operation to Atlassian Document Format (ADF)
@@ -1081,27 +1050,6 @@ function addSubStepRows(
       dataRows.push(tableRow(rollbackCells));
     }
   });
-}
-
-/**
- * Substitute variables in command string
- */
-function substituteVariables(
-  command: string,
-  envVariables: Record<string, any>,
-  stepVariables?: Record<string, any>,
-): string {
-  // Merge variables with priority: step > env
-  const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
-
-  // Perform variable substitution on ENTIRE content
-  let result = command;
-  for (const key in mergedVariables) {
-    const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
-    result = result.replace(regex, mergedVariables[key]);
-  }
-
-  return result;
 }
 
 /**

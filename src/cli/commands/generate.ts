@@ -3,50 +3,18 @@ import { basename, dirname } from 'node:path';
 import { Command } from 'commander';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { indexToLetters } from '../../lib/letter-sequence';
+import {
+  mergeStepVariant,
+  shouldRenderStepForEnvironment,
+  substituteVariables,
+} from '../../lib/step-resolution';
 import { generateADFString } from '../../manuals/adf-generator';
 import {
   generateManualWithMetadata,
   generateSingleEnvManual,
 } from '../../manuals/generator';
-import type { Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 import { parseRunManifest } from '../../operations/run-manifest-parser';
-
-/**
- * Merge step variants for a specific environment with base step properties
- * Returns the merged step (base + variant overrides) for the given environment
- */
-function mergeStepVariant(step: Step, environmentName: string): Step {
-  if (!step.variants || !step.variants[environmentName]) {
-    return step;
-  }
-
-  const variant = step.variants[environmentName];
-  return {
-    ...step,
-    ...variant,
-    // Preserve base properties that shouldn't be overridden
-    when: step.when,
-    variants: step.variants,
-  };
-}
-
-/**
- * Check if a step should be rendered for a specific environment
- * Returns true if the step applies to this environment
- */
-function shouldRenderStepForEnvironment(
-  step: Step,
-  environmentName: string,
-): boolean {
-  // If 'when' is not defined, step applies to all environments
-  if (!step.when || step.when.length === 0) {
-    return true;
-  }
-
-  // Check if this environment is in the 'when' list
-  return step.when.includes(environmentName);
-}
 
 /**
  * Filter steps (and sub_steps recursively) that don't apply to any of the given environments.
@@ -842,25 +810,6 @@ export function generateConfluenceContent(
   const convertLinksToConfluence = (text: string): string => {
     // Convert markdown links [text](url) to Confluence format [text|url]
     return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '[$1|$2]');
-  };
-
-  // Helper function to substitute variables (inline version)
-  const substituteVariables = (
-    command: string,
-    envVariables: Record<string, any>,
-    stepVariables?: Record<string, any>,
-  ): string => {
-    // Merge variables with priority: step > env
-    const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
-
-    // Perform variable substitution on ENTIRE content
-    let result = command;
-    for (const key in mergedVariables) {
-      const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
-      result = result.replace(regex, mergedVariables[key]);
-    }
-
-    return result;
   };
 
   // Helper to escape Confluence macro syntax in text (for variables like ${VAR})

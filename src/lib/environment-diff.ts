@@ -111,33 +111,25 @@ function diffSteps(
     const absentIn = environments.filter((env) => !presentIn.includes(env));
 
     if (presentIn.length > 0) {
-      if (presentIn.length < environments.length) {
+      let fieldDiffs: FieldDiff[] = [];
+      if (presentIn.length === environments.length) {
+        const resolvedSteps: Record<string, Step> = {};
+        for (const env of presentIn) {
+          resolvedSteps[env] = mergeStepVariant(step, env);
+        }
+        fieldDiffs = compareStep(resolvedSteps, envVariables, presentIn);
+      }
+
+      if (absentIn.length > 0 || fieldDiffs.length > 0) {
         entries.push({
           path,
           name: step.name,
           presentIn,
           absentIn,
-          fieldDiffs: [],
+          fieldDiffs,
         });
       } else {
-        const resolvedSteps: Record<string, Step> = {};
-        for (const env of presentIn) {
-          resolvedSteps[env] = mergeStepVariant(step, env);
-        }
-
-        const fieldDiffs = compareStep(resolvedSteps, envVariables, presentIn);
-
-        if (fieldDiffs.length > 0) {
-          entries.push({
-            path,
-            name: step.name,
-            presentIn,
-            absentIn,
-            fieldDiffs,
-          });
-        } else {
-          identicalCount += 1;
-        }
+        identicalCount += 1;
       }
     }
 
