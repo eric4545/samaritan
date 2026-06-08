@@ -248,6 +248,18 @@ describe('run command: manual-step note/evidence/verify actions', () => {
       'should confirm the note was recorded',
     );
   });
+
+  it('[x] remove evidence is not offered before any evidence is captured', () => {
+    const fixture = fixturePath('manualStepActions');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'abort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      !combined.includes('remove evidence'),
+      'should not offer [x] remove evidence when the step has no evidence yet',
+    );
+  });
 });
 
 // ─── run --help smoke test ────────────────────────────────────────────────────

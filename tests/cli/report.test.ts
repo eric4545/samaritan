@@ -251,6 +251,63 @@ describe('generateReport (issue #10)', () => {
     }
   });
 
+  it('omits evidence that was later removed by the operator', () => {
+    const withRemoval = makeJsonl([
+      {
+        type: 'session_start',
+        op: 'deploy.yaml',
+        tmux_session: 'samaritan-ev4',
+      },
+      { type: 'step_start', step: 0, name: 'Check pods' },
+      {
+        type: 'evidence_captured',
+        step: 0,
+        evidence_id: 'ev-keep',
+        evidence_type: 'command_output',
+        automatic: true,
+        description: 'Kept output',
+        content: 'pod/web-0   1/1   Running',
+      },
+      {
+        type: 'evidence_captured',
+        step: 0,
+        evidence_id: 'ev-remove',
+        evidence_type: 'command_output',
+        automatic: false,
+        description: 'Mistaken capture',
+        content: 'oops wrong pane',
+      },
+      {
+        type: 'evidence_removed',
+        step: 0,
+        evidence_id: 'ev-remove',
+        evidence_type: 'command_output',
+        description: 'Mistaken capture',
+      },
+      { type: 'step_complete', step: 0 },
+      { type: 'session_end', status: 'completed', steps_completed: 1 },
+    ]);
+    const jsonlPath = join(tmpdir(), 'test-report-evidence-removed.jsonl');
+    writeFileSync(jsonlPath, withRemoval, 'utf-8');
+    try {
+      const md = generateReport(jsonlPath);
+      assert.ok(
+        md.includes('**Evidence**: command_output — Kept output'),
+        'should keep the evidence that was not removed',
+      );
+      assert.ok(
+        !md.includes('Mistaken capture'),
+        'should omit the removed evidence entirely',
+      );
+      assert.ok(
+        !md.includes('oops wrong pane'),
+        'should omit the removed evidence content',
+      );
+    } finally {
+      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+    }
+  });
+
   it('renders operator notes as a bullet list under the step', () => {
     const withNotes = makeJsonl([
       {

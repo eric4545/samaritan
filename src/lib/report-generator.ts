@@ -8,6 +8,7 @@ interface SessionEvent {
 }
 
 interface CapturedEvidence {
+  evidenceId?: string;
   evidenceType: string;
   description?: string;
   content?: string;
@@ -126,12 +127,23 @@ export function generateReport(jsonlPath: string): string {
       case 'evidence_captured': {
         if (currentStep) {
           currentStep.evidence.push({
+            evidenceId: event.evidence_id as string | undefined,
             evidenceType: event.evidence_type as string,
             description: event.description as string | undefined,
             content: event.content as string | undefined,
             filename: event.filename as string | undefined,
             path: event.path as string | undefined,
           });
+        }
+        break;
+      }
+
+      case 'evidence_removed': {
+        if (currentStep) {
+          const removedId = event.evidence_id as string | undefined;
+          currentStep.evidence = currentStep.evidence.filter(
+            (e) => e.evidenceId !== removedId,
+          );
         }
         break;
       }

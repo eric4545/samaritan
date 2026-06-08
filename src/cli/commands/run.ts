@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
@@ -586,6 +587,75 @@ class OperationRunner {
       console.log(`    📎 Evidence captured (${summary}).`);
     };
 
+    const stepEvidence = (stepIndex: number): EvidenceItem[] =>
+      (
+        sessionManager.getSession(state.context.sessionId)?.evidence ?? []
+      ).filter((e) => e.step_id === String(stepIndex));
+
+    // Remove a previously captured evidence item from the current step — lists
+    // the step's evidence, lets the operator pick one, and deletes any copied
+    // file from the session's evidence directory along with the session record.
+    const removeStepEvidence = async (stepIndex: number): Promise<void> => {
+      const items = stepEvidence(stepIndex);
+      if (items.length === 0) {
+        console.log('    ⚠️  No evidence captured for this step yet.');
+        return;
+      }
+
+      console.log('\n    Captured evidence for this step:');
+      items.forEach((item, idx) => {
+        const label = item.description
+          ? `${item.type} — ${item.description}`
+          : item.type;
+        const location = item.metadata.original_path
+          ? ` (${item.metadata.original_path})`
+          : '';
+        console.log(`      ${idx + 1}) ${label}${location}`);
+      });
+
+      const ans = (
+        await question('    Remove which? [number / Enter=cancel]: ')
+      ).trim();
+      if (!ans) return;
+
+      const choice = Number.parseInt(ans, 10);
+      if (!Number.isInteger(choice) || choice < 1 || choice > items.length) {
+        console.log('    ⚠️  Invalid selection.');
+        return;
+      }
+
+      const target = items[choice - 1];
+      const removed = sessionManager.removeEvidence(
+        state.context.sessionId,
+        target.id,
+      );
+      if (!removed) return;
+
+      // Only delete files that live inside this session's evidence directory —
+      // never touch the operator's original source file.
+      const evidenceDir = getSessionEvidenceDir(state.context.sessionId);
+      if (
+        removed.metadata.original_path?.startsWith(`${evidenceDir}/`) &&
+        existsSync(removed.metadata.original_path)
+      ) {
+        try {
+          unlinkSync(removed.metadata.original_path);
+        } catch {
+          // best-effort cleanup
+        }
+      }
+
+      logger.emit({
+        type: 'evidence_removed',
+        step: stepIndex,
+        evidence_id: removed.id,
+        evidence_type: removed.type,
+        description: removed.description,
+      });
+
+      console.log('    🗑️  Evidence removed.');
+    };
+
     // Verify pane output already produced by a manual step against `step.expect`
     // — without sending a command (the operator runs it themselves).
     const verifyManualOutput = async (
@@ -794,6 +864,9 @@ class OperationRunner {
                   ...(resolvedCommand ? [{ key: 'c', label: 'copy' }] : []),
                   { key: 'n', label: 'note' },
                   { key: 'e', label: 'evidence' },
+                  ...(stepEvidence(i).length
+                    ? [{ key: 'x', label: 'remove evidence' }]
+                    : []),
                   ...(step.expect ? [{ key: 'v', label: 'verify' }] : []),
                   { key: 's', label: 'skip' },
                   { key: 'r', label: 'rollback' },
@@ -828,6 +901,13 @@ class OperationRunner {
             }
             if (inputChoice === 'e' || inputChoice === 'evidence') {
               await captureEvidence(i, captureSinceStepStart);
+              continue;
+            }
+            if (
+              stepEvidence(i).length &&
+              (inputChoice === 'x' || inputChoice === 'remove')
+            ) {
+              await removeStepEvidence(i);
               continue;
             }
             if (

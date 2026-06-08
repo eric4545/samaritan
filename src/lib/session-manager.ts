@@ -245,6 +245,27 @@ export class SessionManager {
   }
 
   /**
+   * Remove a previously captured evidence item from the session.
+   * Returns the removed item (if found) so the caller can clean up
+   * any associated on-disk file.
+   */
+  removeEvidence(
+    sessionId: string,
+    evidenceId: string,
+  ): EvidenceItem | undefined {
+    const session = this.sessions.get(sessionId);
+    if (!session) return undefined;
+
+    const index = session.evidence.findIndex((e) => e.id === evidenceId);
+    if (index === -1) return undefined;
+
+    const [removed] = session.evidence.splice(index, 1);
+    session.updated_at = new Date();
+    this.sessions.set(sessionId, session);
+    return removed;
+  }
+
+  /**
    * Add retry record to session
    */
   addRetryRecord(sessionId: string, retry: RetryRecord): void {
