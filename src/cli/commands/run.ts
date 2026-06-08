@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { createInterface as createReadlineInterface } from 'node:readline';
 import { Command } from 'commander';
 import { detectMimeType } from '../../evidence/collector';
@@ -631,11 +631,14 @@ class OperationRunner {
       );
       if (!removed) return;
 
-      // Only delete files that live inside this session's evidence directory —
-      // never touch the operator's original source file.
+      // Only delete files that live directly inside this session's evidence
+      // directory — never touch the operator's original source file. Compare
+      // parent directories rather than a string prefix so trailing slashes or
+      // relative segments can't produce a false match.
       const evidenceDir = getSessionEvidenceDir(state.context.sessionId);
       if (
-        removed.metadata.original_path?.startsWith(`${evidenceDir}/`) &&
+        removed.metadata.original_path &&
+        dirname(removed.metadata.original_path) === evidenceDir &&
         existsSync(removed.metadata.original_path)
       ) {
         try {
@@ -857,6 +860,7 @@ class OperationRunner {
 
           let manualNotes = '';
           while (true) {
+            const evidenceForStep = stepEvidence(i);
             console.log(
               '\n' +
                 renderKeyHints([
@@ -864,7 +868,7 @@ class OperationRunner {
                   ...(resolvedCommand ? [{ key: 'c', label: 'copy' }] : []),
                   { key: 'n', label: 'note' },
                   { key: 'e', label: 'evidence' },
-                  ...(stepEvidence(i).length
+                  ...(evidenceForStep.length
                     ? [{ key: 'x', label: 'remove evidence' }]
                     : []),
                   ...(step.expect ? [{ key: 'v', label: 'verify' }] : []),
@@ -904,7 +908,7 @@ class OperationRunner {
               continue;
             }
             if (
-              stepEvidence(i).length &&
+              evidenceForStep.length &&
               (inputChoice === 'x' || inputChoice === 'remove')
             ) {
               await removeStepEvidence(i);
