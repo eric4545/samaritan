@@ -64,7 +64,7 @@ export class EvidenceCollector {
         size: Buffer.isBuffer(content)
           ? content.length
           : Buffer.byteLength(content, 'utf8'),
-        format: this.detectFormat(type, content, options.filename),
+        format: detectMimeType(type, content, options.filename),
         source: options.automatic ? 'automatic' : 'manual',
         ...options.metadata,
       },
@@ -211,17 +211,6 @@ export class EvidenceCollector {
    */
   private updateCompletionStatus(): void {
     this.state.completed = this.isComplete();
-  }
-
-  /**
-   * Detect content format based on type and content
-   */
-  private detectFormat(
-    type: EvidenceType,
-    content: string | Buffer,
-    filename?: string,
-  ): string {
-    return detectMimeType(type, content, filename);
   }
 }
 

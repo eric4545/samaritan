@@ -297,7 +297,10 @@ function renderEvidenceBlock(evidence: CapturedEvidence): string[] {
       lines.push(`[View ${evidence.evidenceType}](${evidence.path})`);
     }
   } else if (evidence.content) {
-    lines.push('```');
+    // Mirrors evidenceLang() in src/manuals/generator.ts so captured-evidence
+    // code blocks fence consistently with evidence.results rendering.
+    const lang = evidence.evidenceType === 'command_output' ? 'bash' : 'text';
+    lines.push(`\`\`\`${lang}`);
     lines.push(evidence.content.trim());
     lines.push('```');
   }

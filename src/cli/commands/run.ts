@@ -12,12 +12,12 @@ import { basename, join } from 'node:path';
 import { createInterface as createReadlineInterface } from 'node:readline';
 import { Command } from 'commander';
 import { detectMimeType } from '../../evidence/collector';
-import { assertOutput } from '../../lib/assertions';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
 import { generateReport } from '../../lib/report-generator';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
+import { getSessionEvidenceDir } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
 import { bootstrapSessions, type TmuxSession } from '../../lib/tmux-session';
 import { renderCodeBlock, renderKeyHints, StepController } from '../../lib/tui';
@@ -425,6 +425,34 @@ class OperationRunner {
       }
     };
 
+    // Shared "what now?" prompt for a failed `expect` assertion — used by both
+    // the automatic verify path and manual-step `[v] verify`. Records an
+    // override (with reason) in the audit log when chosen; leaves rollback/stop
+    // handling (which differ by call site — loop continue/break vs. a void
+    // return) to the caller.
+    const promptAssertFailureAction = async (
+      stepIndex: number,
+    ): Promise<'override' | 'rollback' | 'stop'> => {
+      const overrideAns = await question(
+        '    ⚠️  Assertion failed. [o=override with reason / r=rollback / Enter=stop]: ',
+      );
+      const oc = overrideAns.trim().toLowerCase();
+      if (oc === 'o' || oc === 'override') {
+        const reason = await question('    Reason for override: ');
+        logger.emit({
+          type: 'user_input',
+          action: 'override',
+          step: stepIndex,
+          actor: state.context.operator,
+          reason: reason.trim(),
+        });
+        console.log('    ⚠️  Override accepted.');
+        return 'override';
+      }
+      if (isRollback(oc)) return 'rollback';
+      return 'stop';
+    };
+
     const promptAction = async (
       hints: Array<{ key: string; label: string }>,
       commandToCopy?: string,
@@ -450,11 +478,10 @@ class OperationRunner {
       captureSinceStepStart: () => string | undefined,
     ): Promise<void> => {
       const captured = captureSinceStepStart();
-      const canCaptureFromTerminal = captured !== undefined;
 
       console.log(
         `\n${renderKeyHints([
-          ...(canCaptureFromTerminal
+          ...(captured !== undefined
             ? [{ key: '↵', label: 'capture terminal output' }]
             : []),
           { key: 'f', label: 'file or image' },
@@ -472,7 +499,7 @@ class OperationRunner {
       let automatic = false;
 
       if (
-        canCaptureFromTerminal &&
+        captured !== undefined &&
         (sourceAns === '' || sourceAns === 'capture')
       ) {
         if (!captured || !captured.trim()) {
@@ -502,14 +529,7 @@ class OperationRunner {
         filename = basename(resolvedPath);
         evidenceType = inferEvidenceTypeFromExtension(filename);
 
-        const evidenceDir = join(
-          homedir(),
-          '.samaritan',
-          'sessions',
-          state.context.sessionId,
-          'evidence',
-        );
-        mkdirSync(evidenceDir, { recursive: true });
+        const evidenceDir = getSessionEvidenceDir(state.context.sessionId);
         storedPath = join(evidenceDir, `${randomUUID()}-${filename}`);
         copyFileSync(resolvedPath, storedPath);
       } else {
@@ -519,22 +539,29 @@ class OperationRunner {
       const description =
         (await question('    Description (optional): ')).trim() || undefined;
 
+      const size = Buffer.isBuffer(content)
+        ? content.length
+        : Buffer.byteLength(content, 'utf-8');
+      const format = detectMimeType(evidenceType, content, filename);
+
+      // For file/image/video evidence the bytes already live on disk under the
+      // session's evidence directory (copied above) — reference that path
+      // rather than duplicating the raw content into the persisted session.
       const item: EvidenceItem = {
         id: randomUUID(),
         step_id: String(stepIndex),
         type: evidenceType,
-        content,
+        content: storedPath ?? content,
         filename,
         timestamp: new Date(),
         operator: state.context.operator,
         automatic,
         validated: false,
         metadata: {
-          size: Buffer.isBuffer(content)
-            ? content.length
-            : Buffer.byteLength(content, 'utf-8'),
-          format: detectMimeType(evidenceType, content, filename),
+          size,
+          format,
           source: automatic ? 'tmux' : storedPath ? 'file' : 'manual',
+          ...(storedPath ? { original_path: storedPath } : {}),
         },
         description,
       };
@@ -569,7 +596,10 @@ class OperationRunner {
       if (!step.expect) return;
 
       const output = captureSinceStepStart();
-      if (output === undefined) {
+      // captureSinceStepStart only returns output when a tmux session is
+      // attached, which is exactly when `controller` is constructed — so
+      // these two checks always succeed or fail together.
+      if (output === undefined || !controller) {
         console.log(
           '    ⚠️  Verify requires an attached tmux session — capture or check output manually.',
         );
@@ -577,9 +607,7 @@ class OperationRunner {
       }
 
       console.log('    🔍 Checking expected output...');
-      const { assertResult } = controller
-        ? controller.verifyOutput(step, stepIndex, output)
-        : { assertResult: assertOutput(output, step.expect) };
+      const { assertResult } = controller.verifyOutput(step, stepIndex, output);
 
       if (!assertResult) return;
 
@@ -588,23 +616,10 @@ class OperationRunner {
         `    ${icon} Assert (${assertResult.type}): expected "${assertResult.expected}"`,
       );
       if (!assertResult.pass) {
-        const overrideAns = await question(
-          '    ⚠️  Assertion failed. [o=override with reason / r=rollback / Enter=stop]: ',
-        );
-        const oc = overrideAns.trim().toLowerCase();
-        if (oc === 'o' || oc === 'override') {
-          const reason = await question('    Reason for override: ');
-          logger.emit({
-            type: 'user_input',
-            action: 'override',
-            step: stepIndex,
-            actor: state.context.operator,
-            reason: reason.trim(),
-          });
-          console.log('    ⚠️  Override accepted.');
-        } else if (isRollback(oc)) {
+        const action = await promptAssertFailureAction(stepIndex);
+        if (action === 'rollback') {
           await doRollback(step, stepIndex);
-        } else {
+        } else if (action === 'stop') {
           console.log('    ❌ Stopping due to failed assertion.');
         }
       }
@@ -695,24 +710,12 @@ class OperationRunner {
                   `    ${icon} Assert (${assertResult.type}): expected "${assertResult.expected}"`,
                 );
                 if (!assertResult.pass) {
-                  const overrideAns = await question(
-                    '    ⚠️  Assertion failed. [o=override with reason / r=rollback / Enter=stop]: ',
-                  );
-                  const oc = overrideAns.trim().toLowerCase();
-                  if (oc === 'o' || oc === 'override') {
-                    const reason = await question('    Reason for override: ');
-                    logger.emit({
-                      type: 'user_input',
-                      action: 'override',
-                      step: i,
-                      actor: state.context.operator,
-                      reason: reason.trim(),
-                    });
-                    console.log('    ⚠️  Override accepted.');
-                  } else if (isRollback(oc)) {
+                  const action = await promptAssertFailureAction(i);
+                  if (action === 'rollback') {
                     await doRollback(step, i);
                     continue;
-                  } else {
+                  }
+                  if (action === 'stop') {
                     console.log('    ❌ Stopping due to failed assertion.');
                     break;
                   }
