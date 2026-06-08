@@ -15,6 +15,16 @@ export function assertOutput(
     return assertOutput(output, { contains: expect });
   }
 
+  // ${VAR} substitution can resolve a bare-shorthand expect (e.g. "${COUNT}")
+  // to a literal number/boolean (type-preserving substitution) — treat it the
+  // same as the string shorthand rather than silently skipping the assertion.
+  if (
+    typeof (expect as unknown) === 'number' ||
+    typeof (expect as unknown) === 'boolean'
+  ) {
+    return assertOutput(output, { contains: String(expect) });
+  }
+
   if (Array.isArray(expect)) {
     for (const check of expect) {
       const result = assertOutput(output, check);
@@ -246,8 +256,17 @@ function resolveSimpleJsonPath(obj: unknown, path: string): unknown {
 export function renderExpectParts(
   expect: ExpectConfig | ExpectConfig[] | string | undefined,
 ): string[] {
-  if (!expect) return [];
+  if (expect === undefined || expect === null) return [];
   if (typeof expect === 'string') return [expect];
+  // ${VAR} substitution can resolve a bare-shorthand expect (e.g. "${COUNT}")
+  // to a literal number/boolean (type-preserving substitution) — render it
+  // the same as the string shorthand rather than dropping it as falsy (0).
+  if (
+    typeof (expect as unknown) === 'number' ||
+    typeof (expect as unknown) === 'boolean'
+  ) {
+    return [String(expect)];
+  }
   if (Array.isArray(expect)) {
     return expect.flatMap((e) => renderExpectParts(e)).filter(Boolean);
   }

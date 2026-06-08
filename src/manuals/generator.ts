@@ -37,6 +37,11 @@ function substituteExpectVars(
 ): ExpectConfig | ExpectConfig[] | string {
   if (typeof expect === 'string')
     return substituteVariables(expect, envVars, stepVars);
+  // ${VAR} substitution can resolve a bare-shorthand expect (e.g. "${COUNT}")
+  // to a literal number/boolean (type-preserving substitution) — there's
+  // nothing to substitute inside a primitive, return it as-is rather than
+  // spreading it into an empty object and losing the value.
+  if (typeof (expect as unknown) !== 'object' || expect === null) return expect;
   if (Array.isArray(expect))
     return expect.map(
       (e) => substituteExpectVars(e, envVars, stepVars) as ExpectConfig,
@@ -602,7 +607,7 @@ function generateStepRow(
     }
 
     // Add expect
-    if (effectiveStep.expect) {
+    if (effectiveStep.expect !== undefined && effectiveStep.expect !== null) {
       const resolvedExpect =
         resolveVariables && substituteVars
           ? substituteExpectVars(
@@ -614,12 +619,8 @@ function generateStepRow(
       const parts = renderExpectParts(resolvedExpect);
       if (parts.length > 0) {
         const sep = cellContent ? '<br>' : '';
-        if (parts.length === 1) {
-          cellContent += `${sep}_Expected: ${parts[0]}_`;
-        } else {
-          cellContent += `${sep}_Expected:_`;
-          for (const p of parts) cellContent += `<br>- _${p}_`;
-        }
+        cellContent += `${sep}_Expected:_`;
+        for (const p of parts) cellContent += `<br>- [ ] _${p}_`;
       }
     }
 
@@ -972,7 +973,7 @@ function generateSubStepRow(
     }
 
     // Add expect
-    if (effectiveStep.expect) {
+    if (effectiveStep.expect !== undefined && effectiveStep.expect !== null) {
       const resolvedExpect =
         resolveVariables && substituteVars
           ? substituteExpectVars(
@@ -984,12 +985,8 @@ function generateSubStepRow(
       const parts = renderExpectParts(resolvedExpect);
       if (parts.length > 0) {
         const sep = cellContent ? '<br>' : '';
-        if (parts.length === 1) {
-          cellContent += `${sep}_Expected: ${parts[0]}_`;
-        } else {
-          cellContent += `${sep}_Expected:_`;
-          for (const p of parts) cellContent += `<br>- _${p}_`;
-        }
+        cellContent += `${sep}_Expected:_`;
+        for (const p of parts) cellContent += `<br>- [ ] _${p}_`;
       }
     }
 
@@ -1842,18 +1839,14 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
-    if (effectiveStep.expect) {
+    if (effectiveStep.expect !== undefined && effectiveStep.expect !== null) {
       const resolvedExpect = resolveVariables
         ? substituteExpectVars(effectiveStep.expect, envVars)
         : effectiveStep.expect;
       const parts = renderExpectParts(resolvedExpect);
       if (parts.length > 0) {
-        if (parts.length === 1) {
-          lines.push(`> Expected: ${parts[0]}`);
-        } else {
-          lines.push('> Expected:');
-          for (const p of parts) lines.push(`> - ${p}`);
-        }
+        lines.push('> Expected:');
+        for (const p of parts) lines.push(`> - [ ] ${p}`);
         lines.push('');
       }
     }

@@ -323,6 +323,22 @@ describe('ADF Generator', () => {
     assert.ok(adfString.includes('APPROVED'), 'Should include APPROVED status');
   });
 
+  it('renders expect checks as a checkbox list in ADF output', async () => {
+    const { parseFixture } = await import('../fixtures/fixtures');
+    const operation = await parseFixture('withArrayExpect');
+
+    const adfString = generateADFString(operation);
+
+    assert.ok(
+      adfString.includes('- [ ] contains: Running'),
+      'should render the first check as a checkbox list item',
+    );
+    assert.ok(
+      adfString.includes('- [ ] does not contain: Error'),
+      'should render the second check as a checkbox list item',
+    );
+  });
+
   it('preserves original step numbers across environments when steps are skipped by when (--env)', async () => {
     // when-and-variants.yaml:
     //   step 1: when: [prod]    → only prod

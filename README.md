@@ -1571,7 +1571,7 @@ samaritan generate manual deployment.yaml --env production --output prod-manual.
 samaritan generate manual deployment.yaml --output full-manual.md
 ```
 
-The `--env` format renders `## Step N: <name>` headings, `**Command**`/`**Verify**`/`Expected:` blocks, and `> PIC:`/`> Reviewer:` blockquotes — no tables.
+The `--env` format renders `## Step N: <name>` headings, `**Command**`/`**Verify**`/`Expected:` blocks, and `> PIC:`/`> Reviewer:` blockquotes — no tables. `Expected:` checks render as a checklist (`> - [ ] <check>`) so operators can tick off each verification criterion as they confirm it — mirroring the `> - [ ] PIC` sign-off checkboxes.
 
 ### Complete example
 

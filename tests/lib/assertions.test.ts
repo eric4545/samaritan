@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   assertOutput,
   renderExpectDescription,
+  renderExpectParts,
 } from '../../src/lib/assertions';
 import { SessionState } from '../../src/lib/session-state';
 
@@ -325,5 +326,39 @@ describe('assertOutput — equals_captured fallback (bug fix)', () => {
   it('returns pass:false regardless of actual output content', () => {
     const result = assertOutput('', { equals_captured: 'unset_capture' });
     assert.strictEqual(result.pass, false);
+  });
+});
+
+describe('numeric expect values (variable substitution can resolve "${VAR}" to a number)', () => {
+  // ${VAR} substitution preserves type for bare single-variable strings, so
+  // `expect: "${EXPECTED_COUNT}"` with EXPECTED_COUNT: 0 resolves to the
+  // literal number 0 — which must not be treated as "no expect" (falsy).
+  it('renderExpectParts treats a numeric expect as the string shorthand', () => {
+    assert.deepStrictEqual(renderExpectParts(0), ['0']);
+    assert.deepStrictEqual(renderExpectParts(3), ['3']);
+  });
+
+  it('renderExpectParts treats a boolean expect as the string shorthand', () => {
+    assert.deepStrictEqual(renderExpectParts(false), ['false']);
+  });
+
+  it('renderExpectParts still returns [] for undefined/null', () => {
+    assert.deepStrictEqual(renderExpectParts(undefined), []);
+    assert.deepStrictEqual(renderExpectParts(null as any), []);
+  });
+
+  it('assertOutput treats a numeric expect as a "contains" check', () => {
+    const pass = assertOutput('replicas: 0', 0 as any);
+    assert.strictEqual(pass.pass, true);
+    assert.strictEqual(pass.type, 'contains');
+
+    const fail = assertOutput('replicas: 5', 0 as any);
+    assert.strictEqual(fail.pass, false);
+  });
+
+  it('assertOutput treats a boolean expect as a "contains" check', () => {
+    const result = assertOutput('healthy: true', true as any);
+    assert.strictEqual(result.pass, true);
+    assert.strictEqual(result.type, 'contains');
   });
 });

@@ -656,18 +656,12 @@ function createStepsTable(
       }
 
       // Add expect assertions
-      if (effectiveStep.expect) {
+      if (effectiveStep.expect !== undefined && effectiveStep.expect !== null) {
         const parts = renderExpectParts(effectiveStep.expect);
         if (parts.length > 0) {
-          if (parts.length === 1) {
-            cellContent.push(paragraph(em(text(`Expected: ${parts[0]}`))));
-          } else {
-            cellContent.push(paragraph(strong(text('Expected:'))));
-            cellContent.push(
-              bulletList(
-                ...parts.map((p) => listItem([paragraph(em(text(p)))])),
-              ),
-            );
+          cellContent.push(paragraph(strong(text('Expected:'))));
+          for (const p of parts) {
+            cellContent.push(paragraph(em(text(`- [ ] ${p}`))));
           }
         }
       }
