@@ -1,9 +1,9 @@
+import type { Operation, Step } from '../models/operation';
 import {
   mergeStepVariant,
   shouldRenderStepForEnvironment,
   substituteVariables,
-} from '../manuals/generator';
-import type { Operation, Step } from '../models/operation';
+} from './step-resolution';
 
 export interface FieldDiff {
   field: string;
@@ -25,9 +25,25 @@ export interface EnvironmentDiffReport {
   entries: StepDiffEntry[];
   totalSteps: number;
   identicalCount: number;
+  differingCount: number;
+  envSpecificCount: number;
 }
 
-const COMPARED_FIELDS = [
+function asComparableString(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (Array.isArray(value)) return value.join(', ');
+  return String(value);
+}
+
+interface FieldDescriptor {
+  field: string;
+  getValue: (
+    step: Step,
+    envVariables: Record<string, any>,
+  ) => string | undefined;
+}
+
+const CONTENT_FIELDS: ReadonlyArray<keyof Step & string> = [
   'command',
   'script',
   'instruction',
@@ -35,28 +51,27 @@ const COMPARED_FIELDS = [
   'pic',
   'reviewer',
   'timeout',
-] as const;
+];
 
-function resolvedValue(
-  step: Step,
-  field: (typeof COMPARED_FIELDS)[number],
-  envVariables: Record<string, any>,
-): string | undefined {
-  const raw = step[field];
-  if (raw === undefined || raw === null) return undefined;
-  if (typeof raw !== 'string') return String(raw);
-  return substituteVariables(raw, envVariables, step.variables);
-}
+const EVIDENCE_FIELDS: ReadonlyArray<'required' | 'types'> = [
+  'required',
+  'types',
+];
 
-function evidenceFieldValue(
-  step: Step,
-  field: 'required' | 'types',
-): string | undefined {
-  if (!step.evidence) return undefined;
-  const value = step.evidence[field];
-  if (value === undefined || value === null) return undefined;
-  return Array.isArray(value) ? value.join(', ') : String(value);
-}
+const FIELD_DESCRIPTORS: FieldDescriptor[] = [
+  ...CONTENT_FIELDS.map((field) => ({
+    field,
+    getValue: (step: Step, envVariables: Record<string, any>) => {
+      const raw = step[field];
+      if (typeof raw !== 'string') return asComparableString(raw);
+      return substituteVariables(raw, envVariables, step.variables);
+    },
+  })),
+  ...EVIDENCE_FIELDS.map((field) => ({
+    field: `evidence.${field}`,
+    getValue: (step: Step) => asComparableString(step.evidence?.[field]),
+  })),
+];
 
 function compareStep(
   stepA: Step,
@@ -66,19 +81,11 @@ function compareStep(
 ): FieldDiff[] {
   const diffs: FieldDiff[] = [];
 
-  for (const field of COMPARED_FIELDS) {
-    const valueA = resolvedValue(stepA, field, envVariablesA);
-    const valueB = resolvedValue(stepB, field, envVariablesB);
+  for (const { field, getValue } of FIELD_DESCRIPTORS) {
+    const valueA = getValue(stepA, envVariablesA);
+    const valueB = getValue(stepB, envVariablesB);
     if (valueA !== valueB) {
       diffs.push({ field, valueA, valueB });
-    }
-  }
-
-  for (const field of ['required', 'types'] as const) {
-    const valueA = evidenceFieldValue(stepA, field);
-    const valueB = evidenceFieldValue(stepB, field);
-    if (valueA !== valueB) {
-      diffs.push({ field: `evidence.${field}`, valueA, valueB });
     }
   }
 
@@ -93,45 +100,40 @@ function diffSteps(
   envVariablesB: Record<string, any>,
   parentPath: string,
   entries: StepDiffEntry[],
-  counts: { total: number; identical: number },
-): void {
-  steps.forEach((step, index) => {
+): number {
+  let identicalCount = 0;
+
+  for (const [index, step] of steps.entries()) {
     const path = parentPath ? `${parentPath}.${index + 1}` : `${index + 1}`;
     const inA = shouldRenderStepForEnvironment(step, envA);
     const inB = shouldRenderStepForEnvironment(step, envB);
 
-    if (!inA && !inB) {
-      return;
-    }
-
-    counts.total += 1;
-
-    if (inA !== inB) {
-      entries.push({
-        path,
-        name: step.name,
-        status: inA ? 'envA-only' : 'envB-only',
-        fieldDiffs: [],
-      });
-    } else {
-      const mergedA = mergeStepVariant(step, envA);
-      const mergedB = mergeStepVariant(step, envB);
-      const fieldDiffs = compareStep(
-        mergedA,
-        mergedB,
-        envVariablesA,
-        envVariablesB,
-      );
-
-      if (fieldDiffs.length > 0) {
-        entries.push({ path, name: step.name, status: 'both', fieldDiffs });
+    if (inA || inB) {
+      if (inA !== inB) {
+        entries.push({
+          path,
+          name: step.name,
+          status: inA ? 'envA-only' : 'envB-only',
+          fieldDiffs: [],
+        });
       } else {
-        counts.identical += 1;
+        const fieldDiffs = compareStep(
+          mergeStepVariant(step, envA),
+          mergeStepVariant(step, envB),
+          envVariablesA,
+          envVariablesB,
+        );
+
+        if (fieldDiffs.length > 0) {
+          entries.push({ path, name: step.name, status: 'both', fieldDiffs });
+        } else {
+          identicalCount += 1;
+        }
       }
     }
 
     if (step.sub_steps && step.sub_steps.length > 0) {
-      diffSteps(
+      identicalCount += diffSteps(
         step.sub_steps,
         envA,
         envB,
@@ -139,10 +141,11 @@ function diffSteps(
         envVariablesB,
         path,
         entries,
-        counts,
       );
     }
-  });
+  }
+
+  return identicalCount;
 }
 
 export function diffEnvironments(
@@ -161,9 +164,7 @@ export function diffEnvironments(
   }
 
   const entries: StepDiffEntry[] = [];
-  const counts = { total: 0, identical: 0 };
-
-  diffSteps(
+  const identicalCount = diffSteps(
     operation.steps,
     envA,
     envB,
@@ -171,16 +172,22 @@ export function diffEnvironments(
     environmentB.variables ?? {},
     '',
     entries,
-    counts,
   );
+
+  const differingCount = entries.filter(
+    (entry) => entry.status === 'both',
+  ).length;
+  const envSpecificCount = entries.length - differingCount;
 
   return {
     operationName: operation.name,
     envA,
     envB,
     entries,
-    totalSteps: counts.total,
-    identicalCount: counts.identical,
+    totalSteps: entries.length + identicalCount,
+    identicalCount,
+    differingCount,
+    envSpecificCount,
   };
 }
 
@@ -218,15 +225,10 @@ export function formatDiffAsText(report: EnvironmentDiffReport): string {
     lines.push('');
   }
 
-  const differingCount = report.entries.filter(
-    (entry) => entry.status === 'both',
-  ).length;
-  const envSpecificCount = report.entries.length - differingCount;
-
   lines.push('─'.repeat(40));
   lines.push(
-    `Summary: ${report.totalSteps} steps compared · ${differingCount} differ · ` +
-      `${envSpecificCount} environment-specific · ${report.identicalCount} identical`,
+    `Summary: ${report.totalSteps} steps compared · ${report.differingCount} differ · ` +
+      `${report.envSpecificCount} environment-specific · ${report.identicalCount} identical`,
   );
 
   return lines.join('\n');
@@ -260,16 +262,11 @@ export function formatDiffAsMarkdown(report: EnvironmentDiffReport): string {
     lines.push('');
   }
 
-  const differingCount = report.entries.filter(
-    (entry) => entry.status === 'both',
-  ).length;
-  const envSpecificCount = report.entries.length - differingCount;
-
   lines.push('## Summary');
   lines.push('');
   lines.push(`- ${report.totalSteps} steps compared`);
-  lines.push(`- ${differingCount} steps differ`);
-  lines.push(`- ${envSpecificCount} environment-specific steps`);
+  lines.push(`- ${report.differingCount} steps differ`);
+  lines.push(`- ${report.envSpecificCount} environment-specific steps`);
   lines.push(`- ${report.identicalCount} identical steps`);
   lines.push('');
 
