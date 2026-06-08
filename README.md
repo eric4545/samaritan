@@ -1387,6 +1387,26 @@ When a verify assertion fails, a secondary prompt appears:
 
 Type `o` to record an override reason in the audit log and continue, `r` to trigger rollback, or press Enter to stop.
 
+### Manual-step actions: note, evidence, verify
+
+`manual` steps offer extra operator actions while you're working the step — they don't complete the step, so you can use any of them as many times as you like before pressing Enter to mark the step done:
+
+```
+[↵] done  ·  [c] copy  ·  [n] note  ·  [e] evidence  ·  [x] remove evidence  ·  [v] verify  ·  [s] skip  ·  [r] rollback  ·  [abort] abort
+```
+
+- **`[n]` note** — record a free-text annotation (e.g. "restarted pod manually, confirmed with on-call"). Stored in the JSONL audit log as a `user_input`/`note` event and rendered as a bullet list under the step in the `--report` Markdown.
+- **`[e]` evidence** — capture and persist evidence with the session, the same way you'd attach a file in Claude Code. You're offered up to three sources:
+  - **capture terminal output** (default, only offered when a tmux session is attached to the step) — grabs everything written to the pane since the step started and stores it as `command_output` evidence
+  - **`[f]` file or image** — drag a file into the terminal (most terminals insert its path) or type/paste the path; SAMARITAN reads it from disk, copies it into `~/.samaritan/sessions/<session-id>/evidence/`, and stores it as a typed `EvidenceItem` (`screenshot` for `png`/`jpg`/`jpeg`/`webp`/`gif`, `video` for `mp4`/`webm`/`mov`, `file` for everything else)
+  - **`[t]` type/paste text** — type or paste evidence content directly
+  
+  Every captured item can include an optional description, and is rendered in the `--report` Markdown — screenshots as embedded images (`![Evidence](path)`), files/videos as download-style links (`[View file](path)`), and text/terminal captures as fenced code blocks.
+
+  All evidence bytes — including dragged-in files, screenshots, and videos — are stored exclusively under `~/.samaritan/sessions/<session-id>/evidence/`, alongside the session's own JSON record. SAMARITAN never leaves a second copy elsewhere: the persisted session references the file by path rather than embedding its raw bytes.
+- **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's captured evidence (type, description, and stored path), lets you pick one by number to delete, removes it from the session record, and — for file/screenshot/video evidence copied into the session's evidence directory — deletes the copy from disk too (your original source file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event, and the `--report` Markdown omits removed items entirely.
+- **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutput`/`interpolateExpect` machinery `automatic` steps use), showing PASS/FAIL and — on failure — the same override/rollback/stop prompt as automatic verification. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
+
 ### Named sessions
 
 Define where each step runs — local or over SSH:

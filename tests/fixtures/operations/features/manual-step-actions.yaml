@@ -1,0 +1,13 @@
+name: Manual Step Actions
+version: 1.0.0
+description: Single manual step with command + expect, used to smoke-test the [n]/[e]/[v] operator actions in `samaritan run`
+
+environments:
+  - name: default
+
+steps:
+  - name: Verify rollout
+    type: manual
+    command: kubectl rollout status deployment/web-server
+    expect:
+      contains: successfully rolled out

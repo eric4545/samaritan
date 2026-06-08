@@ -1,11 +1,35 @@
 import assert from 'node:assert';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import {
+  createEventLogger,
+  type EventLogger,
+} from '../../src/lib/event-logger';
 import { SessionState } from '../../src/lib/session-state';
 import {
   interpolateExpect,
   renderCodeBlock,
   renderKeyHints,
+  StepController,
+  type StepControllerOptions,
 } from '../../src/lib/tui';
+
+function makeLogger(id: string): EventLogger {
+  return createEventLogger(id);
+}
+
+function cleanLogger(logger: EventLogger): void {
+  logger.close();
+  if (existsSync(logger.path)) unlinkSync(logger.path);
+}
+
+function readEvents(logger: EventLogger): any[] {
+  return readFileSync(logger.path, 'utf-8')
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
+}
 
 const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 const stripAnsi = (s: string) => s.replace(ANSI_RE, '');
@@ -197,5 +221,115 @@ describe('interpolateExpect — var substitution', () => {
     const result = interpolateExpect({ not_empty: true, line_count: 3 }, state);
     assert.deepStrictEqual((result as any).not_empty, true);
     assert.deepStrictEqual((result as any).line_count, 3);
+  });
+});
+
+describe('StepController.verifyOutput', () => {
+  function makeController(logger: EventLogger): StepController {
+    const opts: StepControllerOptions = {
+      logger,
+      tmux: null as any,
+      sessionState: null as any,
+      autoSend: false,
+      autoExec: false,
+    };
+    return new StepController(opts);
+  }
+
+  it('returns no assertResult when step has no expect', () => {
+    const logger = makeLogger('verify-output-1');
+    const ctrl = makeController(logger);
+
+    const { assertResult } = ctrl.verifyOutput(
+      { name: 'No Expect' } as any,
+      0,
+      'pod/web-0   1/1   Running',
+    );
+
+    assert.strictEqual(assertResult, undefined);
+    assert.ok(
+      !existsSync(logger.path),
+      'no event (and therefore no log file) should be written',
+    );
+
+    cleanLogger(logger);
+  });
+
+  it('emits a passing assert_result when output matches expect', () => {
+    const logger = makeLogger('verify-output-2');
+    const ctrl = makeController(logger);
+
+    const step = {
+      name: 'Verify rollout',
+      expect: { contains: 'successfully rolled out' },
+    } as any;
+
+    const { assertResult } = ctrl.verifyOutput(
+      step,
+      3,
+      'deployment "web" successfully rolled out',
+    );
+
+    assert.ok(assertResult);
+    assert.strictEqual(assertResult?.pass, true);
+
+    const events = readEvents(logger).filter((e) => e.type === 'assert_result');
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].step, 3);
+    assert.strictEqual(events[0].pass, true);
+    assert.strictEqual(events[0].assertion_type, 'contains');
+    assert.strictEqual(events[0].expected, 'successfully rolled out');
+
+    cleanLogger(logger);
+  });
+
+  it('emits a failing assert_result when output does not match expect', () => {
+    const logger = makeLogger('verify-output-3');
+    const ctrl = makeController(logger);
+
+    const step = {
+      name: 'Verify rollout',
+      expect: { contains: 'successfully rolled out' },
+    } as any;
+
+    const { assertResult } = ctrl.verifyOutput(step, 1, 'still progressing...');
+
+    assert.ok(assertResult);
+    assert.strictEqual(assertResult?.pass, false);
+
+    const events = readEvents(logger).filter((e) => e.type === 'assert_result');
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].pass, false);
+    assert.strictEqual(events[0].step, 1);
+
+    cleanLogger(logger);
+  });
+
+  it('interpolates ${VAR} in expect via sessionState before asserting', () => {
+    const logger = makeLogger('verify-output-4');
+    const state = new SessionState();
+    state.capture('WANT', 'Running');
+
+    const opts: StepControllerOptions = {
+      logger,
+      tmux: null as any,
+      sessionState: state,
+      autoSend: false,
+      autoExec: false,
+    };
+    const ctrl = new StepController(opts);
+
+    const step = {
+      name: 'Verify pod status',
+      expect: { contains: '${WANT}' },
+    } as any;
+
+    const { assertResult } = ctrl.verifyOutput(step, 0, 'pod/web-0   Running');
+
+    assert.ok(assertResult);
+    assert.strictEqual(assertResult?.pass, true);
+    assert.strictEqual(assertResult?.expected, 'Running');
+
+    cleanLogger(logger);
   });
 });

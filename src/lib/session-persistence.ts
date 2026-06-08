@@ -20,6 +20,17 @@ function sessionPath(sessionId: string): string {
   return join(getSessionDir(), `${sessionId}.json`);
 }
 
+/**
+ * Directory where evidence files attached to a session (e.g. dragged-in
+ * screenshots/files captured during `samaritan run`) are stored, keeping
+ * them alongside the session's persisted JSON under `~/.samaritan/sessions/`.
+ */
+export function getSessionEvidenceDir(sessionId: string): string {
+  const dir = join(getSessionDir(), sessionId, 'evidence');
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 function reviveDates(session: OperationSession): OperationSession {
   session.started_at = new Date(session.started_at);
   session.updated_at = new Date(session.updated_at);

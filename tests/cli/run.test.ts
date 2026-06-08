@@ -10,6 +10,9 @@ function fixturePath(name: string): string {
   const map: Record<string, string> = {
     deploymentTest: 'tests/fixtures/operations/valid/deployment-test.yaml',
     minimal: 'tests/fixtures/operations/valid/minimal.yaml',
+    manualStepActions:
+      'tests/fixtures/operations/features/manual-step-actions.yaml',
+    withSessions: 'tests/fixtures/operations/features/with-sessions.yaml',
   };
   return resolve(map[name]);
 }
@@ -205,6 +208,56 @@ describe('run command: interactive mode', () => {
         combined.includes('success') ||
         result.status === 0,
       'Auto-approve should complete without prompts',
+    );
+  });
+});
+
+// ─── Manual-step note/evidence/verify actions ────────────────────────────────
+
+describe('run command: manual-step note/evidence/verify actions', () => {
+  it('manual step prompt offers [n] note and [e] evidence actions', () => {
+    const fixture = fixturePath('manualStepActions');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'abort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(combined.includes('note'), 'should offer a note action');
+    assert.ok(combined.includes('evidence'), 'should offer an evidence action');
+  });
+
+  it('manual step prompt offers [v] verify when step.expect is set', () => {
+    const fixture = fixturePath('manualStepActions');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'abort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('verify'),
+      'should offer a verify action when step has an expect',
+    );
+  });
+
+  it('recording a note emits a user_input note event', () => {
+    const fixture = fixturePath('manualStepActions');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'n\nLooks good so far\nabort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Note recorded') || combined.includes('📝'),
+      'should confirm the note was recorded',
+    );
+  });
+
+  it('[x] remove evidence is not offered before any evidence is captured', () => {
+    const fixture = fixturePath('manualStepActions');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'abort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      !combined.includes('remove evidence'),
+      'should not offer [x] remove evidence when the step has no evidence yet',
     );
   });
 });

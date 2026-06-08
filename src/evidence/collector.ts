@@ -64,7 +64,7 @@ export class EvidenceCollector {
         size: Buffer.isBuffer(content)
           ? content.length
           : Buffer.byteLength(content, 'utf8'),
-        format: this.detectFormat(type, content, options.filename),
+        format: detectMimeType(type, content, options.filename),
         source: options.automatic ? 'automatic' : 'manual',
         ...options.metadata,
       },
@@ -212,72 +212,77 @@ export class EvidenceCollector {
   private updateCompletionStatus(): void {
     this.state.completed = this.isComplete();
   }
+}
 
-  /**
-   * Detect content format based on type and content
-   */
-  private detectFormat(
-    type: EvidenceType,
-    content: string | Buffer,
-    filename?: string,
-  ): string {
-    // Try to detect from filename extension
-    if (filename) {
-      const ext = filename.split('.').pop()?.toLowerCase();
-      switch (ext) {
-        case 'png':
-          return 'image/png';
-        case 'jpg':
-        case 'jpeg':
-          return 'image/jpeg';
-        case 'webp':
-          return 'image/webp';
-        case 'mp4':
-          return 'video/mp4';
-        case 'webm':
-          return 'video/webm';
-        case 'json':
-          return 'application/json';
-        case 'csv':
-          return 'text/csv';
-        default:
-          break;
-      }
-    }
-
-    // Try to detect from content
-    const contentStr = content.toString();
-
-    // Check for base64 image data
-    if (contentStr.startsWith('data:')) {
-      return contentStr.split(';')[0].replace('data:', '');
-    }
-
-    // Check for JSON
-    if (type === 'log' || type === 'command_output') {
-      try {
-        JSON.parse(contentStr);
-        return 'application/json';
-      } catch {
-        return 'text/plain';
-      }
-    }
-
-    // Default formats by type
-    switch (type as string) {
-      case 'screenshot':
-      case 'photo':
+/**
+ * Detect a MIME type for evidence content based on its declared type,
+ * filename extension, and (as a fallback) the content itself.
+ */
+export function detectMimeType(
+  type: EvidenceType,
+  content: string | Buffer,
+  filename?: string,
+): string {
+  // Try to detect from filename extension
+  if (filename) {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'png':
         return 'image/png';
-      case 'video':
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'mp4':
         return 'video/mp4';
-      case 'log':
-      case 'command_output':
-        return 'text/plain';
-      case 'file':
-        return 'application/octet-stream';
+      case 'webm':
+        return 'video/webm';
+      case 'mov':
+        return 'video/quicktime';
+      case 'json':
+        return 'application/json';
+      case 'csv':
+        return 'text/csv';
       default:
-        return 'application/octet-stream';
+        break;
     }
+  }
+
+  // Try to detect from content
+  const contentStr = content.toString();
+
+  // Check for base64 image data
+  if (contentStr.startsWith('data:')) {
+    return contentStr.split(';')[0].replace('data:', '');
+  }
+
+  // Check for JSON
+  if (type === 'log' || type === 'command_output') {
+    try {
+      JSON.parse(contentStr);
+      return 'application/json';
+    } catch {
+      return 'text/plain';
+    }
+  }
+
+  // Default formats by type
+  switch (type as string) {
+    case 'screenshot':
+    case 'photo':
+      return 'image/png';
+    case 'video':
+      return 'video/mp4';
+    case 'log':
+    case 'command_output':
+      return 'text/plain';
+    case 'file':
+      return 'application/octet-stream';
+    default:
+      return 'application/octet-stream';
   }
 }
 

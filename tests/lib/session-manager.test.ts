@@ -141,6 +141,41 @@ test('SessionManager - addEvidence', () => {
   assert.deepStrictEqual(updatedSession?.evidence[0], evidence);
 });
 
+test('SessionManager - removeEvidence', () => {
+  const sessionManager = new SessionManager();
+
+  const session = sessionManager.createSession('test-op', 'prod', 'operator');
+
+  const evidence = {
+    id: 'evidence-1',
+    step_id: 'step-1',
+    type: 'log' as const,
+    content: 'Test log content',
+    timestamp: new Date(),
+    operator: 'test-operator',
+    automatic: true,
+    validated: false,
+    metadata: { size: 100, format: 'text' },
+  };
+
+  sessionManager.addEvidence(session.id, evidence);
+  const removed = sessionManager.removeEvidence(session.id, 'evidence-1');
+
+  assert.deepStrictEqual(removed, evidence);
+  assert.strictEqual(sessionManager.getSession(session.id)?.evidence.length, 0);
+});
+
+test('SessionManager - removeEvidence returns undefined for unknown id', () => {
+  const sessionManager = new SessionManager();
+
+  const session = sessionManager.createSession('test-op', 'prod', 'operator');
+
+  assert.strictEqual(
+    sessionManager.removeEvidence(session.id, 'does-not-exist'),
+    undefined,
+  );
+});
+
 test('SessionManager - addRetryRecord', () => {
   const sessionManager = new SessionManager();
 

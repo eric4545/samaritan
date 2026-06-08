@@ -9,6 +9,8 @@ export type EventType =
   | 'step_start'
   | 'command_sent'
   | 'pane_captured'
+  | 'evidence_captured'
+  | 'evidence_removed'
   | 'user_input'
   | 'step_complete'
   | 'step_failed'
