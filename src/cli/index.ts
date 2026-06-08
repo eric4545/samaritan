@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { diffCommand } from './commands/diff';
 import { generateCommand } from './commands/generate';
 import { projectCommands } from './commands/project';
 import { qrhCommand } from './commands/qrh';
@@ -30,6 +31,9 @@ program.addCommand(resumeCommand);
 
 // Schema inspection
 program.addCommand(schemaCommand);
+
+// Environment comparison
+program.addCommand(diffCommand);
 
 // Evidence report generation
 program.addCommand(reportCommand);

@@ -366,6 +366,10 @@ npx github:eric4545/samaritan generate confluence <operation.yaml> [options]
   --env <environment>   Generate for specific environment only
   --gantt               Include Gantt chart for timeline visualization
 
+# Compare how steps render across two environments
+npx github:eric4545/samaritan diff <operation.yaml> <envA> <envB> [options]
+  -o, --output <file>   Write Markdown report to file (in addition to terminal output)
+
 # Generate evidence report from a session log
 npx github:eric4545/samaritan report <session.jsonl> [options]
   --output <file>       Output Markdown file (default: stdout)
@@ -425,6 +429,54 @@ steps:
     type: manual  # IDE shows available types
     instruction: Deploy the application
 ```
+
+### Compare Environments
+
+When an operation defines environment-specific overrides (`when` and `variants`),
+it's easy to lose track of exactly how the rendered manual differs between, say,
+`staging` and `production`. The `diff` command resolves each step the same way
+the manual generator does (merging `variants`, applying `when`, and substituting
+`${VAR}` placeholders with each environment's variables) and reports a structured,
+step-by-step comparison — so you can cross-check the rendered result before
+relying on it:
+
+```bash
+# Print a comparison report to the terminal
+npx github:eric4545/samaritan diff examples/multi-env-deployment.yaml staging production
+
+# Also write a Markdown report file
+npx github:eric4545/samaritan diff examples/multi-env-deployment.yaml staging production --output diff-report.md
+```
+
+Example output:
+
+```
+🔍 Comparing staging vs production — Multi-Environment Web Server Deployment
+
+📋 Step 1: Notify on-call for production change window
+   ⚠️  production only (not present for staging)
+
+📋 Step 2: Deploy application
+   command:
+     staging:     kubectl apply -f deployment.yaml --context=staging-cluster --replicas=2
+     production:  kubectl apply -f deployment.yaml --context=prod-cluster --replicas=10 --strategy=blue-green
+   pic:
+     staging:     ops-team@example.com
+     production:  senior-sre@example.com
+   ...
+
+────────────────────────────────────────
+Summary: 4 steps compared · 2 differ · 2 environment-specific · 0 identical
+```
+
+**What gets compared:** `command`, `script`, `instruction`, `description`, `pic`,
+`reviewer`, `timeout`, and the documentation-only `evidence.required`/`evidence.types`
+fields — all resolved per environment (variants merged, variables substituted).
+`evidence.results` is intentionally environment-keyed and excluded from the
+comparison since it's expected to differ.
+
+**See:** [`examples/multi-env-deployment.yaml`](examples/multi-env-deployment.yaml)
+for a working example with `when` and `variants`.
 
 ### Quick Reference Handbook (QRH)
 

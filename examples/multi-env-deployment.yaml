@@ -1,0 +1,60 @@
+name: Multi-Environment Web Server Deployment
+version: 1.0.0
+description: |
+  Deploys the web server across staging and production with environment-specific
+  overrides (variants) and steps that only apply to certain environments (when).
+  Demonstrates `samaritan diff <file> staging production` to cross-check that the
+  rendered manuals differ exactly as intended between environments.
+
+environments:
+  - name: staging
+    description: Pre-production staging environment.
+    variables:
+      REPLICAS: 2
+      CLUSTER: staging-cluster
+  - name: production
+    description: Live production environment.
+    variables:
+      REPLICAS: 10
+      CLUSTER: prod-cluster
+    approval_required: true
+
+steps:
+  - name: Notify on-call for production change window
+    type: manual
+    when: [production]
+    instruction: |
+      Post in #incidents that a production deployment is starting.
+    pic: ops-lead@example.com
+    reviewer: sre-manager@example.com
+
+  - name: Deploy application
+    type: manual
+    instruction: Apply the deployment manifest to the target cluster.
+    command: kubectl apply -f deployment.yaml --context=${CLUSTER} --replicas=${REPLICAS}
+    pic: ops-team@example.com
+    variants:
+      production:
+        instruction: |
+          Apply the deployment manifest using a blue-green rollout to avoid downtime.
+        command: kubectl apply -f deployment.yaml --context=${CLUSTER} --replicas=${REPLICAS} --strategy=blue-green
+        timeout: 1800
+        pic: senior-sre@example.com
+        reviewer: ops-manager@example.com
+
+  - name: Verify deployment
+    type: manual
+    instruction: Confirm that all pods are running and healthy.
+    command: kubectl get pods --context=${CLUSTER}
+    variants:
+      production:
+        evidence:
+          required: true
+          types: [screenshot, command_output]
+
+  - name: Run smoke tests
+    type: manual
+    when: [staging]
+    instruction: Run the automated smoke test suite against the staging endpoint.
+    command: npm run test:smoke -- --target=${CLUSTER}
+    pic: qa-team@example.com

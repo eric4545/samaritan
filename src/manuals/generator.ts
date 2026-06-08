@@ -14,7 +14,7 @@ import type {
 } from '../models/operation';
 import type { RunEvidenceItem, RunManifest } from '../models/run-manifest';
 
-function substituteVariables(
+export function substituteVariables(
   command: string,
   envVariables: Record<string, any>,
   stepVariables?: Record<string, any>,
@@ -424,7 +424,7 @@ function generateGanttChart(operation: Operation): string {
  * Merge step variants for a specific environment with base step properties
  * Returns the merged step (base + variant overrides) for the given environment
  */
-function mergeStepVariant(step: Step, environmentName: string): Step {
+export function mergeStepVariant(step: Step, environmentName: string): Step {
   if (!step.variants || !step.variants[environmentName]) {
     return step;
   }
@@ -443,7 +443,7 @@ function mergeStepVariant(step: Step, environmentName: string): Step {
  * Check if a step should be rendered for a specific environment
  * Returns true if the step applies to this environment
  */
-function shouldRenderStepForEnvironment(
+export function shouldRenderStepForEnvironment(
   step: Step,
   environmentName: string,
 ): boolean {
