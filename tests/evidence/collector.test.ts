@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   createEvidenceCollector,
   createEvidenceRequirements,
+  detectMimeType,
   EvidenceCollector,
 } from '../../src/evidence/collector';
 import type { EvidenceRequirement } from '../../src/models/evidence';
@@ -298,5 +299,94 @@ describe('Evidence Requirements Helper', () => {
     assert.deepStrictEqual(requirements.types, ['screenshot']);
     assert.strictEqual(requirements.minimum_count, 1);
     assert.strictEqual(requirements.auto_collect, false);
+  });
+});
+
+describe('detectMimeType', () => {
+  it('detects image types from filename extension', () => {
+    assert.strictEqual(
+      detectMimeType('screenshot', Buffer.from(''), 'shot.png'),
+      'image/png',
+    );
+    assert.strictEqual(
+      detectMimeType('screenshot', Buffer.from(''), 'shot.jpg'),
+      'image/jpeg',
+    );
+    assert.strictEqual(
+      detectMimeType('screenshot', Buffer.from(''), 'shot.jpeg'),
+      'image/jpeg',
+    );
+    assert.strictEqual(
+      detectMimeType('screenshot', Buffer.from(''), 'shot.webp'),
+      'image/webp',
+    );
+    assert.strictEqual(
+      detectMimeType('screenshot', Buffer.from(''), 'shot.gif'),
+      'image/gif',
+    );
+  });
+
+  it('detects video types from filename extension', () => {
+    assert.strictEqual(
+      detectMimeType('video', Buffer.from(''), 'clip.mp4'),
+      'video/mp4',
+    );
+    assert.strictEqual(
+      detectMimeType('video', Buffer.from(''), 'clip.webm'),
+      'video/webm',
+    );
+    assert.strictEqual(
+      detectMimeType('video', Buffer.from(''), 'clip.mov'),
+      'video/quicktime',
+    );
+  });
+
+  it('detects json and csv from filename extension', () => {
+    assert.strictEqual(
+      detectMimeType('file', Buffer.from(''), 'data.json'),
+      'application/json',
+    );
+    assert.strictEqual(
+      detectMimeType('file', Buffer.from(''), 'data.csv'),
+      'text/csv',
+    );
+  });
+
+  it('detects data URIs from content', () => {
+    assert.strictEqual(
+      detectMimeType('screenshot', 'data:image/png;base64,abc123'),
+      'image/png',
+    );
+  });
+
+  it('detects JSON content for log/command_output types', () => {
+    assert.strictEqual(
+      detectMimeType('log', '{"status":"ok"}'),
+      'application/json',
+    );
+    assert.strictEqual(
+      detectMimeType('command_output', 'plain text output'),
+      'text/plain',
+    );
+  });
+
+  it('falls back to defaults by evidence type when nothing else matches', () => {
+    assert.strictEqual(
+      detectMimeType('screenshot', Buffer.from('binary')),
+      'image/png',
+    );
+    assert.strictEqual(
+      detectMimeType('photo', Buffer.from('binary')),
+      'image/png',
+    );
+    assert.strictEqual(
+      detectMimeType('video', Buffer.from('binary')),
+      'video/mp4',
+    );
+    assert.strictEqual(detectMimeType('log', 'plain'), 'text/plain');
+    assert.strictEqual(
+      detectMimeType('file', Buffer.from('binary')),
+      'application/octet-stream',
+    );
   });
 });

@@ -546,7 +546,7 @@ evidence:
 ```
 
 ### 3. Commands with No Implementation
-- `samaritan run` - Minimal executor, no real execution
+- `samaritan run` - Interactive loop is implemented (tmux-backed `automatic`/`manual` step execution, `expect` assertions, rollback, JSONL audit log + `--report`). `manual` steps additionally support three operator actions: `[n] note` (free-text annotations), `[e] evidence` (capture tmux output, attach a file/screenshot/image, or paste text — persisted as `EvidenceItem`s and rendered in the report as images/links/code blocks), and `[v] verify` (runs `step.expect` against captured pane output — previously a silent no-op for `manual` steps). See `StepController.verifyOutput` in `src/lib/tui.ts` and the manual branch of `runInteractiveStepLoop` in `src/cli/commands/run.ts`.
 - `samaritan resume` - Models exist, no session storage
 - `samaritan qrh` - Command exists, no QRH database
 

@@ -1,7 +1,18 @@
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir } from 'node:os';
+import { basename, join } from 'node:path';
 import { createInterface as createReadlineInterface } from 'node:readline';
 import { Command } from 'commander';
+import { detectMimeType } from '../../evidence/collector';
+import { assertOutput } from '../../lib/assertions';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
@@ -11,7 +22,13 @@ import { SessionState } from '../../lib/session-state';
 import { bootstrapSessions, type TmuxSession } from '../../lib/tmux-session';
 import { renderCodeBlock, renderKeyHints, StepController } from '../../lib/tui';
 import { resolveVars, resolveVarsSafe } from '../../lib/variable-resolver';
-import type { ExecutionMode, Operation, Step } from '../../models/operation';
+import type { EvidenceItem } from '../../models/evidence';
+import type {
+  EvidenceType,
+  ExecutionMode,
+  Operation,
+  Step,
+} from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
 interface RunOptions {
@@ -425,6 +442,174 @@ class OperationRunner {
       return choice;
     };
 
+    // Capture a piece of evidence (terminal output, a file/screenshot/image, or
+    // typed text) and store it with the session — like attaching a file in
+    // Claude Code: drag the file into the terminal, or type/paste its path.
+    const captureEvidence = async (
+      stepIndex: number,
+      captureSinceStepStart: () => string | undefined,
+    ): Promise<void> => {
+      const captured = captureSinceStepStart();
+      const canCaptureFromTerminal = captured !== undefined;
+
+      console.log(
+        `\n${renderKeyHints([
+          ...(canCaptureFromTerminal
+            ? [{ key: '↵', label: 'capture terminal output' }]
+            : []),
+          { key: 'f', label: 'file or image' },
+          { key: 't', label: 'type/paste text' },
+        ])}`,
+      );
+      const sourceAns = (await question('    Evidence source > '))
+        .trim()
+        .toLowerCase();
+
+      let evidenceType: EvidenceType = 'command_output';
+      let content: string | Buffer = '';
+      let filename: string | undefined;
+      let storedPath: string | undefined;
+      let automatic = false;
+
+      if (
+        canCaptureFromTerminal &&
+        (sourceAns === '' || sourceAns === 'capture')
+      ) {
+        if (!captured || !captured.trim()) {
+          console.log(
+            '    ⚠️  No new output captured in this pane since the step started.',
+          );
+          return;
+        }
+        console.log(`\n${renderCodeBlock(captured)}`);
+        content = captured;
+        automatic = true;
+      } else if (sourceAns === 'f' || sourceAns === 'file') {
+        const rawPath = await question(
+          '    Path (drag & drop into terminal): ',
+        );
+        const resolvedPath = resolveDroppedPath(rawPath);
+        if (!resolvedPath || !existsSync(resolvedPath)) {
+          console.log(`    ⚠️  File not found: ${rawPath.trim()}`);
+          return;
+        }
+        try {
+          content = readFileSync(resolvedPath);
+        } catch (err: any) {
+          console.log(`    ⚠️  Could not read file: ${err.message}`);
+          return;
+        }
+        filename = basename(resolvedPath);
+        evidenceType = inferEvidenceTypeFromExtension(filename);
+
+        const evidenceDir = join(
+          homedir(),
+          '.samaritan',
+          'sessions',
+          state.context.sessionId,
+          'evidence',
+        );
+        mkdirSync(evidenceDir, { recursive: true });
+        storedPath = join(evidenceDir, `${randomUUID()}-${filename}`);
+        copyFileSync(resolvedPath, storedPath);
+      } else {
+        content = await question('    Paste/type evidence content: ');
+      }
+
+      const description =
+        (await question('    Description (optional): ')).trim() || undefined;
+
+      const item: EvidenceItem = {
+        id: randomUUID(),
+        step_id: String(stepIndex),
+        type: evidenceType,
+        content,
+        filename,
+        timestamp: new Date(),
+        operator: state.context.operator,
+        automatic,
+        validated: false,
+        metadata: {
+          size: Buffer.isBuffer(content)
+            ? content.length
+            : Buffer.byteLength(content, 'utf-8'),
+          format: detectMimeType(evidenceType, content, filename),
+          source: automatic ? 'tmux' : storedPath ? 'file' : 'manual',
+        },
+        description,
+      };
+
+      sessionManager.addEvidence(state.context.sessionId, item);
+
+      logger.emit({
+        type: 'evidence_captured',
+        step: stepIndex,
+        evidence_id: item.id,
+        evidence_type: evidenceType,
+        automatic,
+        description,
+        ...(storedPath
+          ? { filename, path: storedPath }
+          : { content: typeof content === 'string' ? content : undefined }),
+      });
+
+      const summary = storedPath
+        ? `${evidenceType}, saved to ${storedPath}`
+        : `${evidenceType}, ${item.metadata.size} bytes`;
+      console.log(`    📎 Evidence captured (${summary}).`);
+    };
+
+    // Verify pane output already produced by a manual step against `step.expect`
+    // — without sending a command (the operator runs it themselves).
+    const verifyManualOutput = async (
+      step: Step,
+      stepIndex: number,
+      captureSinceStepStart: () => string | undefined,
+    ): Promise<void> => {
+      if (!step.expect) return;
+
+      const output = captureSinceStepStart();
+      if (output === undefined) {
+        console.log(
+          '    ⚠️  Verify requires an attached tmux session — capture or check output manually.',
+        );
+        return;
+      }
+
+      console.log('    🔍 Checking expected output...');
+      const { assertResult } = controller
+        ? controller.verifyOutput(step, stepIndex, output)
+        : { assertResult: assertOutput(output, step.expect) };
+
+      if (!assertResult) return;
+
+      const icon = assertResult.pass ? '✅ PASS' : '❌ FAIL';
+      console.log(
+        `    ${icon} Assert (${assertResult.type}): expected "${assertResult.expected}"`,
+      );
+      if (!assertResult.pass) {
+        const overrideAns = await question(
+          '    ⚠️  Assertion failed. [o=override with reason / r=rollback / Enter=stop]: ',
+        );
+        const oc = overrideAns.trim().toLowerCase();
+        if (oc === 'o' || oc === 'override') {
+          const reason = await question('    Reason for override: ');
+          logger.emit({
+            type: 'user_input',
+            action: 'override',
+            step: stepIndex,
+            actor: state.context.operator,
+            reason: reason.trim(),
+          });
+          console.log('    ⚠️  Override accepted.');
+        } else if (isRollback(oc)) {
+          await doRollback(step, stepIndex);
+        } else {
+          console.log('    ❌ Stopping due to failed assertion.');
+        }
+      }
+    };
+
     try {
       const steps = executor.getState().steps;
 
@@ -584,6 +769,19 @@ class OperationRunner {
             console.log('\n    Command reference:');
             console.log(renderCodeBlock(resolvedCommand));
           }
+
+          const sessionName = step.session;
+          const stepOffset =
+            tmuxSession &&
+            sessionName &&
+            tmuxSession.getPaneMap().has(sessionName)
+              ? tmuxSession.currentOffset(sessionName)
+              : undefined;
+          const captureSinceStepStart = (): string | undefined =>
+            tmuxSession && sessionName && stepOffset !== undefined
+              ? tmuxSession.readOutput(sessionName, stepOffset)
+              : undefined;
+
           let manualNotes = '';
           while (true) {
             console.log(
@@ -591,6 +789,9 @@ class OperationRunner {
                 renderKeyHints([
                   { key: '↵', label: 'done' },
                   ...(resolvedCommand ? [{ key: 'c', label: 'copy' }] : []),
+                  { key: 'n', label: 'note' },
+                  { key: 'e', label: 'evidence' },
+                  ...(step.expect ? [{ key: 'v', label: 'verify' }] : []),
                   { key: 's', label: 'skip' },
                   { key: 'r', label: 'rollback' },
                   { key: 'abort', label: 'abort' },
@@ -606,8 +807,32 @@ class OperationRunner {
               console.log(
                 ok ? '  ✅ Copied to clipboard!' : '  ⚠️  Clipboard unavailable',
               );
-              manualNotes = '';
-              break;
+              continue;
+            }
+            if (inputChoice === 'n' || inputChoice === 'note') {
+              const note = (await question('    Note: ')).trim();
+              if (note) {
+                logger.emit({
+                  type: 'user_input',
+                  action: 'note',
+                  step: i,
+                  actor: state.context.operator,
+                  notes: note,
+                });
+                console.log('    📝 Note recorded.');
+              }
+              continue;
+            }
+            if (inputChoice === 'e' || inputChoice === 'evidence') {
+              await captureEvidence(i, captureSinceStepStart);
+              continue;
+            }
+            if (
+              step.expect &&
+              (inputChoice === 'v' || inputChoice === 'verify')
+            ) {
+              await verifyManualOutput(step, i, captureSinceStepStart);
+              continue;
             }
             manualNotes = input;
             break;
@@ -812,6 +1037,35 @@ class OperationRunner {
       }
     }
   }
+}
+
+// Resolve a path the operator drags into the terminal or types — strips the
+// surrounding quotes and backslash-escapes most terminals add on drag-and-drop,
+// and expands a leading `~`.
+function resolveDroppedPath(raw: string): string | undefined {
+  let p = raw.trim();
+  if (!p) return undefined;
+  if (
+    (p.startsWith("'") && p.endsWith("'")) ||
+    (p.startsWith('"') && p.endsWith('"'))
+  ) {
+    p = p.slice(1, -1);
+  }
+  p = p.replace(/\\(.)/g, '$1');
+  if (p.startsWith('~')) {
+    p = join(homedir(), p.slice(1));
+  }
+  return p;
+}
+
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov'];
+
+function inferEvidenceTypeFromExtension(filename: string): EvidenceType {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  if (ext && IMAGE_EXTENSIONS.includes(ext)) return 'screenshot';
+  if (ext && VIDEO_EXTENSIONS.includes(ext)) return 'video';
+  return 'file';
 }
 
 // ─── CLI commands ─────────────────────────────────────────────────────────────

@@ -123,27 +123,46 @@ export class StepController {
       });
 
       if (!isSSH && step.expect) {
-        const expect = sessionState
-          ? interpolateExpect(step.expect, sessionState)
-          : step.expect;
-        const result = assertOutput(output, expect);
-
-        logger.emit({
-          type: 'assert_result',
-          step: stepIndex,
-          pass: result.pass,
-          actual: result.actual,
-          expected: result.expected,
-          assertion_type: result.type,
-        });
-
-        return { state: 'assert_result', assertResult: result };
+        const { assertResult } = this.verifyOutput(step, stepIndex, output);
+        if (assertResult) return { state: 'assert_result', assertResult };
       }
     }
 
     if (isSSH) return { state: 'manual_verify' };
 
     return { state: 'complete' };
+  }
+
+  /**
+   * Assert previously-captured pane output against `step.expect`, emitting
+   * the same `assert_result` event `runVerify` emits — without sending a
+   * command. Lets manual steps (where the operator runs the command
+   * themselves) verify output that's already in the pane.
+   */
+  verifyOutput(
+    step: Step,
+    stepIndex: number,
+    output: string,
+  ): { assertResult?: ReturnType<typeof assertOutput> } {
+    const { logger, sessionState } = this.opts;
+
+    if (!step.expect) return {};
+
+    const expect = sessionState
+      ? interpolateExpect(step.expect, sessionState)
+      : step.expect;
+    const result = assertOutput(output, expect);
+
+    logger.emit({
+      type: 'assert_result',
+      step: stepIndex,
+      pass: result.pass,
+      actual: result.actual,
+      expected: result.expected,
+      assertion_type: result.type,
+    });
+
+    return { assertResult: result };
   }
 
   async rollback(

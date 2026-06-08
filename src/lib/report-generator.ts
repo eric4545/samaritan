@@ -7,6 +7,14 @@ interface SessionEvent {
   [key: string]: unknown;
 }
 
+interface CapturedEvidence {
+  evidenceType: string;
+  description?: string;
+  content?: string;
+  filename?: string;
+  path?: string;
+}
+
 interface StepSummary {
   index: number;
   name: string;
@@ -19,6 +27,8 @@ interface StepSummary {
   verifiedAt?: string;
   failed?: boolean;
   failedReason?: string;
+  notes: string[];
+  evidence: CapturedEvidence[];
 }
 
 interface RollbackEvent {
@@ -62,6 +72,8 @@ export function generateReport(jsonlPath: string): string {
           reviewer: event.reviewer as string | undefined,
           startTs: event.ts,
           commands: [],
+          notes: [],
+          evidence: [],
         };
         steps.push(currentStep);
         break;
@@ -111,12 +123,28 @@ export function generateReport(jsonlPath: string): string {
         break;
       }
 
+      case 'evidence_captured': {
+        if (currentStep) {
+          currentStep.evidence.push({
+            evidenceType: event.evidence_type as string,
+            description: event.description as string | undefined,
+            content: event.content as string | undefined,
+            filename: event.filename as string | undefined,
+            path: event.path as string | undefined,
+          });
+        }
+        break;
+      }
+
       case 'user_input': {
         if (currentStep) {
           const action = event.action as string;
           if (action === 'verify_ok') {
             currentStep.verifiedBy = event.actor as string;
             currentStep.verifiedAt = event.ts;
+          } else if (action === 'note') {
+            const notes = event.notes as string | undefined;
+            if (notes) currentStep.notes.push(notes);
           }
         }
         break;
@@ -208,6 +236,17 @@ export function generateReport(jsonlPath: string): string {
       lines.push(`**Failed**: ${step.failedReason ?? 'unknown reason'} ❌`);
     }
 
+    if (step.notes.length) {
+      lines.push('');
+      lines.push('**Notes**');
+      for (const note of step.notes) lines.push(`- ${note}`);
+    }
+
+    for (const evidence of step.evidence) {
+      lines.push('');
+      lines.push(...renderEvidenceBlock(evidence));
+    }
+
     lines.push('');
     lines.push('---');
     lines.push('');
@@ -238,6 +277,32 @@ export function generateReport(jsonlPath: string): string {
   }
 
   return lines.join('\n');
+}
+
+function renderEvidenceBlock(evidence: CapturedEvidence): string[] {
+  const lines: string[] = [];
+  const label = evidence.description
+    ? `**Evidence**: ${evidence.evidenceType} — ${evidence.description}`
+    : `**Evidence**: ${evidence.evidenceType}`;
+  lines.push(label);
+  lines.push('');
+
+  if (evidence.path) {
+    if (
+      evidence.evidenceType === 'screenshot' ||
+      evidence.evidenceType === 'photo'
+    ) {
+      lines.push(`![Evidence](${evidence.path})`);
+    } else {
+      lines.push(`[View ${evidence.evidenceType}](${evidence.path})`);
+    }
+  } else if (evidence.content) {
+    lines.push('```');
+    lines.push(evidence.content.trim());
+    lines.push('```');
+  }
+
+  return lines;
 }
 
 function formatTs(ts: string): string {
