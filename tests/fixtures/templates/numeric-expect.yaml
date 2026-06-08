@@ -1,0 +1,8 @@
+# Template whose step uses the bare ${VAR} shorthand for `expect`.
+# When EXPECTED is passed as a number (e.g. 0), type-preserving variable
+# substitution resolves "${EXPECTED}" to the literal number — this template
+# is used to verify that a numeric expect value is rendered, not dropped.
+- name: Check replica count
+  type: automatic
+  command: kubectl get pods -n staging | grep -c Running
+  expect: "${EXPECTED}"

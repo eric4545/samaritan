@@ -1,5 +1,16 @@
 import type { ExpectConfig } from '../models/operation';
 
+/**
+ * ${VAR} substitution can resolve a bare-shorthand expect (e.g. "${COUNT}")
+ * to a literal number/boolean (type-preserving substitution) — these should
+ * be treated the same as the string shorthand rather than dropped as falsy (0).
+ */
+export function isPrimitiveExpectShorthand(
+  expect: unknown,
+): expect is number | boolean {
+  return typeof expect === 'number' || typeof expect === 'boolean';
+}
+
 export interface AssertResult {
   pass: boolean;
   actual: string;
@@ -13,6 +24,10 @@ export function assertOutput(
 ): AssertResult {
   if (typeof expect === 'string') {
     return assertOutput(output, { contains: expect });
+  }
+
+  if (isPrimitiveExpectShorthand(expect)) {
+    return assertOutput(output, { contains: String(expect) });
   }
 
   if (Array.isArray(expect)) {
@@ -246,8 +261,9 @@ function resolveSimpleJsonPath(obj: unknown, path: string): unknown {
 export function renderExpectParts(
   expect: ExpectConfig | ExpectConfig[] | string | undefined,
 ): string[] {
-  if (!expect) return [];
+  if (expect === undefined || expect === null) return [];
   if (typeof expect === 'string') return [expect];
+  if (isPrimitiveExpectShorthand(expect)) return [String(expect)];
   if (Array.isArray(expect)) {
     return expect.flatMap((e) => renderExpectParts(e)).filter(Boolean);
   }

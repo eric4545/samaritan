@@ -1,0 +1,11 @@
+name: Numeric Expect Test
+version: 1.0.0
+description: Tests that an expect value resolved to a number (e.g. 0) by ${VAR} substitution is not dropped
+environments:
+  - name: staging
+
+steps:
+  - name: Pod count check
+    uses: ../../templates/numeric-expect.yaml
+    with:
+      EXPECTED: 0
