@@ -1,5 +1,9 @@
 import type { ExpectConfig, Step } from '../models/operation';
-import { assertOutput, renderExpectDescription } from './assertions';
+import {
+  assertOutput,
+  isPrimitiveExpectShorthand,
+  renderExpectDescription,
+} from './assertions';
 import type { EventLogger } from './event-logger';
 import type { SessionState } from './session-state';
 import type { TmuxSession } from './tmux-session';
@@ -231,11 +235,10 @@ export function interpolateExpect(
   if (typeof expect === 'string') {
     return state.interpolate(expect);
   }
-  // ${VAR} substitution can resolve a bare-shorthand expect (e.g. "${COUNT}")
-  // to a literal number/boolean (type-preserving substitution) — there's
-  // nothing to interpolate inside a primitive, return it as-is rather than
-  // spreading it into an empty object and losing the value.
-  if (typeof (expect as unknown) !== 'object' || expect === null) return expect;
+  // There's nothing to interpolate inside a primitive shorthand value —
+  // return it as-is rather than spreading it into an empty object and
+  // losing the value.
+  if (isPrimitiveExpectShorthand(expect)) return expect;
   const result: ExpectConfig = { ...expect };
   for (const field of EXPECT_STRING_FIELDS) {
     if (result[field]) result[field] = state.interpolate(result[field]);

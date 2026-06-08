@@ -656,7 +656,7 @@ function createStepsTable(
       }
 
       // Add expect assertions
-      if (effectiveStep.expect !== undefined && effectiveStep.expect !== null) {
+      if (effectiveStep.expect != null) {
         const parts = renderExpectParts(effectiveStep.expect);
         if (parts.length > 0) {
           cellContent.push(paragraph(strong(text('Expected:'))));

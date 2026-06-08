@@ -1,5 +1,16 @@
 import type { ExpectConfig } from '../models/operation';
 
+/**
+ * ${VAR} substitution can resolve a bare-shorthand expect (e.g. "${COUNT}")
+ * to a literal number/boolean (type-preserving substitution) — these should
+ * be treated the same as the string shorthand rather than dropped as falsy (0).
+ */
+export function isPrimitiveExpectShorthand(
+  expect: unknown,
+): expect is number | boolean {
+  return typeof expect === 'number' || typeof expect === 'boolean';
+}
+
 export interface AssertResult {
   pass: boolean;
   actual: string;
@@ -15,13 +26,7 @@ export function assertOutput(
     return assertOutput(output, { contains: expect });
   }
 
-  // ${VAR} substitution can resolve a bare-shorthand expect (e.g. "${COUNT}")
-  // to a literal number/boolean (type-preserving substitution) — treat it the
-  // same as the string shorthand rather than silently skipping the assertion.
-  if (
-    typeof (expect as unknown) === 'number' ||
-    typeof (expect as unknown) === 'boolean'
-  ) {
+  if (isPrimitiveExpectShorthand(expect)) {
     return assertOutput(output, { contains: String(expect) });
   }
 
@@ -258,15 +263,7 @@ export function renderExpectParts(
 ): string[] {
   if (expect === undefined || expect === null) return [];
   if (typeof expect === 'string') return [expect];
-  // ${VAR} substitution can resolve a bare-shorthand expect (e.g. "${COUNT}")
-  // to a literal number/boolean (type-preserving substitution) — render it
-  // the same as the string shorthand rather than dropping it as falsy (0).
-  if (
-    typeof (expect as unknown) === 'number' ||
-    typeof (expect as unknown) === 'boolean'
-  ) {
-    return [String(expect)];
-  }
+  if (isPrimitiveExpectShorthand(expect)) return [String(expect)];
   if (Array.isArray(expect)) {
     return expect.flatMap((e) => renderExpectParts(e)).filter(Boolean);
   }
