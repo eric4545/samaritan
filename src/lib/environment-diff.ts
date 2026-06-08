@@ -1,3 +1,4 @@
+import { diffLines } from 'diff';
 import type { Operation, Step } from '../models/operation';
 import {
   mergeStepVariant,
@@ -7,21 +8,20 @@ import {
 
 export interface FieldDiff {
   field: string;
-  valueA: string | undefined;
-  valueB: string | undefined;
+  values: Record<string, string | undefined>;
 }
 
 export interface StepDiffEntry {
   path: string;
   name: string;
-  status: 'both' | 'envA-only' | 'envB-only';
+  presentIn: string[];
+  absentIn: string[];
   fieldDiffs: FieldDiff[];
 }
 
 export interface EnvironmentDiffReport {
   operationName: string;
-  envA: string;
-  envB: string;
+  environments: string[];
   entries: StepDiffEntry[];
   totalSteps: number;
   identicalCount: number;
@@ -74,18 +74,20 @@ const FIELD_DESCRIPTORS: FieldDescriptor[] = [
 ];
 
 function compareStep(
-  stepA: Step,
-  stepB: Step,
-  envVariablesA: Record<string, any>,
-  envVariablesB: Record<string, any>,
+  resolvedSteps: Record<string, Step>,
+  envVariables: Record<string, Record<string, any>>,
+  presentIn: string[],
 ): FieldDiff[] {
   const diffs: FieldDiff[] = [];
 
   for (const { field, getValue } of FIELD_DESCRIPTORS) {
-    const valueA = getValue(stepA, envVariablesA);
-    const valueB = getValue(stepB, envVariablesB);
-    if (valueA !== valueB) {
-      diffs.push({ field, valueA, valueB });
+    const values: Record<string, string | undefined> = {};
+    for (const env of presentIn) {
+      values[env] = getValue(resolvedSteps[env], envVariables[env]);
+    }
+
+    if (new Set(Object.values(values)).size > 1) {
+      diffs.push({ field, values });
     }
   }
 
@@ -94,10 +96,8 @@ function compareStep(
 
 function diffSteps(
   steps: Step[],
-  envA: string,
-  envB: string,
-  envVariablesA: Record<string, any>,
-  envVariablesB: Record<string, any>,
+  environments: string[],
+  envVariables: Record<string, Record<string, any>>,
   parentPath: string,
   entries: StepDiffEntry[],
 ): number {
@@ -105,27 +105,36 @@ function diffSteps(
 
   for (const [index, step] of steps.entries()) {
     const path = parentPath ? `${parentPath}.${index + 1}` : `${index + 1}`;
-    const inA = shouldRenderStepForEnvironment(step, envA);
-    const inB = shouldRenderStepForEnvironment(step, envB);
+    const presentIn = environments.filter((env) =>
+      shouldRenderStepForEnvironment(step, env),
+    );
+    const absentIn = environments.filter((env) => !presentIn.includes(env));
 
-    if (inA || inB) {
-      if (inA !== inB) {
+    if (presentIn.length > 0) {
+      if (presentIn.length < environments.length) {
         entries.push({
           path,
           name: step.name,
-          status: inA ? 'envA-only' : 'envB-only',
+          presentIn,
+          absentIn,
           fieldDiffs: [],
         });
       } else {
-        const fieldDiffs = compareStep(
-          mergeStepVariant(step, envA),
-          mergeStepVariant(step, envB),
-          envVariablesA,
-          envVariablesB,
-        );
+        const resolvedSteps: Record<string, Step> = {};
+        for (const env of presentIn) {
+          resolvedSteps[env] = mergeStepVariant(step, env);
+        }
+
+        const fieldDiffs = compareStep(resolvedSteps, envVariables, presentIn);
 
         if (fieldDiffs.length > 0) {
-          entries.push({ path, name: step.name, status: 'both', fieldDiffs });
+          entries.push({
+            path,
+            name: step.name,
+            presentIn,
+            absentIn,
+            fieldDiffs,
+          });
         } else {
           identicalCount += 1;
         }
@@ -135,10 +144,8 @@ function diffSteps(
     if (step.sub_steps && step.sub_steps.length > 0) {
       identicalCount += diffSteps(
         step.sub_steps,
-        envA,
-        envB,
-        envVariablesA,
-        envVariablesB,
+        environments,
+        envVariables,
         path,
         entries,
       );
@@ -150,39 +157,45 @@ function diffSteps(
 
 export function diffEnvironments(
   operation: Operation,
-  envA: string,
-  envB: string,
+  environments: string[],
 ): EnvironmentDiffReport {
-  const environmentA = operation.environments.find((env) => env.name === envA);
-  const environmentB = operation.environments.find((env) => env.name === envB);
-
-  if (!environmentA) {
-    throw new Error(`Environment not found in operation: ${envA}`);
+  if (environments.length < 2) {
+    throw new Error(
+      'At least two environments are required to compare (got ' +
+        `${environments.length})`,
+    );
   }
-  if (!environmentB) {
-    throw new Error(`Environment not found in operation: ${envB}`);
+
+  const envVariables: Record<string, Record<string, any>> = {};
+  for (const envName of environments) {
+    const environment = operation.environments.find(
+      (env) => env.name === envName,
+    );
+    if (!environment) {
+      throw new Error(`Environment not found in operation: ${envName}`);
+    }
+    envVariables[envName] = environment.variables ?? {};
   }
 
   const entries: StepDiffEntry[] = [];
   const identicalCount = diffSteps(
     operation.steps,
-    envA,
-    envB,
-    environmentA.variables ?? {},
-    environmentB.variables ?? {},
+    environments,
+    envVariables,
     '',
     entries,
   );
 
   const differingCount = entries.filter(
-    (entry) => entry.status === 'both',
+    (entry) => entry.absentIn.length === 0 && entry.fieldDiffs.length > 0,
   ).length;
-  const envSpecificCount = entries.length - differingCount;
+  const envSpecificCount = entries.filter(
+    (entry) => entry.absentIn.length > 0,
+  ).length;
 
   return {
     operationName: operation.name,
-    envA,
-    envB,
+    environments,
     entries,
     totalSteps: entries.length + identicalCount,
     identicalCount,
@@ -191,34 +204,115 @@ export function diffEnvironments(
   };
 }
 
-function formatValue(value: string | undefined): string {
-  if (value === undefined) return '(not set)';
-  return value.includes('\n') ? value.split('\n')[0] : value;
+const NOT_SET = '(not set)';
+
+/**
+ * Renders a full unified-diff (`--- a` / `+++ b` / `-`/`+`/` ` lines) between
+ * two values. Unlike a typical `diff -u`, context is never collapsed — every
+ * line of both values is shown, so nothing gets hidden from the operator.
+ */
+export function buildUnifiedDiffLines(
+  labelA: string,
+  valueA: string | undefined,
+  labelB: string,
+  valueB: string | undefined,
+): string[] {
+  const lines: string[] = [`--- ${labelA}`, `+++ ${labelB}`];
+
+  if (valueA === undefined || valueB === undefined) {
+    if (valueA === undefined) {
+      lines.push(`-${NOT_SET}`);
+    } else {
+      for (const line of valueA.split('\n')) lines.push(`-${line}`);
+    }
+    if (valueB === undefined) {
+      lines.push(`+${NOT_SET}`);
+    } else {
+      for (const line of valueB.split('\n')) lines.push(`+${line}`);
+    }
+    return lines;
+  }
+
+  for (const part of diffLines(valueA, valueB)) {
+    const partLines = part.value.split('\n');
+    if (partLines[partLines.length - 1] === '') partLines.pop();
+
+    const prefix = part.added ? '+' : part.removed ? '-' : ' ';
+    for (const line of partLines) {
+      lines.push(`${prefix}${line}`);
+    }
+  }
+
+  return lines;
+}
+
+const RED = '\x1b[31m';
+const GREEN = '\x1b[32m';
+const BOLD = '\x1b[1m';
+const RESET = '\x1b[0m';
+
+function colorizeDiffLine(line: string): string {
+  if (line.startsWith('--- ') || line.startsWith('+++ ')) {
+    return `${BOLD}${line}${RESET}`;
+  }
+  if (line.startsWith('+')) return `${GREEN}${line}${RESET}`;
+  if (line.startsWith('-')) return `${RED}${line}${RESET}`;
+  return line;
+}
+
+function renderFieldDiff(
+  fieldDiff: FieldDiff,
+  anchor: string,
+  others: string[],
+  useColor: boolean,
+): string[] {
+  const lines: string[] = [];
+
+  for (const env of others) {
+    if (fieldDiff.values[env] === fieldDiff.values[anchor]) continue;
+
+    for (const diffLine of buildUnifiedDiffLines(
+      anchor,
+      fieldDiff.values[anchor],
+      env,
+      fieldDiff.values[env],
+    )) {
+      lines.push(useColor ? colorizeDiffLine(diffLine) : diffLine);
+    }
+  }
+
+  return lines;
 }
 
 export function formatDiffAsText(report: EnvironmentDiffReport): string {
+  const useColor = process.stdout.isTTY === true;
+  const [anchor, ...others] = report.environments;
   const lines: string[] = [];
   lines.push(
-    `🔍 Comparing ${report.envA} vs ${report.envB} — ${report.operationName}`,
+    `🔍 Comparing ${report.environments.join(', ')} ` +
+      `(anchor: ${anchor}) — ${report.operationName}`,
   );
   lines.push('');
 
   for (const entry of report.entries) {
     lines.push(`📋 Step ${entry.path}: ${entry.name}`);
 
-    if (entry.status === 'envA-only') {
-      lines.push(`   ⚠️  ${report.envA} only (not present for ${report.envB})`);
-    } else if (entry.status === 'envB-only') {
-      lines.push(`   ⚠️  ${report.envB} only (not present for ${report.envA})`);
+    if (entry.absentIn.length > 0) {
+      lines.push(
+        `   ⚠️  present in: ${entry.presentIn.join(', ')} · ` +
+          `absent in: ${entry.absentIn.join(', ')}`,
+      );
     } else {
       for (const fieldDiff of entry.fieldDiffs) {
         lines.push(`   ${fieldDiff.field}:`);
-        lines.push(
-          `     ${report.envA}:`.padEnd(18) + formatValue(fieldDiff.valueA),
-        );
-        lines.push(
-          `     ${report.envB}:`.padEnd(18) + formatValue(fieldDiff.valueB),
-        );
+        for (const line of renderFieldDiff(
+          fieldDiff,
+          anchor,
+          others,
+          useColor,
+        )) {
+          lines.push(`     ${line}`);
+        }
       }
     }
 
@@ -235,27 +329,31 @@ export function formatDiffAsText(report: EnvironmentDiffReport): string {
 }
 
 export function formatDiffAsMarkdown(report: EnvironmentDiffReport): string {
+  const [anchor, ...others] = report.environments;
   const lines: string[] = [];
-  lines.push(`# Environment Diff Report: ${report.envA} vs ${report.envB}`);
+  lines.push(`# Environment Diff Report: ${report.environments.join(' vs ')}`);
   lines.push('');
   lines.push(`**Operation:** ${report.operationName}`);
+  lines.push(`**Comparison anchor:** ${anchor}`);
   lines.push('');
 
   for (const entry of report.entries) {
     lines.push(`## Step ${entry.path}: ${entry.name}`);
     lines.push('');
 
-    if (entry.status === 'envA-only') {
-      lines.push(`> ⚠️ Only present in: **${report.envA}**`);
-    } else if (entry.status === 'envB-only') {
-      lines.push(`> ⚠️ Only present in: **${report.envB}**`);
+    if (entry.absentIn.length > 0) {
+      lines.push(
+        `> ⚠️ Present in: **${entry.presentIn.join(', ')}** — ` +
+          `absent in: **${entry.absentIn.join(', ')}**`,
+      );
     } else {
-      lines.push(`| Field | ${report.envA} | ${report.envB} |`);
-      lines.push('|---|---|---|');
       for (const fieldDiff of entry.fieldDiffs) {
-        const valueA = formatValue(fieldDiff.valueA).replace(/\|/g, '\\|');
-        const valueB = formatValue(fieldDiff.valueB).replace(/\|/g, '\\|');
-        lines.push(`| ${fieldDiff.field} | ${valueA} | ${valueB} |`);
+        lines.push(`### ${fieldDiff.field}`);
+        lines.push('');
+        lines.push('```diff');
+        lines.push(...renderFieldDiff(fieldDiff, anchor, others, false));
+        lines.push('```');
+        lines.push('');
       }
     }
 

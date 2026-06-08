@@ -20,10 +20,26 @@ describe('Diff Command', () => {
       { cwd: process.cwd(), encoding: 'utf-8' },
     );
 
-    assert.ok(result.includes('Comparing staging vs prod'));
+    assert.ok(result.includes('Comparing staging, prod (anchor: staging)'));
     assert.ok(result.includes('Deploy application'));
     assert.ok(result.includes('command:'));
+    assert.ok(result.includes('--- staging'));
+    assert.ok(result.includes('+++ prod'));
     assert.ok(result.includes('Summary:'));
+  });
+
+  it('should print a terminal report comparing more than two environments', () => {
+    const result = execSync(
+      `npx tsx src/cli/index.ts diff ${fixturePath} staging preprod prod`,
+      { cwd: process.cwd(), encoding: 'utf-8' },
+    );
+
+    assert.ok(
+      result.includes('Comparing staging, preprod, prod (anchor: staging)'),
+    );
+    assert.ok(result.includes('--- staging'));
+    assert.ok(result.includes('+++ preprod'));
+    assert.ok(result.includes('+++ prod'));
   });
 
   it('should report 0 differences when comparing an environment to itself', () => {
@@ -47,7 +63,10 @@ describe('Diff Command', () => {
 
     const content = readFileSync(outputPath, 'utf-8');
     assert.ok(content.startsWith('# Environment Diff Report: staging vs prod'));
-    assert.ok(content.includes('| Field | staging | prod |'));
+    assert.ok(content.includes('**Comparison anchor:** staging'));
+    assert.ok(content.includes('```diff'));
+    assert.ok(content.includes('--- staging'));
+    assert.ok(content.includes('+++ prod'));
   });
 
   it('should fail with a clear error for an unknown environment', () => {
@@ -58,5 +77,15 @@ describe('Diff Command', () => {
         stdio: 'pipe',
       });
     }, /Environment not found in operation: bogus/);
+  });
+
+  it('should fail with a clear error when fewer than two environments are given', () => {
+    assert.throws(() => {
+      execSync(`npx tsx src/cli/index.ts diff ${fixturePath} staging`, {
+        cwd: process.cwd(),
+        encoding: 'utf-8',
+        stdio: 'pipe',
+      });
+    }, /at least two environments are required/);
   });
 });

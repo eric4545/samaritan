@@ -366,8 +366,8 @@ npx github:eric4545/samaritan generate confluence <operation.yaml> [options]
   --env <environment>   Generate for specific environment only
   --gantt               Include Gantt chart for timeline visualization
 
-# Compare how steps render across two environments
-npx github:eric4545/samaritan diff <operation.yaml> <envA> <envB> [options]
+# Compare how steps render across two or more environments
+npx github:eric4545/samaritan diff <operation.yaml> <env1> <env2> [env3...] [options]
   -o, --output <file>   Write Markdown report to file (in addition to terminal output)
 
 # Generate evidence report from a session log
@@ -437,12 +437,16 @@ it's easy to lose track of exactly how the rendered manual differs between, say,
 `staging` and `production`. The `diff` command resolves each step the same way
 the manual generator does (merging `variants`, applying `when`, and substituting
 `${VAR}` placeholders with each environment's variables) and reports a structured,
-step-by-step comparison — so you can cross-check the rendered result before
-relying on it:
+step-by-step comparison rendered as familiar unified diffs (`--- a` / `+++ b` /
+`-`/`+` lines) — so you can cross-check the rendered result before relying on it:
 
 ```bash
-# Print a comparison report to the terminal
+# Print a comparison report to the terminal (two environments)
 npx github:eric4545/samaritan diff examples/multi-env-deployment.yaml staging production
+
+# Compare three or more environments at once — the first one listed is the
+# comparison anchor, and every other environment is diffed against it
+npx github:eric4545/samaritan diff examples/multi-env-deployment.yaml staging preprod production
 
 # Also write a Markdown report file
 npx github:eric4545/samaritan diff examples/multi-env-deployment.yaml staging production --output diff-report.md
@@ -451,23 +455,39 @@ npx github:eric4545/samaritan diff examples/multi-env-deployment.yaml staging pr
 Example output:
 
 ```
-🔍 Comparing staging vs production — Multi-Environment Web Server Deployment
+🔍 Comparing staging, production (anchor: staging) — Multi-Environment Web Server Deployment
 
 📋 Step 1: Notify on-call for production change window
-   ⚠️  production only (not present for staging)
+   ⚠️  present in: production · absent in: staging
 
 📋 Step 2: Deploy application
    command:
-     staging:     kubectl apply -f deployment.yaml --context=staging-cluster --replicas=2
-     production:  kubectl apply -f deployment.yaml --context=prod-cluster --replicas=10 --strategy=blue-green
+     --- staging
+     +++ production
+     -kubectl apply -f deployment.yaml --context=staging-cluster --replicas=2
+     +kubectl apply -f deployment.yaml --context=prod-cluster --replicas=10 --strategy=blue-green
    pic:
-     staging:     ops-team@example.com
-     production:  senior-sre@example.com
+     --- staging
+     +++ production
+     -ops-team@example.com
+     +senior-sre@example.com
    ...
 
 ────────────────────────────────────────
 Summary: 4 steps compared · 2 differ · 2 environment-specific · 0 identical
 ```
+
+In a terminal, `-` lines are shown in red and `+` lines in green (like `git diff`);
+in the Markdown report they're wrapped in fenced ` ```diff ` code blocks, which
+GitHub and most renderers automatically colorize the same way. Unlike a typical
+`diff -u`, no context is collapsed — every line of multi-line fields like
+`instruction` or `script` is shown in full, so nothing is hidden.
+
+**Comparing more than two environments:** list them all as positional arguments,
+e.g. `diff <operation> staging preprod production`. The **first environment is
+the comparison anchor** — every other environment is diffed against it (anchor
+vs. 2nd, anchor vs. 3rd, …), keeping each comparison a simple, readable pairwise
+diff rather than an exploding matrix of combinations.
 
 **What gets compared:** `command`, `script`, `instruction`, `description`, `pic`,
 `reviewer`, `timeout`, and the documentation-only `evidence.required`/`evidence.types`
