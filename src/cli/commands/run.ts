@@ -10,12 +10,16 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { createInterface as createReadlineInterface } from 'node:readline';
+import {
+  createInterface as createReadlineInterface,
+  emitKeypressEvents,
+} from 'node:readline';
 import { Command } from 'commander';
 import { detectMimeType } from '../../evidence/collector';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
+import { indexToLetters } from '../../lib/letter-sequence';
 import { generateReport } from '../../lib/report-generator';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import { getSessionEvidenceDir } from '../../lib/session-persistence';
@@ -31,6 +35,12 @@ import type {
   Step,
 } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
+
+interface FlatStep {
+  step: Step;
+  label: string;
+  isParent: boolean;
+}
 
 interface RunOptions {
   env?: string;
@@ -49,6 +59,20 @@ interface ResumeOptions {
   verbose?: boolean;
   autoApprove?: boolean;
   fromStep?: number;
+}
+
+function flattenStepsForExecution(steps: Step[], prefix = ''): FlatStep[] {
+  const result: FlatStep[] = [];
+  steps.forEach((step, i) => {
+    const label = prefix ? `${prefix}${indexToLetters(i)}` : String(i + 1);
+    if (step.sub_steps && step.sub_steps.length > 0) {
+      result.push({ step, label, isParent: true });
+      result.push(...flattenStepsForExecution(step.sub_steps, label));
+    } else {
+      result.push({ step, label, isParent: false });
+    }
+  });
+  return result;
 }
 
 class OperationRunner {
@@ -116,8 +140,11 @@ class OperationRunner {
       autoMode: executionMode === 'automatic' || options.autoApprove || false,
     };
 
+    const flatSteps = flattenStepsForExecution(operation.steps);
+    const execOperation = { ...operation, steps: flatSteps.map((f) => f.step) };
+
     this.displayOperationSummary(
-      operation,
+      execOperation,
       environment,
       context,
       executionMode,
@@ -136,7 +163,7 @@ class OperationRunner {
 
     console.log(`📋 Session: ${session.id}\n`);
 
-    const executor = new OperationExecutor(operation, context);
+    const executor = new OperationExecutor(execOperation, context);
     sessionManager.associateExecutor(session.id, executor);
 
     this.setupEventHandlers(executor, options);
@@ -171,6 +198,7 @@ class OperationRunner {
           absFile,
           resolvedVars,
           tmuxSession,
+          flatSteps,
         );
         executor.finalizeOperation();
 
@@ -298,7 +326,12 @@ class OperationRunner {
       autoMode: session.mode === 'automatic',
     };
 
-    const executor = new OperationExecutor(operation, context);
+    const resumeFlatSteps = flattenStepsForExecution(operation.steps);
+    const resumeExecOperation = {
+      ...operation,
+      steps: resumeFlatSteps.map((f) => f.step),
+    };
+    const executor = new OperationExecutor(resumeExecOperation, context);
     sessionManager.associateExecutor(session.id, executor);
 
     this.setupEventHandlers(executor, { verbose: options.verbose });
@@ -332,6 +365,7 @@ class OperationRunner {
       session.operation_file,
       context.variables,
       tmuxSession,
+      resumeFlatSteps,
     );
     executor.finalizeOperation();
     tmuxSession?.teardown();
@@ -345,6 +379,7 @@ class OperationRunner {
     operationFile: string,
     vars: Record<string, any>,
     tmuxSession?: TmuxSession,
+    flatSteps?: FlatStep[],
   ): Promise<string> {
     const rl = createReadlineInterface({
       input: process.stdin,
@@ -352,6 +387,68 @@ class OperationRunner {
     });
     const question = (prompt: string): Promise<string> =>
       new Promise((resolve) => rl.question(prompt, resolve));
+
+    // Single-char action keys that fire immediately without pressing Enter.
+    // Multi-char words (abort, approve, reject) still require Enter — intentional.
+    const IMMEDIATE_ACTION_CHARS = new Set([
+      'c',
+      'n',
+      'e',
+      'x',
+      'v',
+      's',
+      'r',
+      'q',
+    ]);
+
+    const readActionKey = (): Promise<string> => {
+      if (!process.stdin.isTTY) return question('  > ');
+
+      emitKeypressEvents(process.stdin);
+      rl.pause();
+      process.stdin.setRawMode(true);
+      process.stdout.write('  > ');
+
+      return new Promise((resolve) => {
+        let buffer = '';
+
+        const handler = (ch: string | undefined, key: any) => {
+          if (key?.ctrl && key.name === 'c') {
+            cleanup();
+            process.stdout.write('^C\n');
+            process.exit(130);
+          }
+          if (key?.name === 'return' || key?.name === 'enter') {
+            cleanup();
+            process.stdout.write('\n');
+            resolve(buffer);
+            return;
+          }
+          if (key?.name === 'backspace' && buffer.length > 0) {
+            buffer = buffer.slice(0, -1);
+            process.stdout.write('\b \b');
+            return;
+          }
+          if (!ch || !/[\x20-\x7e]/.test(ch)) return;
+          const c = ch.toLowerCase();
+          buffer += c;
+          process.stdout.write(c);
+          if (buffer.length === 1 && IMMEDIATE_ACTION_CHARS.has(c)) {
+            cleanup();
+            process.stdout.write('\n');
+            resolve(c);
+          }
+        };
+
+        const cleanup = () => {
+          process.stdin.removeListener('keypress', handler);
+          process.stdin.setRawMode(false);
+          rl.resume();
+        };
+
+        process.stdin.on('keypress', handler);
+      });
+    };
 
     const state = executor.getState();
     const logger = createEventLogger(state.context.sessionId);
@@ -453,7 +550,7 @@ class OperationRunner {
       commandToCopy?: string,
     ): Promise<string> => {
       console.log(`\n${renderKeyHints(hints)}`);
-      const ans = await question('  > ');
+      const ans = await readActionKey();
       const choice = ans.trim().toLowerCase();
       if (commandToCopy && (choice === 'c' || choice === 'copy')) {
         const ok = await copyToClipboard(commandToCopy);
@@ -701,7 +798,8 @@ class OperationRunner {
         i++
       ) {
         const { step } = steps[i];
-        const stepNum = `[${i + 1}/${steps.length}]`;
+        const stepLabel = flatSteps?.[i]?.label ?? String(i + 1);
+        const stepNum = `[${stepLabel}/${steps.length}]`;
         const typeLabel = step.type.toUpperCase();
 
         const resolvedCommand = tryResolve(step.command);
@@ -726,6 +824,16 @@ class OperationRunner {
           console.log(
             `    Ticket   : ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`,
           );
+
+        // Parent steps (those with sub_steps) are section headers — show any
+        // instruction as context then auto-advance; the sub_steps follow.
+        if (flatSteps?.[i]?.isParent) {
+          if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
+          console.log('    ▶  (section — sub-steps follow)');
+          await executor.executeStepManually(i, 'section header');
+          logger.emit({ type: 'step_complete', step: i });
+          continue;
+        }
 
         if (step.type === 'automatic') {
           if (resolvedCommand)
@@ -871,7 +979,7 @@ class OperationRunner {
                   { key: 'abort', label: 'abort' },
                 ]),
             );
-            const input = await question('  > ');
+            const input = await readActionKey();
             const inputChoice = input.trim().toLowerCase();
             if (
               resolvedCommand &&
