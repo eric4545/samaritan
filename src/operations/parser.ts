@@ -13,7 +13,6 @@ import type {
   EvidenceType,
   Operation,
   OperationMetadata,
-  PreflightCheck,
   RollbackStep,
   Step,
   StepPhase,
@@ -235,13 +234,8 @@ async function parseTemplateContent(
       const defaultVars: Record<string, any> =
         templateObj.common_variables || {};
 
-      // Migrate legacy preflight array to phase: preflight steps
-      const legacyPreflight: any[] = (templateObj.preflight || []).map(
-        (p: any) => ({ ...p, phase: 'preflight' }),
-      );
-
       return {
-        steps: [...legacyPreflight, ...templateObj.steps],
+        steps: templateObj.steps,
         defaultVars,
       };
     }
@@ -731,24 +725,6 @@ async function parseStep(
   };
 }
 
-function parsePreflightCheck(
-  checkData: any,
-  _checkIndex: number,
-): PreflightCheck {
-  return {
-    name: checkData.name,
-    type: checkData.type || 'command',
-    command: checkData.command,
-    condition: checkData.condition,
-    description: checkData.description || '',
-    timeout: checkData.timeout,
-    evidence: parseEvidence(checkData),
-    evidence_required: Boolean(checkData.evidence_required), // DEPRECATED: Use evidence.required instead
-    // Legacy compatibility
-    expect_empty: checkData.expect_empty,
-  };
-}
-
 function parseEnvironment(envData: any, _envIndex: number): Environment {
   return {
     name: envData.name,
@@ -922,37 +898,9 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     baseDirectory,
   };
 
-  // Parse unified steps (includes migrated preflight checks + regular steps)
   const steps: Step[] = [];
 
-  // First, migrate preflight checks to steps with phase: preflight
-  if (rawOperation.preflight && Array.isArray(rawOperation.preflight)) {
-    rawOperation.preflight.forEach((checkData: any, index: number) => {
-      try {
-        const preflightStep: Step = {
-          id: checkData.id || randomUUID(),
-          name: checkData.name,
-          type: checkData.type === 'manual' ? 'manual' : 'automatic',
-          phase: 'preflight',
-          description: checkData.description || '',
-          instruction: checkData.instruction,
-          command: checkData.command,
-          condition: checkData.condition,
-          timeout: checkData.timeout,
-          evidence: parseEvidence(checkData),
-          evidence_required: Boolean(checkData.evidence_required), // DEPRECATED
-        };
-        steps.push(preflightStep);
-      } catch (error) {
-        errors.push({
-          field: `preflight[${index}]`,
-          message: `Error converting preflight check: ${(error as Error).message}`,
-        });
-      }
-    });
-  }
-
-  // Then process regular steps
+  // Process steps
   if (rawOperation.steps && Array.isArray(rawOperation.steps)) {
     try {
       const regularSteps = await resolveStepReferences(
@@ -993,10 +941,6 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     }
     // In a full implementation, you'd resolve and merge the marketplace operation
   }
-
-  // Note: Preflight checks are now migrated to unified steps with phase: 'preflight'
-  // Keep empty array for backward compatibility
-  const preflight: PreflightCheck[] = [];
 
   // Throw all collected errors if any
   if (errors.length > 0) {
@@ -1040,7 +984,6 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     common_variables: commonVariables,
     env_file: rawOperation.env_file,
     steps,
-    preflight,
     rollback: rawOperation.rollback,
     metadata,
     needs: rawOperation.needs,
@@ -1054,4 +997,4 @@ export async function parseOperation(filePath: string): Promise<Operation> {
 }
 
 // Export for testing
-export { parseStep, parsePreflightCheck, parseEnvironment };
+export { parseStep, parseEnvironment };

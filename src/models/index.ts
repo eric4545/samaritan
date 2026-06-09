@@ -10,7 +10,6 @@ export * from './evidence';
 export type {
   Environment,
   Operation,
-  PreflightCheck,
   Step,
 } from './operation';
 export * from './operation';

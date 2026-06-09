@@ -17,20 +17,21 @@ environments:
       IMAGE_TAG: __IMAGE_TAG__
       DEBUG_ENABLED: false
 
-preflight:
+steps:
   - name: Check Git Status
-    type: command
+    type: automatic
+    phase: preflight
     command: git status --porcelain
     description: Ensure no uncommitted changes
     timeout: 10
 
   - name: Verify Container Registry Access
-    type: command
+    type: automatic
+    phase: preflight
     command: docker info
     description: Ensure Docker is running and accessible
     timeout: 30
 
-steps:
   - name: Build Application
     type: automatic
     description: Build the application artifact

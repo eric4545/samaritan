@@ -28,19 +28,19 @@ environments:
     approval_required: true
     validation_required: true
 
-preflight:
+steps:
   - name: Check Git status
+    type: automatic
+    phase: preflight
     description: Ensure no uncommitted changes exist in the current branch
     command: git status --porcelain
-    expect_empty: true
-    type: command
 
   - name: Check Docker daemon
+    type: automatic
+    phase: preflight
     description: Verify that the Docker daemon is running and accessible
     command: docker info
-    type: command
 
-steps:
   - name: Build Docker Image
     type: automatic
     phase: preflight

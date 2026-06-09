@@ -143,20 +143,6 @@ export interface ReportingConfig {
   };
 }
 
-// Core Entity Interfaces
-export interface PreflightCheck {
-  name: string;
-  type: 'command' | 'check' | 'manual';
-  command?: string;
-  condition?: string;
-  description: string;
-  timeout?: number;
-  evidence?: EvidenceConfig;
-  evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
-  // Legacy fields for backward compatibility
-  expect_empty?: boolean;
-}
-
 export interface StepContent {
   command?: string;
   script?: string;
@@ -274,7 +260,6 @@ export interface Operation {
   common_variables?: Record<string, any>; // Common variables shared across all environments
   env_file?: string; // Path to .env file for loading variables
   steps: Step[];
-  preflight: PreflightCheck[];
   rollback?: RollbackPlan;
   metadata: OperationMetadata;
   needs?: string[];

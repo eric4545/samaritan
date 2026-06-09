@@ -142,12 +142,6 @@ class OperationRunner {
     this.setupEventHandlers(executor, options);
 
     try {
-      if (operation.preflight && operation.preflight.length > 0) {
-        console.log('🔍 Running preflight checks...');
-        await this.runPreflightChecks(operation.preflight, context);
-        console.log('✅ Preflight checks passed\n');
-      }
-
       const isInteractiveMode = !context.autoMode && !options.dryRun;
 
       if (isInteractiveMode) {
@@ -1053,7 +1047,6 @@ class OperationRunner {
       `   Environment: ${environment.name} (${environment.description})`,
     );
     console.log(`   Steps: ${operation.steps.length}`);
-    console.log(`   Preflight checks: ${operation.preflight?.length || 0}`);
     console.log(`   Execution mode: ${mode}`);
     console.log(`   Dry run: ${context.dryRun ? 'Yes' : 'No'}`);
 
@@ -1105,24 +1098,6 @@ class OperationRunner {
     executor.on('operation_failed', (event) => {
       console.log(`\n💥 Operation failed: ${event.error}`);
     });
-  }
-
-  private async runPreflightChecks(
-    preflight: any[],
-    context: any,
-  ): Promise<void> {
-    for (let i = 0; i < preflight.length; i++) {
-      const check = preflight[i];
-      console.log(`   ${i + 1}. ${check.name}: ${check.description}`);
-      if (check.type === 'command' && check.command && !context.dryRun) {
-        console.log(`      Command: ${check.command}`);
-        console.log(`      ✅ Passed`);
-      } else if (check.type === 'manual') {
-        console.log(`      ✅ Manual check assumed passed`);
-      } else {
-        console.log(`      ✅ Skipped (dry run)`);
-      }
-    }
   }
 }
 

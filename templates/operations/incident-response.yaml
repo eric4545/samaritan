@@ -12,14 +12,14 @@ environments:
       SERVICE_NAME: __SERVICE_NAME__
       SLACK_CHANNEL: __SLACK_CHANNEL__
 
-preflight:
+steps:
   - name: Check Service Status
-    type: command
+    type: automatic
+    phase: preflight
     command: __STATUS_CHECK_COMMAND__
     description: Get current service status
     timeout: 30
 
-steps:
   - name: Acknowledge Incident
     type: manual
     description: Acknowledge and communicate incident

@@ -24,17 +24,19 @@ environments:
       - cluster-prod-eu-west-1
       - cluster-prod-asia-south-1
 
-preflight:
+steps:
   - name: Check Git status
+    type: automatic
+    phase: preflight
     description: Ensure no uncommitted changes exist in the current branch.
     command: git status --porcelain
-    expect_empty: true
 
   - name: Check Docker daemon
+    type: automatic
+    phase: preflight
     description: Verify that the Docker daemon is running and accessible.
     command: docker info
 
-steps:
   - name: Build Docker Image
     type: automatic
     description: Build the application's Docker image.

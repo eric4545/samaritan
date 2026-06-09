@@ -429,20 +429,18 @@ class DocumentationGenerator {
       .map((env: any) => env.name)
       .join(', ');
     const stepCount = operation.steps.length;
-    const preflightCount = operation.preflight?.length || 0;
 
     return `# ${operation.name}
 
 ## Overview
-**Version**: ${operation.version}  
-**Description**: ${operation.description}  
-**Author**: ${operation.author || 'Not specified'}  
-**Category**: ${operation.category || 'Not specified'}  
+**Version**: ${operation.version}
+**Description**: ${operation.description}
+**Author**: ${operation.author || 'Not specified'}
+**Category**: ${operation.category || 'Not specified'}
 **Environments**: ${envList}
 
 ## Summary
 - **Steps**: ${stepCount}
-- **Preflight Checks**: ${preflightCount}
 - **Emergency Operation**: ${operation.emergency ? 'Yes' : 'No'}
 - **Rollback Available**: ${operation.rollback ? 'Yes' : 'No'}
 
@@ -465,23 +463,6 @@ ${env.restrictions?.length ? `**Restrictions**: ${env.restrictions.join(', ')}` 
 `,
   )
   .join('')}
-
-## Preflight Checks
-
-${
-  operation.preflight
-    ?.map(
-      (check: any, index: number) => `
-### ${index + 1}. ${check.name}
-**Type**: ${check.type}
-**Description**: ${check.description}
-${check.command ? `**Command**: \`${check.command}\`` : ''}
-${check.condition ? `**Expected**: ${check.condition}` : ''}
-${check.timeout ? `**Timeout**: ${check.timeout}s` : ''}
-`,
-    )
-    .join('') || 'No preflight checks defined.'
-}
 
 ## Execution Steps
 

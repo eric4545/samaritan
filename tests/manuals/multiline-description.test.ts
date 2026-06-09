@@ -23,7 +23,6 @@ function makeOp(stepDescription: string): Operation {
     steps: [
       { name: 'Test Step', type: 'manual', description: stepDescription },
     ],
-    preflight: [],
     metadata: { created_at: new Date(), updated_at: new Date() },
   };
 }

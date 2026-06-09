@@ -16,10 +16,10 @@ describe('Enhanced Operation Parser', () => {
     assert.strictEqual(operation.version, '2.1.0');
     assert.strictEqual(operation.author, 'test-engineer');
 
-    // Test steps with new fields - now includes migrated preflight step
+    // Test steps with new fields - includes preflight step at index 0
     assert.strictEqual(operation.steps.length, 6);
 
-    // Test automatic step with new fields (index 1 after preflight migration)
+    // Test automatic step with new fields (index 1, after preflight step)
     const automaticStep = operation.steps[1];
     assert.strictEqual(automaticStep.type, 'automatic');
     assert.strictEqual(automaticStep.estimated_duration, 180);

@@ -44,7 +44,6 @@ describe('Operation Executor', () => {
         evidence_types: ['screenshot', 'command_output'],
       },
     ],
-    preflight: [],
     metadata: {
       created_at: new Date(),
       updated_at: new Date(),
@@ -280,7 +279,6 @@ describe('Waiting step regression tests', () => {
     ],
     variables: { test: {} },
     steps,
-    preflight: [],
     metadata: {
       created_at: new Date(),
       updated_at: new Date(),
@@ -481,7 +479,6 @@ describe('Bug fixes — review findings', () => {
       { name: 'Step A', type: 'manual', description: 'First step' },
       { name: 'Step B', type: 'manual', description: 'Second step' },
     ],
-    preflight: [],
     metadata: {
       created_at: new Date(),
       updated_at: new Date(),

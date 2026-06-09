@@ -244,7 +244,6 @@ test('SessionManager - associateExecutor integration', () => {
         command: 'echo "test"',
       },
     ],
-    preflight: [],
     metadata: {
       created_at: new Date(),
       updated_at: new Date(),
@@ -451,7 +450,6 @@ test('SessionManager - associateExecutor updates session on step_skipped event',
       { name: 'Step 1', type: 'manual', description: 'First' },
       { name: 'Step 2', type: 'manual', description: 'Second' },
     ],
-    preflight: [],
     metadata: { created_at: new Date(), updated_at: new Date() },
   };
 

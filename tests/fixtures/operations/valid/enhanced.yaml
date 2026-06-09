@@ -13,12 +13,13 @@ environments:
     restrictions: [business-hours]
     approval_required: false
     validation_required: true
-preflight:
+steps:
   - name: Check prerequisites
-    type: command
+    type: automatic
+    phase: preflight
     command: echo "checking"
     description: Verify system state
-steps:
+
   - name: Deploy
     type: automatic
     description: Deploy the application

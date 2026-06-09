@@ -12,20 +12,21 @@ environments:
       BACKUP_LOCATION: __BACKUP_LOCATION__
       RETENTION_DAYS: 30
 
-preflight:
+steps:
   - name: Check Disk Space
-    type: command
+    type: automatic
+    phase: preflight
     command: df -h __BACKUP_LOCATION__
     description: Ensure sufficient disk space for backup
     timeout: 10
 
   - name: Verify Service Status
-    type: command
+    type: automatic
+    phase: preflight
     command: __SERVICE_STATUS_COMMAND__
     description: Ensure service is running before backup
     timeout: 30
 
-steps:
   - name: Create Backup
     type: automatic
     description: Create service backup

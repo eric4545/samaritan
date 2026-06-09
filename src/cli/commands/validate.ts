@@ -48,7 +48,6 @@ class OperationValidator {
       this.validateEnvironments(operation, result, options);
       this.validateSteps(operation, result, options);
       this.validateVariables(operation, result, options);
-      this.validatePreflight(operation, result, options);
 
       if (options.strict) {
         this.strictValidation(operation, result, options);
@@ -286,34 +285,6 @@ class OperationValidator {
     }
   }
 
-  private validatePreflight(
-    operation: Operation,
-    result: ValidationResult,
-    _options: ValidationOptions,
-  ): void {
-    for (let i = 0; i < operation.preflight.length; i++) {
-      const check = operation.preflight[i];
-
-      if (check.type === 'command' && !check.command) {
-        result.errors.push(
-          `Preflight check ${i + 1} (${check.name}): command type requires a command`,
-        );
-      }
-
-      if (check.type === 'manual' && !check.description) {
-        result.warnings.push(
-          `Preflight check ${i + 1} (${check.name}): manual checks should have detailed description`,
-        );
-      }
-
-      if (check.timeout && check.timeout < 0) {
-        result.errors.push(
-          `Preflight check ${i + 1} (${check.name}): timeout cannot be negative`,
-        );
-      }
-    }
-  }
-
   private strictValidation(
     operation: Operation,
     result: ValidationResult,
@@ -329,12 +300,6 @@ class OperationValidator {
     if (operation.steps.filter((s) => s.evidence_required).length === 0) {
       result.warnings.push(
         'No steps require evidence collection (recommended for audit trails)',
-      );
-    }
-
-    if (!operation.preflight || operation.preflight.length === 0) {
-      result.warnings.push(
-        'No preflight checks defined (recommended to validate prerequisites)',
       );
     }
 

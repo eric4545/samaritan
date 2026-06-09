@@ -17,19 +17,20 @@ environments:
       SERVICE_NAME: __SERVICE_NAME__
       MAINTENANCE_WINDOW: __PRODUCTION_WINDOW__
 
-preflight:
+steps:
   - name: Check Maintenance Window
     type: manual
+    phase: preflight
     description: Verify we are within approved maintenance window
     timeout: 300
 
   - name: Verify Service Health
-    type: command
+    type: automatic
+    phase: preflight
     command: __HEALTH_CHECK_COMMAND__
     description: Ensure service is healthy before maintenance
     timeout: 30
 
-steps:
   - name: Announce Maintenance Start
     type: manual
     description: Notify stakeholders of maintenance start

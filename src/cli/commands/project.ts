@@ -62,15 +62,14 @@ environments:
     approval_required: true
     validation_required: true
 
-preflight:
+steps:
   - name: check-git-status
-    type: command
+    type: automatic
+    phase: preflight
     command: git status --porcelain
-    condition: "output should be empty"
     description: Ensure no uncommitted changes
     timeout: 30
 
-steps:
   - name: build-application
     type: automatic
     description: Build the application artifacts
