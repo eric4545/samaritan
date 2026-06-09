@@ -109,21 +109,6 @@ export const deploymentOperation: Operation = {
       command: 'curl https://web-server.example.com/health',
     },
   ],
-  preflight: [
-    {
-      name: 'Check Git status',
-      type: 'command',
-      description: 'Ensure no uncommitted changes exist in the current branch',
-      command: 'git status --porcelain',
-      expect_empty: true,
-    },
-    {
-      name: 'Check Docker daemon',
-      type: 'command',
-      description: 'Verify that the Docker daemon is running and accessible',
-      command: 'docker info',
-    },
-  ],
   metadata: {
     created_at: new Date('2024-01-01'),
     updated_at: new Date('2024-01-15'),
@@ -170,7 +155,6 @@ export const operationWithSubSteps: Operation = {
       ],
     },
   ],
-  preflight: [],
   metadata: {
     created_at: new Date(),
     updated_at: new Date(),

@@ -51,18 +51,20 @@ environments:
       BACKUP_FILE: /tmp/production-backup.sql
     approval_required: true
 
-preflight:
+steps:
   - name: Check Git Status
-    type: command
+    type: automatic
+    phase: preflight
     command: git status --porcelain
     description: Ensure working directory is clean
 
   - name: Check Docker
-    type: command
+    type: automatic
+    phase: preflight
     command: docker version
     description: Verify Docker is available
 
-steps:
+
   # Expand all database steps inline — pass env vars explicitly
   - uses: ./common/database-steps.yaml
     with:

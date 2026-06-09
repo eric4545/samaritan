@@ -70,9 +70,6 @@ describe('Enhanced Operation Parser', () => {
     assert.strictEqual(regularSteps.length, 8); // 6 original + 2 added for verify commands
     assert.strictEqual(regularSteps[0].name, 'Build Docker Image');
     assert.strictEqual(regularSteps[0].type, 'automatic');
-
-    // Verify preflight array no longer exists (everything unified into steps)
-    assert.strictEqual(operation.preflight.length, 0);
   });
 
   it('should handle minimal YAML with proper defaults', async () => {
@@ -91,7 +88,6 @@ describe('Enhanced Operation Parser', () => {
     // Verify other defaults
     assert.strictEqual(operation.emergency, false);
     assert.strictEqual(operation.tags.length, 0);
-    assert.strictEqual(operation.preflight.length, 0);
 
     // Verify generated fields
     assert.ok(operation.id);

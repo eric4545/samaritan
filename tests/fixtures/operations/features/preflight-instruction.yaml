@@ -7,9 +7,10 @@ environments:
     variables:
       ANNOUNCE_CHANNEL: '#dev-ops'
 
-preflight:
+steps:
   - name: announce
     type: manual
+    phase: preflight
     description: Post announcement
     instruction: |
       Post to ${ANNOUNCE_CHANNEL}:
@@ -21,13 +22,13 @@ preflight:
 
   - name: socks-proxy
     type: manual
+    phase: preflight
     description: Open SOCKS proxy
     command: |
       ```bash
       ssh -D 6666 user@access.dev.rpsp.jp
       ```
 
-steps:
   - name: Deploy App
     type: automatic
     command: kubectl apply -f deployment.yaml

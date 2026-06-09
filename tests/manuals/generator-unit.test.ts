@@ -154,7 +154,6 @@ describe('Manual Generator Unit Tests', () => {
           command: 'kubectl apply -f deployment.yaml',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -199,7 +198,6 @@ describe('Manual Generator Unit Tests', () => {
           command: 'echo hello',
         },
       ],
-      preflight: [], // Empty preflight
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -263,7 +261,6 @@ describe('Manual Generator Unit Tests', () => {
           command: 'echo "whitespace description"',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -370,7 +367,6 @@ describe('Manual Generator Unit Tests', () => {
             'curl http://localhost:${PORT}/health && echo "App: ${APP_NAME}"',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -488,7 +484,6 @@ describe('Manual Generator Unit Tests', () => {
           command: 'kubectl scale deployment app --replicas=${REPLICAS}',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -566,7 +561,6 @@ describe('Manual Generator Unit Tests', () => {
           instruction: 'cat file.txt | sort | uniq | grep error',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -638,7 +632,6 @@ describe('Manual Generator Unit Tests', () => {
           ],
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -751,7 +744,6 @@ describe('Manual Generator Unit Tests', () => {
             'kubectl set env deployment/${APP_NAME} LOG_FORMAT=${LOG_FORMAT} LOG_LEVEL=${LOG_LEVEL}',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -843,7 +835,6 @@ describe('Manual Generator Unit Tests', () => {
           },
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -923,7 +914,6 @@ describe('Manual Generator Unit Tests', () => {
           command: 'echo postflight1',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -993,7 +983,6 @@ describe('Manual Generator Unit Tests', () => {
           ticket: ['TASK-456', 'BUG-789'],
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1077,7 +1066,6 @@ describe('Manual Generator Unit Tests', () => {
           command: 'docker build -t ${REGISTRY}/${APP_NAME}:${VERSION} .',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1128,7 +1116,6 @@ kubectl apply -f worker.yaml`,
 3. Confirm worker is running`,
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1201,7 +1188,6 @@ kubectl apply -f worker.yaml`,
           command: 'echo step3',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1265,7 +1251,6 @@ kubectl apply -f worker.yaml`,
           timeline: '30 minutes after deployment',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1364,7 +1349,6 @@ kubectl apply -f worker.yaml`,
           },
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1469,7 +1453,6 @@ kubectl apply -f worker.yaml`,
           ],
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1551,7 +1534,6 @@ kubectl apply -f worker.yaml`,
           variables: { SERVICE: 'worker' },
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1634,7 +1616,6 @@ kubectl apply -f worker.yaml`,
           timeline: 'After all deployments complete',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1725,7 +1706,6 @@ kubectl apply -f worker.yaml`,
           timeline: '2024-01-15 09:00 UTC',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1777,7 +1757,6 @@ kubectl apply -f worker.yaml`,
           command: 'kubectl apply -f app.yaml',
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -1918,7 +1897,6 @@ echo "Deploying at: \${TIMESTAMP}"`,
           },
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),
@@ -2161,7 +2139,6 @@ echo "Deploying at: \${TIMESTAMP}"`,
           },
         },
       ],
-      preflight: [],
       metadata: {
         created_at: new Date(),
         updated_at: new Date(),

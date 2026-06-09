@@ -40,7 +40,6 @@ describe('Manual Generation with Metadata Integration', () => {
         command: 'kubectl apply -f deployment.yaml --replicas=${REPLICAS}',
       },
     ],
-    preflight: [],
     metadata: {
       created_at: new Date(),
       updated_at: new Date(),

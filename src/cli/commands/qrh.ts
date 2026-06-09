@@ -283,7 +283,6 @@ class QRHManager {
       ],
       variables: { [environment]: {} },
       steps: entry.procedure,
-      preflight: [],
       metadata: {
         created_at: entry.last_updated,
         updated_at: entry.last_updated,

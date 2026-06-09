@@ -43,10 +43,11 @@ environments:
       - cluster-prod-eu-west-1
       - cluster-prod-asia-south-1
 
-preflight:
+steps:
   - name: Verify Database Backup
-    description: Ensure recent database backup exists before deployment
     type: manual
+    phase: preflight
+    description: Ensure recent database backup exists before deployment
     instruction: |
       Check that database backup completed within last 24 hours:
       ```bash
@@ -69,13 +70,14 @@ preflight:
     timeline: "2025-01-15 08:00"
 
   - name: Check Service Health
+    type: automatic
+    phase: preflight
     description: Verify all services are healthy before deployment
-    type: command
     command: |
       kubectl get pods -n production --field-selector=status.phase=Running
       curl -f https://api.example.com/health
 
-steps:
+
   - name: Enable Maintenance Mode
     type: manual
     description: Put application in maintenance mode to prevent user disruption

@@ -331,16 +331,19 @@ environments:
       REPLICAS: 5
       LOG_LEVEL: warn
 
-preflight:
+steps:
   - name: Check Database
+    type: automatic
+    phase: preflight
     command: pg_isready -h \${DB_HOST}
     evidence: *evidence_screenshot
 
   - name: Check Redis
+    type: automatic
+    phase: preflight
     command: redis-cli -h \${REDIS_HOST} ping
     evidence: *evidence_screenshot
 
-steps:
   - name: Migrate Database
     type: manual
     instruction: Run migrations
