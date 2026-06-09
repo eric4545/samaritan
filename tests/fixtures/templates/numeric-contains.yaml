@@ -1,0 +1,8 @@
+# Template whose step uses expect.contains with a ${VAR} that resolves to a
+# number (e.g. an AWS account ID).  Used to verify that a numeric contains
+# value is rendered correctly, not dropped or thrown on.
+- name: Verify AWS account
+  type: automatic
+  command: aws sts get-caller-identity --query Account --output text
+  expect:
+    contains: "${AWS_ACCOUNT}"

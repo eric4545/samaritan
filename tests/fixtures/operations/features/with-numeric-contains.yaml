@@ -1,0 +1,16 @@
+name: Numeric Contains Expect Test
+version: 1.0.0
+description: >
+  Tests that expect.contains resolved to a number by type-preserving ${VAR}
+  substitution is rendered in the manual, not dropped.
+environments:
+  - name: staging
+    variables:
+      AWS_REGION: us-east-1
+
+steps:
+  - name: Preflight account check
+    phase: preflight
+    uses: ../../templates/numeric-contains.yaml
+    with:
+      AWS_ACCOUNT: 123456789012

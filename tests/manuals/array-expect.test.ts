@@ -89,6 +89,39 @@ describe('Array expect rendering', () => {
   });
 });
 
+describe('Numeric expect.contains rendering (regression: number-like ${VAR} must not be dropped)', () => {
+  it('parses expect.contains resolved to a 12-digit number via template import', async () => {
+    const op = await parseFixture('withNumericContains');
+    const step = op.steps[0];
+    const expect = step.expect as { contains: unknown };
+    assert.strictEqual(
+      expect.contains,
+      123456789012,
+      'contains should resolve to the number 123456789012',
+    );
+  });
+
+  it('renders expect.contains number in multi-env table even when env has other variables', async () => {
+    const op = await parseFixture('withNumericContains');
+    const md = generateManualWithMetadata(op);
+
+    assert.ok(
+      md.includes('contains: 123456789012'),
+      'should render the account ID as a contains check, not drop it',
+    );
+  });
+
+  it('renders expect.contains number in single-env heading even when env has other variables', async () => {
+    const op = await parseFixture('withNumericContains');
+    const md = generateSingleEnvManual(op, 'staging');
+
+    assert.ok(
+      md.includes('contains: 123456789012'),
+      'should render the account ID as a contains check in single-env format',
+    );
+  });
+});
+
 describe('Numeric expect rendering (regression: 0 must not be dropped)', () => {
   it('parses an expect resolved to a number via ${VAR} substitution', async () => {
     const op = await parseFixture('withNumericExpect');

@@ -103,6 +103,8 @@ export const FIXTURES = {
   withArrayExpect: 'tests/fixtures/operations/features/with-array-expect.yaml',
   withNumericExpect:
     'tests/fixtures/operations/features/with-numeric-expect.yaml',
+  withNumericContains:
+    'tests/fixtures/operations/features/with-numeric-contains.yaml',
 
   // ===== Confluence Generator Tests =====
   multiLineCommand:

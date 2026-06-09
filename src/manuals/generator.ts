@@ -50,8 +50,16 @@ function substituteExpectVars(
     );
   const result: ExpectConfig = { ...expect };
   for (const field of EXPECT_STRING_FIELDS) {
-    if (result[field])
-      result[field] = substituteVariables(result[field], envVars, stepVars);
+    const raw = result[field];
+    if (raw === undefined || raw === null) continue;
+    // A field value may be a number/boolean when the parser's type-preserving
+    // template substitution resolved "${VAR}" to a non-string (e.g. an AWS
+    // account ID).  Convert to string instead of passing a non-string to
+    // substituteVariables (which calls String.prototype.replace internally).
+    result[field] =
+      typeof raw === 'string'
+        ? substituteVariables(raw, envVars, stepVars)
+        : String(raw);
   }
   return result;
 }
