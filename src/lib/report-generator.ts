@@ -23,7 +23,12 @@ interface StepSummary {
   reviewer?: string;
   startTs?: string;
   endTs?: string;
-  commands: Array<{ session: string; command: string; output?: string }>;
+  commands: Array<{
+    session: string;
+    command: string;
+    output?: string;
+    displayed?: boolean;
+  }>;
   verifiedBy?: string;
   verifiedAt?: string;
   failed?: boolean;
@@ -90,8 +95,20 @@ export function generateReport(jsonlPath: string): string {
           currentStep.commands.push({
             session: event.session as string,
             command: event.command as string,
+            displayed: false,
           });
           pendingOutput.delete(event.session as string);
+        }
+        break;
+      }
+
+      case 'command_displayed': {
+        if (currentStep) {
+          currentStep.commands.push({
+            session: event.session as string,
+            command: event.command as string,
+            displayed: true,
+          });
         }
         break;
       }
@@ -226,7 +243,11 @@ export function generateReport(jsonlPath: string): string {
 
     for (const cmd of step.commands) {
       lines.push('');
-      lines.push(`**Command sent**: \`${cmd.command}\``);
+      if (cmd.displayed) {
+        lines.push(`**Command (run by operator)**: \`${cmd.command}\``);
+      } else {
+        lines.push(`**Command sent**: \`${cmd.command}\``);
+      }
       if (cmd.output) {
         lines.push('');
         lines.push('Output');

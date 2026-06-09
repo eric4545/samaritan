@@ -96,6 +96,9 @@ export const FIXTURES = {
   preflightInstruction:
     'tests/fixtures/operations/features/preflight-instruction.yaml',
 
+  // Sidecar run mode
+  sidecar: 'tests/fixtures/operations/features/sidecar.yaml',
+
   // Sessions / execution engine
   withSessions: 'tests/fixtures/operations/features/with-sessions.yaml',
   withCaptureExpect:

@@ -13,6 +13,7 @@ import { basename, dirname, join } from 'node:path';
 import { createInterface as createReadlineInterface } from 'node:readline';
 import { Command } from 'commander';
 import { detectMimeType } from '../../evidence/collector';
+import type { CaptureBackend } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
@@ -20,7 +21,12 @@ import { generateReport } from '../../lib/report-generator';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import { getSessionEvidenceDir } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
-import { bootstrapSessions, type TmuxSession } from '../../lib/tmux-session';
+import {
+  bootstrapSessions,
+  TmuxPaneCapture,
+  type TmuxSession,
+  validateTmuxTarget,
+} from '../../lib/tmux-session';
 import { renderCodeBlock, renderKeyHints, StepController } from '../../lib/tui';
 import { resolveVars, resolveVarsSafe } from '../../lib/variable-resolver';
 import type { EvidenceItem } from '../../models/evidence';
@@ -38,6 +44,7 @@ interface RunOptions {
   autoApprove?: boolean;
   dryRun?: boolean;
   mode?: ExecutionMode;
+  attach?: string;
   variables?: string[];
   verbose?: boolean;
   withAi?: boolean;
@@ -92,7 +99,7 @@ class OperationRunner {
     };
 
     const executionMode: ExecutionMode =
-      options.mode ?? (options.autoApprove ? 'automatic' : 'manual');
+      options.mode ?? (options.autoApprove ? 'automatic' : 'sidecar');
 
     const operator = process.env.USER || 'unknown';
 
@@ -146,21 +153,55 @@ class OperationRunner {
 
       if (isInteractiveMode) {
         let tmuxSession: TmuxSession | undefined;
-        if (operation.sessions && Object.keys(operation.sessions).length > 0) {
+        let captureBackend: CaptureBackend | undefined;
+
+        if (executionMode === 'sidecar' && options.attach) {
+          // Sidecar + --attach: validate and attach to operator's pane
+          if (validateTmuxTarget(options.attach)) {
+            const paneCapture = new TmuxPaneCapture(
+              context.sessionId,
+              options.attach,
+            );
+            paneCapture.attach();
+            captureBackend = paneCapture;
+            console.log(
+              `🔗 Attached capture to tmux pane: ${options.attach}\n`,
+            );
+          } else {
+            console.warn(
+              `⚠️  --attach target "${options.attach}" is not a valid tmux pane; continuing without capture.\n`,
+            );
+          }
+        } else if (
+          operation.sessions &&
+          Object.keys(operation.sessions).length > 0
+        ) {
           console.log('🖥️  Bootstrapping tmux sessions...');
           try {
             tmuxSession = await bootstrapSessions(
               context.sessionId,
               operation.sessions,
             );
+            captureBackend = tmuxSession;
             console.log(
-              `   Sessions: ${Object.keys(operation.sessions).join(', ')}\n`,
+              `   Sessions: ${Object.keys(operation.sessions).join(', ')}`,
             );
+            if (executionMode === 'sidecar') {
+              console.log(
+                `   Attach with: tmux attach -t samaritan-${context.sessionId}\n`,
+              );
+            } else {
+              console.log('');
+            }
           } catch (err: any) {
             console.warn(
               `⚠️  tmux bootstrap failed (${err.message}); falling back to prompt-only mode.\n`,
             );
           }
+        } else if (executionMode === 'sidecar' && process.env.TMUX) {
+          console.log(
+            '💡 Tip: press [t] during a step to attach a tmux pane for [v] verify.\n',
+          );
         }
 
         console.log('▶️  Starting interactive operation execution...\n');
@@ -170,7 +211,9 @@ class OperationRunner {
           operation,
           absFile,
           resolvedVars,
+          executionMode,
           tmuxSession,
+          captureBackend,
         );
         executor.finalizeOperation();
 
@@ -184,6 +227,11 @@ class OperationRunner {
           console.log(`📄 Report: ${reportFile}`);
         }
 
+        // Tear down in the right order: capture backend first (never kills
+        // operator's pane), then the spawn-own tmux session.
+        if (captureBackend && captureBackend !== tmuxSession) {
+          captureBackend.teardown();
+        }
         tmuxSession?.teardown();
       } else {
         console.log('▶️  Starting operation execution...\n');
@@ -326,11 +374,15 @@ class OperationRunner {
         : session.current_step_index;
     executor.resumeFromIndex(startIndex);
 
+    const resumeMode: ExecutionMode =
+      (session.mode as ExecutionMode | undefined) ?? 'sidecar';
     await this.runInteractiveStepLoop(
       executor,
       operation,
       session.operation_file,
       context.variables,
+      resumeMode,
+      tmuxSession,
       tmuxSession,
     );
     executor.finalizeOperation();
@@ -344,7 +396,9 @@ class OperationRunner {
     operation: Operation,
     operationFile: string,
     vars: Record<string, any>,
+    mode: ExecutionMode,
     tmuxSession?: TmuxSession,
+    captureBackend?: CaptureBackend,
   ): Promise<string> {
     const rl = createReadlineInterface({
       input: process.stdin,
@@ -379,16 +433,39 @@ class OperationRunner {
     const autoSend = operation.run?.auto_send ?? false;
     const autoExec = operation.run?.auto_exec ?? false;
 
-    const controller = tmuxSession
-      ? new StepController({
-          logger,
-          tmux: tmuxSession,
-          sessionState,
-          autoSend,
-          autoExec,
-          sessions: operation.sessions,
-        })
-      : null;
+    // In sidecar mode we always construct a controller so [v] verify works.
+    // For spawn-own sessions the controller gets the TmuxSession; otherwise null.
+    // For non-sidecar we only construct a controller when a tmux session exists.
+    const controller =
+      mode === 'sidecar'
+        ? new StepController({
+            logger,
+            tmux: tmuxSession,
+            sessionState,
+            autoSend,
+            autoExec,
+            sessions: operation.sessions,
+          })
+        : tmuxSession
+          ? new StepController({
+              logger,
+              tmux: tmuxSession,
+              sessionState,
+              autoSend,
+              autoExec,
+              sessions: operation.sessions,
+            })
+          : null;
+
+    // Mutable capture reference — allows [t] to swap backends mid-run.
+    // stepOffset is per-step and re-baselined at the start of each step or on attach.
+    const captureRef: {
+      backend: CaptureBackend | undefined;
+      stepOffset: number;
+    } = {
+      backend: captureBackend,
+      stepOffset: 0,
+    };
 
     const DIVIDER = '─'.repeat(60);
     const isQuit = (c: string) => c === 'q' || c === 'quit';
@@ -663,12 +740,9 @@ class OperationRunner {
       if (!step.expect) return;
 
       const output = captureSinceStepStart();
-      // captureSinceStepStart only returns output when a tmux session is
-      // attached, which is exactly when `controller` is constructed — so
-      // these two checks always succeed or fail together.
       if (output === undefined || !controller) {
         console.log(
-          '    ⚠️  Verify requires an attached tmux session — capture or check output manually.',
+          '    ⚠️  Verify requires an attached capture — press [t] to attach a tmux pane.',
         );
         return;
       }
@@ -727,7 +801,13 @@ class OperationRunner {
             `    Ticket   : ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`,
           );
 
-        if (step.type === 'automatic') {
+        // In sidecar mode, automatic steps go through the manual-style loop
+        // (display command, operator runs it, [v] to verify). In other modes,
+        // automatic steps are handled by the send/verify branch.
+        const isSidecarAutomatic =
+          step.type === 'automatic' && mode === 'sidecar';
+
+        if (step.type === 'automatic' && !isSidecarAutomatic) {
           if (resolvedCommand)
             console.log(`\n${renderCodeBlock(resolvedCommand)}`);
 
@@ -833,24 +913,37 @@ class OperationRunner {
             logger.emit({ type: 'step_complete', step: i });
             console.log('    ✅ Step marked complete.');
           }
-        } else if (step.type === 'manual') {
+        } else if (step.type === 'manual' || isSidecarAutomatic) {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
           if (resolvedCommand) {
-            console.log('\n    Command reference:');
-            console.log(renderCodeBlock(resolvedCommand));
+            if (isSidecarAutomatic) {
+              // Sidecar: display command prominently — operator runs it themselves
+              console.log('\n    Run this command in your terminal:');
+              console.log(renderCodeBlock(resolvedCommand));
+              const sessionName = step.session ?? 'default';
+              logger.emit({
+                type: 'command_displayed',
+                step: i,
+                session: sessionName,
+                command: resolvedCommand,
+              });
+            } else {
+              console.log('\n    Command reference:');
+              console.log(renderCodeBlock(resolvedCommand));
+            }
           }
 
-          const sessionName = step.session;
-          const stepOffset =
-            tmuxSession &&
-            sessionName &&
-            tmuxSession.getPaneMap().has(sessionName)
-              ? tmuxSession.currentOffset(sessionName)
-              : undefined;
-          const captureSinceStepStart = (): string | undefined =>
-            tmuxSession && sessionName && stepOffset !== undefined
-              ? tmuxSession.readOutput(sessionName, stepOffset)
-              : undefined;
+          // Baseline the capture offset at the start of each step.
+          // Uses captureRef so [t] can swap the backend and this closure stays fresh.
+          const sessionName = step.session ?? 'default';
+          captureRef.stepOffset = captureRef.backend?.hasTarget(sessionName)
+            ? captureRef.backend.currentOffset(sessionName)
+            : 0;
+          const captureSinceStepStart = (): string | undefined => {
+            const { backend, stepOffset } = captureRef;
+            if (!backend || !backend.hasTarget(sessionName)) return undefined;
+            return backend.readOutput(sessionName, stepOffset);
+          };
 
           let manualNotes = '';
           while (true) {
@@ -866,6 +959,9 @@ class OperationRunner {
                     ? [{ key: 'x', label: 'remove evidence' }]
                     : []),
                   ...(step.expect ? [{ key: 'v', label: 'verify' }] : []),
+                  ...(mode === 'sidecar'
+                    ? [{ key: 't', label: 'attach pane' }]
+                    : []),
                   { key: 's', label: 'skip' },
                   { key: 'r', label: 'rollback' },
                   { key: 'abort', label: 'abort' },
@@ -873,6 +969,12 @@ class OperationRunner {
             );
             const input = await question('  > ');
             const inputChoice = input.trim().toLowerCase();
+            if (isQuit(inputChoice)) {
+              executor.cancel();
+              console.log('\n⛔ Execution aborted by operator.');
+              manualNotes = '';
+              break;
+            }
             if (
               resolvedCommand &&
               (inputChoice === 'c' || inputChoice === 'copy')
@@ -915,9 +1017,53 @@ class OperationRunner {
               await verifyManualOutput(step, i, captureSinceStepStart);
               continue;
             }
+            if (
+              mode === 'sidecar' &&
+              (inputChoice === 't' || inputChoice === 'attach')
+            ) {
+              // [t] — attach (or swap) a tmux pane for capture
+              const targetAns = (
+                await question('    Tmux pane target (Enter to cancel): ')
+              ).trim();
+              if (!targetAns) {
+                console.log('    ↩  Cancelled.');
+                continue;
+              }
+              if (!validateTmuxTarget(targetAns)) {
+                console.log(
+                  `    ⚠️  "${targetAns}" is not a valid tmux pane. Skipping.`,
+                );
+                continue;
+              }
+              // Tear down a previous TmuxPaneCapture (never tear down a spawn-own TmuxSession)
+              if (captureRef.backend && captureRef.backend !== tmuxSession) {
+                captureRef.backend.teardown();
+              }
+              const newCapture = new TmuxPaneCapture(
+                `${state.context.sessionId}-${i}`,
+                targetAns,
+              );
+              newCapture.attach();
+              captureRef.backend = newCapture;
+              // Re-baseline the step offset on the new backend
+              captureRef.stepOffset = newCapture.currentOffset(sessionName);
+              logger.emit({
+                type: 'capture_attach',
+                target: targetAns,
+                actor: state.context.operator,
+              });
+              console.log(
+                `    🔗 Attached capture to: ${newCapture.describeTarget(sessionName)}`,
+              );
+              continue;
+            }
             manualNotes = input;
             break;
           }
+
+          // If the loop exited via [q]/quit, executor was already cancelled.
+          if (executor.getState().status === 'cancelled') break;
+
           const choice = manualNotes.trim().toLowerCase();
           if (choice === 'abort') {
             executor.cancel();
@@ -1132,6 +1278,13 @@ function inferEvidenceTypeFromExtension(filename: string): EvidenceType {
 
 // ─── CLI commands ─────────────────────────────────────────────────────────────
 
+const VALID_MODES: ExecutionMode[] = [
+  'sidecar',
+  'manual',
+  'automatic',
+  'hybrid',
+];
+
 const runCommand = new Command('run')
   .description('Execute an operation')
   .argument('<operation>', 'Operation file path')
@@ -1141,8 +1294,12 @@ const runCommand = new Command('run')
   .option('--dry-run', 'Preview full operation plan without executing')
   .option(
     '-m, --mode <mode>',
-    'Execution mode: automatic | manual | hybrid',
-    'manual',
+    'Execution mode: sidecar | manual | automatic | hybrid',
+    'sidecar',
+  )
+  .option(
+    '--attach <tmux-target>',
+    'Attach to an existing tmux pane for sidecar capture (e.g. mysession:0.0)',
   )
   .option(
     '--var <key=value>',
@@ -1155,6 +1312,15 @@ const runCommand = new Command('run')
   .option('--report <dir>', 'Write Markdown evidence report to directory')
   .action(async (operation: string, options: RunOptions) => {
     try {
+      if (
+        options.mode &&
+        !VALID_MODES.includes(options.mode as ExecutionMode)
+      ) {
+        console.error(
+          `❌ Invalid mode "${options.mode}". Must be one of: ${VALID_MODES.join(' | ')}`,
+        );
+        process.exit(1);
+      }
       const runner = new OperationRunner();
       await runner.runOperation(operation, options);
     } catch (error: any) {

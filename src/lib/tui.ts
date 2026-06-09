@@ -23,7 +23,7 @@ export type StepState =
 
 export interface StepControllerOptions {
   logger: EventLogger;
-  tmux: TmuxSession;
+  tmux?: TmuxSession;
   sessionState: SessionState;
   autoSend: boolean;
   autoExec: boolean;
@@ -96,6 +96,9 @@ export class StepController {
 
     if (!step.command) return { state: 'complete' };
 
+    // No tmux session — nothing to send or verify
+    if (!tmux) return { state: 'complete' };
+
     const sessionName = step.session ?? 'default';
     const sessionConfig = this.opts.sessions?.[sessionName];
     const isSSH = !isLocalSession(sessionConfig);
@@ -110,22 +113,20 @@ export class StepController {
       command,
     });
 
-    if (tmux) {
-      const offset = tmux.currentOffset(sessionName);
-      tmux.send(sessionName, command);
-      await tmux.waitForPrompt(sessionName, 30_000);
-      const output = tmux.readOutput(sessionName, offset);
+    const offset = tmux.currentOffset(sessionName);
+    tmux.send(sessionName, command);
+    await tmux.waitForPrompt(sessionName, 30_000);
+    const output = tmux.readOutput(sessionName, offset);
 
-      logger.emit({
-        type: 'pane_captured',
-        session: sessionName,
-        output,
-      });
+    logger.emit({
+      type: 'pane_captured',
+      session: sessionName,
+      output,
+    });
 
-      if (!isSSH && step.expect) {
-        const { assertResult } = this.verifyOutput(step, stepIndex, output);
-        if (assertResult) return { state: 'assert_result', assertResult };
-      }
+    if (!isSSH && step.expect) {
+      const { assertResult } = this.verifyOutput(step, stepIndex, output);
+      if (assertResult) return { state: 'assert_result', assertResult };
     }
 
     if (isSSH) return { state: 'manual_verify' };
@@ -216,6 +217,7 @@ export class StepController {
     timeoutMs: number,
     idleThresholdMs = 0,
   ): Promise<'done' | 'timeout' | 'idle'> {
+    if (!this.opts.tmux) return 'done';
     return this.opts.tmux.waitForPrompt(
       sessionName,
       timeoutMs,

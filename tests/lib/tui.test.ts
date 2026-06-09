@@ -224,6 +224,81 @@ describe('interpolateExpect — var substitution', () => {
   });
 });
 
+describe('StepController without tmux (sidecar mode)', () => {
+  it('can be constructed without a tmux session', () => {
+    const logger = makeLogger('no-tmux-1');
+    const opts: StepControllerOptions = {
+      logger,
+      // tmux intentionally omitted — should be undefined
+      sessionState: null as any,
+      autoSend: false,
+      autoExec: false,
+    };
+    assert.doesNotThrow(() => new StepController(opts));
+    cleanLogger(logger);
+  });
+
+  it('verifyOutput emits assert_result even without tmux', () => {
+    const logger = makeLogger('no-tmux-2');
+    const opts: StepControllerOptions = {
+      logger,
+      sessionState: null as any,
+      autoSend: false,
+      autoExec: false,
+    };
+    const ctrl = new StepController(opts);
+
+    const step = {
+      name: 'Check output',
+      expect: { contains: 'Running' },
+    } as any;
+
+    const { assertResult } = ctrl.verifyOutput(step, 0, 'pod/web-0   Running');
+    assert.ok(assertResult, 'should return an assertResult');
+    assert.strictEqual(assertResult?.pass, true);
+
+    const events = readEvents(logger).filter((e) => e.type === 'assert_result');
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].pass, true);
+
+    cleanLogger(logger);
+  });
+
+  it('waitForCompletion returns done immediately without tmux', async () => {
+    const logger = makeLogger('no-tmux-3');
+    const opts: StepControllerOptions = {
+      logger,
+      sessionState: null as any,
+      autoSend: false,
+      autoExec: false,
+    };
+    const ctrl = new StepController(opts);
+    const result = await ctrl.waitForCompletion('default', 5_000);
+    assert.strictEqual(result, 'done');
+    cleanLogger(logger);
+  });
+
+  it('runVerify returns complete immediately without tmux', async () => {
+    const logger = makeLogger('no-tmux-4');
+    const opts: StepControllerOptions = {
+      logger,
+      sessionState: null as any,
+      autoSend: false,
+      autoExec: false,
+    };
+    const ctrl = new StepController(opts);
+    const step = {
+      name: 'Check output',
+      command: 'kubectl get pods',
+      expect: { contains: 'Running' },
+    } as any;
+
+    const { state } = await ctrl.runVerify(step, 0);
+    assert.strictEqual(state, 'complete');
+    cleanLogger(logger);
+  });
+});
+
 describe('StepController.verifyOutput', () => {
   function makeController(logger: EventLogger): StepController {
     const opts: StepControllerOptions = {

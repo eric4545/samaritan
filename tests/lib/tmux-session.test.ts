@@ -1,11 +1,14 @@
 import assert from 'node:assert';
 import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import {
   isLocalSession,
   sanitizeSessionName,
+  TmuxPaneCapture,
   TmuxSession,
+  validateTmuxTarget,
 } from '../../src/lib/tmux-session';
 
 describe('TmuxSession (issue #6)', () => {
@@ -155,6 +158,137 @@ describe('isLocalSession (issue #6)', () => {
     assert.strictEqual(
       isLocalSession({ host: 'monitoring.example.com', user: 'sre' }),
       false,
+    );
+  });
+});
+
+describe('validateTmuxTarget', () => {
+  it('returns false for an obviously invalid target (no live tmux needed)', () => {
+    // No tmux server running in CI — any target should fail with status != 0
+    const result = validateTmuxTarget('definitely-not-a-real-pane-xyz');
+    assert.strictEqual(result, false, 'invalid target must return false');
+  });
+
+  it('returns false for empty string', () => {
+    assert.strictEqual(validateTmuxTarget(''), false);
+  });
+});
+
+describe('TmuxPaneCapture (capture-backend)', () => {
+  it('implements CaptureBackend interface', () => {
+    const capture = new TmuxPaneCapture('test-cap-1', 'mysession:0.0');
+    assert.strictEqual(typeof capture.hasTarget, 'function');
+    assert.strictEqual(typeof capture.currentOffset, 'function');
+    assert.strictEqual(typeof capture.readOutput, 'function');
+    assert.strictEqual(typeof capture.describeTarget, 'function');
+    assert.strictEqual(typeof capture.teardown, 'function');
+    assert.strictEqual(typeof capture.attach, 'function');
+  });
+
+  it('hasTarget always returns true (single pane target)', () => {
+    const capture = new TmuxPaneCapture('test-cap-2', 'mysession:0.0');
+    assert.strictEqual(capture.hasTarget('default'), true);
+    assert.strictEqual(capture.hasTarget('any-session'), true);
+    assert.strictEqual(capture.hasTarget(''), true);
+  });
+
+  it('describeTarget includes the tmux pane target', () => {
+    const capture = new TmuxPaneCapture('test-cap-3', 'mysession:1.0');
+    const desc = capture.describeTarget('default');
+    assert.ok(
+      desc.includes('mysession:1.0'),
+      `describeTarget should include the pane target, got: ${desc}`,
+    );
+  });
+
+  it('currentOffset returns 0 when pipe file does not exist', () => {
+    const capture = new TmuxPaneCapture('test-cap-offset-1', 'mysession:0.0');
+    const offset = capture.currentOffset('default');
+    assert.strictEqual(offset, 0);
+  });
+
+  it('currentOffset returns file size when pipe file exists', () => {
+    const capture = new TmuxPaneCapture('test-cap-offset-2', 'mysession:0.0');
+    // Seed the pipe file manually (simulating what pipe-pane would do)
+    const pipeFile = join(
+      tmpdir(),
+      'samaritan-test-cap-offset-2-attached.pipe',
+    );
+    writeFileSync(pipeFile, 'hello world\n', 'utf-8');
+    try {
+      const offset = capture.currentOffset('default');
+      assert.strictEqual(offset, 12);
+    } finally {
+      if (existsSync(pipeFile)) unlinkSync(pipeFile);
+    }
+  });
+
+  it('readOutput returns content from offset', () => {
+    const capture = new TmuxPaneCapture('test-cap-ro-1', 'mysession:0.0');
+    const pipeFile = join(tmpdir(), 'samaritan-test-cap-ro-1-attached.pipe');
+    writeFileSync(pipeFile, 'prefix_output_suffix\n', 'utf-8');
+    try {
+      const output = capture.readOutput('default', 7);
+      assert.strictEqual(output, 'output_suffix\n');
+    } finally {
+      if (existsSync(pipeFile)) unlinkSync(pipeFile);
+    }
+  });
+
+  it('readOutput returns empty string when file does not exist', () => {
+    const capture = new TmuxPaneCapture('test-cap-ro-missing', 'mysession:0.0');
+    const output = capture.readOutput('default', 0);
+    assert.strictEqual(output, '');
+  });
+
+  it('teardown unlinks the pipe file and does not throw', () => {
+    const capture = new TmuxPaneCapture('test-cap-td-1', 'mysession:0.0');
+    const pipeFile = join(tmpdir(), 'samaritan-test-cap-td-1-attached.pipe');
+    writeFileSync(pipeFile, 'captured output\n', 'utf-8');
+    assert.ok(existsSync(pipeFile), 'pipe file should exist before teardown');
+    // teardown calls tmux pipe-pane (may fail in CI — that is OK) and unlinks
+    assert.doesNotThrow(() => {
+      capture.teardown();
+    });
+    assert.ok(!existsSync(pipeFile), 'pipe file should be removed by teardown');
+  });
+
+  it('teardown does not throw when pipe file does not exist', () => {
+    const capture = new TmuxPaneCapture('test-cap-td-missing', 'mysession:0.0');
+    assert.doesNotThrow(() => {
+      capture.teardown();
+    });
+  });
+});
+
+describe('TmuxSession CaptureBackend conformance', () => {
+  it('hasTarget returns false when pane not registered', () => {
+    const session = new TmuxSession('cbc-1', 'samaritan-cbc-1');
+    assert.strictEqual(session.hasTarget('execution'), false);
+  });
+
+  it('hasTarget returns true after registerPane', () => {
+    const session = new TmuxSession('cbc-2', 'samaritan-cbc-2');
+    session.registerPane('execution', 'samaritan-cbc-2:0.0');
+    assert.strictEqual(session.hasTarget('execution'), true);
+  });
+
+  it('describeTarget includes pane when registered', () => {
+    const session = new TmuxSession('cbc-3', 'samaritan-cbc-3');
+    session.registerPane('execution', 'samaritan-cbc-3:0.0');
+    const desc = session.describeTarget('execution');
+    assert.ok(
+      desc.includes('samaritan-cbc-3:0.0'),
+      `describeTarget should include pane, got: ${desc}`,
+    );
+  });
+
+  it('describeTarget falls back to session name when pane not registered', () => {
+    const session = new TmuxSession('cbc-4', 'samaritan-cbc-4');
+    const desc = session.describeTarget('unregistered');
+    assert.ok(
+      desc.includes('samaritan-cbc-4'),
+      `describeTarget should include tmux session name, got: ${desc}`,
     );
   });
 });
