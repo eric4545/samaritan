@@ -219,4 +219,40 @@ describe('Generate Command', () => {
       );
     });
   });
+
+  describe('Schema validation error messages', () => {
+    it('should print the unknown field name when expect has a typo', () => {
+      const opYaml = `
+name: Test Op
+version: 1.0.0
+environments:
+  - name: staging
+    variables:
+      AWS_ACC_NO: "123456789012"
+steps:
+  - name: a
+    phase: preflight
+    command: aws sts
+    expect:
+      contain: \${AWS_ACC_NO}
+`;
+      const tmpFile = '/tmp/samaritan-test-contain-typo.yaml';
+      require('node:fs').writeFileSync(tmpFile, opYaml);
+      try {
+        execSync(
+          `npx tsx src/cli/index.ts generate manual ${tmpFile} --env staging`,
+          { cwd: process.cwd(), encoding: 'utf-8' },
+        );
+        assert.fail('Should have thrown');
+      } catch (err: any) {
+        const stderr: string = err.stderr || err.stdout || '';
+        assert.ok(
+          stderr.includes("unknown field 'contain'"),
+          `Error output should name the unknown field; got: ${stderr}`,
+        );
+      } finally {
+        require('node:fs').unlinkSync(tmpFile);
+      }
+    });
+  });
 });

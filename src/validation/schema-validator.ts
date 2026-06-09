@@ -49,9 +49,16 @@ export function validateOperationSchema(data: any): ValidationError[] {
 
   if (validateOperation.errors) {
     for (const error of validateOperation.errors) {
+      const unknownField = (error.params as any)?.additionalProperty as
+        | string
+        | undefined;
+      const message =
+        error.keyword === 'additionalProperties' && unknownField
+          ? `unknown field '${unknownField}' at ${error.instancePath || 'root'}`
+          : error.message || 'Validation failed';
       errors.push({
         field: error.instancePath || error.schemaPath || 'root',
-        message: error.message || 'Validation failed',
+        message,
         value: error.data,
       });
     }

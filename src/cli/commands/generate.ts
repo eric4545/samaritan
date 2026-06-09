@@ -1960,6 +1960,11 @@ generateCommand
       await generator.generateManual(operation, options);
     } catch (error: any) {
       console.error(`❌ Failed to generate manual: ${error.message}`);
+      if (Array.isArray(error.errors) && error.errors.length > 0) {
+        for (const e of error.errors) {
+          console.error(`   • ${e.message}`);
+        }
+      }
       process.exit(1);
     }
   });
@@ -1984,6 +1989,11 @@ generateCommand
       await generator.generateDocs(operation, options);
     } catch (error: any) {
       console.error(`❌ Failed to generate docs: ${error.message}`);
+      if (Array.isArray(error.errors) && error.errors.length > 0) {
+        for (const e of error.errors) {
+          console.error(`   • ${e.message}`);
+        }
+      }
       process.exit(1);
     }
   });
@@ -1998,6 +2008,11 @@ generateCommand
       await generator.generateSchedule(operation, options);
     } catch (error: any) {
       console.error(`❌ Failed to generate schedule: ${error.message}`);
+      if (Array.isArray(error.errors) && error.errors.length > 0) {
+        for (const e of error.errors) {
+          console.error(`   • ${e.message}`);
+        }
+      }
       process.exit(1);
     }
   });
