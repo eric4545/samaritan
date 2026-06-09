@@ -13,6 +13,8 @@ function fixturePath(name: string): string {
     manualStepActions:
       'tests/fixtures/operations/features/manual-step-actions.yaml',
     withSessions: 'tests/fixtures/operations/features/with-sessions.yaml',
+    nestedSubsteps2Levels:
+      'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',
   };
   return resolve(map[name]);
 }
@@ -361,5 +363,59 @@ describe('run command: --report flag', () => {
     } finally {
       rmSync(reportDir, { recursive: true, force: true });
     }
+  });
+});
+
+// ─── Sub-steps support ────────────────────────────────────────────────────────
+
+describe('run command: sub-steps support', () => {
+  it('dry-run expands sub_steps into flat step count', () => {
+    // nested-substeps-2-levels has 1 top-level step with 2 sub_steps each
+    // having 2 leaf sub_steps — 7 flat steps total vs. 1 top-level
+    const fixture = fixturePath('nestedSubsteps2Levels');
+    const result = runCli(['run', fixture, '--env', 'staging', '--dry-run']);
+    assert.strictEqual(result.status, 0, 'dry-run with sub_steps must exit 0');
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Steps: 7') || combined.includes('7  Skipped'),
+      'flat step count must include sub_steps (7 total, not 1 top-level)',
+    );
+  });
+
+  it('interactive mode shows parent section header with sub-steps annotation', () => {
+    const fixture = fixturePath('nestedSubsteps2Levels');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('sub-steps follow'),
+      'parent step must appear as section header with sub-steps annotation',
+    );
+  });
+
+  it('interactive mode shows sub-step labels like [1a/N] after parent section', () => {
+    const fixture = fixturePath('nestedSubsteps2Levels');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('[1a/') || combined.includes('[1b/'),
+      'sub-steps must appear with alphabetic labels (1a, 1b, ...)',
+    );
+  });
+
+  it('action prompt accepts single-char input in non-TTY fallback mode', () => {
+    // In non-TTY (piped stdin), readActionKey falls back to readline question()
+    const fixture = fixturePath('nestedSubsteps2Levels');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
+    assert.strictEqual(
+      result.status,
+      0,
+      'non-TTY fallback must handle single-char input + newline',
+    );
   });
 });
