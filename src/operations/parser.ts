@@ -598,61 +598,12 @@ async function resolveStepReferences(
   return resolvedSteps;
 }
 
-const KNOWN_EXPECT_FIELDS = new Set([
-  'contains',
-  'not_contains',
-  'equals',
-  'matches',
-  'not_empty',
-  'any_line_contains',
-  'no_line_contains',
-  'all_lines_match',
-  'line_count',
-  'line_count_gte',
-  'numeric_gte',
-  'numeric_lte',
-  'jsonpath',
-  'equals_captured',
-  'retry',
-]);
-
-function validateExpectFields(expect: any, stepName?: string): void {
-  if (expect == null || typeof expect !== 'object' || Array.isArray(expect))
-    return;
-  for (const key of Object.keys(expect)) {
-    if (!KNOWN_EXPECT_FIELDS.has(key)) {
-      const suggestions = [...KNOWN_EXPECT_FIELDS].filter(
-        (f) => f.startsWith(key) || key.startsWith(f.slice(0, -1)),
-      );
-      const hint =
-        suggestions.length > 0 ? ` — did you mean '${suggestions[0]}'?` : '';
-      throw new OperationParseError(
-        `Unknown field '${key}' in expect${stepName ? ` for step '${stepName}'` : ''}${hint}`,
-        [
-          {
-            field: stepName
-              ? `steps[${stepName}].expect.${key}`
-              : `expect.${key}`,
-            message: `'${key}' is not a valid expect field${hint}`,
-          },
-        ],
-      );
-    }
-  }
-}
-
 function extractExpect(stepData: any): any {
-  if (stepData.expect != null) {
-    validateExpectFields(stepData.expect, stepData.name);
-    return stepData.expect;
-  }
+  if (stepData.expect != null) return stepData.expect;
   // Backward compat: lift verify.expect or string verify shorthand
   if (stepData.verify != null) {
     if (typeof stepData.verify === 'string') return stepData.verify;
-    if (stepData.verify.expect != null) {
-      validateExpectFields(stepData.verify.expect, stepData.name);
-      return stepData.verify.expect;
-    }
+    if (stepData.verify.expect != null) return stepData.verify.expect;
   }
   return undefined;
 }
