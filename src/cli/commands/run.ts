@@ -39,7 +39,6 @@ import { parseOperation } from '../../operations/parser';
 interface FlatStep {
   step: Step;
   label: string;
-  isParent: boolean;
 }
 
 interface RunOptions {
@@ -66,10 +65,10 @@ function flattenStepsForExecution(steps: Step[], prefix = ''): FlatStep[] {
   steps.forEach((step, i) => {
     const label = prefix ? `${prefix}${indexToLetters(i)}` : String(i + 1);
     if (step.sub_steps && step.sub_steps.length > 0) {
-      result.push({ step, label, isParent: true });
+      result.push({ step, label });
       result.push(...flattenStepsForExecution(step.sub_steps, label));
     } else {
-      result.push({ step, label, isParent: false });
+      result.push({ step, label });
     }
   });
   return result;
@@ -140,8 +139,7 @@ class OperationRunner {
       autoMode: executionMode === 'automatic' || options.autoApprove || false,
     };
 
-    const flatSteps = flattenStepsForExecution(operation.steps);
-    const execOperation = { ...operation, steps: flatSteps.map((f) => f.step) };
+    const { flatSteps, execOperation } = this.prepareFlatOperation(operation);
 
     this.displayOperationSummary(
       execOperation,
@@ -326,12 +324,8 @@ class OperationRunner {
       autoMode: session.mode === 'automatic',
     };
 
-    const resumeFlatSteps = flattenStepsForExecution(operation.steps);
-    const resumeExecOperation = {
-      ...operation,
-      steps: resumeFlatSteps.map((f) => f.step),
-    };
-    const executor = new OperationExecutor(resumeExecOperation, context);
+    const { flatSteps, execOperation } = this.prepareFlatOperation(operation);
+    const executor = new OperationExecutor(execOperation, context);
     sessionManager.associateExecutor(session.id, executor);
 
     this.setupEventHandlers(executor, { verbose: options.verbose });
@@ -365,7 +359,7 @@ class OperationRunner {
       session.operation_file,
       context.variables,
       tmuxSession,
-      resumeFlatSteps,
+      flatSteps,
     );
     executor.finalizeOperation();
     tmuxSession?.teardown();
@@ -373,13 +367,24 @@ class OperationRunner {
     console.log('\n✅ Session resumed and completed!');
   }
 
+  private prepareFlatOperation(operation: Operation): {
+    flatSteps: FlatStep[];
+    execOperation: Operation;
+  } {
+    const flatSteps = flattenStepsForExecution(operation.steps);
+    return {
+      flatSteps,
+      execOperation: { ...operation, steps: flatSteps.map((f) => f.step) },
+    };
+  }
+
   private async runInteractiveStepLoop(
     executor: OperationExecutor,
     operation: Operation,
     operationFile: string,
     vars: Record<string, any>,
-    tmuxSession?: TmuxSession,
-    flatSteps?: FlatStep[],
+    tmuxSession: TmuxSession | undefined,
+    flatSteps: FlatStep[],
   ): Promise<string> {
     const rl = createReadlineInterface({
       input: process.stdin,
@@ -387,6 +392,8 @@ class OperationRunner {
     });
     const question = (prompt: string): Promise<string> =>
       new Promise((resolve) => rl.question(prompt, resolve));
+
+    if (process.stdin.isTTY) emitKeypressEvents(process.stdin);
 
     // Single-char action keys that fire immediately without pressing Enter.
     // Multi-char words (abort, approve, reject) still require Enter — intentional.
@@ -404,7 +411,6 @@ class OperationRunner {
     const readActionKey = (): Promise<string> => {
       if (!process.stdin.isTTY) return question('  > ');
 
-      emitKeypressEvents(process.stdin);
       rl.pause();
       process.stdin.setRawMode(true);
       process.stdout.write('  > ');
@@ -798,8 +804,7 @@ class OperationRunner {
         i++
       ) {
         const { step } = steps[i];
-        const stepLabel = flatSteps?.[i]?.label ?? String(i + 1);
-        const stepNum = `[${stepLabel}/${steps.length}]`;
+        const stepNum = `[${flatSteps[i].label}/${steps.length}]`;
         const typeLabel = step.type.toUpperCase();
 
         const resolvedCommand = tryResolve(step.command);
@@ -827,7 +832,7 @@ class OperationRunner {
 
         // Parent steps (those with sub_steps) are section headers — show any
         // instruction as context then auto-advance; the sub_steps follow.
-        if (flatSteps?.[i]?.isParent) {
+        if (step.sub_steps && step.sub_steps.length > 0) {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
           console.log('    ▶  (section — sub-steps follow)');
           await executor.executeStepManually(i, 'section header');
