@@ -15,12 +15,14 @@ export function isLocalSession(config: SessionConfig | undefined): boolean {
  * Never throws — a bad target simply returns false.
  */
 export function validateTmuxTarget(target: string): boolean {
+  // Guard explicitly: tmux falls back to the current/first pane for an empty
+  // target, and display-message exits 0 even for unknown targets when a
+  // server is running — list-panes is the only form that reliably errors.
+  if (!target.trim()) return false;
   try {
-    const result = spawnSync(
-      'tmux',
-      ['display-message', '-p', '-t', target, '#{pane_id}'],
-      { stdio: 'pipe' },
-    );
+    const result = spawnSync('tmux', ['list-panes', '-t', target], {
+      stdio: 'pipe',
+    });
     return result.status === 0;
   } catch {
     return false;
