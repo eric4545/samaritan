@@ -60,7 +60,6 @@ interface RunOptions {
   attach?: string;
   variables?: string[];
   verbose?: boolean;
-  withAi?: boolean;
   continueOnError?: boolean;
   report?: string;
 }
@@ -1444,7 +1443,6 @@ const runCommand = new Command('run')
     (value, previous: string[] = []) => [...previous, value],
   )
   .option('-v, --verbose', 'Verbose output')
-  .option('--with-ai', 'Enable AI assistance during execution')
   .option('--continue-on-error', 'Continue execution even if steps fail')
   .option('--report <dir>', 'Write Markdown evidence report to directory')
   .action(async (operation: string, options: RunOptions) => {
