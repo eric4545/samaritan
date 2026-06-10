@@ -50,6 +50,21 @@ export function resolveGithubUrl(shorthand: string): string {
     );
   }
 
+  // Each component is embedded in the fetched URL — reject characters that
+  // would change which resource is requested (query/fragment/traversal).
+  if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(ownerRepo)) {
+    throw new Error(
+      `Invalid github: shorthand — owner/repo must be "owner/repo": ${shorthand}`,
+    );
+  }
+  for (const part of [ref, filePath]) {
+    if (/[?#\s]/.test(part) || part.split('/').includes('..')) {
+      throw new Error(
+        `Invalid github: shorthand — ref/path contains forbidden characters: ${shorthand}`,
+      );
+    }
+  }
+
   return `https://raw.githubusercontent.com/${ownerRepo}/${ref}/${filePath}`;
 }
 

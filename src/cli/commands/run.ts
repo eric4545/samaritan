@@ -46,6 +46,9 @@ import type {
 } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
+// Cap free-form pasted evidence; larger payloads should be file attachments.
+const MAX_PASTED_EVIDENCE_BYTES = 10 * 1024 * 1024;
+
 interface FlatStep {
   step: Step;
   label: string;
@@ -731,6 +734,12 @@ class OperationRunner {
         copyFileSync(resolvedPath, storedPath);
       } else {
         content = await question('    Paste/type evidence content: ');
+        if (Buffer.byteLength(content, 'utf-8') > MAX_PASTED_EVIDENCE_BYTES) {
+          console.log(
+            '    ⚠️  Pasted content exceeds 10 MB — attach it as a file instead.',
+          );
+          return;
+        }
       }
 
       const description =

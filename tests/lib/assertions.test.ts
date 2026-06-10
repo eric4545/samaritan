@@ -362,3 +362,27 @@ describe('numeric expect values (variable substitution can resolve "${VAR}" to a
     assert.strictEqual(result.type, 'contains');
   });
 });
+
+describe('assertOutput — invalid user-supplied regex (security hardening)', () => {
+  it('matches with invalid regex fails the check instead of throwing', () => {
+    const r = assertOutput('some output', { matches: '(unclosed' });
+    assert.strictEqual(r.pass, false);
+    assert.strictEqual(r.type, 'matches');
+    assert.ok(r.expected.includes('invalid pattern'));
+  });
+
+  it('all_lines_match with invalid regex fails the check instead of throwing', () => {
+    const r = assertOutput('line1\nline2', { all_lines_match: '[bad' });
+    assert.strictEqual(r.pass, false);
+    assert.strictEqual(r.type, 'all_lines_match');
+    assert.ok(r.expected.includes('invalid pattern'));
+  });
+});
+
+describe('SessionState.extractCapture — invalid pattern (security hardening)', () => {
+  it('skips the capture instead of throwing on invalid regex', () => {
+    const state = new SessionState();
+    state.extractCapture('BAD', 'output text', { pattern: '(unclosed' });
+    assert.strictEqual(state.get('BAD'), undefined);
+  });
+});

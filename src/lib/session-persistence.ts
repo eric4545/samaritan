@@ -12,7 +12,8 @@ import type { OperationSession } from '../models/session';
 
 function getSessionDir(): string {
   const dir = join(homedir(), '.samaritan', 'sessions');
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  // 0o700: sessions hold variables and evidence — keep them owner-only
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
   return dir;
 }
 
@@ -27,7 +28,7 @@ function sessionPath(sessionId: string): string {
  */
 export function getSessionEvidenceDir(sessionId: string): string {
   const dir = join(getSessionDir(), sessionId, 'evidence');
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
   return dir;
 }
 
@@ -48,8 +49,10 @@ export function saveSession(session: OperationSession): void {
       JSON.stringify(session, null, 2),
       'utf-8',
     );
-  } catch {
-    // Persistence is best-effort; don't crash the run if writes fail.
+  } catch (err: any) {
+    // Persistence is best-effort; don't crash the run if writes fail —
+    // but surface the failure so a broken resume isn't a surprise later.
+    console.error(`⚠️  Failed to persist session ${session.id}: ${err.message}`);
   }
 }
 
