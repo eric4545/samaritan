@@ -322,6 +322,101 @@ describe('Enhanced Operation Parser', () => {
     );
   });
 
+  describe('foreach/matrix variable reference resolution', () => {
+    it('resolves common_variables references in foreach values', async () => {
+      const operation = await parseFixture('foreachVariableValues');
+
+      assert.strictEqual(
+        operation.steps[0].name,
+        'foreach title test (a@example.com)',
+      );
+      assert.strictEqual(
+        operation.steps[0].variables?.TEST_RECIPIENT,
+        'a@example.com',
+      );
+      assert.strictEqual(operation.steps[0].foreach, undefined);
+    });
+
+    it('leaves unresolved (undefined) variable references literal', async () => {
+      const operation = await parseFixture('foreachVariableValues');
+
+      // EMAIL_B is not defined anywhere
+      assert.strictEqual(
+        operation.steps[1].name,
+        'foreach title test (${EMAIL_B})',
+      );
+      assert.strictEqual(
+        operation.steps[1].variables?.TEST_RECIPIENT,
+        '${EMAIL_B}',
+      );
+    });
+
+    it('preserves type when a whole-string ${VAR} resolves to a number', async () => {
+      const operation = await parseFixture('foreachVariableValues');
+
+      // RETRY_COUNT: 3 (number) from common_variables
+      assert.strictEqual(operation.steps[2].name, 'foreach title test (3)');
+      assert.strictEqual(operation.steps[2].variables?.TEST_RECIPIENT, 3);
+    });
+
+    it('does NOT resolve environment-only variables at parse time', async () => {
+      const operation = await parseFixture('foreachVariableValues');
+
+      // ENV_RECIPIENT is only defined in the production environment, not common_variables
+      assert.strictEqual(
+        operation.steps[3].name,
+        'foreach title test (${ENV_RECIPIENT})',
+      );
+      assert.strictEqual(
+        operation.steps[3].variables?.TEST_RECIPIENT,
+        '${ENV_RECIPIENT}',
+      );
+    });
+
+    it('resolves matrix foreach variable references and applies include/exclude after resolution', async () => {
+      const operation = await parseFixture('matrixVariableValues');
+
+      // 2 RECIPIENT values x 2 TIER values = 4 combinations, minus 1 excluded = 3
+      assert.strictEqual(operation.steps.length, 3);
+
+      const combinations = operation.steps.map((step) => ({
+        recipient: step.variables?.RECIPIENT,
+        tier: step.variables?.TIER,
+      }));
+
+      // a@example.com / web should be excluded (resolved from ${EMAIL_A})
+      assert.ok(
+        !combinations.some(
+          (c) => c.recipient === 'a@example.com' && c.tier === 'web',
+        ),
+        'a@example.com/web combination should be excluded',
+      );
+
+      // The remaining combinations should be present
+      assert.ok(
+        combinations.some(
+          (c) => c.recipient === 'a@example.com' && c.tier === 'api',
+        ),
+      );
+      assert.ok(
+        combinations.some(
+          (c) => c.recipient === 'literal@example.com' && c.tier === 'web',
+        ),
+      );
+      assert.ok(
+        combinations.some(
+          (c) => c.recipient === 'literal@example.com' && c.tier === 'api',
+        ),
+      );
+
+      // Step names should reflect resolved values, not ${EMAIL_A}
+      assert.ok(
+        operation.steps.every((step) => !step.name.includes('${EMAIL_A}')),
+        'No step name should contain unresolved ${EMAIL_A}',
+      );
+    });
+  });
+
   it('should parse overview field with flexible metadata', async () => {
     const operation = await parseFixture('withOverview');
 

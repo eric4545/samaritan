@@ -1,0 +1,23 @@
+name: Matrix Variable Values Test
+version: 1.0.0
+description: Test matrix foreach with ${VAR} references resolved against common_variables before include/exclude filtering
+
+common_variables:
+  EMAIL_A: a@example.com
+
+environments:
+  - name: production
+
+steps:
+  - name: Notify ${RECIPIENT} (${TIER})
+    type: manual
+    phase: flight
+    description: Notify recipient for tier
+    command: echo "${RECIPIENT} ${TIER}"
+    foreach:
+      matrix:
+        RECIPIENT: ['${EMAIL_A}', literal@example.com]
+        TIER: [web, api]
+      exclude:
+        - RECIPIENT: a@example.com
+          TIER: web

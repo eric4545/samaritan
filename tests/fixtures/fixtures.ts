@@ -42,6 +42,10 @@ export const FIXTURES = {
   matrixForeach: 'tests/fixtures/operations/features/matrix-foreach.yaml',
   matrixWithFilters:
     'tests/fixtures/operations/features/matrix-with-filters.yaml',
+  foreachVariableValues:
+    'tests/fixtures/operations/features/foreach-variable-values.yaml',
+  matrixVariableValues:
+    'tests/fixtures/operations/features/matrix-variable-values.yaml',
 
   // Conditional steps
   conditional: 'tests/fixtures/operations/features/conditional.yaml',

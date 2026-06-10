@@ -29,6 +29,7 @@ import { EnvironmentLoader } from './environment-loader';
 interface ImportContext {
   templateFiles: Set<string>; // Prevent circular uses: imports
   baseDirectory: string; // Directory of the main operation file
+  commonVariables: Record<string, any>; // Globals available for foreach/matrix value resolution
 }
 
 const FORBIDDEN_VARIABLE_KEYS = ['__proto__', 'constructor', 'prototype'];
@@ -546,6 +547,16 @@ async function resolveStepReferences(
 
         // Expand foreach loops (supports both single var and matrix)
         if (step.foreach) {
+          // Resolve ${VAR} references in the foreach block (values, matrix,
+          // include, exclude) against common_variables + step.variables BEFORE
+          // generating/filtering combinations, so include/exclude comparisons
+          // and step name suffixes see resolved values. Whole-string matches
+          // preserve type (e.g. "${RETRY_COUNT}" -> 3); unknown vars stay literal.
+          step.foreach = substituteVariables(step.foreach, {
+            ...importContext.commonVariables,
+            ...(step.variables ?? {}),
+          });
+
           let combinations: Array<Record<string, any>> = [];
 
           // Check which syntax is used
@@ -919,6 +930,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   const importContext: ImportContext = {
     templateFiles: new Set(),
     baseDirectory,
+    commonVariables,
   };
 
   const steps: Step[] = [];

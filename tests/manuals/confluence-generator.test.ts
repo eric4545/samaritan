@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import * as yaml from 'js-yaml';
 import { generateConfluenceContent } from '../../src/cli/commands/generate';
-import { loadYaml } from '../fixtures/fixtures';
+import { loadYaml, parseFixture } from '../fixtures/fixtures';
 
 // Load YAML fixtures
 const deploymentOperationYaml = loadYaml('deploymentTest');
@@ -720,6 +720,20 @@ steps:
       stagingContent,
       /Step 5:/,
       'staging: preprod/prod-only step 5 not shown',
+    );
+  });
+
+  it('resolves common_variables references in foreach-expanded step names with --resolve-vars', async () => {
+    // Use parseFixture (not yaml.load) so the parser's foreach expansion +
+    // common_variables resolution (Fix A) has already run.
+    const operation = await parseFixture('foreachVariableValues');
+
+    const content = generateConfluenceContent(operation, true);
+
+    assert.match(
+      content,
+      /foreach title test \(a@example\.com\)/,
+      'should resolve common_variables reference in step name',
     );
   });
 });

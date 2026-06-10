@@ -490,6 +490,13 @@ steps:
 - Optional: `with` (variables to pass, defaults to empty object)
 - Recursive `$ref` for sub_steps points to `oneOf/2` (regular step definition)
 
+### Variable Resolution Layering (foreach/matrix + `--resolve-vars`)
+
+Variable resolution happens in two distinct layers — don't conflate them:
+
+1. **Parse time** (`src/operations/parser.ts`, `resolveStepReferences`): `${VAR}` references inside `step.foreach` (values/matrix/include/exclude) are substituted against `{ ...importContext.commonVariables, ...step.variables }` **before** `generateMatrixCombinations`/`filterMatrixCombinations` run. `commonVariables` comes from `common_variables:` + `env_file`. This is what makes expanded step **titles** (via `formatVariableCombination`) and the loop variable injected into `step.variables` show resolved values like `(oncall@example.com)` instead of `(${ONCALL_EMAIL})` — for ALL output formats, independent of `--resolve-vars`. Environment-specific variables are NOT in scope here (no environment has been selected yet), so `${TEAM_EMAIL}`-style references stay literal after parsing.
+2. **Generation time** (`--resolve-vars`, `src/lib/step-resolution.ts` `substituteVariables(command, envVariables, stepVariables?)`): resolves remaining `${VAR}` placeholders (including environment-specific ones) against the selected environment's variables, with `step.variables` taking priority. `stepVariables` values that are themselves `${VAR}` references (e.g. `step.variables.TEST_RECIPIENT = "${EMAIL_A}"`, injected by foreach) are pre-resolved against `envVariables` in one pass before merging — so chained references fully resolve in a single call. All generators (`generator.ts` markdown single-env/multi-env, `adf-generator.ts`, `generate.ts` Confluence) must pass both the relevant env/common variables AND `step.variables` (or `commonVariables` for the shared multi-env name cell) to get correct resolution of step names, commands, instructions, and `expect`/rollback content.
+
 ---
 
 ## 🔀 Git Workflow

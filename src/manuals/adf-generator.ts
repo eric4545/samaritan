@@ -21,6 +21,7 @@ import {
 import { renderExpectParts } from '../lib/assertions';
 import type { GenerationMetadata } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
+import { substituteVariables } from '../lib/step-resolution';
 import type { Environment, Operation, Step } from '../models/operation';
 
 /**
@@ -184,6 +185,7 @@ export function generateADF(
           resolveVariables,
           'preflight',
           operationDir,
+          operation.common_variables ?? {},
         ),
       );
     }
@@ -200,6 +202,7 @@ export function generateADF(
           resolveVariables,
           'flight',
           operationDir,
+          operation.common_variables ?? {},
         ),
       );
     }
@@ -214,6 +217,7 @@ export function generateADF(
           resolveVariables,
           'postflight',
           operationDir,
+          operation.common_variables ?? {},
         ),
       );
     }
@@ -475,6 +479,7 @@ function createStepsTable(
   resolveVariables?: boolean,
   currentPhase?: string,
   operationDir?: string,
+  commonVariables?: Record<string, any>,
 ): any {
   // Build header row
   const headerCells = [tableHeader()(paragraph(text('Step')))];
@@ -508,10 +513,19 @@ function createStepsTable(
             ? '🛬'
             : '';
 
+    // The name cell is shared across all env columns, so only common variables +
+    // step variables are resolved here — env-specific placeholders intentionally
+    // stay literal in this cell (they resolve per-environment in the row cells).
+    const displayStepName = resolveVariables
+      ? substituteVariables(step.name, commonVariables ?? {}, step.variables)
+      : step.name;
+
     stepCellContent.push(
       paragraph(
         strong(
-          text(`Step ${stepNumber}: ${step.name} ${phaseIcon}${typeIcon}`),
+          text(
+            `Step ${stepNumber}: ${displayStepName} ${phaseIcon}${typeIcon}`,
+          ),
         ),
       ),
     );
@@ -716,6 +730,7 @@ function createStepsTable(
         resolveVariables,
         dataRows,
         operationDir,
+        commonVariables,
       );
     }
   });
@@ -740,6 +755,7 @@ function addSubStepRows(
   resolveVariables: boolean | undefined,
   dataRows: any[],
   operationDir?: string,
+  commonVariables?: Record<string, any>,
 ): void {
   // First loop: render all sub-step rows
   subSteps.forEach((subStep, subIndex) => {
@@ -766,9 +782,20 @@ function addSubStepRows(
             ? '🔀'
             : '✋';
 
+    // The name cell is shared across all env columns, so only common variables +
+    // step variables are resolved here — env-specific placeholders intentionally
+    // stay literal in this cell (they resolve per-environment in the row cells).
+    const displaySubStepName = resolveVariables
+      ? substituteVariables(
+          subStep.name,
+          commonVariables ?? {},
+          subStep.variables,
+        )
+      : subStep.name;
+
     subStepCellContent.push(
       paragraph(
-        strong(text(`Step ${subStepId}: ${subStep.name} ${subTypeIcon}`)),
+        strong(text(`Step ${subStepId}: ${displaySubStepName} ${subTypeIcon}`)),
       ),
     );
 
@@ -961,6 +988,7 @@ function addSubStepRows(
         resolveVariables,
         dataRows,
         operationDir,
+        commonVariables,
       );
     }
   });
@@ -1075,27 +1103,6 @@ function addSubStepRows(
       dataRows.push(tableRow(rollbackCells));
     }
   });
-}
-
-/**
- * Substitute variables in command string
- */
-function substituteVariables(
-  command: string,
-  envVariables: Record<string, any>,
-  stepVariables?: Record<string, any>,
-): string {
-  // Merge variables with priority: step > env
-  const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
-
-  // Perform variable substitution on ENTIRE content
-  let result = command;
-  for (const key in mergedVariables) {
-    const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
-    result = result.replace(regex, mergedVariables[key]);
-  }
-
-  return result;
 }
 
 /**

@@ -339,6 +339,18 @@ describe('ADF Generator', () => {
     );
   });
 
+  it('resolves common_variables references in foreach-expanded step names with --resolve-vars', async () => {
+    const { parseFixture } = await import('../fixtures/fixtures');
+    const operation = await parseFixture('foreachVariableValues');
+
+    const adfString = generateADFString(operation, undefined, undefined, true);
+
+    assert.ok(
+      adfString.includes('foreach title test (a@example.com)'),
+      'should resolve common_variables reference in step name',
+    );
+  });
+
   it('preserves original step numbers across environments when steps are skipped by when (--env)', async () => {
     // when-and-variants.yaml:
     //   step 1: when: [prod]    → only prod

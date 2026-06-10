@@ -467,6 +467,7 @@ function generateStepRow(
   prefix: string = '',
   currentPhase?: string,
   operationDir?: string,
+  commonVariables?: Record<string, any>,
 ): string {
   let rows = '';
 
@@ -490,7 +491,13 @@ function generateStepRow(
 
   // First column: Step name, phase, icon, and description
   // Add checkbox for tracking completion
-  let stepCell = `[ ] ${prefix}Step ${stepNumber}: ${step.name} ${phaseIcon}${typeIcon}`;
+  // The name cell is shared across all env columns, so only common variables +
+  // step variables are resolved here — env-specific placeholders intentionally
+  // stay literal in this cell (they resolve per-environment in the row cells).
+  const displayName = resolveVariables
+    ? substituteVariables(step.name, commonVariables ?? {}, step.variables)
+    : step.name;
+  let stepCell = `[ ] ${prefix}Step ${stepNumber}: ${displayName} ${phaseIcon}${typeIcon}`;
   // Only show phase if it differs from the current section phase
   if (step.phase && step.phase !== currentPhase) {
     stepCell += `<br><em>Phase: ${step.phase}</em>`;
@@ -715,6 +722,7 @@ function generateStepRow(
         resolveVariables,
         1,
         operationDir,
+        commonVariables,
       );
     });
 
@@ -729,7 +737,14 @@ function generateStepRow(
         rows += '\n';
 
         // Add rollback heading (h4 level for sub-step rollbacks)
-        rows += `#### 🔄 Rollback for Step ${subStepPrefix}: ${subStep.name}\n\n`;
+        const subStepRollbackName = resolveVariables
+          ? substituteVariables(
+              subStep.name,
+              commonVariables ?? {},
+              subStep.variables,
+            )
+          : subStep.name;
+        rows += `#### 🔄 Rollback for Step ${subStepPrefix}: ${subStepRollbackName}\n\n`;
 
         // Render rollback table
         rows += '| Environment | Rollback Action |\n';
@@ -843,6 +858,7 @@ function generateSubStepRow(
   resolveVariables: boolean = false,
   depth: number = 1,
   operationDir?: string,
+  commonVariables?: Record<string, any>,
 ): string {
   let rows = '';
 
@@ -860,7 +876,13 @@ function generateSubStepRow(
 
   // Format as: Step 1a: Build Backend API ⚙️
   // Add checkbox for tracking completion
-  let stepCell = `[ ] ${indent}Step ${stepId}: ${step.name} ${typeIcon}`;
+  // The name cell is shared across all env columns, so only common variables +
+  // step variables are resolved here — env-specific placeholders intentionally
+  // stay literal in this cell (they resolve per-environment in the row cells).
+  const displaySubStepName = resolveVariables
+    ? substituteVariables(step.name, commonVariables ?? {}, step.variables)
+    : step.name;
+  let stepCell = `[ ] ${indent}Step ${stepId}: ${displaySubStepName} ${typeIcon}`;
   if (
     step.description &&
     typeof step.description === 'string' &&
@@ -1092,6 +1114,7 @@ function generateSubStepRow(
         resolveVariables,
         depth + 1,
         operationDir,
+        commonVariables,
       );
     });
 
@@ -1112,7 +1135,14 @@ function generateSubStepRow(
 
         // Determine heading level based on depth
         const headingLevel = '#'.repeat(Math.min(3 + depth, 6));
-        rows += `${headingLevel} 🔄 Rollback for Step ${nestedStepId}: ${nestedSubStep.name}\n\n`;
+        const nestedRollbackName = resolveVariables
+          ? substituteVariables(
+              nestedSubStep.name,
+              commonVariables ?? {},
+              nestedSubStep.variables,
+            )
+          : nestedSubStep.name;
+        rows += `${headingLevel} 🔄 Rollback for Step ${nestedStepId}: ${nestedRollbackName}\n\n`;
 
         // Render rollback table
         rows += '| Environment | Rollback Action |\n';
@@ -1473,7 +1503,14 @@ function generateManualContent(
           }
 
           // Add section heading
-          markdown += `### ${step.name}\n\n`;
+          const sectionHeadingName = resolveVariables
+            ? substituteVariables(
+                step.name,
+                operation.common_variables ?? {},
+                step.variables,
+              )
+            : step.name;
+          markdown += `### ${sectionHeadingName}\n\n`;
           if (step.description) {
             markdown += `${step.description}\n\n`;
           }
@@ -1511,6 +1548,7 @@ function generateManualContent(
           '',
           phaseName,
           operationDir,
+          operation.common_variables ?? {},
         );
 
         // Inline rollback rendering - render immediately after step if present
@@ -1520,7 +1558,14 @@ function generateManualContent(
           markdown += '\n';
 
           // Add rollback heading
-          markdown += `### 🔄 Rollback for Step ${globalStepNumber}: ${step.name}\n\n`;
+          const rollbackHeadingName = resolveVariables
+            ? substituteVariables(
+                step.name,
+                operation.common_variables ?? {},
+                step.variables,
+              )
+            : step.name;
+          markdown += `### 🔄 Rollback for Step ${globalStepNumber}: ${rollbackHeadingName}\n\n`;
 
           // Render rollback table
           markdown += '| Environment | Rollback Action |\n';
@@ -1644,7 +1689,14 @@ function generateManualContent(
       const rb = step.rollback?.[0];
       if (!rb) return;
 
-      markdown += `### Rollback for: ${step.name}\n\n`;
+      const rollbackSectionName = resolveVariables
+        ? substituteVariables(
+            step.name,
+            operation.common_variables ?? {},
+            step.variables,
+          )
+        : step.name;
+      markdown += `### Rollback for: ${rollbackSectionName}\n\n`;
 
       if (rb.command || rb.instruction || rb.script) {
         markdown += '| Environment | Rollback Action |\n';
@@ -1766,21 +1818,29 @@ export function generateSingleEnvManual(
   const env = workingOperation.environments.find((e) => e.name === targetEnv);
   const envVars = env?.variables ?? {};
 
-  function resolveCmd(cmd: string): string {
+  function resolveCmd(
+    cmd: string,
+    stepVariables?: Record<string, any>,
+  ): string {
     if (!resolveVariables) return cmd;
-    return substituteVariables(cmd, envVars);
+    return substituteVariables(cmd, envVars, stepVariables);
   }
 
   function renderStep(step: Step, prefix: string, headingLevel: number): void {
     // Apply env-specific variant overrides before rendering
     const effectiveStep = mergeStepVariant(step, targetEnv);
 
+    // Resolve ${VAR} placeholders (e.g. in foreach-expanded step names) against
+    // env variables + this step's own variables when --resolve-vars is set.
+    const resolveText = (s: string): string =>
+      resolveCmd(s, effectiveStep.variables);
+
     const hashes = '#'.repeat(headingLevel);
-    lines.push(`${hashes} ${prefix}: ${effectiveStep.name}`);
+    lines.push(`${hashes} ${prefix}: ${resolveText(effectiveStep.name)}`);
     lines.push('');
 
     if (effectiveStep.description) {
-      const desc = resolveCmd(effectiveStep.description.trim());
+      const desc = resolveText(effectiveStep.description.trim());
       lines.push(desc.includes('\n') ? desc : `_${desc}_`);
       lines.push('');
     }
@@ -1810,16 +1870,12 @@ export function generateSingleEnvManual(
     if (effectiveStep.instruction) {
       lines.push('**Instructions**');
       lines.push('');
-      lines.push(
-        resolveVariables
-          ? resolveCmd(effectiveStep.instruction)
-          : effectiveStep.instruction,
-      );
+      lines.push(resolveText(effectiveStep.instruction));
       lines.push('');
     }
 
     if (effectiveStep.command) {
-      const resolvedCmd = resolveCmd(effectiveStep.command);
+      const resolvedCmd = resolveText(effectiveStep.command);
       lines.push('**Command**');
       lines.push('');
       if (/^\s*```/.test(resolvedCmd)) {
@@ -1851,7 +1907,11 @@ export function generateSingleEnvManual(
 
     if (effectiveStep.expect != null) {
       const resolvedExpect = resolveVariables
-        ? substituteExpectVars(effectiveStep.expect, envVars)
+        ? substituteExpectVars(
+            effectiveStep.expect,
+            envVars,
+            effectiveStep.variables,
+          )
         : effectiveStep.expect;
       const parts = renderExpectParts(resolvedExpect);
       if (parts.length > 0) {
@@ -1901,7 +1961,7 @@ export function generateSingleEnvManual(
         lines.push('');
         lines.push(
           resolveVariables && (rb.options?.substitute_vars ?? true)
-            ? resolveCmd(rb.instruction)
+            ? resolveCmd(rb.instruction, effectiveStep.variables)
             : rb.instruction,
         );
         lines.push('');
@@ -1913,7 +1973,7 @@ export function generateSingleEnvManual(
         const cmd = rb.command.trimEnd();
         lines.push(
           resolveVariables && (rb.options?.substitute_vars ?? true)
-            ? resolveCmd(cmd)
+            ? resolveCmd(cmd, effectiveStep.variables)
             : cmd,
         );
         lines.push('```');

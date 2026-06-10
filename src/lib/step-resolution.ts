@@ -7,13 +7,29 @@ function escapeRegExp(text: string): string {
 
 /**
  * Resolve `${VAR}` placeholders, prioritizing step-scoped variables over environment variables.
+ *
+ * Step variables are pre-resolved against environment variables (one pass) before merging,
+ * so a step variable like `TEST_RECIPIENT: "${EMAIL_A}"` (injected by foreach/matrix expansion
+ * with an unresolved env-specific reference) fully resolves to the env value of `EMAIL_A`
+ * before being substituted into `command`. Non-string step variable values pass through
+ * untouched. The pre-resolution pass does not itself receive stepVariables, so chaining
+ * terminates; substitution iterates keys in insertion order over the working string, so a
+ * value inserted by an earlier key may still be expanded by a later key, but never loops.
  */
 export function substituteVariables(
   command: string,
   envVariables: Record<string, any>,
   stepVariables?: Record<string, any>,
 ): string {
-  const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
+  const resolvedStepVariables: Record<string, any> = {};
+  for (const [key, value] of Object.entries(stepVariables || {})) {
+    resolvedStepVariables[key] =
+      typeof value === 'string'
+        ? substituteVariables(value, envVariables)
+        : value;
+  }
+
+  const mergedVariables = { ...envVariables, ...resolvedStepVariables };
 
   let result = command;
   for (const key in mergedVariables) {

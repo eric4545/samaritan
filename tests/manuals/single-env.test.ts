@@ -351,4 +351,68 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
       'has nested rollback command',
     );
   });
+
+  describe('foreach/matrix variable reference resolution (--resolve-vars)', () => {
+    it('resolves common_variables-derived foreach title and command (resolve on)', async () => {
+      const op = await parseFixture('foreachVariableValues');
+      const md = generateSingleEnvManual(op, 'production', true);
+
+      assert.ok(
+        md.includes('## Step 1: foreach title test (a@example.com)'),
+        'heading resolves common_variables reference',
+      );
+      assert.ok(
+        md.includes('echo "a@example.com"'),
+        'command resolves common_variables reference',
+      );
+    });
+
+    it('resolves env-only foreach values in single-env titles and commands (resolve on)', async () => {
+      const op = await parseFixture('foreachVariableValues');
+      const md = generateSingleEnvManual(op, 'production', true);
+
+      // Step 4: foreach value was "${ENV_RECIPIENT}", only defined in the
+      // production environment — resolves only with --resolve-vars.
+      assert.ok(
+        md.includes('## Step 4: foreach title test (prod@example.com)'),
+        'heading resolves env-only variable',
+      );
+      assert.ok(
+        md.includes('echo "prod@example.com"'),
+        'command resolves chained env-only step variable',
+      );
+    });
+
+    it('leaves unresolved (undefined) variable references literal in titles and commands (resolve on)', async () => {
+      const op = await parseFixture('foreachVariableValues');
+      const md = generateSingleEnvManual(op, 'production', true);
+
+      // Step 2: foreach value was "${EMAIL_B}" — never defined anywhere.
+      assert.ok(
+        md.includes('## Step 2: foreach title test (${EMAIL_B})'),
+        'heading keeps unresolved variable literal',
+      );
+      assert.ok(
+        md.includes('echo "${EMAIL_B}"'),
+        'command keeps unresolved variable literal',
+      );
+    });
+
+    it('common-var title is resolved at parse time even with resolve off; env-only title stays literal', async () => {
+      const op = await parseFixture('foreachVariableValues');
+      const md = generateSingleEnvManual(op, 'production', false);
+
+      // Resolved at PARSE time (common_variables), independent of --resolve-vars
+      assert.ok(
+        md.includes('## Step 1: foreach title test (a@example.com)'),
+        'common-var title resolved regardless of --resolve-vars',
+      );
+
+      // Env-only variable requires --resolve-vars; stays literal when off
+      assert.ok(
+        md.includes('## Step 4: foreach title test (${ENV_RECIPIENT})'),
+        'env-only title stays literal without --resolve-vars',
+      );
+    });
+  });
 });
