@@ -19,11 +19,18 @@ npx github:eric4545/samaritan generate manual examples/deployment.yaml --output 
 # Generate single-environment heading-based manual (for use during execution)
 npx github:eric4545/samaritan generate manual examples/deployment.yaml --env staging --output staging-manual.md
 
-# Preview operation plan without executing (dry run)
-npx github:eric4545/samaritan run examples/deployment-with-run.yaml --env production --dry-run
+# Preview operation plan without executing (dry run) — default sidecar mode
+npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging --dry-run
+
+# Execute with sidecar mode (default): samaritan displays commands, you run them
+npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging
+
+# Attach to an existing tmux pane for [v] verify in sidecar mode
+npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging \
+  --attach mysession:0.0
 
 # Execute operation with interactive prompts, auto-generating an evidence report
-npx github:eric4545/samaritan run examples/deployment-with-run.yaml --env production --report ./evidence
+npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging --report ./evidence
 
 # Generate evidence report from an existing session log
 npx github:eric4545/samaritan report /tmp/samaritan-<id>.jsonl --output evidence.md
@@ -41,7 +48,7 @@ npx github:eric4545/samaritan validate my-deployment.yaml --strict --env product
 # 3. Generate single-env manual for staging (resolved variables, heading format)
 npx github:eric4545/samaritan generate manual my-deployment.yaml --env staging --resolve-vars --output staging-runbook.md
 
-# 4. Execute in staging with interactive prompts; report auto-generated on completion
+# 4. Execute in staging (sidecar mode by default — you run each command yourself)
 npx github:eric4545/samaritan run my-deployment.yaml --env staging --report ./staging-evidence
 
 # 5. Execute in production (report written to ./production-evidence/)

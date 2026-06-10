@@ -13,6 +13,7 @@ function fixturePath(name: string): string {
     manualStepActions:
       'tests/fixtures/operations/features/manual-step-actions.yaml',
     withSessions: 'tests/fixtures/operations/features/with-sessions.yaml',
+    sidecar: 'tests/fixtures/operations/features/sidecar.yaml',
     nestedSubsteps2Levels:
       'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',
   };
@@ -363,6 +364,100 @@ describe('run command: --report flag', () => {
     } finally {
       rmSync(reportDir, { recursive: true, force: true });
     }
+  });
+});
+
+// ─── Sidecar mode tests ───────────────────────────────────────────────────────
+
+describe('run command: sidecar mode', () => {
+  it('--help mentions sidecar and --attach', () => {
+    const result = runCli(['run', '--help']);
+    const combined = result.stdout + result.stderr;
+    assert.ok(combined.includes('sidecar'), '--help must mention sidecar mode');
+    assert.ok(combined.includes('attach'), '--help must mention --attach flag');
+  });
+
+  it('invalid -m bogus gives a clear error', () => {
+    const fixture = fixturePath('sidecar');
+    const result = runCli(['run', fixture, '--env', 'staging', '-m', 'bogus']);
+    assert.notStrictEqual(result.status, 0, 'invalid mode must exit non-zero');
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('bogus') ||
+        combined.includes('Invalid mode') ||
+        combined.includes('invalid'),
+      'error must mention the bad mode value',
+    );
+  });
+
+  it('default mode is sidecar (shown in dry-run summary)', () => {
+    const fixture = fixturePath('sidecar');
+    const result = runCli(['run', fixture, '--env', 'staging', '--dry-run']);
+    assert.strictEqual(result.status, 0, 'dry-run must exit 0');
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('sidecar'),
+      'default mode should be sidecar as shown in dry-run summary',
+    );
+  });
+
+  it('sidecar run of an automatic step shows manual-style action hints and command block', () => {
+    const fixture = fixturePath('sidecar');
+    // Single-prompt interaction: q to abort immediately after seeing the first step
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    // Should show the command block (sidecar displays command for operator to run)
+    assert.ok(
+      combined.includes('kubectl apply') || combined.includes('Deploy App'),
+      'sidecar should show the automatic step command',
+    );
+    // Should offer manual-style hints (done/copy/note/evidence/verify) — not '📤 Sent to tmux'
+    assert.ok(
+      !combined.includes('📤') && !combined.includes('Sent to tmux'),
+      'sidecar must NOT send commands to tmux',
+    );
+  });
+
+  it('[t] attach pane hint appears in sidecar mode', () => {
+    const fixture = fixturePath('sidecar');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('attach pane') ||
+        combined.includes('[t]') ||
+        combined.includes('attach'),
+      'sidecar mode should show [t] attach hint',
+    );
+  });
+
+  it('--attach bogus-target warns gracefully and still starts the step loop', () => {
+    const fixture = fixturePath('sidecar');
+    const result = runCli(
+      ['run', fixture, '--env', 'staging', '--attach', 'bogus-target-xyz'],
+      { input: 'q\n', timeout: 15_000 },
+    );
+    const combined = result.stdout + result.stderr;
+    // Must warn about invalid target (not crash)
+    assert.ok(
+      combined.includes('bogus-target-xyz') ||
+        combined.includes('not a valid') ||
+        combined.includes('invalid'),
+      'must warn about invalid --attach target',
+    );
+    // Must still reach the step loop (show at least one step header or action hint)
+    assert.ok(
+      combined.includes('Deploy App') ||
+        combined.includes('step') ||
+        combined.includes('done') ||
+        combined.includes('abort'),
+      'must still reach the step loop even with invalid --attach',
+    );
   });
 });
 

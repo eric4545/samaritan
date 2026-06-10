@@ -1,14 +1,33 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SessionConfig } from '../models/operation';
+import type { CaptureBackend } from './capture-backend';
 
 export function isLocalSession(config: SessionConfig | undefined): boolean {
   return !config?.host;
 }
 
-export class TmuxSession {
+/**
+ * Validate that a tmux target string (e.g. "mysession:0.0" or "%12") refers to
+ * an existing pane. Returns true when the target resolves, false otherwise.
+ * Never throws — a bad target simply returns false.
+ */
+export function validateTmuxTarget(target: string): boolean {
+  try {
+    const result = spawnSync(
+      'tmux',
+      ['display-message', '-p', '-t', target, '#{pane_id}'],
+      { stdio: 'pipe' },
+    );
+    return result.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+export class TmuxSession implements CaptureBackend {
   private sessionId: string;
   private tmuxName: string;
   private paneMap: Map<string, string> = new Map();
@@ -30,6 +49,10 @@ export class TmuxSession {
     spawnSync('tmux', args);
   }
 
+  hasTarget(sessionName: string): boolean {
+    return this.paneMap.has(sessionName);
+  }
+
   currentOffset(sessionName: string): number {
     try {
       return statSync(this.getPipeFilePath(sessionName)).size;
@@ -45,6 +68,11 @@ export class TmuxSession {
     } catch {
       return '';
     }
+  }
+
+  describeTarget(sessionName: string): string {
+    const pane = this.paneMap.get(sessionName);
+    return pane ? `tmux pane ${pane}` : `tmux session ${this.tmuxName}`;
   }
 
   async waitForPrompt(
@@ -103,6 +131,83 @@ export class TmuxSession {
       } catch {
         // best effort
       }
+    }
+  }
+}
+
+/**
+ * TmuxPaneCapture — attach samaritan's capture pipe to an operator-owned pane.
+ *
+ * The operator pane is NEVER killed; teardown() only closes the pipe and
+ * removes the temp file. Per-step `session:` routing is ignored in attach mode
+ * (all reads come from the single attached pane).
+ */
+export class TmuxPaneCapture implements CaptureBackend {
+  private target: string;
+  private pipeFile: string;
+
+  constructor(captureId: string, target: string) {
+    this.target = target;
+    this.pipeFile = join(tmpdir(), `samaritan-${captureId}-attached.pipe`);
+  }
+
+  /**
+   * Start piping the pane output to our temp file.
+   * No `-o` flag: any existing pipe on the pane is replaced so attach is
+   * deterministic (`-o` would silently skip opening when a pipe exists).
+   */
+  attach(): void {
+    spawnSync('tmux', [
+      'pipe-pane',
+      '-t',
+      this.target,
+      `cat >> ${this.pipeFile}`,
+    ]);
+  }
+
+  /** Always true — single capture target; session name is ignored. */
+  hasTarget(_sessionName: string): boolean {
+    return true;
+  }
+
+  currentOffset(_sessionName: string): number {
+    try {
+      return statSync(this.pipeFile).size;
+    } catch {
+      return 0;
+    }
+  }
+
+  readOutput(_sessionName: string, fromOffset: number): string {
+    try {
+      const buf = readFileSync(this.pipeFile);
+      return buf.slice(fromOffset).toString('utf-8');
+    } catch {
+      return '';
+    }
+  }
+
+  describeTarget(_sessionName: string): string {
+    return `tmux pane ${this.target}`;
+  }
+
+  /**
+   * Close the pipe and remove the temp file.
+   * NEVER kills the tmux session — the pane belongs to the operator.
+   */
+  teardown(): void {
+    // Close the pipe by running pipe-pane without a command argument
+    try {
+      spawnSync('tmux', ['pipe-pane', '-t', this.target]);
+    } catch {
+      // best effort
+    }
+    try {
+      if (existsSync(this.pipeFile)) {
+        unlinkSync(this.pipeFile);
+      }
+    } catch {
+      // best effort
     }
   }
 }

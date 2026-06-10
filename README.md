@@ -344,13 +344,14 @@ npx github:eric4545/samaritan validate <operation.yaml> [options]
 
 # Execute an operation interactively
 npx github:eric4545/samaritan run <operation.yaml> [options]
-  --env <environment>   Target environment (required)
-  --var KEY=VALUE       Override a variable (repeatable)
-  --dry-run             Preview full plan without executing
-  --auto-approve        Skip manual approval prompts
-  -m, --mode <mode>     Execution mode: manual | automatic | hybrid (default: manual)
-  --report <dir>        Write Markdown evidence report to directory after run
-  --continue-on-error   Continue execution even if a step fails
+  --env <environment>       Target environment (required)
+  --var KEY=VALUE           Override a variable (repeatable)
+  --dry-run                 Preview full plan without executing
+  --auto-approve            Skip manual approval prompts
+  -m, --mode <mode>         Execution mode: sidecar | manual | automatic | hybrid (default: sidecar)
+  --attach <tmux-target>    Attach to an existing tmux pane for sidecar capture
+  --report <dir>            Write Markdown evidence report to directory after run
+  --continue-on-error       Continue execution even if a step fails
 
 # Generate documentation
 npx github:eric4545/samaritan generate manual <operation.yaml> [options]
@@ -1353,12 +1354,44 @@ See `tests/fixtures/operations/confluence/gantt-timeline.yaml` for a complete ex
 
 ## ⚡ Interactive Execution & Run Commands
 
-SAMARITAN's execution engine runs operations step-by-step with operator prompts, automated verification, output capture, and a full JSONL audit trail backed by `tmux`.
+SAMARITAN's execution engine runs operations step-by-step with operator prompts, automated verification, output capture, and a full JSONL audit trail.
 
-### Execution flow
+### Sidecar mode (default)
+
+**Sidecar** is the default run mode (`-m sidecar`). Samaritan acts as your copilot: it displays each step's resolved command, *you* run it yourself in your own terminal, and samaritan validates `step.expect` **only when you press `[v]`**. No commands are ever sent automatically.
+
+```bash
+# Default — sidecar mode
+samaritan run deployment.yaml --env staging
+
+# Attach to an existing tmux pane so [v] can read its output
+samaritan run deployment.yaml --env staging --attach mysession:0.0
+
+# Mid-flight: press [t] at any step to attach a pane
+```
+
+**How sidecar attach works:**
+
+| Scenario | What happens |
+|---|---|
+| `sessions:` defined in YAML | Samaritan bootstraps its own tmux session; prints `Attach with: tmux attach -t samaritan-<id>` |
+| `--attach <target>` flag | Samaritan attaches a pipe-pane capture to your existing pane without touching your session |
+| No sessions, no `--attach` | Prompt-only mode; `[v]` will indicate that you need `[t]` to attach a pane first |
+
+**Caveats:**
+- `--attach` mode uses a **single capture target** for all steps. Per-step `session:` routing is ignored; all capture reads come from the attached pane.
+- `tmux pipe-pane` replaces any existing pipe on that pane when attaching.
+- `samaritan` **never kills** your session on exit — only the temporary capture pipe and temp file are cleaned up.
+
+**Step display in sidecar:**
+- `type: automatic` steps: Command is displayed prominently; the `command_displayed` event is written to the audit log (not `command_sent`). The report renders it as `**Command (run by operator)**`.
+- `type: manual` steps: Same prompt loop as always.
+- Both types offer `[v] verify` (when `expect` is defined) and `[t] attach pane`.
+
+### Execution flow (spawn-own sessions)
 
 ```
-samaritan run deployment-with-run.yaml --env production
+samaritan run deployment-with-sessions.yaml --env production
   1. Creates a tmux session (samaritan-<id>)
   2. Bootstraps one window per named session (local or SSH)
   3. Starts pipe-pane background capture on every pane
@@ -1372,11 +1405,12 @@ In iTerm2, panes open as native vertical splits automatically. In any other term
 
 At each step, SAMARITAN pauses and shows the step details, then prompts based on step type:
 
-| Step type | Prompt | Keys |
+| Step type / mode | Prompt | Keys |
 |---|---|---|
-| `automatic` (tmux-backed) | `▶  Send to tmux?` | `Enter`=send, `s`=skip, `r`=rollback, `q`=quit |
-| `automatic` (prompt-only) | `▶  Execute?` | `Enter`=confirm, `s`=skip, `r`=rollback, `q`=quit |
-| `manual` | `✋ Mark done` | `Enter`/notes=confirm, `r`=rollback, `skip`=skip, `abort`=quit |
+| `automatic` in **sidecar** | `Run this command in your terminal:` | `Enter`=done, `c`=copy, `n`=note, `e`=evidence, `v`=verify, `t`=attach, `s`=skip, `r`=rollback, `q`/`abort`=quit |
+| `automatic` (tmux-backed, non-sidecar) | `▶  Send to tmux?` | `Enter`=send, `s`=skip, `r`=rollback, `q`=quit |
+| `automatic` (prompt-only, non-sidecar) | `▶  Execute?` | `Enter`=confirm, `s`=skip, `r`=rollback, `q`=quit |
+| `manual` | `✋ Mark done` | `Enter`/notes=confirm, `n`=note, `e`=evidence, `v`=verify, `t`=attach (sidecar), `r`=rollback, `s`=skip, `q`/`abort`=quit |
 | `approval` | `⚡ approve/reject` | `approve`, `reject`, `r`=rollback, `skip` |
 
 When a verify assertion fails, a secondary prompt appears:

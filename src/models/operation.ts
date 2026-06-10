@@ -62,7 +62,7 @@ export type SessionStatus =
   | 'completed'
   | 'failed'
   | 'cancelled';
-export type ExecutionMode = 'automatic' | 'manual' | 'hybrid';
+export type ExecutionMode = 'automatic' | 'manual' | 'hybrid' | 'sidecar';
 export type StepType = 'automatic' | 'manual' | 'approval' | 'conditional';
 export type StepPhase = 'preflight' | 'flight' | 'postflight';
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3';

@@ -1,0 +1,135 @@
+# Sidecar Deployment Example
+#
+# Demonstrates samaritan run in SIDECAR mode (the default since v1.1).
+#
+# Sidecar mode: samaritan DISPLAYS each command but does NOT run it.
+# You run commands yourself in your own terminal; samaritan validates
+# expected output only when YOU press [v].
+#
+# Usage:
+#   samaritan run examples/sidecar-deployment.yaml -e staging
+#
+# Attach to an existing tmux pane (skip bootstrapping a new session):
+#   samaritan run examples/sidecar-deployment.yaml -e staging \
+#     --attach mysession:0.0
+#
+# Mid-flight: press [t] at any step to attach a tmux pane for [v] verify.
+# Press [v] after running the step's command to validate expected output.
+
+name: Sidecar Deployment Example
+version: 1.0.0
+description: |
+  Deploys the web service to the target environment.
+  Run with sidecar mode (default): samaritan displays each command;
+  you run it yourself, then press [v] to verify the expected output.
+
+sessions:
+  # Define a session so samaritan bootstraps a tmux window you can attach to.
+  # After starting, samaritan prints:
+  #   Attach with: tmux attach -t samaritan-<session-id>
+  execution:
+    {}  # local session — no SSH needed
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      REPLICAS: 2
+      NAMESPACE: staging
+      IMAGE_TAG: latest
+      HEALTH_URL: http://staging.example.com/health
+
+  - name: production
+    description: Production environment
+    variables:
+      REPLICAS: 5
+      NAMESPACE: production
+      IMAGE_TAG: v2.3.1
+      HEALTH_URL: https://production.example.com/health
+    approval_required: true
+
+steps:
+  # ─── Preflight checks ──────────────────────────────────────────────────────
+
+  - name: Check cluster access
+    type: automatic
+    phase: preflight
+    description: Verify kubectl can reach the cluster
+    session: execution
+    command: kubectl cluster-info --context ${NAMESPACE}
+    expect:
+      contains: Kubernetes control plane
+    # In sidecar mode: samaritan shows this command and waits.
+    # You run it yourself, then press [v] to validate the expect assertion.
+
+  - name: Check image exists
+    type: automatic
+    phase: preflight
+    description: Confirm the container image is available in the registry
+    session: execution
+    command: docker manifest inspect myregistry/web-server:${IMAGE_TAG}
+    expect:
+      contains: mediaType
+
+  # ─── Deployment ────────────────────────────────────────────────────────────
+
+  - name: Apply Kubernetes manifests
+    type: automatic
+    phase: flight
+    description: Deploy the application to the ${NAMESPACE} namespace
+    session: execution
+    command: kubectl apply -f k8s/ -n ${NAMESPACE}
+    expect:
+      contains: configured
+    rollback:
+      - command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
+        session: execution
+
+  - name: Scale deployment
+    type: automatic
+    phase: flight
+    description: Scale to ${REPLICAS} replicas
+    session: execution
+    command: kubectl scale deployment web-server --replicas=${REPLICAS} -n ${NAMESPACE}
+    expect:
+      contains: scaled
+
+  - name: Wait for rollout
+    type: automatic
+    phase: flight
+    description: Wait for the deployment rollout to complete
+    session: execution
+    command: kubectl rollout status deployment/web-server -n ${NAMESPACE} --timeout=5m
+    expect:
+      contains: successfully rolled out
+    rollback:
+      - command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
+        session: execution
+
+  # ─── Verification ──────────────────────────────────────────────────────────
+
+  - name: Verify pod health
+    type: manual
+    phase: postflight
+    description: Confirm all pods are in Running state
+    session: execution
+    command: kubectl get pods -n ${NAMESPACE} -l app=web-server
+    instruction: |
+      Run the command and verify all pods show STATUS=Running.
+      Press [v] to validate automatically once the command completes.
+    expect:
+      contains: Running
+    pic: ops-team@example.com
+    reviewer: sre-lead@example.com
+
+  - name: Health endpoint check
+    type: manual
+    phase: postflight
+    description: Confirm the application responds to health checks
+    instruction: |
+      Run the curl command and confirm you get a 200 response with
+      status "ok". Press [v] to validate automatically.
+    command: curl -sf ${HEALTH_URL}
+    expect:
+      contains: ok
+    pic: ops-team@example.com

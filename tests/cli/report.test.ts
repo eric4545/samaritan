@@ -351,6 +351,62 @@ describe('generateReport (issue #10)', () => {
     }
   });
 
+  it('command_displayed renders as "Command (run by operator)" in sidecar mode', () => {
+    const withDisplayed = makeJsonl([
+      {
+        type: 'session_start',
+        op: 'sidecar.yaml',
+        tmux_session: undefined,
+      },
+      {
+        type: 'step_start',
+        step: 0,
+        name: 'Deploy App',
+      },
+      {
+        type: 'command_displayed',
+        step: 0,
+        session: 'default',
+        command: 'kubectl apply -f deployment.yaml',
+      },
+      { type: 'step_complete', step: 0 },
+      { type: 'session_end', status: 'completed', steps_completed: 1 },
+    ]);
+    const jsonlPath = join(tmpdir(), 'test-report-command-displayed.jsonl');
+    writeFileSync(jsonlPath, withDisplayed, 'utf-8');
+    try {
+      const md = generateReport(jsonlPath);
+      assert.ok(
+        md.includes('**Command (run by operator)**'),
+        'should use "Command (run by operator)" label for command_displayed events',
+      );
+      assert.ok(
+        md.includes('kubectl apply -f deployment.yaml'),
+        'should include the command',
+      );
+      assert.ok(
+        !md.includes('**Command sent**'),
+        'must not use "Command sent" label for command_displayed events',
+      );
+    } finally {
+      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+    }
+  });
+
+  it('command_sent still renders as "Command sent"', () => {
+    const jsonlPath = join(tmpdir(), 'test-report-command-sent-check.jsonl');
+    writeFileSync(jsonlPath, sampleJsonl, 'utf-8');
+    try {
+      const md = generateReport(jsonlPath);
+      assert.ok(
+        md.includes('**Command sent**'),
+        'regular command_sent events should still use "Command sent" label',
+      );
+    } finally {
+      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+    }
+  });
+
   it('includes rollback events in dedicated section', () => {
     const withRollback = makeJsonl([
       {

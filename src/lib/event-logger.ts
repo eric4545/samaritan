@@ -8,6 +8,8 @@ export type EventType =
   | 'session_error'
   | 'step_start'
   | 'command_sent'
+  | 'command_displayed'
+  | 'capture_attach'
   | 'pane_captured'
   | 'evidence_captured'
   | 'evidence_removed'

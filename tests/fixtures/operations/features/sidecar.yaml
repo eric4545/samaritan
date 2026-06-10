@@ -1,0 +1,23 @@
+name: Sidecar Test Operation
+version: 1.0.0
+description: Test fixture for sidecar run mode — automatic and manual steps with expect
+
+environments:
+  - name: staging
+    variables:
+      REPLICAS: 2
+      ENDPOINT: http://staging.example.com
+
+steps:
+  - name: Deploy App
+    type: automatic
+    command: kubectl apply -f deployment.yaml
+    expect:
+      contains: created
+
+  - name: Verify Health
+    type: manual
+    instruction: Check the health endpoint
+    command: curl ${ENDPOINT}/health
+    expect:
+      contains: ok
