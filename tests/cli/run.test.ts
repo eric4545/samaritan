@@ -16,6 +16,7 @@ function fixturePath(name: string): string {
     sidecar: 'tests/fixtures/operations/features/sidecar.yaml',
     nestedSubsteps2Levels:
       'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',
+    varRendering: 'tests/fixtures/operations/features/var-rendering.yaml',
   };
   return resolve(map[name]);
 }
@@ -511,6 +512,59 @@ describe('run command: sub-steps support', () => {
       result.status,
       0,
       'non-TTY fallback must handle single-char input + newline',
+    );
+  });
+});
+
+// ─── ${VAR} rendering in run-mode display ────────────────────────────────────
+
+describe('run command: ${VAR} rendering in step display', () => {
+  it('resolves ${VAR} in step description', () => {
+    const fixture = fixturePath('varRendering');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Scale to 2 replicas in the staging-ns namespace'),
+      'description must have ${REPLICAS}/${NAMESPACE} resolved',
+    );
+    assert.ok(
+      !combined.includes('${NAMESPACE}'),
+      'description must not show literal ${NAMESPACE}',
+    );
+  });
+
+  it('resolves ${VAR} in rollback command display (no tmux session)', () => {
+    const fixture = fixturePath('varRendering');
+    // r triggers rollback display for step 1, then q aborts — but multi-prompt
+    // piped stdin is unreliable (see CLAUDE.md); send both lines in one chunk
+    // is exactly the broken case, so use 'r\n' only: rollback prints, then the
+    // step re-prompts and stdin EOF ends the run.
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'r\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('kubectl rollout undo deployment/web -n staging-ns'),
+      'rollback command display must have ${NAMESPACE} resolved',
+    );
+  });
+
+  it('warns about unresolved variables instead of failing silently', () => {
+    const fixture = fixturePath('varRendering');
+    // skip step 1 so step 2 (with ${NOT_DEFINED}) renders, then EOF ends run
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 's\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Unresolved variable(s): NOT_DEFINED'),
+      'must warn which variable could not be resolved',
+    );
+    assert.ok(
+      combined.includes('${NOT_DEFINED}'),
+      'unresolved placeholder stays visible as a marker',
     );
   });
 });

@@ -99,6 +99,9 @@ export const FIXTURES = {
   // Sidecar run mode
   sidecar: 'tests/fixtures/operations/features/sidecar.yaml',
 
+  // ${VAR} rendering in run mode
+  varRendering: 'tests/fixtures/operations/features/var-rendering.yaml',
+
   // Sessions / execution engine
   withSessions: 'tests/fixtures/operations/features/with-sessions.yaml',
   withCaptureExpect:

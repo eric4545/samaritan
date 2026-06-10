@@ -44,6 +44,24 @@ export function resolveVarsSafe(
 }
 
 /**
+ * Lists the names of every ${VAR} placeholder in `text` that has no value
+ * in `vars` (deduplicated, in order of first appearance).
+ */
+export function listUnresolvedVars(
+  text: string,
+  vars: Record<string, any>,
+): string[] {
+  const unresolved: string[] = [];
+  for (const match of text.matchAll(/\$\{([^}]+)\}/g)) {
+    const name = match[1];
+    if (!Object.hasOwn(vars, name) && !unresolved.includes(name)) {
+      unresolved.push(name);
+    }
+  }
+  return unresolved;
+}
+
+/**
  * Returns true if `text` still contains any unresolved ${VAR} placeholders.
  */
 export function hasUnresolvedVars(

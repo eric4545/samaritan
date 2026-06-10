@@ -32,7 +32,11 @@ import {
   validateTmuxTarget,
 } from '../../lib/tmux-session';
 import { renderCodeBlock, renderKeyHints, StepController } from '../../lib/tui';
-import { resolveVars, resolveVarsSafe } from '../../lib/variable-resolver';
+import {
+  listUnresolvedVars,
+  resolveVars,
+  resolveVarsSafe,
+} from '../../lib/variable-resolver';
 import type { EvidenceItem } from '../../models/evidence';
 import type {
   EvidenceType,
@@ -579,26 +583,41 @@ class OperationRunner {
     const isSkip = (c: string) => c === 's' || c === 'skip';
     const isRollback = (c: string) => c === 'r' || c === 'rollback';
 
+    const warnedUnresolvedVars = new Set<string>();
     const tryResolve = (text: string | undefined): string | undefined => {
       if (!text) return text;
       try {
         return resolveVars(text, vars);
       } catch {
-        // Fall back to safe resolution (display with unresolved markers)
+        // Fall back to safe resolution (display with unresolved markers),
+        // but tell the operator which variables are missing — once each.
+        const missing = listUnresolvedVars(text, vars).filter(
+          (name) => !warnedUnresolvedVars.has(name),
+        );
+        if (missing.length > 0) {
+          for (const name of missing) warnedUnresolvedVars.add(name);
+          console.warn(
+            `    ⚠️  Unresolved variable(s): ${missing.join(', ')} — add them to variables: or pass --var`,
+          );
+        }
         return resolveVarsSafe(text, vars);
       }
     };
 
     const doRollback = async (step: Step, i: number): Promise<void> => {
-      if (controller) {
+      const hasRollbackSteps = step.rollback && step.rollback.length > 0;
+      if (controller && tmuxSession) {
         console.log('    🔄 Initiating rollback...');
         await controller.rollback(step, i, state.context.operator);
         console.log('    ↩  Rollback complete.');
-      } else if (step.rollback && step.rollback.length > 0) {
+      } else if (hasRollbackSteps) {
+        // No tmux to send through (sidecar without sessions) — show the
+        // operator what to run; controller still records the audit events.
         console.log('    🔄 Rollback steps (manual — no tmux session):');
-        for (const rb of step.rollback) {
-          console.log(`      $ ${rb.command}`);
+        for (const rb of step.rollback ?? []) {
+          console.log(`      $ ${tryResolve(rb.command)}`);
         }
+        await controller?.rollback(step, i, state.context.operator);
       } else {
         console.log('    ℹ️  No rollback defined for this step.');
       }
@@ -899,7 +918,8 @@ class OperationRunner {
 
         console.log(`\n${DIVIDER}`);
         console.log(`${stepNum} ${typeLabel}: ${step.name}`);
-        if (step.description) console.log(`    ${step.description}`);
+        if (step.description)
+          console.log(`    ${tryResolve(step.description)}`);
         if (step.pic) console.log(`    PIC      : ${step.pic}`);
         if (step.reviewer) console.log(`    Reviewer : ${step.reviewer}`);
         if (step.session) console.log(`    Session  : ${step.session}`);

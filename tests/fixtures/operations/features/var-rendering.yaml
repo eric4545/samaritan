@@ -1,0 +1,22 @@
+name: Var Rendering Test Operation
+version: 1.0.0
+description: Fixture for ${VAR} resolution in run-mode display (description, instruction, rollback, unresolved warning)
+
+environments:
+  - name: staging
+    variables:
+      NAMESPACE: staging-ns
+      REPLICAS: 2
+
+steps:
+  - name: Scale deployment
+    type: manual
+    description: Scale to ${REPLICAS} replicas in the ${NAMESPACE} namespace
+    instruction: Run the command, then confirm ${REPLICAS} pods are Running.
+    command: kubectl scale deployment web --replicas=${REPLICAS} -n ${NAMESPACE}
+    rollback:
+      - command: kubectl rollout undo deployment/web -n ${NAMESPACE}
+
+  - name: Check missing variable warning
+    type: manual
+    instruction: This references ${NOT_DEFINED} on purpose.
