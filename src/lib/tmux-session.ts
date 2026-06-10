@@ -29,6 +29,49 @@ export function validateTmuxTarget(target: string): boolean {
   }
 }
 
+export interface TmuxPaneInfo {
+  /** Unique pane id, e.g. "%3" — stable even when windows are reordered */
+  id: string;
+  /** Addressable target, e.g. "mysession:0.1" */
+  target: string;
+  /** Command currently running in the pane, e.g. "zsh" */
+  currentCommand: string;
+  title: string;
+  /** True when this is the pane samaritan itself is running in */
+  isSelf: boolean;
+}
+
+/**
+ * List all panes across all tmux sessions so the operator can pick one by
+ * number instead of typing a target. Returns [] when tmux is unavailable or
+ * no server is running — never throws.
+ */
+export function listTmuxPanes(): TmuxPaneInfo[] {
+  try {
+    const result = spawnSync(
+      'tmux',
+      [
+        'list-panes',
+        '-a',
+        '-F',
+        '#{pane_id}\t#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_command}\t#{pane_title}',
+      ],
+      { stdio: 'pipe' },
+    );
+    if (result.status !== 0) return [];
+    const selfPane = process.env.TMUX_PANE;
+    return (result.stdout?.toString() ?? '')
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line) => {
+        const [id, target, currentCommand = '', title = ''] = line.split('\t');
+        return { id, target, currentCommand, title, isSelf: id === selfPane };
+      });
+  } catch {
+    return [];
+  }
+}
+
 export class TmuxSession implements CaptureBackend {
   private sessionId: string;
   private tmuxName: string;

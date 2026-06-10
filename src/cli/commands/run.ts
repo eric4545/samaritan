@@ -27,11 +27,17 @@ import { getSessionEvidenceDir } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
 import {
   bootstrapSessions,
+  listTmuxPanes,
   TmuxPaneCapture,
   type TmuxSession,
   validateTmuxTarget,
 } from '../../lib/tmux-session';
-import { renderCodeBlock, renderKeyHints, StepController } from '../../lib/tui';
+import {
+  renderAssertOutcome,
+  renderCodeBlock,
+  renderKeyHints,
+  StepController,
+} from '../../lib/tui';
 import {
   listUnresolvedVars,
   resolveVars,
@@ -299,6 +305,15 @@ class OperationRunner {
         console.log(
           `\n💡 Resume this session:\n   samaritan resume ${session.id}`,
         );
+      } else if (finalState.status === 'cancelled') {
+        // An operator abort stops the run but should never strand the
+        // session — persist it as paused so it stays resumable.
+        sessionManager.pauseSession(session.id);
+        console.log('\n⏸️  Run aborted — progress saved.');
+        console.log(
+          `\n💡 Resume this session:\n   samaritan resume ${session.id}`,
+        );
+        console.log('   List saved sessions:   samaritan sessions');
       }
 
       const summary = sessionManager.getSessionSummary(session.id);
@@ -336,6 +351,7 @@ class OperationRunner {
       throw new Error(
         `Session not found: ${sessionId}\n` +
           '  No persisted session found for this ID.\n' +
+          '  List saved sessions with: samaritan sessions\n' +
           '  Start a new run with: samaritan run <operation.yaml> -e <environment>',
       );
     }
@@ -422,7 +438,15 @@ class OperationRunner {
     executor.finalizeOperation();
     tmuxSession?.teardown();
 
-    console.log('\n✅ Session resumed and completed!');
+    if (executor.getState().status === 'cancelled') {
+      sessionManager.pauseSession(session.id);
+      console.log('\n⏸️  Run aborted — progress saved.');
+      console.log(
+        `\n💡 Resume this session:\n   samaritan resume ${session.id}`,
+      );
+    } else {
+      console.log('\n✅ Session resumed and completed!');
+    }
   }
 
   private prepareFlatOperation(operation: Operation): {
@@ -463,6 +487,7 @@ class OperationRunner {
       'e',
       'x',
       'v',
+      't',
       's',
       'r',
       'q',
@@ -472,6 +497,17 @@ class OperationRunner {
       if (!process.stdin.isTTY) return question('  > ');
 
       rl.pause();
+      // Readline keeps its own keypress listener attached even while paused —
+      // once stdin is resumed in raw mode below, that listener would echo
+      // every key a second time ("t" renders as "tt") and buffer it into
+      // rl.line, leaking stray characters into the next question() prompt.
+      // Suspend all pre-existing listeners while we read, restore on cleanup.
+      const suspended = process.stdin.listeners('keypress').slice() as Array<
+        (...args: any[]) => void
+      >;
+      for (const listener of suspended) {
+        process.stdin.removeListener('keypress', listener);
+      }
       process.stdin.setRawMode(true);
       // rl.pause() pauses stdin, which both stops keypress events and drops
       // the last live handle — without an explicit resume the event loop
@@ -512,6 +548,9 @@ class OperationRunner {
 
         const cleanup = () => {
           process.stdin.removeListener('keypress', handler);
+          for (const listener of suspended) {
+            process.stdin.on('keypress', listener);
+          }
           process.stdin.setRawMode(false);
           rl.resume();
         };
@@ -524,6 +563,18 @@ class OperationRunner {
     const logger = createEventLogger(state.context.sessionId);
     console.log(`📝 Audit log: ${logger.path}`);
     const sessionState = new SessionState();
+
+    // Persist progress after each interactive step action. The executor emits
+    // step_completed BEFORE it advances currentStepIndex, so the event-driven
+    // save in SessionManager records a stale index — this explicit sync
+    // persists the post-advance state so `samaritan resume` continues at the
+    // right step instead of repeating the one just completed.
+    const persistProgress = (): void => {
+      sessionManager.updateSessionFromExecutor(
+        state.context.sessionId,
+        executor.getState(),
+      );
+    };
 
     logger.emit({ type: 'session_start', op: operationFile });
 
@@ -886,10 +937,7 @@ class OperationRunner {
 
       if (!assertResult) return;
 
-      const icon = assertResult.pass ? '✅ PASS' : '❌ FAIL';
-      console.log(
-        `    ${icon} Assert (${assertResult.type}): expected "${assertResult.expected}"`,
-      );
+      console.log(renderAssertOutcome(assertResult));
       if (!assertResult.pass) {
         const action = await promptAssertFailureAction(stepIndex);
         if (action === 'rollback') {
@@ -942,6 +990,7 @@ class OperationRunner {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
           console.log('    ▶  (section — sub-steps follow)');
           await executor.executeStepManually(i, 'section header');
+          persistProgress();
           logger.emit({ type: 'step_complete', step: i });
           continue;
         }
@@ -987,6 +1036,7 @@ class OperationRunner {
               i,
               `sent via tmux [${step.session}]`,
             );
+            persistProgress();
             console.log(`    📤 Sent to tmux pane [${step.session}].`);
 
             // Run verify if defined
@@ -997,10 +1047,7 @@ class OperationRunner {
               const { state: vState, assertResult } =
                 await controller.runVerify(step, i);
               if (assertResult) {
-                const icon = assertResult.pass ? '✅ PASS' : '❌ FAIL';
-                console.log(
-                  `    ${icon} Assert (${assertResult.type}): expected "${assertResult.expected}"`,
-                );
+                console.log(renderAssertOutcome(assertResult));
                 if (!assertResult.pass) {
                   const action = await promptAssertFailureAction(i);
                   if (action === 'rollback') {
@@ -1049,6 +1096,7 @@ class OperationRunner {
               continue;
             }
             await executor.executeStepManually(i, 'confirmed');
+            persistProgress();
             logger.emit({
               type: 'user_input',
               action: 'confirmed',
@@ -1166,10 +1214,37 @@ class OperationRunner {
               mode === 'sidecar' &&
               (inputChoice === 't' || inputChoice === 'attach')
             ) {
-              // [t] — attach (or swap) a tmux pane for capture
-              const targetAns = (
-                await question('    Tmux pane target (Enter to cancel): ')
-              ).trim();
+              // [t] — attach (or swap) a tmux pane for capture. Offer a
+              // numbered picker of existing panes; typing a raw target
+              // (e.g. mysession:0.0 or %3) still works.
+              const panes = listTmuxPanes();
+              let targetAns: string;
+              if (panes.length > 0) {
+                console.log('\n    Available tmux panes:');
+                panes.forEach((p, idx) => {
+                  const cmd = p.currentCommand ? `  ${p.currentCommand}` : '';
+                  const self = p.isSelf ? '  (this pane — samaritan)' : '';
+                  console.log(`      ${idx + 1}) ${p.target}${cmd}${self}`);
+                });
+                targetAns = (
+                  await question(
+                    '    Select pane [number or target, Enter to cancel]: ',
+                  )
+                ).trim();
+                const picked = Number.parseInt(targetAns, 10);
+                if (
+                  Number.isInteger(picked) &&
+                  picked >= 1 &&
+                  picked <= panes.length &&
+                  String(picked) === targetAns
+                ) {
+                  targetAns = panes[picked - 1].target;
+                }
+              } else {
+                targetAns = (
+                  await question('    Tmux pane target (Enter to cancel): ')
+                ).trim();
+              }
               if (!targetAns) {
                 console.log('    ↩  Cancelled.');
                 continue;
@@ -1228,6 +1303,7 @@ class OperationRunner {
             i,
             manualNotes.trim() || 'confirmed',
           );
+          persistProgress();
           logger.emit({
             type: 'user_input',
             action: 'confirmed',
@@ -1251,6 +1327,7 @@ class OperationRunner {
           }
           if (choice === 'approve') {
             await executor.executeStepManually(i, 'approved');
+            persistProgress();
             logger.emit({
               type: 'user_input',
               action: 'approved',
@@ -1274,6 +1351,7 @@ class OperationRunner {
           }
         } else {
           await executor.executeStepManually(i, 'confirmed');
+          persistProgress();
           logger.emit({ type: 'step_complete', step: i });
         }
       }

@@ -93,8 +93,13 @@ export class SessionManager {
     session.completion_percentage =
       this.calculateCompletionPercentage(executorState);
 
-    // Collect evidence from completed steps
-    session.evidence = this.collectEvidenceFromSteps(executorState);
+    // Merge evidence collected by step collectors with evidence already on
+    // the session — replacing wholesale would drop items the operator
+    // attached interactively via addEvidence() (the [e] action in `run`).
+    const known = new Set(session.evidence.map((e) => e.id));
+    for (const item of this.collectEvidenceFromSteps(executorState)) {
+      if (!known.has(item.id)) session.evidence.push(item);
+    }
 
     this.sessions.set(sessionId, session);
     saveSession(session);

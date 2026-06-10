@@ -1,6 +1,12 @@
 import assert from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -583,7 +589,9 @@ describe('run command: TTY raw-mode action prompt', () => {
 
   it(
     'waits at the action prompt under a TTY and aborts on q',
-    { skip: !hasScript },
+    {
+      skip: !hasScript,
+    },
     () => {
       const fixture = fixturePath('manualStepActions');
       // Hold stdin open, send a single raw `q` keypress after the prompt renders.
@@ -596,6 +604,98 @@ describe('run command: TTY raw-mode action prompt', () => {
       assert.ok(
         combined.includes('aborted by operator'),
         `process must stay alive at the raw-mode prompt and abort on q; output was:\n${combined.slice(-2000)}`,
+      );
+    },
+  );
+});
+
+// ─── Abort persists a resumable session (issue: "how to resume a run?") ──────
+
+describe('run command: abort persists a resumable session', () => {
+  function extractSessionId(output: string): string {
+    const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
+    assert.ok(m, `run output must include the session id; got:\n${output}`);
+    return (m as RegExpMatchArray)[1];
+  }
+
+  function readSessionFile(sessionId: string): any {
+    const path = join(homedir(), '.samaritan', 'sessions', `${sessionId}.json`);
+    assert.ok(existsSync(path), `session file must exist at ${path}`);
+    return JSON.parse(readFileSync(path, 'utf-8'));
+  }
+
+  it('q/abort saves the session as paused and prints a resume hint', () => {
+    const fixture = fixturePath('manualStepActions');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'q\n',
+    });
+    const combined = result.stdout + result.stderr;
+    const sessionId = extractSessionId(combined);
+
+    assert.ok(
+      combined.includes(`samaritan resume ${sessionId}`),
+      'abort must print a resume hint with the session id',
+    );
+
+    const session = readSessionFile(sessionId);
+    assert.strictEqual(
+      session.status,
+      'paused',
+      'aborted session must be persisted as paused (resumable)',
+    );
+  });
+
+  it('persists the post-step index so resume continues at the NEXT step', () => {
+    // varRendering has 2 manual steps; complete step 1 with Enter, then EOF
+    // ends the run at step 2's prompt.
+    const fixture = fixturePath('varRendering');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: '\n',
+    });
+    const combined = result.stdout + result.stderr;
+    const sessionId = extractSessionId(combined);
+
+    const session = readSessionFile(sessionId);
+    assert.strictEqual(
+      session.current_step_index,
+      1,
+      'after completing step 1, the persisted index must point at step 2 — ' +
+        'not back at the already-completed step',
+    );
+  });
+});
+
+// ─── TTY raw-mode: [t] fires immediately and keys are not echoed twice ───────
+
+describe('run command: TTY [t] attach prompt', () => {
+  const hasScript =
+    process.platform === 'linux' &&
+    spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
+
+  it(
+    'pressing t opens the attach prompt without Enter and without double echo',
+    {
+      skip: !hasScript,
+    },
+    () => {
+      const fixture = fixturePath('sidecar');
+      // t → attach prompt appears immediately; Enter cancels it; q aborts.
+      const cmd = `(sleep 3; printf 't'; sleep 2; printf '\\n'; sleep 2; printf 'q'; sleep 2) | script -qec "${CLI} ${INDEX} run ${fixture} --env staging" /dev/null`;
+      const result = spawnSync('bash', ['-c', cmd], {
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+      const combined = (result.stdout ?? '') + (result.stderr ?? '');
+      assert.ok(
+        combined.includes('Select pane') ||
+          combined.includes('Tmux pane target'),
+        `[t] must open the attach prompt without requiring Enter; output:\n${combined.slice(-2000)}`,
+      );
+      // Regression: readline's own keypress listener used to stay attached in
+      // raw mode, echoing every key twice ("t" rendered as "tt").
+      assert.ok(
+        !/>\s*tt/.test(combined),
+        `keys must not be echoed twice at the action prompt; output:\n${combined.slice(-2000)}`,
       );
     },
   );
