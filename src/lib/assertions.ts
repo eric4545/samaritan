@@ -18,6 +18,18 @@ export interface AssertResult {
   type: string;
 }
 
+/**
+ * Compile a user-supplied pattern, returning undefined for invalid regex
+ * syntax instead of throwing mid-run.
+ */
+function compileRegex(pattern: string): RegExp | undefined {
+  try {
+    return new RegExp(pattern);
+  } catch {
+    return undefined;
+  }
+}
+
 export function assertOutput(
   output: string,
   expect: ExpectConfig | ExpectConfig[] | string,
@@ -79,11 +91,13 @@ export function assertOutput(
   }
 
   if (expect.matches !== undefined) {
-    const re = new RegExp(expect.matches);
+    const re = compileRegex(expect.matches);
     checks.push({
-      pass: re.test(output),
+      pass: re?.test(output) ?? false,
       actual: trimmed,
-      expected: expect.matches,
+      expected: re
+        ? expect.matches
+        : `valid regex (invalid pattern: ${expect.matches})`,
       type: 'matches',
     });
   }
@@ -118,11 +132,13 @@ export function assertOutput(
   }
 
   if (expect.all_lines_match !== undefined) {
-    const re = new RegExp(expect.all_lines_match);
+    const re = compileRegex(expect.all_lines_match);
     checks.push({
-      pass: lines.every((l) => re.test(l)),
+      pass: re !== undefined && lines.every((l) => re.test(l)),
       actual: trimmed,
-      expected: expect.all_lines_match,
+      expected: re
+        ? expect.all_lines_match
+        : `valid regex (invalid pattern: ${expect.all_lines_match})`,
       type: 'all_lines_match',
     });
   }

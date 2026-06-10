@@ -1,5 +1,10 @@
 import type { Step } from '../models/operation';
 
+/** Escape regex metacharacters so a string can be matched literally. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * Resolve `${VAR}` placeholders, prioritizing step-scoped variables over environment variables.
  */
@@ -12,8 +17,12 @@ export function substituteVariables(
 
   let result = command;
   for (const key in mergedVariables) {
-    const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
-    result = result.replace(regex, mergedVariables[key]);
+    // Escape the key: variable names come from YAML and may contain regex
+    // metacharacters that would otherwise change what gets replaced.
+    const regex = new RegExp(`\\$\\{${escapeRegExp(key)}\\}`, 'g');
+    // Function replacement: a value containing $& / $' must be inserted
+    // literally, not treated as a replacement pattern.
+    result = result.replace(regex, () => String(mergedVariables[key]));
   }
 
   return result;

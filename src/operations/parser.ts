@@ -31,6 +31,29 @@ interface ImportContext {
   baseDirectory: string; // Directory of the main operation file
 }
 
+const FORBIDDEN_VARIABLE_KEYS = ['__proto__', 'constructor', 'prototype'];
+
+/**
+ * Reject variable names that collide with object prototype machinery —
+ * they can never be resolved safely and invite prototype-pollution bugs
+ * in downstream merges.
+ */
+function assertSafeVariableKeys(
+  vars: Record<string, any> | undefined,
+  context: string,
+): void {
+  for (const key of Object.keys(vars ?? {})) {
+    if (FORBIDDEN_VARIABLE_KEYS.includes(key)) {
+      throw new OperationParseError(`Forbidden variable name '${key}'`, [
+        {
+          field: context,
+          message: `Variable name '${key}' is reserved and cannot be used`,
+        },
+      ]);
+    }
+  }
+}
+
 /**
  * Parse .env file and return key-value pairs
  * Supports basic .env format: KEY=value
@@ -950,8 +973,13 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   // Build variable matrix from environments
   const variables: VariableMatrix = {};
   environments.forEach((env) => {
+    assertSafeVariableKeys(
+      env.variables,
+      `environments[${env.name}].variables`,
+    );
     variables[env.name] = env.variables;
   });
+  assertSafeVariableKeys(commonVariables, 'common_variables');
 
   // Create metadata
   const now = new Date();

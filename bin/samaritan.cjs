@@ -70,10 +70,11 @@ function startCli() {
     },
 
     // Method 3: Global npx fallback
+    // No shell: true — argv would pass through shell interpretation,
+    // letting metacharacters in arguments execute as commands.
     () =>
       spawn('npx', ['tsx', cliPath, ...process.argv.slice(2)], {
         stdio: 'inherit',
-        shell: true,
       }),
   ];
 

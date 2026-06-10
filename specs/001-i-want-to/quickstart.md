@@ -163,12 +163,6 @@ npx @samaritan/cli resume <session-id>
    📁 Drop files here or press Enter to use camera: screenshot.png
    ✅ Evidence uploaded: screenshot.png
    
-🤖 Need help? Type 'help' or ask a question: what should I check in the logs?
-💬 AI: For the health endpoint test, look for:
-   - HTTP 200 status code
-   - Response time under 1 second  
-   - JSON response with "status": "healthy"
-   
 ✅ Mark step complete? [Y/n]: Y
 
 🔄 Step 3/4: deploy-to-cluster (automatic)
@@ -223,18 +217,6 @@ npx @samaritan/cli qrh search --priority P0
 npx @samaritan/cli qrh run database-failover
 ```
 
-### AI Assistant
-```bash
-# Start interactive AI chat
-npx @samaritan/cli chat
-
-# Get contextual help during operation
-npx @samaritan/cli run deploy-webapp --with-ai
-
-# Ask specific questions
-npx @samaritan/cli ask "How do I rollback this deployment?"
-```
-
 ### Operation Marketplace
 ```bash
 # Browse community operations
@@ -280,11 +262,6 @@ integrations:
     operations_repo: "git@github.com:company/sre-operations.git"
     branch: "main"
 
-# AI assistant settings  
-ai:
-  provider: "openai"  # or "anthropic"
-  model: "gpt-4-turbo"
-  
 # Evidence collection
 evidence:
   auto_screenshot: true
@@ -301,8 +278,6 @@ execution:
 ### Environment Variables
 ```bash
 # Required for integrations
-export OPENAI_API_KEY="sk-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
 export JIRA_TOKEN="..." 
 export CONFLUENCE_TOKEN="..."
 
@@ -340,7 +315,6 @@ After completing this quickstart, you should have:
 - `Permission denied`: Check Git repository access and tokens
 - `Validation failed`: Review operation YAML syntax
 - `Evidence upload failed`: Check file size and format limits
-- `AI assistant unavailable`: Verify API key configuration
 
 **Get Help**:
 ```bash

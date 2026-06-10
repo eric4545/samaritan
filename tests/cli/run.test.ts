@@ -16,6 +16,7 @@ function fixturePath(name: string): string {
     sidecar: 'tests/fixtures/operations/features/sidecar.yaml',
     nestedSubsteps2Levels:
       'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',
+    varRendering: 'tests/fixtures/operations/features/var-rendering.yaml',
   };
   return resolve(map[name]);
 }
@@ -513,4 +514,89 @@ describe('run command: sub-steps support', () => {
       'non-TTY fallback must handle single-char input + newline',
     );
   });
+});
+
+// ─── ${VAR} rendering in run-mode display ────────────────────────────────────
+
+describe('run command: ${VAR} rendering in step display', () => {
+  it('resolves ${VAR} in step description', () => {
+    const fixture = fixturePath('varRendering');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Scale to 2 replicas in the staging-ns namespace'),
+      'description must have ${REPLICAS}/${NAMESPACE} resolved',
+    );
+    assert.ok(
+      !combined.includes('${NAMESPACE}'),
+      'description must not show literal ${NAMESPACE}',
+    );
+  });
+
+  it('resolves ${VAR} in rollback command display (no tmux session)', () => {
+    const fixture = fixturePath('varRendering');
+    // r triggers rollback display for step 1, then q aborts — but multi-prompt
+    // piped stdin is unreliable (see CLAUDE.md); send both lines in one chunk
+    // is exactly the broken case, so use 'r\n' only: rollback prints, then the
+    // step re-prompts and stdin EOF ends the run.
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'r\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('kubectl rollout undo deployment/web -n staging-ns'),
+      'rollback command display must have ${NAMESPACE} resolved',
+    );
+  });
+
+  it('warns about unresolved variables instead of failing silently', () => {
+    const fixture = fixturePath('varRendering');
+    // skip step 1 so step 2 (with ${NOT_DEFINED}) renders, then EOF ends run
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 's\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Unresolved variable(s): NOT_DEFINED'),
+      'must warn which variable could not be resolved',
+    );
+    assert.ok(
+      combined.includes('${NOT_DEFINED}'),
+      'unresolved placeholder stays visible as a marker',
+    );
+  });
+});
+
+// ─── TTY raw-mode action prompt (regression: silent exit at first prompt) ────
+
+describe('run command: TTY raw-mode action prompt', () => {
+  // readActionKey() pauses readline and switches stdin to raw mode; without an
+  // explicit stdin.resume() the paused stream emits no keypress events and
+  // holds no live handle, so the event loop drains and the process exits 0 at
+  // the first prompt. Piped-stdin tests can't catch this (non-TTY falls back
+  // to question()), so run under a pseudo-TTY via util-linux `script`.
+  const hasScript =
+    process.platform === 'linux' &&
+    spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
+
+  it(
+    'waits at the action prompt under a TTY and aborts on q',
+    { skip: !hasScript },
+    () => {
+      const fixture = fixturePath('manualStepActions');
+      // Hold stdin open, send a single raw `q` keypress after the prompt renders.
+      const cmd = `(sleep 3; printf 'q'; sleep 3) | script -qec "${CLI} ${INDEX} run ${fixture} --env default" /dev/null`;
+      const result = spawnSync('bash', ['-c', cmd], {
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+      const combined = (result.stdout ?? '') + (result.stderr ?? '');
+      assert.ok(
+        combined.includes('aborted by operator'),
+        `process must stay alive at the raw-mode prompt and abort on q; output was:\n${combined.slice(-2000)}`,
+      );
+    },
+  );
 });

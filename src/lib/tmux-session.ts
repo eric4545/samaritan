@@ -15,12 +15,14 @@ export function isLocalSession(config: SessionConfig | undefined): boolean {
  * Never throws — a bad target simply returns false.
  */
 export function validateTmuxTarget(target: string): boolean {
+  // Guard explicitly: tmux falls back to the current/first pane for an empty
+  // target, and display-message exits 0 even for unknown targets when a
+  // server is running — list-panes is the only form that reliably errors.
+  if (!target.trim()) return false;
   try {
-    const result = spawnSync(
-      'tmux',
-      ['display-message', '-p', '-t', target, '#{pane_id}'],
-      { stdio: 'pipe' },
-    );
+    const result = spawnSync('tmux', ['list-panes', '-t', target], {
+      stdio: 'pipe',
+    });
     return result.status === 0;
   } catch {
     return false;
@@ -38,7 +40,11 @@ export class TmuxSession implements CaptureBackend {
   }
 
   getPipeFilePath(sessionName: string): string {
-    return join(tmpdir(), `samaritan-${this.sessionId}-${sessionName}.pipe`);
+    // Sanitize both parts: the path is embedded in a shell command via pipe-pane
+    return join(
+      tmpdir(),
+      `samaritan-${sanitizeSessionName(this.sessionId)}-${sanitizeSessionName(sessionName)}.pipe`,
+    );
   }
 
   send(sessionName: string, command: string, sendEnter = true): void {
@@ -148,7 +154,10 @@ export class TmuxPaneCapture implements CaptureBackend {
 
   constructor(captureId: string, target: string) {
     this.target = target;
-    this.pipeFile = join(tmpdir(), `samaritan-${captureId}-attached.pipe`);
+    this.pipeFile = join(
+      tmpdir(),
+      `samaritan-${sanitizeSessionName(captureId)}-attached.pipe`,
+    );
   }
 
   /**
@@ -161,7 +170,8 @@ export class TmuxPaneCapture implements CaptureBackend {
       'pipe-pane',
       '-t',
       this.target,
-      `cat >> ${this.pipeFile}`,
+      // Quoted: tmpdir() may contain spaces (e.g. macOS /var/folders/...)
+      `cat >> '${this.pipeFile}'`,
     ]);
   }
 
@@ -244,7 +254,7 @@ export async function bootstrapSessions(
       '-t',
       paneTarget,
       '-o',
-      `cat >> ${pipeFile}`,
+      `cat >> '${pipeFile}'`,
     ]);
 
     tmuxSession.registerPane(name, paneTarget);

@@ -35,7 +35,7 @@
 ## User Scenarios & Testing
 
 ### Primary User Story
-As an SRE engineer, I need an Operations as Code platform that eliminates repetitive manual work by defining procedures once in Git-versioned YAML format, executing them across multiple environments with complete audit trails, automatic evidence collection, and integrated approval workflows that work with existing tools like Jira for manager approvals. Optional AI assistance can provide contextual help when needed.
+As an SRE engineer, I need an Operations as Code platform that eliminates repetitive manual work by defining procedures once in Git-versioned YAML format, executing them across multiple environments with complete audit trails, automatic evidence collection, and integrated approval workflows that work with existing tools like Jira for manager approvals.
 
 ### Acceptance Scenarios
 1. **Given** a complex deployment operation, **When** I define it once in YAML with environment variables, **Then** I can execute it in both preprod and production with different values
@@ -46,24 +46,23 @@ As an SRE engineer, I need an Operations as Code platform that eliminates repeti
 6. **Given** an operation with approval gates, **When** I reach an approval step, **Then** the system blocks execution until proper authorization is received
 7. **Given** a failed operation step, **When** rollback is configured, **Then** the system can automatically or manually trigger the rollback procedure
 8. **Given** a manual step requiring evidence, **When** I complete the action, **Then** I can attach screenshots or the system automatically captures relevant evidence
-9. **Given** an operation execution, **When** I need help with a step, **Then** I can optionally access AI assistance for contextual guidance
-10. **Given** evidence collection during execution, **When** the operation completes, **Then** all evidence is automatically organized and included in documentation
-11. **Given** an interrupted operation session, **When** I restart SAMARITAN, **Then** I can resume from the exact step where I left off
-12. **Given** a failed step with retry capability, **When** I choose to retry, **Then** the system captures the failure reason, my retry decision rationale, and maintains complete retry history for audit purposes
-13. **Given** a completed operation, **When** I request a release report, **Then** the system generates a comprehensive summary with timeline, evidence, and approvals
-14. **Given** an on-call emergency situation, **When** I access the QRH mode, **Then** I can quickly find and execute pre-defined emergency procedures
-15. **Given** a PagerDuty alert, **When** I search the QRH, **Then** I get relevant runbooks and quick response procedures
-16. **Given** an operation requiring manager approval, **When** I reach an approval gate, **Then** the system creates a Jira ticket with operation details and waits for manager approval
-17. **Given** Operations as Code in Git, **When** I modify operation definitions, **Then** the system tracks versions, enables peer review, and maintains change history
-18. **Given** a marketplace of reusable operations, **When** I search for common tasks, **Then** I can discover and use community-contributed operation components
-19. **Given** composite operations with dependencies, **When** I define an operation that needs other operations, **Then** the system automatically executes dependencies in correct order
-20. **Given** conditional operation steps, **When** execution reaches a conditional step, **Then** the system evaluates conditions and skips or executes accordingly
-21. **Given** operation templates, **When** I create a new operation, **Then** I can scaffold from common patterns (deployment, backup, maintenance)
-22. **Given** operation artifacts from previous steps, **When** subsequent steps need the data, **Then** the system passes evidence and outputs seamlessly
-23. **Given** an automated operation, **When** I request a manual mode playbook, **Then** the system generates manual instructions for every automated step
-24. **Given** an operation running in automatic mode, **When** I choose to switch to manual mode mid-execution, **Then** the system pauses and provides manual instructions for remaining steps
-25. **Given** a failed automated step, **When** the system offers manual override, **Then** I can execute the equivalent manual procedure and continue
-26. **Given** an emergency situation, **When** I activate manual override mode, **Then** all subsequent steps execute as manual instructions with detailed commands
+9. **Given** evidence collection during execution, **When** the operation completes, **Then** all evidence is automatically organized and included in documentation
+10. **Given** an interrupted operation session, **When** I restart SAMARITAN, **Then** I can resume from the exact step where I left off
+11. **Given** a failed step with retry capability, **When** I choose to retry, **Then** the system captures the failure reason, my retry decision rationale, and maintains complete retry history for audit purposes
+12. **Given** a completed operation, **When** I request a release report, **Then** the system generates a comprehensive summary with timeline, evidence, and approvals
+13. **Given** an on-call emergency situation, **When** I access the QRH mode, **Then** I can quickly find and execute pre-defined emergency procedures
+14. **Given** a PagerDuty alert, **When** I search the QRH, **Then** I get relevant runbooks and quick response procedures
+15. **Given** an operation requiring manager approval, **When** I reach an approval gate, **Then** the system creates a Jira ticket with operation details and waits for manager approval
+16. **Given** Operations as Code in Git, **When** I modify operation definitions, **Then** the system tracks versions, enables peer review, and maintains change history
+17. **Given** a marketplace of reusable operations, **When** I search for common tasks, **Then** I can discover and use community-contributed operation components
+18. **Given** composite operations with dependencies, **When** I define an operation that needs other operations, **Then** the system automatically executes dependencies in correct order
+19. **Given** conditional operation steps, **When** execution reaches a conditional step, **Then** the system evaluates conditions and skips or executes accordingly
+20. **Given** operation templates, **When** I create a new operation, **Then** I can scaffold from common patterns (deployment, backup, maintenance)
+21. **Given** operation artifacts from previous steps, **When** subsequent steps need the data, **Then** the system passes evidence and outputs seamlessly
+22. **Given** an automated operation, **When** I request a manual mode playbook, **Then** the system generates manual instructions for every automated step
+23. **Given** an operation running in automatic mode, **When** I choose to switch to manual mode mid-execution, **Then** the system pauses and provides manual instructions for remaining steps
+24. **Given** a failed automated step, **When** the system offers manual override, **Then** I can execute the equivalent manual procedure and continue
+25. **Given** an emergency situation, **When** I activate manual override mode, **Then** all subsequent steps execute as manual instructions with detailed commands
 
 ### Edge Cases
 - What happens when automated commands fail or timeout?
@@ -73,7 +72,6 @@ As an SRE engineer, I need an Operations as Code platform that eliminates repeti
 - What happens when rollback procedures themselves fail?
 - How does the system handle corrupted or missing evidence files?
 - What happens when automatic screenshot capture fails?
-- How does the AI assistant handle ambiguous or unclear user questions?
 - What happens when session data becomes corrupted or lost?
 - How does the system handle concurrent sessions for the same operation?
 - What occurs when Confluence page history reaches limits?
@@ -105,13 +103,11 @@ As an SRE engineer, I need an Operations as Code platform that eliminates repeti
 - **FR-018**: System MUST resolve module dependencies and variable inheritance automatically
 - **FR-019**: System MUST validate preflight checklist items and block execution if any fail
 - **FR-020**: Users MUST be able to define custom preflight checks for their operations
-- **FR-021**: System SHOULD provide optional interactive AI chat interface for assistance during operations
 - **FR-022**: System MUST support automatic screenshot capture for web-based manual steps
 - **FR-023**: System MUST allow users to manually upload photos/screenshots as evidence
 - **FR-024**: System MUST automatically capture command outputs and logs as evidence
 - **FR-025**: System MUST organize and timestamp all evidence with step correlation
 - **FR-026**: System MUST validate evidence completeness before allowing step completion
-- **FR-027**: AI assistant SHOULD provide contextual help based on current operation step when enabled
 - **FR-028**: System MUST support evidence correction and re-upload capabilities
 - **FR-029**: System MUST include all collected evidence in generated documentation
 - **FR-030**: System MUST maintain persistent session state with resume capability from any step
@@ -160,7 +156,6 @@ As an SRE engineer, I need an Operations as Code platform that eliminates repeti
 - **Operation Module**: Reusable component containing steps, variables, and checklists that can be imported
 - **Module Registry**: Collection of available operation modules for sharing and reuse
 - **Evidence Item**: Digital proof of step completion (screenshot, log file, command output, photo)
-- **AI Assistant**: Optional interactive chat interface providing contextual guidance during operations
 - **Evidence Validator**: Component that checks evidence completeness and quality automatically
 - **Operation Session**: Persistent state of operation execution including current step, retries, and evidence
 - **Release Report**: Comprehensive post-execution summary with timeline, evidence, approvals, and metrics

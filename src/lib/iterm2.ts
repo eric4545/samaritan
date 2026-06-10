@@ -1,4 +1,15 @@
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
+
+/**
+ * tmux session names are generated internally (samaritan-<uuid>) but are
+ * embedded in shell command strings passed to tmux — refuse anything that
+ * could carry shell metacharacters.
+ */
+function assertSafeTmuxName(name: string): void {
+  if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+    throw new Error(`Invalid tmux session name: ${name}`);
+  }
+}
 
 export function isIterm2(): boolean {
   return process.env.TERM_PROGRAM === 'iTerm.app';
@@ -29,7 +40,8 @@ export function openIterm2Split(command: string, title: string): void {
     end tell
   `;
 
-  execSync(`osascript -e '${script.replace(/'/g, "'\\''")}'`);
+  // Pass the script as an argument — no shell, so no quote-escaping games.
+  execFileSync('osascript', ['-e', script]);
 }
 
 export type DisplayStrategy = 'iterm2' | 'tmux_split' | 'print_instructions';
@@ -47,6 +59,7 @@ export interface SplitOptions {
 }
 
 export function openDisplaySplits(opts: SplitOptions): void {
+  assertSafeTmuxName(opts.tmuxName);
   const strategy = detectDisplayStrategy();
   const sessionNames = Object.keys(opts.sessions);
 
@@ -74,10 +87,19 @@ export function openDisplaySplits(opts: SplitOptions): void {
         const cfg = opts.sessions[name];
         const host = cfg?.host ?? 'local';
         try {
-          execSync(
-            `tmux split-window -h -t ${opts.tmuxName} 'tmux attach-session -t ${opts.tmuxName} \\; select-pane -t 0.${i}'`,
-          );
-          execSync(`tmux select-pane -T 'samaritan: ${name} (${host})'`);
+          // Arg arrays keep YAML-supplied session names/hosts out of a shell.
+          execFileSync('tmux', [
+            'split-window',
+            '-h',
+            '-t',
+            opts.tmuxName,
+            `tmux attach-session -t ${opts.tmuxName} \\; select-pane -t 0.${i}`,
+          ]);
+          execFileSync('tmux', [
+            'select-pane',
+            '-T',
+            `samaritan: ${name} (${host})`,
+          ]);
         } catch (err) {
           console.error(
             `⚠ Could not open tmux split for ${name}: ${err instanceof Error ? err.message : String(err)}`,

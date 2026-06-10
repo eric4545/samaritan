@@ -1016,3 +1016,75 @@ steps:
     });
   });
 });
+
+describe('Security hardening', () => {
+  it('rejects __proto__ as a variable name with a parse error', async () => {
+    const yamlContent = `name: Proto Test
+version: 1.0.0
+description: prototype pollution guard
+environments:
+  - name: staging
+    variables:
+      __proto__:
+        polluted: true
+steps:
+  - name: Step
+    type: manual
+    instruction: noop
+`;
+    const { writeFileSync, unlinkSync } = await import('node:fs');
+    const tmpPath = '/tmp/samaritan-proto-guard-test.yaml';
+    writeFileSync(tmpPath, yamlContent);
+    try {
+      await assert.rejects(
+        async () => parseOperation(tmpPath),
+        /Forbidden variable name/,
+      );
+    } finally {
+      unlinkSync(tmpPath);
+    }
+  });
+
+  it('rejects constructor in common_variables with a parse error', async () => {
+    const yamlContent = `name: Proto Test
+version: 1.0.0
+description: prototype pollution guard
+common_variables:
+  constructor: bad
+environments:
+  - name: staging
+steps:
+  - name: Step
+    type: manual
+    instruction: noop
+`;
+    const { writeFileSync, unlinkSync } = await import('node:fs');
+    const tmpPath = '/tmp/samaritan-proto-guard-test2.yaml';
+    writeFileSync(tmpPath, yamlContent);
+    try {
+      await assert.rejects(
+        async () => parseOperation(tmpPath),
+        /Forbidden variable name/,
+      );
+    } finally {
+      unlinkSync(tmpPath);
+    }
+  });
+
+  it('rejects github: shorthand with traversal or query characters', async () => {
+    const { resolveGithubUrl } = await import('../../src/lib/template-fetcher');
+
+    assert.throws(
+      () => resolveGithubUrl('github:owner/repo//../../other/file.yaml'),
+      /forbidden characters/,
+    );
+    assert.throws(
+      () => resolveGithubUrl('github:owner/repo//path.yaml?raw=1'),
+      /forbidden characters/,
+    );
+    assert.throws(
+      () => resolveGithubUrl('github:owner/repo/extra//path.yaml'),
+      /owner\/repo/,
+    );
+  });
+});

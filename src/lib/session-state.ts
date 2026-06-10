@@ -29,7 +29,17 @@ export class SessionState {
 
   extractCapture(name: string, output: string, rule: CaptureRule): void {
     if (rule.pattern !== undefined) {
-      const re = new RegExp(rule.pattern);
+      let re: RegExp;
+      try {
+        re = new RegExp(rule.pattern);
+      } catch {
+        // Invalid user-supplied pattern — skip the capture rather than
+        // crashing mid-run; the variable simply stays unset.
+        console.warn(
+          `⚠️  Invalid capture pattern for "${name}": ${rule.pattern}`,
+        );
+        return;
+      }
       const match = re.exec(output);
       const groupIndex = rule.group ?? 1;
       const value = match?.[groupIndex];
