@@ -8,6 +8,7 @@ import {
 import { SessionState } from '../../src/lib/session-state';
 import {
   interpolateExpect,
+  renderAssertOutcome,
   renderCodeBlock,
   renderKeyHints,
   StepController,
@@ -406,5 +407,88 @@ describe('StepController.verifyOutput', () => {
     assert.strictEqual(assertResult?.expected, 'Running');
 
     cleanLogger(logger);
+  });
+});
+
+describe('StepController.verifyOutput — raw terminal capture cleaning', () => {
+  function makeController(logger: EventLogger): StepController {
+    const opts: StepControllerOptions = {
+      logger,
+      tmux: null as any,
+      sessionState: null as any,
+      autoSend: false,
+      autoExec: false,
+    };
+    return new StepController(opts);
+  }
+
+  it('passes when expected text is interrupted by ANSI color codes', () => {
+    const logger = makeLogger('verify-clean-1');
+    const ctrl = makeController(logger);
+    const step = {
+      name: 'Verify rollout',
+      expect: { contains: 'successfully rolled out' },
+    } as any;
+
+    const { assertResult } = ctrl.verifyOutput(
+      step,
+      0,
+      'deployment "web" \u001b[32msuccessfully rolled out\u001b[0m\r\n',
+    );
+
+    assert.ok(assertResult);
+    assert.strictEqual(assertResult?.pass, true);
+    cleanLogger(logger);
+  });
+
+  it('passes equals check on \\r\\n-terminated pane output', () => {
+    const logger = makeLogger('verify-clean-2');
+    const ctrl = makeController(logger);
+    const step = { name: 'Check', expect: { equals: 'healthy' } } as any;
+
+    const { assertResult } = ctrl.verifyOutput(step, 0, 'healthy\r\n');
+
+    assert.ok(assertResult);
+    assert.strictEqual(assertResult?.pass, true);
+    cleanLogger(logger);
+  });
+});
+
+describe('renderAssertOutcome', () => {
+  it('PASS outcome shows the expected value and no actual-output block', () => {
+    const out = renderAssertOutcome({
+      pass: true,
+      actual: 'pod Running',
+      expected: 'Running',
+      type: 'contains',
+    });
+    assert.ok(out.includes('✅ PASS'));
+    assert.ok(out.includes('expected "Running"'));
+    assert.ok(!out.includes('Actual output'));
+  });
+
+  it('FAIL outcome includes a tail of the actual output', () => {
+    const out = renderAssertOutcome({
+      pass: false,
+      actual: 'pod web-0 CrashLoopBackOff',
+      expected: 'Running',
+      type: 'contains',
+    });
+    assert.ok(out.includes('❌ FAIL'));
+    assert.ok(out.includes('Actual output'));
+    assert.ok(out.includes('CrashLoopBackOff'));
+  });
+
+  it('FAIL outcome truncates to the last lines of long output', () => {
+    const lines = Array.from({ length: 30 }, (_, i) => `line-${i + 1}`);
+    const out = renderAssertOutcome({
+      pass: false,
+      actual: lines.join('\n'),
+      expected: 'something',
+      type: 'contains',
+    });
+    assert.ok(out.includes('line-30'), 'tail line must be shown');
+    // tail is line-23..line-30, so the substring "line-1" must be gone entirely
+    assert.ok(!out.includes('line-1'), 'early lines must be truncated away');
   });
 });

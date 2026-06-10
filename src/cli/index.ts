@@ -8,6 +8,7 @@ import { qrhCommand } from './commands/qrh';
 import { reportCommand } from './commands/report';
 import { resumeCommand, runCommand } from './commands/run';
 import { schemaCommand } from './commands/schema';
+import { sessionsCommand } from './commands/sessions';
 import { validateCommand } from './commands/validate';
 
 const program = new Command();
@@ -28,6 +29,7 @@ program.addCommand(validateCommand);
 program.addCommand(generateCommand);
 program.addCommand(runCommand);
 program.addCommand(resumeCommand);
+program.addCommand(sessionsCommand);
 
 // Schema inspection
 program.addCommand(schemaCommand);

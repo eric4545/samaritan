@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
   assertOutput,
+  cleanTerminalOutput,
   renderExpectDescription,
   renderExpectParts,
 } from '../../src/lib/assertions';
@@ -384,5 +385,49 @@ describe('SessionState.extractCapture — invalid pattern (security hardening)',
     const state = new SessionState();
     state.extractCapture('BAD', 'output text', { pattern: '(unclosed' });
     assert.strictEqual(state.get('BAD'), undefined);
+  });
+});
+
+describe('cleanTerminalOutput — raw tmux pipe-pane capture normalization', () => {
+  it('strips ANSI color codes wrapped around expected text', () => {
+    const raw = '\u001b[32msuccessfully rolled out\u001b[0m';
+    assert.strictEqual(cleanTerminalOutput(raw), 'successfully rolled out');
+  });
+
+  it('strips color codes embedded INSIDE the expected substring', () => {
+    // kubectl/grep often colorize part of a line — contains: "pod Running"
+    // must still match
+    const raw = 'pod \u001b[1;32mRunning\u001b[0m';
+    const cleaned = cleanTerminalOutput(raw);
+    assert.strictEqual(cleaned, 'pod Running');
+    assert.strictEqual(
+      assertOutput(cleaned, { contains: 'pod Running' }).pass,
+      true,
+    );
+  });
+
+  it('normalizes \\r\\n line endings so equals/line checks work', () => {
+    const raw = 'line one\r\nline two\r\n';
+    assert.strictEqual(cleanTerminalOutput(raw), 'line one\nline two\n');
+    assert.strictEqual(
+      assertOutput(cleanTerminalOutput(raw), { equals: 'line one\nline two' })
+        .pass,
+      true,
+    );
+  });
+
+  it('resolves carriage-return overwrites (progress bars)', () => {
+    const raw = 'progress 10%\rprogress 50%\rprogress 100%';
+    assert.strictEqual(cleanTerminalOutput(raw), 'progress 100%');
+  });
+
+  it('strips OSC title sequences', () => {
+    const raw = '\u001b]0;my-terminal-title\u0007actual output';
+    assert.strictEqual(cleanTerminalOutput(raw), 'actual output');
+  });
+
+  it('leaves plain text untouched', () => {
+    const raw = 'deployment.apps/web created\npod/web-0 Running';
+    assert.strictEqual(cleanTerminalOutput(raw), raw);
   });
 });

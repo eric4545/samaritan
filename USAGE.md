@@ -32,6 +32,10 @@ npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging
 # Execute operation with interactive prompts, auto-generating an evidence report
 npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging --report ./evidence
 
+# List saved run sessions and resume one (q/abort saves progress as paused)
+npx github:eric4545/samaritan sessions
+npx github:eric4545/samaritan resume <session-id>
+
 # Generate evidence report from an existing session log
 npx github:eric4545/samaritan report /tmp/samaritan-<id>.jsonl --output evidence.md
 ```

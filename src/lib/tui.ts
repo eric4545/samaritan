@@ -1,6 +1,8 @@
 import type { ExpectConfig, Step } from '../models/operation';
 import {
+  type AssertResult,
   assertOutput,
+  cleanTerminalOutput,
   isPrimitiveExpectShorthand,
   renderExpectDescription,
 } from './assertions';
@@ -152,7 +154,9 @@ export class StepController {
     const expect = sessionState
       ? interpolateExpect(step.expect, sessionState)
       : step.expect;
-    const result = assertOutput(output, expect);
+    // Pane captures are raw terminal bytes — strip ANSI codes and resolve
+    // \r overwrites so assertions match what the operator actually sees.
+    const result = assertOutput(cleanTerminalOutput(output), expect);
 
     logger.emit({
       type: 'assert_result',
@@ -310,6 +314,35 @@ export function renderKeyHints(
     ({ key, label }) => `${BOLD}${key}${RESET} ${DIM}${label}${RESET}`,
   );
   return `  ${parts.join(separator)}`;
+}
+
+const ASSERT_ACTUAL_TAIL_LINES = 8;
+const ASSERT_ACTUAL_MAX_LINE_LEN = 200;
+
+/**
+ * Render a verify assertion outcome for the interactive loop. On failure the
+ * tail of the actual captured output is included so the operator can see WHY
+ * the assertion failed, not just what was expected.
+ */
+export function renderAssertOutcome(result: AssertResult): string {
+  const icon = result.pass ? '✅ PASS' : '❌ FAIL';
+  const lines = [
+    `    ${icon} Assert (${result.type}): expected "${result.expected}"`,
+  ];
+  if (!result.pass && result.actual.trim()) {
+    const tail = result.actual
+      .split('\n')
+      .slice(-ASSERT_ACTUAL_TAIL_LINES)
+      .map((l) =>
+        l.length > ASSERT_ACTUAL_MAX_LINE_LEN
+          ? `${l.slice(0, ASSERT_ACTUAL_MAX_LINE_LEN)}…`
+          : l,
+      )
+      .join('\n');
+    lines.push('    Actual output (tail):');
+    lines.push(renderCodeBlock(tail, 'output'));
+  }
+  return lines.join('\n');
 }
 
 export function renderTuiPending(

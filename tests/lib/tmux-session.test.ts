@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import {
   isLocalSession,
+  listTmuxPanes,
   sanitizeSessionName,
   TmuxPaneCapture,
   TmuxSession,
@@ -327,5 +328,18 @@ describe('sanitizeSessionName — shell injection prevention (bug fix)', () => {
     const path = session.getPipeFilePath(safe);
     assert.ok(!path.includes(';'), 'no semicolons in pipe file path');
     assert.ok(!path.includes(' '), 'no spaces in pipe file path');
+  });
+});
+
+describe('listTmuxPanes', () => {
+  it('returns an array and never throws (empty when no tmux server)', () => {
+    const panes = listTmuxPanes();
+    assert.ok(Array.isArray(panes), 'must return an array');
+    for (const pane of panes) {
+      assert.strictEqual(typeof pane.id, 'string');
+      assert.strictEqual(typeof pane.target, 'string');
+      assert.ok(pane.target.includes(':'), 'target is session:window.pane');
+      assert.strictEqual(typeof pane.isSelf, 'boolean');
+    }
   });
 });

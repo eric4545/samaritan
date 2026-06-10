@@ -353,6 +353,15 @@ npx github:eric4545/samaritan run <operation.yaml> [options]
   --report <dir>            Write Markdown evidence report to directory after run
   --continue-on-error       Continue execution even if a step fails
 
+# List saved run sessions (resumable by default)
+npx github:eric4545/samaritan sessions [options]
+  -a, --all             Include completed and cancelled sessions
+
+# Resume a paused or aborted run
+npx github:eric4545/samaritan resume <session-id> [options]
+  --from-step <number>  Resume from a specific step number
+  --auto-approve        Auto-approve remaining manual steps
+
 # Generate documentation
 npx github:eric4545/samaritan generate manual <operation.yaml> [options]
   --output <file>       Output file (default: stdout)
@@ -1370,6 +1379,15 @@ samaritan run deployment.yaml --env staging --attach mysession:0.0
 # Mid-flight: press [t] at any step to attach a pane
 ```
 
+Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker of all existing tmux panes — pick one by number, or type a raw target (`mysession:0.0`, `%3`). Samaritan's own pane is marked `(this pane — samaritan)`:
+
+```
+    Available tmux panes:
+      1) work:0.0  zsh
+      2) work:0.1  node  (this pane — samaritan)
+    Select pane [number or target, Enter to cancel]:
+```
+
 **How sidecar attach works:**
 
 | Scenario | What happens |
@@ -1413,13 +1431,20 @@ At each step, SAMARITAN pauses and shows the step details, then prompts based on
 | `manual` | `✋ Mark done` | `Enter`/notes=confirm, `n`=note, `e`=evidence, `v`=verify, `t`=attach (sidecar), `r`=rollback, `s`=skip, `q`/`abort`=quit |
 | `approval` | `⚡ approve/reject` | `approve`, `reject`, `r`=rollback, `skip` |
 
-When a verify assertion fails, a secondary prompt appears:
+When a verify assertion fails, the tail of the actual captured output is shown (so you can see *why* it failed), followed by a secondary prompt:
 
 ```
+❌ FAIL Assert (contains): expected "successfully rolled out"
+    Actual output (tail):
+  ╭─ output ──────────────────────────────╮
+  │ Waiting for deployment "web" rollout… │
+  ╰───────────────────────────────────────╯
 ⚠️  Assertion failed. [o=override with reason / r=rollback / Enter=stop]:
 ```
 
 Type `o` to record an override reason in the audit log and continue, `r` to trigger rollback, or press Enter to stop.
+
+> Verification runs against **cleaned** pane output: ANSI color codes and escape sequences are stripped and `\r`-overwrites (progress bars, `\r\n` line endings) are resolved before `expect` assertions run — so `contains`/`equals` match what you actually see on screen, even when tools colorize their output.
 
 ### Manual-step actions: note, evidence, verify
 
@@ -1440,6 +1465,26 @@ Type `o` to record an override reason in the audit log and continue, `r` to trig
   All evidence bytes — including dragged-in files, screenshots, and videos — are stored exclusively under `~/.samaritan/sessions/<session-id>/evidence/`, alongside the session's own JSON record. SAMARITAN never leaves a second copy elsewhere: the persisted session references the file by path rather than embedding its raw bytes.
 - **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's captured evidence (type, description, and stored path), lets you pick one by number to delete, removes it from the session record, and — for file/screenshot/video evidence copied into the session's evidence directory — deletes the copy from disk too (your original source file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event, and the `--report` Markdown omits removed items entirely.
 - **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutput`/`interpolateExpect` machinery `automatic` steps use), showing PASS/FAIL and — on failure — the same override/rollback/stop prompt as automatic verification. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
+
+### Sessions & resume
+
+Every `samaritan run` creates a session, persisted to `~/.samaritan/sessions/<session-id>.json` after each completed step (the session ID is printed at the start of the run: `📋 Session: <id>`). The JSONL audit log lives separately in `/tmp/samaritan-<session-id>.jsonl` (path printed as `📝 Audit log:`).
+
+```bash
+# List resumable sessions (running / paused / failed)
+samaritan sessions
+
+# Include completed and cancelled sessions
+samaritan sessions --all
+
+# Continue a run where you left off
+samaritan resume <session-id>
+
+# Or jump to a specific step
+samaritan resume <session-id> --from-step 4
+```
+
+Quitting a run with `q` or `abort` stops execution but **saves the session as paused**, prints the resume command, and keeps it listed in `samaritan sessions` — so you can stop mid-operation and pick it back up later. Resume restores variables, execution mode, and the current step index, then re-enters the interactive loop.
 
 ### Named sessions
 

@@ -11,6 +11,45 @@ export function isPrimitiveExpectShorthand(
   return typeof expect === 'number' || typeof expect === 'boolean';
 }
 
+// Built via constructor so the control characters never appear in a regex
+// literal (biome noControlCharactersInRegex).
+const ESC = String.fromCharCode(0x1b);
+const BEL = String.fromCharCode(0x07);
+// OSC sequences (window titles etc.): ESC ] ... terminated by BEL or ESC \
+const OSC_RE = new RegExp(
+  `${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)`,
+  'g',
+);
+// CSI sequences (colors, cursor movement): ESC [ params final-byte
+const CSI_RE = new RegExp(`${ESC}\\[[0-9;?]*[ -/]*[@-~]`, 'g');
+// Remaining two-character escapes: ESC followed by a single 0x40–0x5F byte
+const SIMPLE_ESC_RE = new RegExp(`${ESC}[@-_]`, 'g');
+
+/**
+ * Clean raw terminal capture (tmux pipe-pane output) before asserting:
+ * - strips ANSI/VT100 escape sequences (colors, cursor movement, OSC titles)
+ * - resolves carriage-return overwrites (`\r\n` line endings, progress bars)
+ *
+ * Without this, expected text that is visibly on screen fails `contains` /
+ * `equals` checks because color codes interrupt it or every line ends in `\r`.
+ */
+export function cleanTerminalOutput(raw: string): string {
+  const noAnsi = raw
+    .replace(OSC_RE, '')
+    .replace(CSI_RE, '')
+    .replace(SIMPLE_ESC_RE, '');
+  return noAnsi
+    .split('\n')
+    .map((line) => {
+      // Drop the \r of a \r\n line ending, then keep only the text after the
+      // last remaining \r — emulating how the terminal overwrites the line.
+      const stripped = line.endsWith('\r') ? line.slice(0, -1) : line;
+      const overwriteIdx = stripped.lastIndexOf('\r');
+      return overwriteIdx === -1 ? stripped : stripped.slice(overwriteIdx + 1);
+    })
+    .join('\n');
+}
+
 export interface AssertResult {
   pass: boolean;
   actual: string;
