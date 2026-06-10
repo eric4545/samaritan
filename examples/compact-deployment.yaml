@@ -1,0 +1,88 @@
+# Compact manual format example
+#
+# Generate the operator-friendly compact manual with:
+#   samaritan generate manual examples/compact-deployment.yaml --env production --compact
+#
+# Compare against the default (verbose) heading format:
+#   samaritan generate manual examples/compact-deployment.yaml --env production
+#
+# Or the multi-env table format (cell de-noising):
+#   samaritan generate manual examples/compact-deployment.yaml --compact
+
+name: Compact Deployment Walkthrough
+version: 1.0.0
+description: Demonstrates the --compact manual format with nested sub-steps, sign-offs, expectations, evidence, and rollback.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+      REPLICAS: 2
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: production
+      REPLICAS: 5
+
+steps:
+  - name: Deploy Application
+    type: manual
+    phase: flight
+    description: Roll out the new application version to the cluster.
+    pic: ops-team@example.com
+    reviewer: sre-lead@example.com
+    timeline:
+      duration: 30m
+    sub_steps:
+      - name: Update Deployment Manifest
+        type: manual
+        instruction: |
+          Apply the updated deployment manifest:
+          ```bash
+          kubectl apply -f deployment.yaml -n ${NAMESPACE}
+          ```
+        pic: ops-team@example.com
+        sub_steps:
+          - name: Scale Replicas
+            type: manual
+            command: kubectl scale deployment/app --replicas=${REPLICAS} -n ${NAMESPACE}
+            expect:
+              contains: "deployment.apps/app scaled"
+          - name: Wait for Rollout
+            type: manual
+            command: kubectl rollout status deployment/app -n ${NAMESPACE}
+            expect:
+              contains: "successfully rolled out"
+
+      - name: Verify Pods Are Running
+        type: manual
+        instruction: Confirm all pods report `Running` status.
+        command: kubectl get pods -n ${NAMESPACE}
+        expect:
+          all_lines_match: "Running"
+        evidence:
+          required: true
+          types: [command_output, screenshot]
+
+    rollback:
+      - type: manual
+        description: Roll back to the previous deployment revision if verification fails.
+        instruction: Run the rollback command and confirm the previous revision is restored.
+        command: |
+          kubectl rollout undo deployment/app -n ${NAMESPACE}
+          kubectl rollout status deployment/app -n ${NAMESPACE}
+        pic: ops-team@example.com
+        reviewer: sre-lead@example.com
+
+  - name: Post-Deployment Health Check
+    type: manual
+    phase: postflight
+    description: Confirm the application is healthy after rollout.
+    pic: sre-team@example.com
+    command: curl -s https://app-${NAMESPACE}.example.com/health | jq .status
+    expect:
+      equals: '"healthy"'
+    evidence:
+      required: true
+      types: [command_output]

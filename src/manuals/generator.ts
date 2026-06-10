@@ -180,6 +180,51 @@ function renderEvidenceItemMarkdown(
   return md;
 }
 
+/**
+ * Options controlling the rendered Markdown manual format.
+ */
+export interface ManualFormatOptions {
+  /** Render a denser, operator-friendly format (checkbox-list sub-steps, minimal labels). */
+  compact?: boolean;
+}
+
+/**
+ * Indent every non-empty line of `text` by `spaces` spaces, leaving blank
+ * lines untouched (no trailing whitespace on blank lines).
+ */
+function indentBlock(text: string, spaces: number): string {
+  if (spaces <= 0) return text;
+  const pad = ' '.repeat(spaces);
+  return text
+    .split('\n')
+    .map((line) => (line.length === 0 ? line : `${pad}${line}`))
+    .join('\n');
+}
+
+/**
+ * Build the `**Script:** \`path\`` label plus the embedded `bash` fenced
+ * script content (or a "not found" message), as an array of lines.
+ * Shared by the compact single-env renderer.
+ */
+function readScriptFence(script: string, operationDir?: string): string[] {
+  const lines: string[] = [];
+  lines.push(`**Script:** \`${script}\``);
+  lines.push('');
+  if (operationDir) {
+    try {
+      const scriptPath = path.resolve(operationDir, script);
+      const scriptContent = fs.readFileSync(scriptPath, 'utf-8').trimEnd();
+      lines.push('```bash');
+      lines.push(scriptContent);
+      lines.push('```');
+    } catch {
+      lines.push(`_Script file not found: ${script}_`);
+    }
+  }
+  lines.push('');
+  return lines;
+}
+
 function formatTimelineForDisplay(timeline: any): string {
   if (typeof timeline === 'string') {
     return timeline;
@@ -223,6 +268,7 @@ function formatEvidenceInfo(
   },
   environmentName?: string,
   operationDir?: string,
+  compact: boolean = false,
 ): string {
   if (!evidence) return '';
 
@@ -237,7 +283,7 @@ function formatEvidenceInfo(
     result = `<br>📎 <em>Evidence ${status}${typesText}</em>`;
 
     // Add code block placeholder for command_output evidence type
-    if (types.includes('command_output')) {
+    if (!compact && types.includes('command_output')) {
       result += '<br>```bash<br># Paste command output here<br>```';
     }
   }
@@ -303,6 +349,63 @@ function formatEvidenceInfo(
     }
   }
 
+  return result;
+}
+
+/**
+ * Build the step-column metadata suffix (dependencies, tickets, PIC, reviewer,
+ * timeline, condition, evidence) appended after the step name/description.
+ *
+ * Non-compact mode reproduces the existing per-field `<br>...<em>...</em>`
+ * lines exactly (one per field, in their original order). Compact mode merges
+ * PIC/Reviewer/Timeline/Depends on/Tickets/Condition into a single
+ * `<br><em>... · ... · ...</em>` line and drops the evidence placeholder.
+ */
+function buildStepCellMeta(step: Step, compact: boolean = false): string {
+  if (!compact) {
+    let result = '';
+    if (step.needs && step.needs.length > 0) {
+      result += `<br>📋 <em>Depends on: ${step.needs.join(', ')}</em>`;
+    }
+    if (step.ticket) {
+      const tickets = Array.isArray(step.ticket) ? step.ticket : [step.ticket];
+      result += `<br>🎫 <em>Tickets: ${tickets.join(', ')}</em>`;
+    }
+    if (step.pic) {
+      result += `<br>👤 <em>PIC: ${step.pic}</em>`;
+    }
+    if (step.reviewer) {
+      result += `<br>👥 <em>Reviewer: ${step.reviewer}</em>`;
+    }
+    if (step.timeline) {
+      result += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
+    }
+    if (step.if) {
+      result += `<br>🔀 <em>Condition: ${step.if}</em>`;
+    }
+    result += formatEvidenceInfo(step.evidence);
+    return result;
+  }
+
+  // Compact: merge PIC/Reviewer/Timeline/Depends on/Tickets/Condition into one line
+  const parts: string[] = [];
+  if (step.pic) parts.push(`👤 PIC: ${step.pic}`);
+  if (step.reviewer) parts.push(`👥 Reviewer: ${step.reviewer}`);
+  if (step.timeline)
+    parts.push(`⏱️ Timeline: ${formatTimelineForDisplay(step.timeline)}`);
+  if (step.needs && step.needs.length > 0)
+    parts.push(`📋 Depends on: ${step.needs.join(', ')}`);
+  if (step.ticket) {
+    const tickets = Array.isArray(step.ticket) ? step.ticket : [step.ticket];
+    parts.push(`🎫 Tickets: ${tickets.join(', ')}`);
+  }
+  if (step.if) parts.push(`🔀 Condition: ${step.if}`);
+
+  let result = '';
+  if (parts.length > 0) {
+    result += `<br><em>${parts.join(' · ')}</em>`;
+  }
+  result += formatEvidenceInfo(step.evidence, undefined, undefined, compact);
   return result;
 }
 
@@ -450,13 +553,15 @@ function renderTableInstruction(
   stepVars: Record<string, any> | undefined,
   resolveVariables: boolean,
   substituteVarsEnabled: boolean,
+  compact: boolean = false,
 ): string {
   if (!instruction) return '';
   const display =
     resolveVariables && substituteVarsEnabled
       ? substituteVariables(instruction, envVars || {}, stepVars)
       : instruction;
-  return `**Instructions:**<br>${display.trim().replace(/\|/g, '\\|').replace(/\n/g, '<br>')}`;
+  const escaped = display.trim().replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+  return compact ? escaped : `**Instructions:**<br>${escaped}`;
 }
 
 function generateStepRow(
@@ -468,6 +573,7 @@ function generateStepRow(
   currentPhase?: string,
   operationDir?: string,
   commonVariables?: Record<string, any>,
+  compact: boolean = false,
 ): string {
   let rows = '';
 
@@ -510,39 +616,9 @@ function generateStepRow(
     stepCell += `<br>${step.description}`;
   }
 
-  // Add dependency information
-  if (step.needs && step.needs.length > 0) {
-    stepCell += `<br>📋 <em>Depends on: ${step.needs.join(', ')}</em>`;
-  }
-
-  // Add ticket references
-  if (step.ticket) {
-    const tickets = Array.isArray(step.ticket) ? step.ticket : [step.ticket];
-    stepCell += `<br>🎫 <em>Tickets: ${tickets.join(', ')}</em>`;
-  }
-
-  // Add PIC (Person In Charge)
-  if (step.pic) {
-    stepCell += `<br>👤 <em>PIC: ${step.pic}</em>`;
-  }
-
-  // Add Reviewer (monitoring/buddy)
-  if (step.reviewer) {
-    stepCell += `<br>👥 <em>Reviewer: ${step.reviewer}</em>`;
-  }
-
-  // Add timeline
-  if (step.timeline) {
-    stepCell += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
-  }
-
-  // Add conditional expression if present
-  if (step.if) {
-    stepCell += `<br>🔀 <em>Condition: ${step.if}</em>`;
-  }
-
-  // Add evidence requirements if present (metadata only, no env-specific results here)
-  stepCell += formatEvidenceInfo(step.evidence);
+  // Add dependency/ticket/PIC/reviewer/timeline/condition/evidence metadata
+  // (merged into one line in compact mode, no env-specific results here)
+  stepCell += buildStepCellMeta(step, compact);
 
   rows += `| ${stepCell} |`;
 
@@ -570,6 +646,7 @@ function generateStepRow(
       effectiveStep.variables,
       resolveVariables,
       substituteVars,
+      compact,
     );
 
     // Process command (code content)
@@ -593,20 +670,23 @@ function generateStepRow(
         .replace(/<br>$/, ''); // Remove trailing <br> tag
 
       if (showCommandSeparately && effectiveStep.instruction) {
-        // Show command separately with label
-        cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+        // Show command separately (label dropped in compact mode)
+        const sep = compact ? '<br>' : '<br><br>';
+        const label = compact ? '' : '**Command:**<br>';
+        cellContent += `${sep}${label}\`${cleanCommand}\``;
       } else if (!effectiveStep.instruction) {
         // No instruction, just show command
         cellContent += `\`${cleanCommand}\``;
       } else {
         // Both present, inline mode
-        cellContent += `<br><br>\`${cleanCommand}\``;
+        const sep = compact ? '<br>' : '<br><br>';
+        cellContent += `${sep}\`${cleanCommand}\``;
       }
     }
 
     // Process script (external shell script file)
     if (effectiveStep.script) {
-      const sep = cellContent ? '<br><br>' : '';
+      const sep = cellContent ? (compact ? '<br>' : '<br><br>') : '';
       cellContent += `${sep}**Script:** \`${effectiveStep.script}\``;
       if (operationDir) {
         try {
@@ -653,12 +733,19 @@ function generateStepRow(
     // Add sign-off checkboxes if PIC or Reviewer is set (per environment)
     // Use effectiveStep to respect variant overrides for PIC and reviewer
     if (effectiveStep.pic || effectiveStep.reviewer) {
-      cellContent += '<br><br>**Sign-off:**';
-      if (effectiveStep.pic) {
-        cellContent += '<br>- [ ] PIC';
-      }
-      if (effectiveStep.reviewer) {
-        cellContent += '<br>- [ ] Reviewer';
+      if (compact) {
+        const who: string[] = [];
+        if (effectiveStep.pic) who.push('[ ] PIC');
+        if (effectiveStep.reviewer) who.push('[ ] Reviewer');
+        cellContent += `<br><br>**Sign-off:** ${who.join(' · ')}`;
+      } else {
+        cellContent += '<br><br>**Sign-off:**';
+        if (effectiveStep.pic) {
+          cellContent += '<br>- [ ] PIC';
+        }
+        if (effectiveStep.reviewer) {
+          cellContent += '<br>- [ ] Reviewer';
+        }
       }
     }
 
@@ -668,6 +755,7 @@ function generateStepRow(
       effectiveStep.evidence,
       env.name,
       operationDir,
+      compact,
     );
 
     rows += ` ${cellContent} |`;
@@ -723,6 +811,7 @@ function generateStepRow(
         1,
         operationDir,
         commonVariables,
+        compact,
       );
     });
 
@@ -859,6 +948,7 @@ function generateSubStepRow(
   depth: number = 1,
   operationDir?: string,
   commonVariables?: Record<string, any>,
+  compact: boolean = false,
 ): string {
   let rows = '';
 
@@ -891,39 +981,9 @@ function generateSubStepRow(
     stepCell += `<br>${step.description}`;
   }
 
-  // Add dependency information
-  if (step.needs && step.needs.length > 0) {
-    stepCell += `<br>📋 <em>Depends on: ${step.needs.join(', ')}</em>`;
-  }
-
-  // Add ticket references
-  if (step.ticket) {
-    const tickets = Array.isArray(step.ticket) ? step.ticket : [step.ticket];
-    stepCell += `<br>🎫 <em>Tickets: ${tickets.join(', ')}</em>`;
-  }
-
-  // Add PIC (Person In Charge)
-  if (step.pic) {
-    stepCell += `<br>👤 <em>PIC: ${step.pic}</em>`;
-  }
-
-  // Add Reviewer (monitoring/buddy)
-  if (step.reviewer) {
-    stepCell += `<br>👥 <em>Reviewer: ${step.reviewer}</em>`;
-  }
-
-  // Add timeline
-  if (step.timeline) {
-    stepCell += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
-  }
-
-  // Add conditional expression if present (for sub-steps)
-  if (step.if) {
-    stepCell += `<br>🔀 <em>Condition: ${step.if}</em>`;
-  }
-
-  // Add evidence requirements if present (metadata only)
-  stepCell += formatEvidenceInfo(step.evidence);
+  // Add dependency/ticket/PIC/reviewer/timeline/condition/evidence metadata
+  // (merged into one line in compact mode, metadata only — no env results here)
+  stepCell += buildStepCellMeta(step, compact);
 
   rows += `| ${stepCell} |`;
 
@@ -951,6 +1011,7 @@ function generateSubStepRow(
       effectiveStep.variables,
       resolveVariables,
       substituteVars,
+      compact,
     );
 
     // Process command (code content)
@@ -974,20 +1035,23 @@ function generateSubStepRow(
         .replace(/<br>$/, ''); // Remove trailing <br> tag
 
       if (showCommandSeparately && effectiveStep.instruction) {
-        // Show command separately with label
-        cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+        // Show command separately (label dropped in compact mode)
+        const sep = compact ? '<br>' : '<br><br>';
+        const label = compact ? '' : '**Command:**<br>';
+        cellContent += `${sep}${label}\`${cleanCommand}\``;
       } else if (!effectiveStep.instruction) {
         // No instruction, just show command
         cellContent += `\`${cleanCommand}\``;
       } else {
         // Both present, inline mode
-        cellContent += `<br><br>\`${cleanCommand}\``;
+        const sep = compact ? '<br>' : '<br><br>';
+        cellContent += `${sep}\`${cleanCommand}\``;
       }
     }
 
     // Process script (external shell script file)
     if (effectiveStep.script) {
-      const sep = cellContent ? '<br><br>' : '';
+      const sep = cellContent ? (compact ? '<br>' : '<br><br>') : '';
       cellContent += `${sep}**Script:** \`${effectiveStep.script}\``;
       if (operationDir) {
         try {
@@ -1037,17 +1101,25 @@ function generateSubStepRow(
       effectiveStep.evidence,
       env.name,
       operationDir,
+      compact,
     );
 
     // Add sign-off checkboxes if PIC or Reviewer is set (per environment)
     // Use effectiveStep to respect variant overrides for PIC and reviewer
     if (effectiveStep.pic || effectiveStep.reviewer) {
-      cellContent += '<br><br>**Sign-off:**';
-      if (effectiveStep.pic) {
-        cellContent += '<br>- [ ] PIC';
-      }
-      if (effectiveStep.reviewer) {
-        cellContent += '<br>- [ ] Reviewer';
+      if (compact) {
+        const who: string[] = [];
+        if (effectiveStep.pic) who.push('[ ] PIC');
+        if (effectiveStep.reviewer) who.push('[ ] Reviewer');
+        cellContent += `<br><br>**Sign-off:** ${who.join(' · ')}`;
+      } else {
+        cellContent += '<br><br>**Sign-off:**';
+        if (effectiveStep.pic) {
+          cellContent += '<br>- [ ] PIC';
+        }
+        if (effectiveStep.reviewer) {
+          cellContent += '<br>- [ ] Reviewer';
+        }
       }
     }
 
@@ -1115,6 +1187,7 @@ function generateSubStepRow(
         depth + 1,
         operationDir,
         commonVariables,
+        compact,
       );
     });
 
@@ -1260,6 +1333,7 @@ export function generateManualWithMetadata(
   includeGantt?: boolean,
   operationDir?: string,
   runManifest?: RunManifest,
+  formatOptions?: ManualFormatOptions,
 ): string {
   let markdown = '';
 
@@ -1323,6 +1397,7 @@ export function generateManualWithMetadata(
     filteredOperation,
     resolveVariables,
     operationDir,
+    formatOptions?.compact ?? false,
   );
 
   if (runManifest && orphanedKeys.length > 0) {
@@ -1380,6 +1455,7 @@ function generateManualContent(
   operation: Operation,
   resolveVariables: boolean = false,
   operationDir?: string,
+  compact: boolean = false,
 ): string {
   let markdown = `# Manual for: ${operation.name} (v${operation.version})\n\n`;
   if (operation.description) {
@@ -1549,6 +1625,7 @@ function generateManualContent(
           phaseName,
           operationDir,
           operation.common_variables ?? {},
+          compact,
         );
 
         // Inline rollback rendering - render immediately after step if present
@@ -1802,6 +1879,7 @@ export function generateSingleEnvManual(
   resolveVariables = false,
   operationDir?: string,
   runManifest?: RunManifest,
+  formatOptions?: ManualFormatOptions,
 ): string {
   // Augment steps with run manifest evidence before rendering
   let workingOperation = operation;
@@ -1824,6 +1902,18 @@ export function generateSingleEnvManual(
   ): string {
     if (!resolveVariables) return cmd;
     return substituteVariables(cmd, envVars, stepVariables);
+  }
+
+  /**
+   * Push a blank separator line before starting a new compact list item,
+   * unless the previous line is already blank (avoids consecutive blanks
+   * while still giving GFM parsers a clean boundary between a fenced code
+   * block / nested list and the next sibling item).
+   */
+  function pushBlankSeparator(): void {
+    if (lines.length > 0 && lines[lines.length - 1] !== '') {
+      lines.push('');
+    }
   }
 
   function renderStep(step: Step, prefix: string, headingLevel: number): void {
@@ -2008,6 +2098,212 @@ export function generateSingleEnvManual(
     }
   }
 
+  /**
+   * Build the unindented body lines for a step in compact mode: merged
+   * metadata blockquote, instruction, command, script, expected checks, and
+   * captured evidence. Multi-line descriptions are included here (single-line
+   * descriptions are rendered inline on the bullet/heading line by the caller).
+   */
+  function renderStepBodyCompact(
+    effectiveStep: Step,
+    _num: string,
+    _depth: number,
+  ): string[] {
+    const body: string[] = [];
+
+    if (effectiveStep.description) {
+      const desc = resolveCmd(effectiveStep.description.trim());
+      if (desc.includes('\n')) {
+        body.push(desc);
+        body.push('');
+      }
+    }
+
+    // Merge PIC / Reviewer / Depends on / Timeline / Condition into one blockquote
+    const meta: string[] = [];
+    if (effectiveStep.pic) meta.push(`PIC: ${effectiveStep.pic}`);
+    if (effectiveStep.reviewer)
+      meta.push(`Reviewer: ${effectiveStep.reviewer}`);
+    if (effectiveStep.needs && effectiveStep.needs.length > 0) {
+      meta.push(`Depends on: ${effectiveStep.needs.join(', ')}`);
+    }
+    if (effectiveStep.timeline) {
+      meta.push(
+        `Timeline: ${formatTimelineForDisplay(effectiveStep.timeline)}`,
+      );
+    }
+    if (effectiveStep.if) meta.push(`Condition: ${effectiveStep.if}`);
+    if (meta.length > 0) {
+      body.push(`> ${meta.join(' · ')}`);
+      body.push('');
+    }
+
+    if (effectiveStep.instruction) {
+      body.push(
+        resolveVariables
+          ? resolveCmd(effectiveStep.instruction)
+          : effectiveStep.instruction,
+      );
+      body.push('');
+    }
+
+    if (effectiveStep.command) {
+      const resolvedCmd = resolveCmd(effectiveStep.command);
+      if (/^\s*```/.test(resolvedCmd)) {
+        body.push(resolvedCmd.trimEnd());
+      } else {
+        body.push('```bash');
+        body.push(resolvedCmd);
+        body.push('```');
+      }
+      body.push('');
+    }
+
+    if (effectiveStep.script) {
+      body.push(...readScriptFence(effectiveStep.script, operationDir));
+    }
+
+    if (effectiveStep.expect != null) {
+      const resolvedExpect = resolveVariables
+        ? substituteExpectVars(effectiveStep.expect, envVars)
+        : effectiveStep.expect;
+      const parts = renderExpectParts(resolvedExpect);
+      if (parts.length > 0) {
+        body.push('Expected:');
+        for (const p of parts) body.push(`- [ ] ${p}`);
+        body.push('');
+      }
+    }
+
+    // Render captured evidence results for this environment
+    const envResults = effectiveStep.evidence?.results?.[targetEnv];
+    if (envResults && envResults.length > 0) {
+      for (const item of envResults as RunEvidenceItem[]) {
+        body.push(renderEvidenceItemMarkdown(item, operationDir).trimEnd());
+        body.push('');
+      }
+    }
+
+    return body;
+  }
+
+  /**
+   * Compact rendering for a step (and its sub-steps/rollback).
+   * - depth 0: `## Step N: Name` heading + body at indent 0 (mirrors renderStep).
+   * - depth >= 1: `- [ ] **N.M Name**` checkbox item (+ ` — _desc_` for
+   *   single-line descriptions) at indent (depth-1)*2, with body indented to
+   *   the item's continuation indent (depth*2).
+   */
+  function renderStepCompact(step: Step, num: string, depth: number): void {
+    const effectiveStep = mergeStepVariant(step, targetEnv);
+    const body = renderStepBodyCompact(effectiveStep, num, depth);
+
+    // Single-line descriptions are shown inline (heading text or bullet suffix)
+    let inlineDesc = '';
+    if (effectiveStep.description) {
+      const desc = resolveCmd(effectiveStep.description.trim());
+      if (!desc.includes('\n')) inlineDesc = desc;
+    }
+
+    if (depth === 0) {
+      lines.push(`## Step ${num}: ${effectiveStep.name}`);
+      lines.push('');
+      if (inlineDesc) {
+        lines.push(`_${inlineDesc}_`);
+        lines.push('');
+      }
+      for (const line of body) lines.push(line);
+    } else {
+      const itemIndent = ' '.repeat((depth - 1) * 2);
+      const suffix = inlineDesc ? ` — _${inlineDesc}_` : '';
+      lines.push(
+        `${itemIndent}- [ ] **${num} ${effectiveStep.name}**${suffix}`,
+      );
+      if (body.length > 0) {
+        // Drop a single trailing blank line before indenting so we don't
+        // leave a blank continuation line right after the bullet.
+        const trimmedBody = [...body];
+        while (
+          trimmedBody.length > 0 &&
+          trimmedBody[trimmedBody.length - 1] === ''
+        ) {
+          trimmedBody.pop();
+        }
+        if (trimmedBody.length > 0) {
+          const indented = indentBlock(trimmedBody.join('\n'), depth * 2);
+          for (const line of indented.split('\n')) lines.push(line);
+        }
+      }
+    }
+
+    // Recurse into sub_steps (use `step.sub_steps`, not `effectiveStep.sub_steps`
+    // — parity with renderStep's quirk of recursing on the original step)
+    if (step.sub_steps && step.sub_steps.length > 0) {
+      step.sub_steps
+        .map((sub, originalIdx) => ({ sub, originalIdx }))
+        .filter(
+          ({ sub }) =>
+            !sub.when || sub.when.length === 0 || sub.when.includes(targetEnv),
+        )
+        .forEach(({ sub, originalIdx }) => {
+          pushBlankSeparator();
+          renderStepCompact(sub, `${num}.${originalIdx + 1}`, depth + 1);
+        });
+    }
+
+    // Render rollback AFTER sub_steps as a checkbox item (mirrors renderStep's
+    // inline rollback position)
+    const rb = effectiveStep.rollback?.[0];
+    if (rb && (rb.command || rb.instruction || rb.script)) {
+      const rbDepth = depth + 1;
+      const rbIndent = ' '.repeat((rbDepth - 1) * 2);
+      pushBlankSeparator();
+      lines.push(`${rbIndent}- [ ] **🔄 Rollback**`);
+
+      const rbBody: string[] = [];
+      if (rb.instruction) {
+        rbBody.push(
+          resolveVariables && (rb.options?.substitute_vars ?? true)
+            ? resolveCmd(rb.instruction)
+            : rb.instruction,
+        );
+        rbBody.push('');
+      }
+
+      if (rb.command) {
+        const cmd = rb.command.trimEnd();
+        rbBody.push('```bash');
+        rbBody.push(
+          resolveVariables && (rb.options?.substitute_vars ?? true)
+            ? resolveCmd(cmd)
+            : cmd,
+        );
+        rbBody.push('```');
+        rbBody.push('');
+      }
+
+      if (rb.script) {
+        rbBody.push(...readScriptFence(rb.script, operationDir));
+      }
+
+      if (rb.pic || rb.reviewer) {
+        const who: string[] = [];
+        if (rb.pic) who.push(`[ ] PIC (${rb.pic})`);
+        if (rb.reviewer) who.push(`[ ] Reviewer (${rb.reviewer})`);
+        rbBody.push(`Sign-off: ${who.join(' · ')}`);
+        rbBody.push('');
+      }
+
+      while (rbBody.length > 0 && rbBody[rbBody.length - 1] === '') {
+        rbBody.pop();
+      }
+      if (rbBody.length > 0) {
+        const indented = indentBlock(rbBody.join('\n'), rbDepth * 2);
+        for (const line of indented.split('\n')) lines.push(line);
+      }
+    }
+  }
+
   const lines: string[] = [];
   lines.push(`# ${workingOperation.name} — ${titleCase(targetEnv)}`);
   lines.push('');
@@ -2028,7 +2324,12 @@ export function generateSingleEnvManual(
     );
 
   visibleSteps.forEach(({ step, originalIndex }, i) => {
-    renderStep(step, `Step ${originalIndex + 1}`, 2);
+    if (formatOptions?.compact) {
+      renderStepCompact(step, `${originalIndex + 1}`, 0);
+      pushBlankSeparator();
+    } else {
+      renderStep(step, `Step ${originalIndex + 1}`, 2);
+    }
     if (i < visibleSteps.length - 1) {
       lines.push('---');
       lines.push('');

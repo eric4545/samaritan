@@ -369,6 +369,7 @@ npx github:eric4545/samaritan generate manual <operation.yaml> [options]
   --env <environment>   Single-environment heading-based Markdown (no tables); omit for multi-env table format
   --resolve-vars        Resolve variables to actual values (ready-to-execute commands)
   --gantt               Include Mermaid Gantt chart for timeline visualization
+  --compact             Render a denser, operator-friendly format (Markdown only)
 
 # Generate Confluence documentation
 npx github:eric4545/samaritan generate confluence <operation.yaml> [options]
@@ -1710,6 +1711,51 @@ samaritan generate manual deployment.yaml --output full-manual.md
 ```
 
 The `--env` format renders `## Step N: <name>` headings, `**Command**`/`**Verify**`/`Expected:` blocks, and `> PIC:`/`> Reviewer:` blockquotes — no tables. `Expected:` checks render as a checklist (`> - [ ] <check>`) so operators can tick off each verification criterion as they confirm it — mirroring the `> - [ ] PIC` sign-off checkboxes.
+
+### Compact format
+
+Add `--compact` for a denser, operator-friendly Markdown format (Markdown only — ignored with a warning for other `--format` values):
+
+```bash
+# Compact single-env manual (checkbox-list sub-steps)
+samaritan generate manual examples/compact-deployment.yaml --env production --compact
+
+# Compact multi-env table (de-noised cells)
+samaritan generate manual examples/compact-deployment.yaml --compact
+```
+
+With `--env`, top-level steps still render as `## Step N: <name>` headings, but sub-steps become nested checkbox-list items instead of `### Step N.M:` headings:
+
+```markdown
+## Step 1: Deploy Application
+
+> PIC: ops-team@example.com · Reviewer: sre-lead@example.com · Timeline: 30m
+
+- [ ] **1.1 Update Deployment Manifest**
+  > PIC: ops-team@example.com
+
+  Apply the updated deployment manifest:
+  ```bash
+  kubectl apply -f deployment.yaml -n ${NAMESPACE}
+  ```
+
+  - [ ] **1.1.1 Scale Replicas**
+    ```bash
+    kubectl scale deployment/app --replicas=${REPLICAS} -n ${NAMESPACE}
+    ```
+
+    Expected:
+    - [ ] contains: deployment.apps/app scaled
+
+- [ ] **🔄 Rollback**
+  ...
+
+  Sign-off: [ ] PIC (ops-team@example.com) · [ ] Reviewer (sre-lead@example.com)
+```
+
+Compared to the default format, `--compact` drops `**Instructions**`/`**Command**` labels, merges PIC/Reviewer/Timeline/Depends on/Tickets/Condition into a single `> PIC: ... · Reviewer: ...` blockquote, and renders sign-offs as a single `Sign-off: [ ] PIC (...) · [ ] Reviewer (...)` line. Without `--env`, the multi-env table cells get the same de-noising (no labels, merged `<em>` metadata line, single-line `**Sign-off:**`).
+
+See [`examples/compact-deployment.yaml`](examples/compact-deployment.yaml) for a runnable example demonstrating nested sub-steps, sign-offs, expectations, evidence, and rollback in compact format.
 
 ### Complete example
 
