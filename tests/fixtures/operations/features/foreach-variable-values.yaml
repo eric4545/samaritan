@@ -1,0 +1,27 @@
+name: Foreach Variable Values Test
+version: 1.0.0
+description: Test foreach values that are ${VAR} references resolved against common_variables
+
+common_variables:
+  EMAIL_A: a@example.com
+  RETRY_COUNT: 3
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      ENV_RECIPIENT: prod@example.com
+
+steps:
+  - name: foreach title test
+    type: manual
+    phase: flight
+    description: Notify recipient
+    command: echo "${TEST_RECIPIENT}"
+    foreach:
+      var: TEST_RECIPIENT
+      values:
+        - '${EMAIL_A}'
+        - '${EMAIL_B}'
+        - '${RETRY_COUNT}'
+        - '${ENV_RECIPIENT}'

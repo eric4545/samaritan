@@ -1248,6 +1248,45 @@ See `examples/multi-region-deployment.yaml` for a complete example deploying acr
 - **Full Integration**: Works with all step features (evidence, rollback, approval, etc.)
 - **Clean Manuals**: Generated manuals show expanded steps with values in parentheses
 
+##### Variable References in Foreach Values
+
+`foreach.values` (and `foreach.matrix`/`include`/`exclude`) entries can themselves be `${VAR}` references instead of literal values:
+
+```yaml
+common_variables:
+  ONCALL_EMAIL: oncall@example.com
+
+environments:
+  - name: production
+    variables:
+      TEAM_EMAIL: prod-team@example.com
+
+steps:
+  - name: Notify Recipient
+    command: notify-send --to ${RECIPIENT}
+    foreach:
+      var: RECIPIENT
+      values:
+        - '${ONCALL_EMAIL}'   # common_variables - resolved at parse time
+        - '${TEAM_EMAIL}'     # environment-specific - resolved in generated output
+        - '${UNKNOWN_VAR}'    # not defined anywhere - stays literal
+```
+
+Resolution happens in two layers:
+
+1. **Parse time (`common_variables` only)**: Before the loop is expanded, `${VAR}` references in `foreach` are resolved against `common_variables` (merged with any `step.variables` already set, e.g. by an enclosing template). This affects the expanded step **titles** and the loop variable injected into `step.variables` for every format (Markdown, Confluence, ADF) — `${ONCALL_EMAIL}` becomes `Notify Recipient (oncall@example.com)` regardless of `--resolve-vars`.
+2. **Generation time (`--resolve-vars`)**: References to environment-specific variables (like `${TEAM_EMAIL}`) aren't known until an environment is selected, so they remain as placeholders after parsing. With `--resolve-vars`:
+   - **Single-environment manuals** (`-e production`): the step title and command resolve using that environment's variables, e.g. `Notify Recipient (prod-team@example.com)`.
+   - **Multi-environment tables**: the shared step name cell resolves using `common_variables` only (environment-specific values differ per column, so the name cell can't pick one); each environment's command cell resolves using that environment's variables.
+
+References to variables that are undefined in both `common_variables` and the relevant environment (like `${UNKNOWN_VAR}`) are left as literal `${UNKNOWN_VAR}` text.
+
+**Known limitations:**
+- Foreach values that resolve to objects or arrays are not supported — the title suffix will show `[object Object]`.
+- A `${VAR}` reference inside `foreach` that depends on a variable only available inside an imported `template:` (and not visible to the parent operation) will fail validation, since template variable substitution happens after the parent's foreach expansion.
+
+See `examples/foreach-variable-values.yaml` for a complete example.
+
 #### Gantt Charts and Timeline Visualization
 
 SAMARITAN can generate Mermaid Gantt charts to visualize operation timelines, making it easy to plan and coordinate complex deployments with multiple teams and dependencies.

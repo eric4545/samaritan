@@ -3,6 +3,7 @@ import { basename, dirname } from 'node:path';
 import { Command } from 'commander';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { indexToLetters } from '../../lib/letter-sequence';
+import { substituteVariables } from '../../lib/step-resolution';
 import { generateADFString } from '../../manuals/adf-generator';
 import {
   generateManualWithMetadata,
@@ -825,25 +826,6 @@ export function generateConfluenceContent(
     return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '[$1|$2]');
   };
 
-  // Helper function to substitute variables (inline version)
-  const substituteVariables = (
-    command: string,
-    envVariables: Record<string, any>,
-    stepVariables?: Record<string, any>,
-  ): string => {
-    // Merge variables with priority: step > env
-    const mergedVariables = { ...envVariables, ...(stepVariables || {}) };
-
-    // Perform variable substitution on ENTIRE content
-    let result = command;
-    for (const key in mergedVariables) {
-      const regex = new RegExp(`\\$\\{${key}\\}`, 'g');
-      result = result.replace(regex, mergedVariables[key]);
-    }
-
-    return result;
-  };
-
   // Helper to escape Confluence macro syntax in text (for variables like ${VAR})
   const escapeConfluenceMacros = (text: string | undefined): string => {
     if (!text) return '';
@@ -852,6 +834,22 @@ export function generateConfluenceContent(
     // Then escape { and } to prevent Confluence from interpreting ${VAR} as macros
     return result.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
   };
+
+  // Resolve ${VAR} placeholders (e.g. in foreach-expanded step names) against
+  // common variables + the step's own variables when --resolve-vars is set.
+  // MUST run BEFORE escapeConfluenceMacros, which escapes { and } and would
+  // otherwise prevent ${VAR} patterns from matching.
+  const resolveStepName = (
+    name: string,
+    stepVariables?: Record<string, any>,
+  ): string =>
+    resolveVars
+      ? substituteVariables(
+          name,
+          operation.common_variables ?? {},
+          stepVariables,
+        )
+      : name;
 
   // Helper to format evidence area
   const formatEvidenceArea = (
@@ -1209,7 +1207,7 @@ ${filteredOperation.environments
           }
 
           // Add section heading
-          content += `h3. ${escapeConfluenceMacros(step.name)}\n\n`;
+          content += `h3. ${escapeConfluenceMacros(resolveStepName(step.name, step.variables))}\n\n`;
           if (step.description) {
             content += `${escapeConfluenceMacros(step.description)}\n\n`;
           }
@@ -1238,7 +1236,7 @@ ${filteredOperation.environments
             : '';
 
         // Build step info cell (escape braces to prevent macro interpretation)
-        let stepInfo = `${phaseIconForStep}${typeIcon} Step ${stepNumber}: ${escapeConfluenceMacros(step.name)}`;
+        let stepInfo = `${phaseIconForStep}${typeIcon} Step ${stepNumber}: ${escapeConfluenceMacros(resolveStepName(step.name, step.variables))}`;
         if (step.description)
           stepInfo += `\n${escapeConfluenceMacros(step.description)}`;
         if (step.pic)
@@ -1371,6 +1369,7 @@ ${filteredOperation.environments
             formatEvidenceArea,
             formatTimelineForDisplay,
             operationDir,
+            operation.common_variables ?? {},
           );
         }
 
@@ -1382,7 +1381,7 @@ ${filteredOperation.environments
           content += renderInlineRollback(
             rb,
             `${stepNumber}`,
-            step.name,
+            resolveStepName(step.name, step.variables),
             3, // h3 for parent steps
             filteredOperation.environments,
             resolveVars,
@@ -1688,6 +1687,7 @@ function renderInlineRollback(
  * @param formatEvidenceArea - Helper function to format evidence areas
  * @param formatTimelineForDisplay - Helper function to format timeline display
  * @param operationDir - Operation directory for reading evidence files
+ * @param commonVariables - Operation-level common_variables for resolving step names
  * @returns Confluence Wiki Markup string for sub-steps
  */
 function addConfluenceSubStepRows(
@@ -1712,7 +1712,19 @@ function addConfluenceSubStepRows(
   ) => string,
   formatTimelineForDisplay: (timeline: any) => string,
   operationDir?: string,
+  commonVariables?: Record<string, any>,
 ): string {
+  // Resolve ${VAR} placeholders in sub-step names against common variables +
+  // the sub-step's own variables when --resolve-vars is set. MUST run BEFORE
+  // escapeConfluenceMacros, which escapes { and } and would otherwise prevent
+  // ${VAR} patterns from matching.
+  const resolveSubStepName = (
+    name: string,
+    stepVariables?: Record<string, any>,
+  ): string =>
+    resolveVars
+      ? substituteVariables(name, commonVariables ?? {}, stepVariables)
+      : name;
   let content = '';
 
   subSteps.forEach((subStep: any, subIndex: number) => {
@@ -1741,7 +1753,7 @@ function addConfluenceSubStepRows(
       // Formula: h4 + ceil((depth-1)/2), capped at h6
       const headingLevel = Math.min(4 + Math.ceil((depth - 1) / 2), 6);
       const headingPrefix = `h${headingLevel}.`;
-      content += `${headingPrefix} ${escapeConfluenceMacros(subStep.name)}\n\n`;
+      content += `${headingPrefix} ${escapeConfluenceMacros(resolveSubStepName(subStep.name, subStep.variables))}\n\n`;
       if (subStep.description) {
         content += `${escapeConfluenceMacros(subStep.description)}\n\n`;
       }
@@ -1754,7 +1766,7 @@ function addConfluenceSubStepRows(
       content += '\n';
     }
 
-    let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${escapeConfluenceMacros(subStep.name)}`;
+    let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${escapeConfluenceMacros(resolveSubStepName(subStep.name, subStep.variables))}`;
     if (subStep.description)
       subStepInfo += `\n${escapeConfluenceMacros(subStep.description)}`;
     if (subStep.pic)
@@ -1884,6 +1896,7 @@ function addConfluenceSubStepRows(
         formatEvidenceArea,
         formatTimelineForDisplay,
         operationDir,
+        commonVariables,
       );
 
       // Render rollback for sub-step AFTER all nested sub-steps (inline rendering)
@@ -1894,7 +1907,7 @@ function addConfluenceSubStepRows(
         content += renderInlineRollback(
           subRb,
           subStepId,
-          subStep.name,
+          resolveSubStepName(subStep.name, subStep.variables),
           parentHeadingLevel,
           environments,
           resolveVars,

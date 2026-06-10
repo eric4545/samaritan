@@ -1,0 +1,67 @@
+name: Deployment Notification Fanout
+version: 1.0.0
+description: |
+  Demonstrates foreach loops where the loop values are ${VAR} references
+  rather than literal strings. Common recipients are defined once in
+  common_variables and reused across the notification fanout.
+
+author: DevOps Team
+category: deployment
+
+common_variables:
+  ONCALL_EMAIL: oncall@example.com
+  ESCALATION_EMAIL: escalation@example.com
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      APP_NAME: myapp
+      TEAM_EMAIL: staging-team@example.com
+
+  - name: production
+    description: Production environment
+    variables:
+      APP_NAME: myapp
+      TEAM_EMAIL: prod-team@example.com
+
+steps:
+  - name: Deploy Application
+    type: manual
+    phase: flight
+    description: Deploy the application to the target environment
+    instruction: |
+      Deploy the latest build:
+      ```bash
+      kubectl apply -f deployment.yaml
+      ```
+    pic: ops-team@example.com
+
+  # Foreach loop where each value is itself a ${VAR} reference.
+  #
+  # - ${ONCALL_EMAIL} and ${ESCALATION_EMAIL} are common_variables, so they
+  #   are resolved at parse time. Generated step titles show the actual
+  #   email addresses (e.g. "Notify Recipient (oncall@example.com)")
+  #   regardless of --resolve-vars.
+  # - ${TEAM_EMAIL} is environment-specific, so it stays as a placeholder
+  #   in the title at parse time. With --resolve-vars and a single
+  #   environment selected (-e staging / -e production), the title and
+  #   command resolve to that environment's TEAM_EMAIL value.
+  - name: Notify Recipient
+    type: manual
+    phase: flight
+    description: Send a deployment notification to ${RECIPIENT}
+    command: notify-send --to ${RECIPIENT} --subject "Deployment of ${APP_NAME} complete"
+    foreach:
+      var: RECIPIENT
+      values:
+        - '${ONCALL_EMAIL}'
+        - '${ESCALATION_EMAIL}'
+        - '${TEAM_EMAIL}'
+    pic: ops-team@example.com
+
+  - name: Verify Deployment Health
+    type: automatic
+    phase: postflight
+    command: kubectl get pods -l app=${APP_NAME}
+    description: Confirm all pods are running after deployment

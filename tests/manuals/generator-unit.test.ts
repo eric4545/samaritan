@@ -2346,3 +2346,31 @@ describe('Expect field ${VAR} substitution in generated manuals', () => {
     );
   });
 });
+
+describe('foreach/matrix variable reference resolution in multi-env markdown table', () => {
+  it('resolves common_variables references in the shared name cell, leaves env-only refs literal, and resolves per-env command cells', async () => {
+    const op = await parseFixture('foreachVariableValues');
+    const md = generateManual(op);
+
+    // Step 1: foreach value "${EMAIL_A}" resolved at parse time against
+    // common_variables — appears in the shared name cell regardless.
+    assert.ok(
+      md.includes('foreach title test (a@example.com)'),
+      'name cell shows resolved common_variables reference',
+    );
+
+    // Step 4: foreach value "${ENV_RECIPIENT}" is env-only (production), so the
+    // shared name cell intentionally keeps it literal.
+    assert.ok(
+      md.includes('foreach title test (${ENV_RECIPIENT})'),
+      'shared name cell keeps env-only reference literal',
+    );
+
+    // The production command cell for step 4 fully resolves via chained step
+    // variables (TEST_RECIPIENT -> ${ENV_RECIPIENT} -> prod@example.com).
+    assert.ok(
+      md.includes('echo "prod@example.com"'),
+      'production command cell resolves chained env-only step variable',
+    );
+  });
+});
