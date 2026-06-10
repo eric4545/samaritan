@@ -67,15 +67,17 @@ tests/
 - Schema export command for IDE integration and custom tooling
 - CLI commands: `validate`, `generate manual`, `generate confluence`, `schema`, `init`, `create operation`
 
+### ✅ Implemented since v1.1
+- **Interactive execution** (`run` command — sidecar/manual/automatic/hybrid modes, see Gotcha #3)
+- **Session persistence + resume** (`~/.samaritan/sessions/<id>.json`, `resume <session-id>`)
+
 ### 🚧 NOT Implemented (Roadmap)
 These features are **documented but not functional**:
-- ❌ **Command execution** (`type: automatic` steps don't run commands)
+- ❌ **Non-interactive command execution** (`--auto-approve`/`automatic` context marks steps complete without running commands; tmux-backed send/verify only works in the interactive loop)
 - ❌ **Automatic evidence collection** (no screenshot capture, log reading, etc.)
-- ❌ **Interactive execution** (`run` command has minimal implementation)
-- ❌ **Session persistence** (models exist, no storage)
 - ❌ **QRH** (command scaffolding exists, no functionality)
 - ❌ **External integrations** (Jira, Confluence API, Slack)
-- ❌ **AI assistant** (planned for v4.0)
+- ❌ **AI assistant** (roadmap research item only — no code, no `--with-ai` flag)
 
 **Check [ROADMAP.md](ROADMAP.md) before implementing any "auto" or execution features!**
 
@@ -553,7 +555,7 @@ evidence:
   **`q`/`quit` behavior change (v1.1)**: In the manual/sidecar action loop, `q` now **aborts** the operation (same as `abort`). Previously `q` recorded "q" as a note and completed the step. Integration tests that use `q` to abort are correct; any test that expected `q` to complete a step as a note must be updated.
 
   > **Testing note**: the manual-step prompts (`[n]`/`[e]`/`[x]`/`[v]`/`[t]`) each chain multiple sequential `readline` `question()` calls. This is fine with real keyboard input (each line arrives as its own event), but piped/batch stdin that delivers several lines in one chunk can make Node's `readline` drop every buffered line but the first per pending question — a `question()` issued from a freshly-invoked async helper can then hang forever. Integration tests for these flows should stick to single-prompt interactions (e.g. `'q\n'` or `'abort\n'`); never chain `'t\ntarget\n'`. See the `[x] remove evidence` tests in `tests/cli/run.test.ts`. (The pre-existing `'recording a note emits...'` test only passes because of an unrelated `📝` substring in the audit-log banner line — it does not actually exercise the multi-prompt note flow.)
-- `samaritan resume` - Models exist, no session storage
+- `samaritan resume` - **Fully implemented**: `run` persists sessions to `~/.samaritan/sessions/<id>.json` (`src/lib/session-persistence.ts`); `resume <session-id>` restores variables, execution mode, and step index, then re-enters the interactive loop
 - `samaritan qrh` - Command exists, no QRH database
 
 ### 4. Don't Assume Features Exist
