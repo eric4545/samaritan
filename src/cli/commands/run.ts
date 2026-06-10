@@ -467,6 +467,10 @@ class OperationRunner {
 
       rl.pause();
       process.stdin.setRawMode(true);
+      // rl.pause() pauses stdin, which both stops keypress events and drops
+      // the last live handle — without an explicit resume the event loop
+      // drains and the process exits silently at the prompt.
+      process.stdin.resume();
       process.stdout.write('  > ');
 
       return new Promise((resolve) => {

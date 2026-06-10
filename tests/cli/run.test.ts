@@ -514,3 +514,35 @@ describe('run command: sub-steps support', () => {
     );
   });
 });
+
+// ─── TTY raw-mode action prompt (regression: silent exit at first prompt) ────
+
+describe('run command: TTY raw-mode action prompt', () => {
+  // readActionKey() pauses readline and switches stdin to raw mode; without an
+  // explicit stdin.resume() the paused stream emits no keypress events and
+  // holds no live handle, so the event loop drains and the process exits 0 at
+  // the first prompt. Piped-stdin tests can't catch this (non-TTY falls back
+  // to question()), so run under a pseudo-TTY via util-linux `script`.
+  const hasScript =
+    process.platform === 'linux' &&
+    spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
+
+  it(
+    'waits at the action prompt under a TTY and aborts on q',
+    { skip: !hasScript },
+    () => {
+      const fixture = fixturePath('manualStepActions');
+      // Hold stdin open, send a single raw `q` keypress after the prompt renders.
+      const cmd = `(sleep 3; printf 'q'; sleep 3) | script -qec "${CLI} ${INDEX} run ${fixture} --env default" /dev/null`;
+      const result = spawnSync('bash', ['-c', cmd], {
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+      const combined = (result.stdout ?? '') + (result.stderr ?? '');
+      assert.ok(
+        combined.includes('aborted by operator'),
+        `process must stay alive at the raw-mode prompt and abort on q; output was:\n${combined.slice(-2000)}`,
+      );
+    },
+  );
+});
