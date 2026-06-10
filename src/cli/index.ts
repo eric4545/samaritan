@@ -50,16 +50,6 @@ program
   });
 
 program
-  .command('docs')
-  .description('Open documentation')
-  .action(() => {
-    console.log('📚 Documentation: https://github.com/samaritan/docs');
-    console.log(
-      '🚀 Quickstart: https://github.com/samaritan/docs/quickstart.md',
-    );
-  });
-
-program
   .command('support')
   .description('Get support information')
   .action(() => {
