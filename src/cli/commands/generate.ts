@@ -1,9 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
 import { Command } from 'commander';
+import { renderExpectParts } from '../../lib/assertions';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { indexToLetters } from '../../lib/letter-sequence';
-import { substituteVariables } from '../../lib/step-resolution';
+import {
+  substituteExpectVars,
+  substituteVariables,
+} from '../../lib/step-resolution';
 import { generateADFString } from '../../manuals/adf-generator';
 import {
   generateManualWithMetadata,
@@ -1318,6 +1322,44 @@ ${filteredOperation.environments
             }
           }
 
+          // Process script (external shell script file)
+          if (step.script) {
+            const sep = cellContent ? '\n' : '';
+            cellContent += `${sep}*Script:* \`${step.script}\``;
+            if (operationDir) {
+              try {
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const fs = require('node:fs');
+                const nodePath = require('node:path');
+                const scriptPath = nodePath.resolve(operationDir, step.script);
+                const scriptContent = fs
+                  .readFileSync(scriptPath, 'utf-8')
+                  .trimEnd();
+                cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
+              } catch {
+                cellContent += ' _(file not found)_';
+              }
+            }
+          }
+
+          // Add expect assertions
+          if (step.expect != null) {
+            const resolvedExpect =
+              resolveVars && substituteVars
+                ? substituteExpectVars(
+                    step.expect,
+                    env.variables || {},
+                    step.variables,
+                  )
+                : step.expect;
+            const parts = renderExpectParts(resolvedExpect);
+            if (parts.length > 0) {
+              const sep = cellContent ? '\n' : '';
+              cellContent += `${sep}*Expected:*`;
+              for (const p of parts) cellContent += `\n* [ ] _${p}_`;
+            }
+          }
+
           // Fallback for steps with neither
           if (!cellContent) {
             if (step.sub_steps && step.sub_steps.length > 0) {
@@ -1377,7 +1419,10 @@ ${filteredOperation.environments
         // For parent steps with sub_steps, this renders after sub-steps
         // For regular steps, this renders after the step row
         const rb = step.rollback?.[0];
-        if (rb && (rb.command || rb.instruction || rb.script)) {
+        if (
+          rb &&
+          (rb.command || rb.instruction || rb.script || rb.expect != null)
+        ) {
           content += renderInlineRollback(
             rb,
             `${stepNumber}`,
@@ -1488,6 +1533,24 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
               } catch {
                 cellContent += ' _(file not found)_';
               }
+            }
+          }
+
+          // Add rollback expect assertions
+          if (rollbackStep.expect != null) {
+            const resolvedExpect =
+              resolveVars && substituteVars
+                ? substituteExpectVars(
+                    rollbackStep.expect,
+                    env.variables || {},
+                    {},
+                  )
+                : rollbackStep.expect;
+            const parts = renderExpectParts(resolvedExpect);
+            if (parts.length > 0) {
+              const sep = cellContent ? '\n' : '';
+              cellContent += `${sep}*Expected:*`;
+              for (const p of parts) cellContent += `\n* [ ] _${p}_`;
             }
           }
 
@@ -1635,6 +1698,23 @@ function renderInlineRollback(
         } catch {
           cellContent += ' _(file not found)_';
         }
+      }
+    }
+
+    if (rollback?.expect != null) {
+      const resolvedExpect =
+        resolveVars && (rollback.options?.substitute_vars ?? true)
+          ? substituteExpectVars(
+              rollback.expect,
+              env.variables || {},
+              stepVariables,
+            )
+          : rollback.expect;
+      const parts = renderExpectParts(resolvedExpect);
+      if (parts.length > 0) {
+        const sep = cellContent ? '\n' : '';
+        cellContent += `${sep}*Expected:*`;
+        for (const p of parts) cellContent += `\n* [ ] _${p}_`;
       }
     }
 
@@ -1845,6 +1925,47 @@ function addConfluenceSubStepRows(
         }
       }
 
+      // Process script (external shell script file)
+      if (effectiveSubStep.script) {
+        const sep = cellContent ? '\n' : '';
+        cellContent += `${sep}*Script:* \`${effectiveSubStep.script}\``;
+        if (operationDir) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const fs = require('node:fs');
+            const nodePath = require('node:path');
+            const scriptPath = nodePath.resolve(
+              operationDir,
+              effectiveSubStep.script,
+            );
+            const scriptContent = fs
+              .readFileSync(scriptPath, 'utf-8')
+              .trimEnd();
+            cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
+          } catch {
+            cellContent += ' _(file not found)_';
+          }
+        }
+      }
+
+      // Add expect assertions
+      if (effectiveSubStep.expect != null) {
+        const resolvedExpect =
+          resolveVars && substituteVars
+            ? substituteExpectVars(
+                effectiveSubStep.expect,
+                env.variables || {},
+                effectiveSubStep.variables,
+              )
+            : effectiveSubStep.expect;
+        const parts = renderExpectParts(resolvedExpect);
+        if (parts.length > 0) {
+          const sep = cellContent ? '\n' : '';
+          cellContent += `${sep}*Expected:*`;
+          for (const p of parts) cellContent += `\n* [ ] _${p}_`;
+        }
+      }
+
       // Fallback for sub-steps with neither
       if (!cellContent) {
         if (subStep.sub_steps && subStep.sub_steps.length > 0) {
@@ -1901,7 +2022,13 @@ function addConfluenceSubStepRows(
 
       // Render rollback for sub-step AFTER all nested sub-steps (inline rendering)
       const subRb = subStep.rollback?.[0];
-      if (subRb && (subRb.command || subRb.instruction)) {
+      if (
+        subRb &&
+        (subRb.command ||
+          subRb.instruction ||
+          subRb.script ||
+          subRb.expect != null)
+      ) {
         // Calculate parent heading level (same formula as section heading)
         const parentHeadingLevel = Math.min(4 + Math.ceil((depth - 1) / 2), 6);
         content += renderInlineRollback(

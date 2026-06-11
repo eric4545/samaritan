@@ -1,0 +1,52 @@
+name: All Content Fields Render Parity Test
+version: 1.0.0
+description: Exercises every renderable StepContent field across all output formats
+
+common_variables:
+  REPLICA_COUNT: 0
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      TARGET_HOST: staging.example.com
+
+steps:
+  - name: Deploy Application
+    type: manual
+    instruction: Deploy to ${TARGET_HOST} and confirm rollout.
+    command: kubectl apply -f deployment.yaml --context=${TARGET_HOST}
+    timeout: 120
+    pic: ops-team@example.com
+    reviewer: sre-lead@example.com
+    description: Primary deployment step exercising all content fields
+    expect:
+      contains: Deployment to ${TARGET_HOST} complete
+    evidence:
+      required: true
+      types: [command_output]
+      results:
+        staging:
+          - type: command_output
+            content: |
+              deployment.apps/web-server created
+              pod/web-0    1/1     Running   0    10s
+            description: Staging deployment output
+    rollback:
+      - command: kubectl rollout undo deployment/web-server --context=${TARGET_HOST}
+        pic: ops-team@example.com
+        reviewer: sre-lead@example.com
+        expect:
+          contains: rolled back on ${TARGET_HOST}
+
+  - name: Verify Replica Count
+    type: automatic
+    script: ./deploy.sh
+    expect: "${REPLICA_COUNT}"
+    sub_steps:
+      - name: Check Pod Status
+        type: automatic
+        command: kubectl get pods --context=${TARGET_HOST}
+        expect:
+          - contains: Running
+          - not_contains: Failed

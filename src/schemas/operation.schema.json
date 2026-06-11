@@ -569,6 +569,18 @@
                         "pic": { "type": "string" },
                         "reviewer": { "type": "string" },
                         "type": { "type": "string" },
+                        "expect": {
+                          "description": "Assert this rollback step's output. String shorthand = expect contains.",
+                          "oneOf": [
+                            { "type": "string" },
+                            { "$ref": "#/definitions/expectConfig" },
+                            {
+                              "type": "array",
+                              "items": { "$ref": "#/definitions/expectConfig" },
+                              "minItems": 1
+                            }
+                          ]
+                        },
                         "options": {
                           "type": "object",
                           "properties": {
@@ -605,6 +617,18 @@
                       "pic": { "type": "string" },
                       "reviewer": { "type": "string" },
                       "type": { "type": "string" },
+                      "expect": {
+                        "description": "Assert this rollback step's output. String shorthand = expect contains.",
+                        "oneOf": [
+                          { "type": "string" },
+                          { "$ref": "#/definitions/expectConfig" },
+                          {
+                            "type": "array",
+                            "items": { "$ref": "#/definitions/expectConfig" },
+                            "minItems": 1
+                          }
+                        ]
+                      },
                       "options": {
                         "type": "object",
                         "properties": {
@@ -694,6 +718,18 @@
               "timeout": {
                 "type": "number",
                 "minimum": 0
+              },
+              "expect": {
+                "description": "Assert this rollback step's output. String shorthand = expect contains.",
+                "oneOf": [
+                  { "type": "string" },
+                  { "$ref": "#/definitions/expectConfig" },
+                  {
+                    "type": "array",
+                    "items": { "$ref": "#/definitions/expectConfig" },
+                    "minItems": 1
+                  }
+                ]
               },
               "options": {
                 "type": "object",

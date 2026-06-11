@@ -96,6 +96,12 @@ export const FIXTURES = {
 
   // Script file import
   withScript: 'tests/fixtures/operations/features/with-script.yaml',
+  confluenceScriptAndExpect:
+    'tests/fixtures/operations/features/confluence-script-and-expect.yaml',
+
+  // Cross-format render parity (all StepContent fields)
+  allContentFields:
+    'tests/fixtures/operations/features/all-content-fields.yaml',
 
   // When and Variants
   whenAndVariants: 'tests/fixtures/operations/features/when-and-variants.yaml',

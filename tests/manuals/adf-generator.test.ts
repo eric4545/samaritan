@@ -351,6 +351,53 @@ describe('ADF Generator', () => {
     );
   });
 
+  it('substitutes variables in expect rendering when --resolve-vars is set', async () => {
+    const { parseFixture } = await import('../fixtures/fixtures');
+    const operation = await parseFixture('confluenceScriptAndExpect');
+
+    const resolvedAdf = generateADFString(
+      operation,
+      undefined,
+      'staging',
+      true,
+    );
+    assert.ok(
+      resolvedAdf.includes('- [ ] 0'),
+      'should resolve ${REPLICA_COUNT} to its numeric value 0 in expect',
+    );
+    assert.ok(
+      !resolvedAdf.includes('${REPLICA_COUNT}'),
+      'should not leave unresolved ${REPLICA_COUNT} placeholder when resolving vars',
+    );
+
+    const unresolvedAdf = generateADFString(
+      operation,
+      undefined,
+      'staging',
+      false,
+    );
+    assert.ok(
+      unresolvedAdf.includes('${REPLICA_COUNT}'),
+      'should preserve literal ${REPLICA_COUNT} placeholder when not resolving vars',
+    );
+  });
+
+  it('renders expect checks for sub-steps in ADF output', async () => {
+    const { parseFixture } = await import('../fixtures/fixtures');
+    const operation = await parseFixture('confluenceScriptAndExpect');
+
+    const adfString = generateADFString(operation, undefined, 'staging');
+
+    assert.ok(
+      adfString.includes('- [ ] contains: Running'),
+      'should render sub-step contains check as a checkbox list item',
+    );
+    assert.ok(
+      adfString.includes('- [ ] does not contain: Failed'),
+      'should render sub-step not_contains check as a checkbox list item',
+    );
+  });
+
   it('preserves original step numbers across environments when steps are skipped by when (--env)', async () => {
     // when-and-variants.yaml:
     //   step 1: when: [prod]    → only prod

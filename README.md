@@ -347,7 +347,8 @@ npx github:eric4545/samaritan run <operation.yaml> [options]
   --env <environment>       Target environment (required)
   --var KEY=VALUE           Override a variable (repeatable)
   --dry-run                 Preview full plan without executing
-  --auto-approve            Skip manual approval prompts
+  --auto-approve            Skip manual approval prompts and switch to automatic mode
+                            (does NOT execute commands non-interactively; see note below)
   -m, --mode <mode>         Execution mode: sidecar | manual | automatic | hybrid (default: sidecar)
   --attach <tmux-target>    Attach to an existing tmux pane for sidecar capture
   --report <dir>            Write Markdown evidence report to directory after run
@@ -389,6 +390,16 @@ npx github:eric4545/samaritan schema [options]
   -o, --output <file>   Output file (default: stdout)
   -f, --format <format> Output format: json or yaml (default: json)
 ```
+
+> **Note on `--auto-approve` and `automatic` mode**: `--auto-approve`
+> switches the default execution mode to `automatic` and skips manual
+> approval prompts. It does **not** execute commands non-interactively —
+> SAMARITAN does not run shell commands on your behalf. In `automatic`
+> mode, commands are sent to the attached tmux pane and `step.expect` is
+> verified against the captured output, but this only works within the
+> interactive `run` loop (an attached/spawned tmux session is required).
+> Non-interactive command execution (run-and-forget with no tmux) is a
+> planned but unimplemented feature — see [ROADMAP.md](ROADMAP.md) Phase 2.1.
 
 ### Project Management
 

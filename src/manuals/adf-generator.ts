@@ -21,7 +21,10 @@ import {
 import { renderExpectParts } from '../lib/assertions';
 import type { GenerationMetadata } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
-import { substituteVariables } from '../lib/step-resolution';
+import {
+  substituteExpectVars,
+  substituteVariables,
+} from '../lib/step-resolution';
 import type { Environment, Operation, Step } from '../models/operation';
 
 /**
@@ -241,7 +244,7 @@ export function generateADF(
 
       content.push(heading({ level: 3 })(text(`Rollback for: ${step.name}`)));
 
-      if (rb.command || rb.instruction || rb.script) {
+      if (rb.command || rb.instruction || rb.script || rb.expect != null) {
         const rollbackRows = environments.map((env) => {
           const cellContent = [];
 
@@ -305,6 +308,25 @@ export function generateADF(
                 cellContent.push(
                   paragraph(em(text(`Script file not found: ${rb.script}`))),
                 );
+              }
+            }
+          }
+
+          // Add rollback expect assertions
+          if (rb.expect != null) {
+            const resolvedExpect =
+              resolveVariables && substituteVars
+                ? substituteExpectVars(
+                    rb.expect,
+                    env.variables || {},
+                    step.variables,
+                  )
+                : rb.expect;
+            const parts = renderExpectParts(resolvedExpect);
+            if (parts.length > 0) {
+              cellContent.push(paragraph(strong(text('Expected:'))));
+              for (const p of parts) {
+                cellContent.push(paragraph(em(text(`- [ ] ${p}`))));
               }
             }
           }
@@ -671,7 +693,15 @@ function createStepsTable(
 
       // Add expect assertions
       if (effectiveStep.expect != null) {
-        const parts = renderExpectParts(effectiveStep.expect);
+        const resolvedExpect =
+          resolveVariables && substituteVars
+            ? substituteExpectVars(
+                effectiveStep.expect,
+                env.variables || {},
+                effectiveStep.variables,
+              )
+            : effectiveStep.expect;
+        const parts = renderExpectParts(resolvedExpect);
         if (parts.length > 0) {
           cellContent.push(paragraph(strong(text('Expected:'))));
           for (const p of parts) {
@@ -945,6 +975,25 @@ function addSubStepRows(
         }
       }
 
+      // Add expect assertions
+      if (effectiveSubStep.expect != null) {
+        const resolvedExpect =
+          resolveVariables && substituteVars
+            ? substituteExpectVars(
+                effectiveSubStep.expect,
+                env.variables || {},
+                effectiveSubStep.variables,
+              )
+            : effectiveSubStep.expect;
+        const parts = renderExpectParts(resolvedExpect);
+        if (parts.length > 0) {
+          cellContent.push(paragraph(strong(text('Expected:'))));
+          for (const p of parts) {
+            cellContent.push(paragraph(em(text(`- [ ] ${p}`))));
+          }
+        }
+      }
+
       // Fallback for sub-steps with neither
       if (cellContent.length === 0) {
         if (
@@ -996,7 +1045,10 @@ function addSubStepRows(
   // Second loop: render all rollback rows
   subSteps.forEach((subStep, subIndex) => {
     const rb = subStep.rollback?.[0];
-    if (rb && (rb.command || rb.instruction || rb.script)) {
+    if (
+      rb &&
+      (rb.command || rb.instruction || rb.script || rb.expect != null)
+    ) {
       // Determine numbering based on depth
       let subStepId: string;
       if (depth % 2 === 1) {
@@ -1077,6 +1129,25 @@ function addSubStepRows(
               cellContent.push(
                 paragraph(em(text(`Script file not found: ${rb.script}`))),
               );
+            }
+          }
+        }
+
+        // Add rollback expect assertions
+        if (rb.expect != null) {
+          const resolvedExpect =
+            resolveVariables && substituteVars
+              ? substituteExpectVars(
+                  rb.expect,
+                  env.variables || {},
+                  subStep.variables,
+                )
+              : rb.expect;
+          const parts = renderExpectParts(resolvedExpect);
+          if (parts.length > 0) {
+            cellContent.push(paragraph(strong(text('Expected:'))));
+            for (const p of parts) {
+              cellContent.push(paragraph(em(text(`- [ ] ${p}`))));
             }
           }
         }
