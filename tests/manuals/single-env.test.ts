@@ -414,5 +414,91 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
         'env-only title stays literal without --resolve-vars',
       );
     });
+
+    it('resolves foreach loop variables propagated into sub_steps (resolve on)', async () => {
+      const op = await parseFixture('foreachWithSubsteps');
+      const md = generateSingleEnvManual(op, 'production', true);
+
+      // First combo: TEST_RECIPIENT = ${EMAIL_A} -> a@example.com (resolved at parse time)
+      assert.ok(
+        md.includes(
+          'aws sesv2 send-email --destination ToAddresses=a@example.com',
+        ),
+        'sub-step command resolves combo variable for first combo',
+      );
+      assert.ok(
+        md.includes(
+          'Confirm email delivery to a@example.com in the SES console.',
+        ),
+        'sub-step instruction resolves combo variable for first combo',
+      );
+      assert.ok(
+        md.includes(
+          'aws sesv2 get-suppressed-destination --email-address a@example.com',
+        ),
+        'nested sub-step command resolves combo variable for first combo',
+      );
+      assert.ok(
+        md.includes(
+          'aws sesv2 send-email --destination ToAddresses=a@example.com --message "cancelled"',
+        ),
+        'sub-step rollback command resolves combo variable for first combo',
+      );
+
+      // Second combo: TEST_RECIPIENT = ${ENV_RECIPIENT} -> prod@example.com (resolved at generation time via --resolve-vars)
+      assert.ok(
+        md.includes(
+          'aws sesv2 send-email --destination ToAddresses=prod@example.com',
+        ),
+        'sub-step command resolves combo variable for second (env-only) combo',
+      );
+
+      // Expect blocks should show resolved values, not the literal placeholder
+      assert.ok(
+        md.includes('- [ ] contains: a@example.com'),
+        'sub-step expect resolves combo variable for first combo',
+      );
+      assert.ok(
+        md.includes('- [ ] contains: prod@example.com'),
+        'sub-step expect resolves combo variable for second combo',
+      );
+
+      assert.ok(
+        !md.includes('${TEST_RECIPIENT}'),
+        'no unresolved ${TEST_RECIPIENT} literal remains',
+      );
+    });
+
+    it('leaves foreach loop variables in sub_steps unresolved (resolve off)', async () => {
+      const op = await parseFixture('foreachWithSubsteps');
+      const md = generateSingleEnvManual(op, 'production', false);
+
+      assert.ok(
+        md.includes(
+          'aws sesv2 send-email --destination ToAddresses=${TEST_RECIPIENT}',
+        ),
+        'sub-step command keeps ${TEST_RECIPIENT} literal when resolve is off',
+      );
+    });
+
+    it('resolves top-level variables: in step command (resolve on)', async () => {
+      const op = await parseFixture('topLevelVariables');
+      const md = generateSingleEnvManual(op, 'production', true);
+
+      assert.ok(
+        md.includes(
+          'aws sesv2 send-email --destination ToAddresses=a@example.com --region eu-west-1',
+        ),
+        'command resolves ${EMAIL_A} from top-level variables and ${REGION} with common_variables winning',
+      );
+      assert.ok(
+        !md.includes('${EMAIL_A}'),
+        'no unresolved ${EMAIL_A} literal remains',
+      );
+      assert.ok(
+        !md.includes('${REGION}'),
+        'no unresolved ${REGION} literal remains',
+      );
+    });
   });
 });

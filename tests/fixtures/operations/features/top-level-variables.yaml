@@ -1,0 +1,23 @@
+name: Top-Level Variables Test
+version: 1.0.0
+description: Test that top-level variables are merged into common_variables, with common_variables winning on conflict
+
+variables:
+  EMAIL_A: a@example.com
+  REGION: us-east-1
+
+common_variables:
+  REGION: eu-west-1
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      ENV_RECIPIENT: prod@example.com
+
+steps:
+  - name: Send notification
+    type: manual
+    phase: flight
+    description: Notify recipient using top-level variables
+    command: aws sesv2 send-email --destination ToAddresses=${EMAIL_A} --region ${REGION}

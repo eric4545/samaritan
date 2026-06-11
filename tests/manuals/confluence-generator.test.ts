@@ -736,4 +736,24 @@ steps:
       'should resolve common_variables reference in step name',
     );
   });
+
+  it('resolves foreach loop variables propagated into sub_steps with --resolve-vars', async () => {
+    // Use parseFixture so the parser's combo injection into sub_steps has run.
+    const operation = await parseFixture('foreachWithSubsteps');
+
+    const content = generateConfluenceContent(operation, true);
+
+    // First combo: TEST_RECIPIENT = ${EMAIL_A} -> a@example.com (resolved at parse time)
+    assert.match(
+      content,
+      /aws sesv2 send-email --destination ToAddresses=a@example\.com/,
+      'sub-step command resolves combo variable for first combo',
+    );
+
+    assert.doesNotMatch(
+      content,
+      /\$\{TEST_RECIPIENT\}/,
+      'no unresolved ${TEST_RECIPIENT} literal remains',
+    );
+  });
 });

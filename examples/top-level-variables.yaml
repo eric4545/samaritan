@@ -1,0 +1,46 @@
+name: Notification Rollout with Top-Level Variables
+version: 1.0.0
+description: |
+  Demonstrates top-level `variables:` as a convenience alias for
+  `common_variables:`. Both feed the same shared variable pool used for
+  ${VAR} resolution across all environments. If a key is defined in both,
+  `common_variables:` wins.
+
+author: DevOps Team
+category: notification
+
+# Shared defaults - merged into common_variables (common_variables wins on
+# key conflict, see REGION below).
+variables:
+  ONCALL_EMAIL: oncall@example.com
+  REGION: us-east-1
+
+common_variables:
+  REGION: eu-west-1 # overrides the top-level `variables: REGION` above
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      APP_NAME: myapp-staging
+
+  - name: production
+    description: Production environment
+    variables:
+      APP_NAME: myapp-production
+
+steps:
+  - name: Notify On-Call
+    type: manual
+    phase: flight
+    description: Send a deployment notification to the on-call engineer
+    instruction: |
+      Send a notification email to the on-call engineer:
+    command: aws sesv2 send-email --destination ToAddresses=${ONCALL_EMAIL} --region ${REGION}
+    pic: ops-team@example.com
+
+  - name: Verify Deployment Health
+    type: automatic
+    phase: postflight
+    command: kubectl get pods -l app=${APP_NAME}
+    description: Confirm all pods are running after deployment

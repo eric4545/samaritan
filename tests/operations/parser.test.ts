@@ -415,6 +415,72 @@ describe('Enhanced Operation Parser', () => {
         'No step name should contain unresolved ${EMAIL_A}',
       );
     });
+
+    it('propagates the foreach combo into sub_steps (and nested sub_steps)', async () => {
+      const operation = await parseFixture('foreachWithSubsteps');
+
+      // Two combinations: ${EMAIL_A} -> a@example.com (resolved at parse time)
+      // and ${ENV_RECIPIENT} -> stays literal (env vars not in scope at parse time)
+      assert.strictEqual(operation.steps.length, 2);
+
+      const [first, second] = operation.steps;
+
+      assert.strictEqual(first.variables?.TEST_RECIPIENT, 'a@example.com');
+      assert.strictEqual(second.variables?.TEST_RECIPIENT, '${ENV_RECIPIENT}');
+
+      // sub_steps should have the combo injected too
+      assert.strictEqual(
+        first.sub_steps?.[0].variables?.TEST_RECIPIENT,
+        'a@example.com',
+      );
+      assert.strictEqual(
+        second.sub_steps?.[0].variables?.TEST_RECIPIENT,
+        '${ENV_RECIPIENT}',
+      );
+
+      // nested sub_steps level should also have the combo injected
+      assert.strictEqual(
+        first.sub_steps?.[1].sub_steps?.[0].variables?.TEST_RECIPIENT,
+        'a@example.com',
+      );
+      assert.strictEqual(
+        second.sub_steps?.[1].sub_steps?.[0].variables?.TEST_RECIPIENT,
+        '${ENV_RECIPIENT}',
+      );
+    });
+
+    it('does not leak sub_steps array references between expanded combos', async () => {
+      const operation = await parseFixture('foreachWithSubsteps');
+
+      const [first, second] = operation.steps;
+
+      assert.notStrictEqual(first.sub_steps, second.sub_steps);
+      assert.notStrictEqual(first.sub_steps?.[0], second.sub_steps?.[0]);
+      assert.notStrictEqual(
+        first.sub_steps?.[0].variables,
+        second.sub_steps?.[0].variables,
+      );
+    });
+  });
+
+  describe('top-level variables: merging into common_variables', () => {
+    it('merges top-level variables into common_variables, with common_variables winning on conflict', async () => {
+      const operation = await parseFixture('topLevelVariables');
+
+      // EMAIL_A only defined in top-level `variables:`
+      assert.strictEqual(operation.common_variables?.EMAIL_A, 'a@example.com');
+
+      // REGION is defined in both `variables:` (us-east-1) and
+      // `common_variables:` (eu-west-1) - common_variables should win
+      assert.strictEqual(operation.common_variables?.REGION, 'eu-west-1');
+
+      // Should also be reflected in the per-environment variable matrix
+      assert.strictEqual(
+        operation.variables.production?.EMAIL_A,
+        'a@example.com',
+      );
+      assert.strictEqual(operation.variables.production?.REGION, 'eu-west-1');
+    });
   });
 
   it('should parse overview field with flexible metadata', async () => {

@@ -92,7 +92,7 @@
     },
     "variables": {
       "type": "object",
-      "description": "Environment-specific variables"
+      "description": "Variables shared across all environments (convenience alias of common_variables; common_variables wins on key conflict)"
     },
     "common_variables": {
       "type": "object",

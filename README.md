@@ -790,6 +790,16 @@ steps:
 
 Even with `--resolve-vars`, the `${TIMESTAMP}` inside the code block remains as `${TIMESTAMP}` (not expanded to the YAML variable value). This prevents conflicts between YAML variables and bash/shell variables with the same name.
 
+**Top-level `variables:`**
+
+A top-level `variables:` map is a convenience alias for `common_variables:` — both are merged into the same shared variable pool used for `${VAR}` resolution across all environments. Precedence (highest to lowest) is:
+
+```
+common_variables > variables: > env_file
+```
+
+If the same key appears in both `variables:` and `common_variables:`, `common_variables:` wins. See `examples/top-level-variables.yaml`.
+
 **Benefits:**
 - **Audit Trail**: Know exactly which code version generated each manual
 - **Environment Focus**: Production manuals show only production procedures
@@ -1280,6 +1290,8 @@ Resolution happens in two layers:
    - **Multi-environment tables**: the shared step name cell resolves using `common_variables` only (environment-specific values differ per column, so the name cell can't pick one); each environment's command cell resolves using that environment's variables.
 
 References to variables that are undefined in both `common_variables` and the relevant environment (like `${UNKNOWN_VAR}`) are left as literal `${UNKNOWN_VAR}` text.
+
+**Loop variables propagate into `sub_steps`**: when a step with `foreach` also has `sub_steps`, the loop combination (e.g. `TEST_RECIPIENT`) is injected into every nested sub-step's `variables` (at all nesting levels) and into sub-step `rollback` blocks, so `${TEST_RECIPIENT}` in sub-step `command`/`instruction`/`expect`/`rollback` content resolves the same way as in the parent step's title and command.
 
 **Known limitations:**
 - Foreach values that resolve to objects or arrays are not supported — the title suffix will show `[object Object]`.
