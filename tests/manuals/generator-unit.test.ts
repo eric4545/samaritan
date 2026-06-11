@@ -2374,3 +2374,52 @@ describe('foreach/matrix variable reference resolution in multi-env markdown tab
     );
   });
 });
+
+describe('foreach loop variables propagated into sub_steps and top-level variables: (multi-env table, --resolve-vars)', () => {
+  it('resolves foreach loop variables in sub-step command cells per combo, with no ${TEST_RECIPIENT} literal', async () => {
+    const op = await parseFixture('foreachWithSubsteps');
+    const md = generateManualWithMetadata(op, undefined, undefined, true);
+
+    // First combo: TEST_RECIPIENT = ${EMAIL_A} -> a@example.com (resolved at parse time)
+    assert.ok(
+      md.includes(
+        'aws sesv2 send-email --destination ToAddresses=a@example.com',
+      ),
+      'sub-step command cell resolves combo variable for first combo',
+    );
+
+    // Second combo: TEST_RECIPIENT = ${ENV_RECIPIENT} -> prod@example.com
+    // (resolved at generation time via --resolve-vars against the production env)
+    assert.ok(
+      md.includes(
+        'aws sesv2 send-email --destination ToAddresses=prod@example.com',
+      ),
+      'sub-step command cell resolves combo variable for second (env-only) combo',
+    );
+
+    assert.ok(
+      !md.includes('${TEST_RECIPIENT}'),
+      'no unresolved ${TEST_RECIPIENT} literal remains',
+    );
+  });
+
+  it('resolves top-level variables: in step name and command cells', async () => {
+    const op = await parseFixture('topLevelVariables');
+    const md = generateManualWithMetadata(op, undefined, undefined, true);
+
+    assert.ok(
+      md.includes(
+        'aws sesv2 send-email --destination ToAddresses=a@example.com --region eu-west-1',
+      ),
+      'command cell resolves ${EMAIL_A} from top-level variables and ${REGION} with common_variables winning',
+    );
+    assert.ok(
+      !md.includes('${EMAIL_A}'),
+      'no unresolved ${EMAIL_A} literal remains',
+    );
+    assert.ok(
+      !md.includes('${REGION}'),
+      'no unresolved ${REGION} literal remains',
+    );
+  });
+});

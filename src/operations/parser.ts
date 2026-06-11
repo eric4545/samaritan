@@ -227,6 +227,64 @@ function formatVariableCombination(vars: Record<string, any>): string {
 }
 
 /**
+ * Recursively inject a foreach loop combination into a step's `variables`,
+ * its `sub_steps` (at every nesting level), and its `variants`.
+ *
+ * Returns a NEW step object (and new sub_steps/variants arrays/objects) so
+ * that each expanded combination gets its own independent tree - without
+ * this, all expanded combos would share the same `sub_steps` array
+ * reference and resolve against only the parent's (combo-injected)
+ * `variables`, leaving `${VAR}` placeholders inside sub_steps unresolved.
+ *
+ * `combo` always wins over an existing same-named variable on the step
+ * (consistent with the parent injection). Note: if a sub_step has its own
+ * nested `foreach` using the same variable name, that inner foreach is
+ * expanded separately (parseStep recursion happens after this), and this
+ * outer combo injection would be overwritten by the inner combo for that
+ * sub_step - this is a degenerate edge case (shadowing the same loop
+ * variable name in nested foreach) and is not specially handled here.
+ */
+function injectComboVariables(step: Step, combo: Record<string, any>): Step {
+  const result: Step = {
+    ...step,
+    variables: { ...(step.variables || {}), ...combo },
+  };
+
+  if (step.sub_steps) {
+    result.sub_steps = step.sub_steps.map((subStep) =>
+      injectComboVariables(subStep, combo),
+    );
+  }
+
+  if (step.variants) {
+    const newVariants: Record<
+      string,
+      Partial<Omit<Step, 'variants' | 'when'>>
+    > = {};
+    for (const [envName, variant] of Object.entries(step.variants)) {
+      const newVariant: Partial<Omit<Step, 'variants' | 'when'>> = {
+        ...variant,
+      };
+      // mergeStepVariant does `{ ...step, ...variant }`, so a variant that
+      // defines its own `variables` would otherwise replace the base
+      // step's combo-injected `variables` entirely - merge combo back in.
+      if (variant.variables) {
+        newVariant.variables = { ...variant.variables, ...combo };
+      }
+      if (variant.sub_steps) {
+        newVariant.sub_steps = variant.sub_steps.map((subStep) =>
+          injectComboVariables(subStep, combo),
+        );
+      }
+      newVariants[envName] = newVariant;
+    }
+    result.variants = newVariants;
+  }
+
+  return result;
+}
+
+/**
  * Parse template YAML content and extract steps + default variables.
  * For bare step arrays: no defaults. For operation-format files: common_variables
  * become defaults and legacy preflight steps are migrated to phase: preflight.
@@ -595,15 +653,13 @@ async function resolveStepReferences(
             const combo = combinations[j];
             const varSuffix = formatVariableCombination(combo);
 
-            // Clone step for this combination
+            // Clone step for this combination, recursively injecting the
+            // combo into variables, sub_steps, and variants so all render
+            // paths resolve ${VAR} placeholders consistently.
             const expandedStep: Step = {
-              ...step,
+              ...injectComboVariables(step, combo),
               id: step.id ? `${step.id}-${j}` : undefined,
               name: `${step.name} (${varSuffix})`,
-              variables: {
-                ...(step.variables || {}),
-                ...combo, // Inject all matrix variables
-              },
               foreach: undefined, // Remove foreach from expanded step
             };
 
@@ -823,9 +879,10 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   }
 
   // Parse common variables (shared across all environments)
-  // Priority: common_variables > env_file
+  // Priority: common_variables > top-level variables: > env_file
   const commonVariables = {
     ...envFileVariables,
+    ...(rawOperation.variables || {}),
     ...(rawOperation.common_variables || {}),
   };
 

@@ -1,0 +1,43 @@
+name: Foreach With Sub-Steps Test
+version: 1.0.0
+description: Test that foreach loop variables propagate into sub_steps (and their rollbacks)
+
+common_variables:
+  EMAIL_A: a@example.com
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      ENV_RECIPIENT: prod@example.com
+
+steps:
+  - name: Notify recipients
+    type: manual
+    phase: flight
+    description: Send notification emails
+    foreach:
+      var: TEST_RECIPIENT
+      values:
+        - '${EMAIL_A}'
+        - '${ENV_RECIPIENT}'
+    sub_steps:
+      - name: Send email
+        type: manual
+        command: aws sesv2 send-email --destination ToAddresses=${TEST_RECIPIENT}
+        expect:
+          - contains: '${TEST_RECIPIENT}'
+        rollback:
+          - description: Notify recipient of cancellation
+            command: aws sesv2 send-email --destination ToAddresses=${TEST_RECIPIENT} --message "cancelled"
+
+      - name: Confirm delivery
+        type: manual
+        instruction: |
+          Confirm email delivery to ${TEST_RECIPIENT} in the SES console.
+        sub_steps:
+          - name: Check bounce status
+            type: manual
+            command: aws sesv2 get-suppressed-destination --email-address ${TEST_RECIPIENT}
+            expect:
+              - contains: '${TEST_RECIPIENT}'
