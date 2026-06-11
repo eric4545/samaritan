@@ -1,9 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  isPrimitiveExpectShorthand,
-  renderExpectParts,
-} from '../lib/assertions';
+import { renderExpectParts } from '../lib/assertions';
 import {
   type GenerationMetadata,
   generateYamlFrontmatter,
@@ -12,57 +9,11 @@ import { indexToLetters } from '../lib/letter-sequence';
 import {
   mergeStepVariant,
   shouldRenderStepForEnvironment,
+  substituteExpectVars,
   substituteVariables,
 } from '../lib/step-resolution';
-import type {
-  Environment,
-  ExpectConfig,
-  Operation,
-  Step,
-} from '../models/operation';
+import type { Environment, Operation, Step } from '../models/operation';
 import type { RunEvidenceItem, RunManifest } from '../models/run-manifest';
-
-const EXPECT_STRING_FIELDS = [
-  'contains',
-  'not_contains',
-  'equals',
-  'matches',
-  'any_line_contains',
-  'no_line_contains',
-  'all_lines_match',
-  'jsonpath',
-] as const satisfies ReadonlyArray<keyof ExpectConfig>;
-
-function substituteExpectVars(
-  expect: ExpectConfig | ExpectConfig[] | string,
-  envVars: Record<string, any>,
-  stepVars?: Record<string, any>,
-): ExpectConfig | ExpectConfig[] | string {
-  if (typeof expect === 'string')
-    return substituteVariables(expect, envVars, stepVars);
-  // There's nothing to substitute inside a primitive shorthand value —
-  // return it as-is rather than spreading it into an empty object and
-  // losing the value.
-  if (isPrimitiveExpectShorthand(expect)) return expect;
-  if (Array.isArray(expect))
-    return expect.map(
-      (e) => substituteExpectVars(e, envVars, stepVars) as ExpectConfig,
-    );
-  const result: ExpectConfig = { ...expect };
-  for (const field of EXPECT_STRING_FIELDS) {
-    const raw = result[field];
-    if (raw === undefined || raw === null) continue;
-    // A field value may be a number/boolean when the parser's type-preserving
-    // template substitution resolved "${VAR}" to a non-string (e.g. an AWS
-    // account ID).  Convert to string instead of passing a non-string to
-    // substituteVariables (which calls String.prototype.replace internally).
-    result[field] =
-      typeof raw === 'string'
-        ? substituteVariables(raw, envVars, stepVars)
-        : String(raw);
-  }
-  return result;
-}
 
 function slugify(name: string): string {
   return name
