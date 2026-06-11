@@ -1,0 +1,32 @@
+name: Confluence Script and Expect Test
+version: 1.0.0
+description: Test script and expect rendering in Confluence wiki markup
+
+common_variables:
+  REPLICA_COUNT: 0
+
+environments:
+  - name: staging
+
+steps:
+  - name: Deploy Application
+    type: manual
+    instruction: Run the deployment script.
+    script: ./deploy.sh
+    expect:
+      contains: Deployment complete
+    sub_steps:
+      - name: Verify Pods
+        type: automatic
+        script: ./deploy.sh
+        expect:
+          - contains: Running
+          - not_contains: Failed
+    rollback:
+      - command: kubectl rollout undo deployment/web-server
+        expect:
+          contains: rolled back
+  - name: Check Replica Count
+    type: automatic
+    command: kubectl get deployment web-server -o jsonpath='{.status.readyReplicas}'
+    expect: "${REPLICA_COUNT}"

@@ -1,8 +1,9 @@
 import assert from 'node:assert';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 import * as yaml from 'js-yaml';
 import { generateConfluenceContent } from '../../src/cli/commands/generate';
-import { loadYaml, parseFixture } from '../fixtures/fixtures';
+import { getFixturePath, loadYaml, parseFixture } from '../fixtures/fixtures';
 
 // Load YAML fixtures
 const deploymentOperationYaml = loadYaml('deploymentTest');
@@ -754,6 +755,92 @@ steps:
       content,
       /\$\{TEST_RECIPIENT\}/,
       'no unresolved ${TEST_RECIPIENT} literal remains',
+    );
+  });
+});
+
+describe('Confluence Generator: script field rendering', () => {
+  const operationDir = path.dirname(
+    getFixturePath('confluenceScriptAndExpect'),
+  );
+
+  it('renders script label and embedded content for a regular step', async () => {
+    const operation = await parseFixture('confluenceScriptAndExpect');
+    const content = generateConfluenceContent(
+      operation,
+      false,
+      false,
+      undefined,
+      operationDir,
+    );
+
+    assert.match(
+      content,
+      /\*Script:\* `\.\/deploy\.sh`/,
+      'should show script label for regular step',
+    );
+    assert.match(
+      content,
+      /\{code:bash\}\n#!\/bin\/bash[\s\S]*Deploying web server\.\.\./,
+      'should embed script content for regular step',
+    );
+  });
+
+  it('renders script label and embedded content for a sub-step', async () => {
+    const operation = await parseFixture('confluenceScriptAndExpect');
+    const content = generateConfluenceContent(
+      operation,
+      false,
+      false,
+      undefined,
+      operationDir,
+    );
+
+    // Sub-step "Verify Pods" also has script: ./deploy.sh — both occurrences
+    // (parent + sub-step) should render the label and embedded content.
+    const scriptLabelMatches = content.match(/\*Script:\* `\.\/deploy\.sh`/g);
+    assert.ok(
+      scriptLabelMatches && scriptLabelMatches.length >= 2,
+      'should show script label for both regular step and sub-step',
+    );
+
+    const scriptContentMatches = content.match(/Deploying web server\.\.\./g);
+    assert.ok(
+      scriptContentMatches && scriptContentMatches.length >= 2,
+      'should embed script content for both regular step and sub-step',
+    );
+  });
+
+  it('shows file-not-found message when script path is invalid', async () => {
+    const operation = await parseFixture('confluenceScriptAndExpect');
+    const modifiedOp = {
+      ...operation,
+      steps: [
+        {
+          ...operation.steps[0],
+          script: './nonexistent.sh',
+          sub_steps: undefined,
+          rollback: undefined,
+        },
+      ],
+    };
+    const content = generateConfluenceContent(
+      modifiedOp,
+      false,
+      false,
+      undefined,
+      operationDir,
+    );
+
+    assert.match(
+      content,
+      /\*Script:\* `\.\/nonexistent\.sh`/,
+      'should still show script label',
+    );
+    assert.match(
+      content,
+      /_\(file not found\)_/,
+      'should show file-not-found fallback',
     );
   });
 });

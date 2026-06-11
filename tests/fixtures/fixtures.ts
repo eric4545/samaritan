@@ -96,6 +96,8 @@ export const FIXTURES = {
 
   // Script file import
   withScript: 'tests/fixtures/operations/features/with-script.yaml',
+  confluenceScriptAndExpect:
+    'tests/fixtures/operations/features/confluence-script-and-expect.yaml',
 
   // When and Variants
   whenAndVariants: 'tests/fixtures/operations/features/when-and-variants.yaml',

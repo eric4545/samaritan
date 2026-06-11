@@ -1318,6 +1318,26 @@ ${filteredOperation.environments
             }
           }
 
+          // Process script (external shell script file)
+          if (step.script) {
+            const sep = cellContent ? '\n' : '';
+            cellContent += `${sep}*Script:* \`${step.script}\``;
+            if (operationDir) {
+              try {
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const fs = require('node:fs');
+                const nodePath = require('node:path');
+                const scriptPath = nodePath.resolve(operationDir, step.script);
+                const scriptContent = fs
+                  .readFileSync(scriptPath, 'utf-8')
+                  .trimEnd();
+                cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
+              } catch {
+                cellContent += ' _(file not found)_';
+              }
+            }
+          }
+
           // Fallback for steps with neither
           if (!cellContent) {
             if (step.sub_steps && step.sub_steps.length > 0) {
@@ -1842,6 +1862,29 @@ function addConfluenceSubStepRows(
           cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
         } else {
           cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
+        }
+      }
+
+      // Process script (external shell script file)
+      if (effectiveSubStep.script) {
+        const sep = cellContent ? '\n' : '';
+        cellContent += `${sep}*Script:* \`${effectiveSubStep.script}\``;
+        if (operationDir) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const fs = require('node:fs');
+            const nodePath = require('node:path');
+            const scriptPath = nodePath.resolve(
+              operationDir,
+              effectiveSubStep.script,
+            );
+            const scriptContent = fs
+              .readFileSync(scriptPath, 'utf-8')
+              .trimEnd();
+            cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
+          } catch {
+            cellContent += ' _(file not found)_';
+          }
         }
       }
 
