@@ -1,9 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
 import { Command } from 'commander';
+import { renderExpectParts } from '../../lib/assertions';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { indexToLetters } from '../../lib/letter-sequence';
-import { substituteVariables } from '../../lib/step-resolution';
+import {
+  substituteExpectVars,
+  substituteVariables,
+} from '../../lib/step-resolution';
 import { generateADFString } from '../../manuals/adf-generator';
 import {
   generateManualWithMetadata,
@@ -1338,6 +1342,24 @@ ${filteredOperation.environments
             }
           }
 
+          // Add expect assertions
+          if (step.expect != null) {
+            const resolvedExpect =
+              resolveVars && substituteVars
+                ? substituteExpectVars(
+                    step.expect,
+                    env.variables || {},
+                    step.variables,
+                  )
+                : step.expect;
+            const parts = renderExpectParts(resolvedExpect);
+            if (parts.length > 0) {
+              const sep = cellContent ? '\n' : '';
+              cellContent += `${sep}*Expected:*`;
+              for (const p of parts) cellContent += `\n* [ ] _${p}_`;
+            }
+          }
+
           // Fallback for steps with neither
           if (!cellContent) {
             if (step.sub_steps && step.sub_steps.length > 0) {
@@ -1885,6 +1907,24 @@ function addConfluenceSubStepRows(
           } catch {
             cellContent += ' _(file not found)_';
           }
+        }
+      }
+
+      // Add expect assertions
+      if (effectiveSubStep.expect != null) {
+        const resolvedExpect =
+          resolveVars && substituteVars
+            ? substituteExpectVars(
+                effectiveSubStep.expect,
+                env.variables || {},
+                effectiveSubStep.variables,
+              )
+            : effectiveSubStep.expect;
+        const parts = renderExpectParts(resolvedExpect);
+        if (parts.length > 0) {
+          const sep = cellContent ? '\n' : '';
+          cellContent += `${sep}*Expected:*`;
+          for (const p of parts) cellContent += `\n* [ ] _${p}_`;
         }
       }
 
