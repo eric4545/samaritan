@@ -21,7 +21,10 @@ import {
 import { renderExpectParts } from '../lib/assertions';
 import type { GenerationMetadata } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
-import { substituteVariables } from '../lib/step-resolution';
+import {
+  substituteExpectVars,
+  substituteVariables,
+} from '../lib/step-resolution';
 import type { Environment, Operation, Step } from '../models/operation';
 
 /**
@@ -671,7 +674,15 @@ function createStepsTable(
 
       // Add expect assertions
       if (effectiveStep.expect != null) {
-        const parts = renderExpectParts(effectiveStep.expect);
+        const resolvedExpect =
+          resolveVariables && substituteVars
+            ? substituteExpectVars(
+                effectiveStep.expect,
+                env.variables || {},
+                effectiveStep.variables,
+              )
+            : effectiveStep.expect;
+        const parts = renderExpectParts(resolvedExpect);
         if (parts.length > 0) {
           cellContent.push(paragraph(strong(text('Expected:'))));
           for (const p of parts) {
@@ -941,6 +952,25 @@ function addSubStepRows(
                 em(text(`Script file not found: ${effectiveSubStep.script}`)),
               ),
             );
+          }
+        }
+      }
+
+      // Add expect assertions
+      if (effectiveSubStep.expect != null) {
+        const resolvedExpect =
+          resolveVariables && substituteVars
+            ? substituteExpectVars(
+                effectiveSubStep.expect,
+                env.variables || {},
+                effectiveSubStep.variables,
+              )
+            : effectiveSubStep.expect;
+        const parts = renderExpectParts(resolvedExpect);
+        if (parts.length > 0) {
+          cellContent.push(paragraph(strong(text('Expected:'))));
+          for (const p of parts) {
+            cellContent.push(paragraph(em(text(`- [ ] ${p}`))));
           }
         }
       }
