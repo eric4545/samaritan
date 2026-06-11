@@ -765,6 +765,24 @@ function generateStepRow(
             }
           }
 
+          // Add rollback expect
+          if (rb.expect != null) {
+            const resolvedExpect =
+              resolveVariables && substituteVars
+                ? substituteExpectVars(
+                    rb.expect,
+                    env.variables || {},
+                    subStep.variables,
+                  )
+                : rb.expect;
+            const parts = renderExpectParts(resolvedExpect);
+            if (parts.length > 0) {
+              const sep = cellContent ? '<br>' : '';
+              cellContent += `${sep}_Expected:_`;
+              for (const p of parts) cellContent += `<br>- [ ] _${p}_`;
+            }
+          }
+
           // Rollback sign-off checkboxes
           if (rb.pic || rb.reviewer) {
             const sep = cellContent ? '<br><br>' : '';
@@ -1159,6 +1177,24 @@ function generateSubStepRow(
               } catch {
                 cellContent += ` <em>(file not found)</em>`;
               }
+            }
+          }
+
+          // Add rollback expect
+          if (rb.expect != null) {
+            const resolvedExpect =
+              resolveVariables && substituteVars
+                ? substituteExpectVars(
+                    rb.expect,
+                    env.variables || {},
+                    nestedSubStep.variables,
+                  )
+                : rb.expect;
+            const parts = renderExpectParts(resolvedExpect);
+            if (parts.length > 0) {
+              const sep = cellContent ? '<br>' : '';
+              cellContent += `${sep}_Expected:_`;
+              for (const p of parts) cellContent += `<br>- [ ] _${p}_`;
             }
           }
 
@@ -1586,6 +1622,24 @@ function generateManualContent(
               }
             }
 
+            // Add rollback expect
+            if (rb.expect != null) {
+              const resolvedExpect =
+                resolveVariables && substituteVars
+                  ? substituteExpectVars(
+                      rb.expect,
+                      env.variables || {},
+                      step.variables,
+                    )
+                  : rb.expect;
+              const parts = renderExpectParts(resolvedExpect);
+              if (parts.length > 0) {
+                const sep = cellContent ? '<br>' : '';
+                cellContent += `${sep}_Expected:_`;
+                for (const p of parts) cellContent += `<br>- [ ] _${p}_`;
+              }
+            }
+
             // Rollback sign-off checkboxes
             if (rb.pic || rb.reviewer) {
               const sep = cellContent ? '<br><br>' : '';
@@ -1649,7 +1703,7 @@ function generateManualContent(
         : step.name;
       markdown += `### Rollback for: ${rollbackSectionName}\n\n`;
 
-      if (rb.command || rb.instruction || rb.script) {
+      if (rb.command || rb.instruction || rb.script || rb.expect != null) {
         markdown += '| Environment | Rollback Action |\n';
         markdown += '|-------------|----------------|\n';
 
@@ -1714,6 +1768,24 @@ function generateManualContent(
               } catch {
                 cellContent += ` <em>(file not found)</em>`;
               }
+            }
+          }
+
+          // Add rollback expect
+          if (rb.expect != null) {
+            const resolvedExpect =
+              resolveVariables && substituteVars
+                ? substituteExpectVars(
+                    rb.expect,
+                    env.variables || {},
+                    step.variables,
+                  )
+                : rb.expect;
+            const parts = renderExpectParts(resolvedExpect);
+            if (parts.length > 0) {
+              const sep = cellContent ? '<br>' : '';
+              cellContent += `${sep}_Expected:_`;
+              for (const p of parts) cellContent += `<br>- [ ] _${p}_`;
             }
           }
 
@@ -1902,7 +1974,10 @@ export function generateSingleEnvManual(
 
     // Render rollback AFTER sub_steps (mirrors multi-env inline rollback position)
     const rb = effectiveStep.rollback?.[0];
-    if (rb && (rb.command || rb.instruction || rb.script)) {
+    if (
+      rb &&
+      (rb.command || rb.instruction || rb.script || rb.expect != null)
+    ) {
       const rbHashes = '#'.repeat(Math.min(headingLevel + 1, 6));
       lines.push(`${rbHashes} 🔄 Rollback`);
       lines.push('');
@@ -1948,6 +2023,19 @@ export function generateSingleEnvManual(
           }
         }
         lines.push('');
+      }
+
+      if (rb.expect != null) {
+        const resolvedExpect =
+          resolveVariables && (rb.options?.substitute_vars ?? true)
+            ? substituteExpectVars(rb.expect, envVars, effectiveStep.variables)
+            : rb.expect;
+        const parts = renderExpectParts(resolvedExpect);
+        if (parts.length > 0) {
+          lines.push('> Expected:');
+          for (const p of parts) lines.push(`> - [ ] ${p}`);
+          lines.push('');
+        }
       }
 
       if (rb.pic || rb.reviewer) {

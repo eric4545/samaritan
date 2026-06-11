@@ -928,3 +928,36 @@ describe('Confluence Generator: expect assertion rendering', () => {
     );
   });
 });
+
+describe('Confluence Generator: rollback expect rendering', () => {
+  it('renders expect checkboxes for a per-step rollback', async () => {
+    const operationDir = path.dirname(
+      getFixturePath('confluenceScriptAndExpect'),
+    );
+    const operation = await parseFixture('confluenceScriptAndExpect');
+    const content = generateConfluenceContent(
+      operation,
+      false,
+      false,
+      undefined,
+      operationDir,
+    );
+
+    // step "Deploy Application" rollback: { command: ..., expect: { contains: 'rolled back' } }
+    assert.match(
+      content,
+      /Rollback for Step 1[\s\S]*\*Expected:\*\n\* \[ \] _contains: rolled back_/,
+      'should render contains checkbox for rollback expect',
+    );
+  });
+
+  it('renders expect checkboxes in the global rollback section', () => {
+    const content = generateConfluence(globalRollbackYaml);
+
+    assert.match(
+      content,
+      /\*Expected:\*\n\* \[ \] _contains: rolled back_/,
+      'should render contains checkbox for global rollback step expect',
+    );
+  });
+});

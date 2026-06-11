@@ -19,6 +19,8 @@ rollback:
     - error_rate_spike
   steps:
     - command: kubectl rollout undo deployment/app
+      expect:
+        contains: rolled back
     - instruction: |
         Verify rollback completed:
         1. Check pods are running
