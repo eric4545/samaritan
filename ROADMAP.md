@@ -16,13 +16,37 @@
 - ✅ Multi-environment support
 - ✅ Evidence requirement models
 - ✅ Template-based operation creation
-- ✅ Comprehensive test suite (161 tests passing)
+- ✅ Template `uses:` composition with remote/GitHub shorthand and template imports
+- ✅ Sub-steps for nested step breakdowns
+- ✅ Structured output verification & assertions (`expect`/`verify` configs)
+- ✅ Comprehensive test suite (674 tests passing)
 
 ### Documentation
 - ✅ README.md with examples and workflows
 - ✅ USAGE.md for quick reference
 - ✅ CLI help system
 - ✅ Example operation files
+
+---
+
+## ✅ v1.1: Interactive Execution & Session Management (SHIPPED)
+
+Phases 2.3 and 2.4 below were implemented in v1.1 (see those sections for
+detail). Additional features shipped alongside but not previously tracked
+in this roadmap:
+
+- ✅ JSONL audit log per session (`~/.samaritan/sessions/<id>.jsonl`),
+  recording every action (notes, evidence, verify results, session
+  start/end) for later review
+- ✅ Evidence report generation (`samaritan run --report <dir>` /
+  `samaritan resume --report <dir>`) — Markdown report embedding captured
+  evidence (images, files, code blocks) per step
+- ✅ `samaritan diff` command — compares how an operation's steps render
+  across two environments (resolved commands, expects, etc.) and reports
+  differences as text or Markdown
+- ✅ `script:` field on `StepContent` — embeds an external shell script's
+  full content as a code block in generated manuals (mutually exclusive
+  with `command:`)
 
 ---
 
@@ -63,32 +87,33 @@
 - Video: `ffmpeg` or platform screen recording APIs
 - Storage: Local filesystem first, S3/cloud storage later
 
-### 2.3 Interactive Execution Mode
-- [ ] Step-by-step execution with user prompts
-- [ ] Manual step instruction display
-- [ ] Evidence upload interface (CLI file picker)
-- [ ] Step completion confirmation
-- [ ] Pause/resume functionality
-- [ ] Skip step capability
-- [ ] Rollback on failure
-- [ ] Progress tracking and display
+### 2.3 Interactive Execution Mode — ✅ IMPLEMENTED (v1.1)
+- [x] Step-by-step execution with user prompts
+- [x] Manual step instruction display
+- [x] Evidence upload interface (capture tmux output, attach file/screenshot/image, or paste text via `[e] evidence`)
+- [x] Step completion confirmation
+- [x] Pause/resume functionality
+- [x] Skip step capability
+- [x] Rollback on failure
+- [x] Progress tracking and display
 
-**Priority**: HIGH
-**Complexity**: Medium
-**Estimated**: 2 weeks
+`samaritan run` supports `sidecar` (default), `manual`, `automatic`, and `hybrid`
+modes. Sidecar mode displays each resolved command and verifies `step.expect`
+against captured tmux pane output without sending the command itself. See
+CLAUDE.md Gotcha #3 for full details on supported actions
+(`[n]` note, `[e]` evidence, `[x]` remove evidence, `[v]` verify, `[t]` attach pane).
 
-### 2.4 Session Management
-- [ ] Session state persistence
-- [ ] Resume interrupted operations
-- [ ] Session history and logs
-- [ ] Multi-session support
+### 2.4 Session Management — ✅ IMPLEMENTED (v1.1)
+- [x] Session state persistence (`~/.samaritan/sessions/<id>.json`)
+- [x] Resume interrupted operations (`samaritan resume <session-id>`)
+- [x] Session history and logs (JSONL audit log per session)
+- [x] Multi-session support
 - [ ] Session export/import
-- [ ] Checkpoint creation
+- [ ] Checkpoint creation (beyond per-step persistence)
 - [ ] Session cleanup and archival
 
-**Priority**: MEDIUM
-**Complexity**: Low
-**Estimated**: 1 week
+`samaritan sessions` lists saved sessions (resumable by default, `--all` for
+everything) with a `samaritan resume <id>` hint per resumable session.
 
 ---
 
