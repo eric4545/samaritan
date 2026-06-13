@@ -46,18 +46,14 @@ export interface StepRecord {
   started_at?: string;
   ended_at?: string;
   duration_ms?: number;
-  inputs: {
-    commands: StepCommandRecord[];
-    instruction?: string;
-  };
-  outputs: StepCommandRecord[];
+  // Each command record carries the input (`command`) and its captured
+  // `output` — the per-step input/output trail.
+  commands: StepCommandRecord[];
   verification?: StepVerification;
   approval?: StepApproval;
   notes: string[];
   evidence: StepEvidenceRef[];
-  evidence_ids: string[];
   failedReason?: string;
-  retry_count: number;
 }
 
 export interface RollbackRecord {

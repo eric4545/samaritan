@@ -22,7 +22,7 @@ function slugify(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
-function evidenceLang(type: string): string {
+export function evidenceLang(type: string): string {
   return type === 'command_output' ? 'bash' : 'text';
 }
 

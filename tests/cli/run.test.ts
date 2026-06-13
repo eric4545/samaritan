@@ -548,7 +548,7 @@ describe('run command: durable run record beside the operation', () => {
         'session JSON must carry a structured step_log',
       );
       assert.ok(
-        session.step_log[0].inputs?.commands?.length >= 1,
+        session.step_log[0].commands?.length >= 1,
         'step_log must capture the step input command',
       );
     } finally {

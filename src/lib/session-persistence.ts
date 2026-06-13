@@ -53,7 +53,7 @@ export function getSessionEvidenceDir(sessionId: string): string {
 export function getRunDir(operationFile: string, sessionId: string): string {
   const dir = join(dirname(operationFile), '.samaritan-runs', sessionId);
   try {
-    mkdirSync(dir, { recursive: true });
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     return dir;
   } catch {
     return getSessionSubdir(sessionId);

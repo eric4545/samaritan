@@ -1,9 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type {
-  RollbackRecord,
-  StepCommandRecord,
-  StepRecord,
-} from '../models/step-record';
+import type { RollbackRecord, StepRecord } from '../models/step-record';
 
 export interface SessionEvent {
   ts: string;
@@ -62,12 +58,9 @@ export function foldEvents(events: SessionEvent[]): {
           reviewer: event.reviewer as string | undefined,
           status: 'pending',
           started_at: event.ts,
-          inputs: { commands: [] },
-          outputs: [],
+          commands: [],
           notes: [],
           evidence: [],
-          evidence_ids: [],
-          retry_count: 0,
         };
         stepsByIndex.set(index, currentStep);
         break;
@@ -80,26 +73,22 @@ export function foldEvents(events: SessionEvent[]): {
             command: event.command as string,
           });
         } else if (currentStep) {
-          const record: StepCommandRecord = {
+          currentStep.commands.push({
             session: event.session as string,
             command: event.command as string,
             displayed: false,
-          };
-          currentStep.inputs.commands.push(record);
-          currentStep.outputs.push(record);
+          });
         }
         break;
       }
 
       case 'command_displayed': {
         if (currentStep) {
-          const record: StepCommandRecord = {
+          currentStep.commands.push({
             session: event.session as string,
             command: event.command as string,
             displayed: true,
-          };
-          currentStep.inputs.commands.push(record);
-          currentStep.outputs.push(record);
+          });
         }
         break;
       }
@@ -111,7 +100,7 @@ export function foldEvents(events: SessionEvent[]): {
             currentRollback?.commands[currentRollback.commands.length - 1];
           if (last) last.output = output;
         } else if (currentStep) {
-          const last = [...currentStep.outputs]
+          const last = [...currentStep.commands]
             .reverse()
             .find((cmd) => !cmd.output);
           if (last) last.output = output;
@@ -158,10 +147,8 @@ export function foldEvents(events: SessionEvent[]): {
 
       case 'evidence_captured': {
         if (currentStep) {
-          const evidenceId = event.evidence_id as string | undefined;
-          if (evidenceId) currentStep.evidence_ids.push(evidenceId);
           currentStep.evidence.push({
-            id: evidenceId,
+            id: event.evidence_id as string | undefined,
             type: event.evidence_type as string,
             description: event.description as string | undefined,
             content: event.content as string | undefined,
@@ -175,9 +162,6 @@ export function foldEvents(events: SessionEvent[]): {
       case 'evidence_removed': {
         if (currentStep) {
           const removedId = event.evidence_id as string | undefined;
-          currentStep.evidence_ids = currentStep.evidence_ids.filter(
-            (id) => id !== removedId,
-          );
           currentStep.evidence = currentStep.evidence.filter(
             (e) => e.id !== removedId,
           );

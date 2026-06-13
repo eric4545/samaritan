@@ -22,8 +22,12 @@ import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
 import { indexToLetters } from '../../lib/letter-sequence';
-import { generateReport } from '../../lib/report-generator';
-import { buildStepRecords, readEvents } from '../../lib/session-log';
+import { generateReport, renderReport } from '../../lib/report-generator';
+import {
+  buildStepRecords,
+  foldEvents,
+  readEvents,
+} from '../../lib/session-log';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import {
   getRunReportPath,
@@ -267,7 +271,14 @@ class OperationRunner {
             options.report,
             `samaritan-${session.id}-report.md`,
           );
-          writeFileSync(reportFile, generateReport(logPath), 'utf-8');
+          // The canonical report.md was already written beside the operation;
+          // --report just places an extra copy. Copy it rather than rebuild it.
+          const runReport = getRunReportPath(absFile, session.id);
+          if (existsSync(runReport)) {
+            copyFileSync(runReport, reportFile);
+          } else {
+            writeFileSync(reportFile, generateReport(logPath), 'utf-8');
+          }
           console.log(`📄 Report: ${reportFile}`);
         }
 
@@ -588,6 +599,31 @@ class OperationRunner {
         state.context.sessionId,
         buildStepRecords(readEvents(logger.path)),
       );
+    };
+
+    // Record an approve/reject decision: prompt for an optional rationale,
+    // log it to the audit stream, and persist an ApprovalRecord. Shared by
+    // both branches so the audit/approval shape stays in one place.
+    const recordApprovalDecision = async (
+      stepIndex: number,
+      step: { id?: string },
+      approved: boolean,
+    ): Promise<void> => {
+      const rationale = (await question('    Rationale (optional): ')).trim();
+      logger.emit({
+        type: 'user_input',
+        action: approved ? 'approved' : 'rejected',
+        step: stepIndex,
+        actor: state.context.operator,
+        ...(rationale ? { rationale } : {}),
+      });
+      sessionManager.addApprovalRecord(state.context.sessionId, {
+        step_id: step.id ?? String(stepIndex),
+        approver: state.context.operator,
+        approved,
+        timestamp: new Date(),
+        rationale,
+      });
     };
 
     logger.emit({ type: 'session_start', op: operationFile });
@@ -1387,46 +1423,15 @@ class OperationRunner {
             continue;
           }
           if (choice === 'approve') {
-            const rationale = (
-              await question('    Rationale (optional): ')
-            ).trim();
+            await recordApprovalDecision(i, step, true);
             await executor.executeStepManually(i, 'approved');
-            logger.emit({
-              type: 'user_input',
-              action: 'approved',
-              step: i,
-              actor: state.context.operator,
-              ...(rationale ? { rationale } : {}),
-            });
-            sessionManager.addApprovalRecord(state.context.sessionId, {
-              step_id: step.id ?? String(i),
-              approver: state.context.operator,
-              approved: true,
-              timestamp: new Date(),
-              rationale,
-            });
             persistProgress();
             logger.emit({ type: 'step_complete', step: i });
             console.log('    ✅ Approved.');
           } else if (choice === 'reject') {
-            const rationale = (
-              await question('    Rationale (optional): ')
-            ).trim();
+            await recordApprovalDecision(i, step, false);
             executor.skipStep(i);
-            logger.emit({
-              type: 'user_input',
-              action: 'rejected',
-              step: i,
-              actor: state.context.operator,
-              ...(rationale ? { rationale } : {}),
-            });
-            sessionManager.addApprovalRecord(state.context.sessionId, {
-              step_id: step.id ?? String(i),
-              approver: state.context.operator,
-              approved: false,
-              timestamp: new Date(),
-              rationale,
-            });
+            persistProgress();
             console.log('    ❌ Rejected — step skipped.');
           } else {
             executor.skipStep(i);
@@ -1458,17 +1463,17 @@ class OperationRunner {
       });
       // Always write the structured step log and a human-readable Markdown
       // report beside the operation — the durable run record, available even
-      // without --report. Best-effort: never fail the run on reporting.
+      // without --report. Read + fold the event log once and reuse it for
+      // both. Best-effort: never fail the run on reporting.
       try {
-        sessionManager.updateStepLog(
-          state.context.sessionId,
-          buildStepRecords(readEvents(logger.path)),
-        );
+        const events = readEvents(logger.path);
+        const folded = foldEvents(events);
+        sessionManager.updateStepLog(state.context.sessionId, folded.steps);
         const reportPath = getRunReportPath(
           operationFile,
           state.context.sessionId,
         );
-        writeFileSync(reportPath, generateReport(logger.path), 'utf-8');
+        writeFileSync(reportPath, renderReport(events, folded), 'utf-8');
         console.log(`📄 Report: ${reportPath}`);
       } catch {
         // reporting is best-effort

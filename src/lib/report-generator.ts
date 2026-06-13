@@ -1,12 +1,26 @@
+import { evidenceLang } from '../manuals/generator';
 import type {
+  RollbackRecord,
   StepApproval,
   StepEvidenceRef,
   StepRecord,
 } from '../models/step-record';
-import { foldEvents, readEvents } from './session-log';
+import { foldEvents, readEvents, type SessionEvent } from './session-log';
 
 export function generateReport(jsonlPath: string): string {
   const events = readEvents(jsonlPath);
+  return renderReport(events, foldEvents(events));
+}
+
+/**
+ * Render the Markdown report from an already-read event stream and its fold.
+ * Lets callers that have just folded the events (e.g. the run loop persisting
+ * `step_log`) reuse the result instead of re-reading and re-folding the file.
+ */
+export function renderReport(
+  events: SessionEvent[],
+  folded: { steps: StepRecord[]; rollbacks: RollbackRecord[] },
+): string {
   const sessionStart = events.find((e) => e.type === 'session_start');
   const sessionEnd = events.find((e) => e.type === 'session_end');
 
@@ -15,7 +29,7 @@ export function generateReport(jsonlPath: string): string {
   const status = (sessionEnd?.status as string) ?? 'unknown';
   const startTs = events[0]?.ts ? formatTs(events[0].ts) : 'unknown';
 
-  const { steps, rollbacks } = foldEvents(events);
+  const { steps, rollbacks } = folded;
 
   // Calculate duration
   const firstTs = events[0]?.ts;
@@ -103,7 +117,7 @@ export function generateReport(jsonlPath: string): string {
 function renderStep(step: StepRecord): string[] {
   const lines: string[] = [];
   const stepNum = step.index + 1;
-  const firstCmd = step.outputs[0];
+  const firstCmd = step.commands[0];
   lines.push(`## Step ${stepNum}: ${step.name}`);
   lines.push('');
 
@@ -113,7 +127,7 @@ function renderStep(step: StepRecord): string[] {
     );
   }
 
-  for (const cmd of step.outputs) {
+  for (const cmd of step.commands) {
     lines.push('');
     if (cmd.displayed) {
       lines.push(`**Command (run by operator)**: \`${cmd.command}\``);
@@ -208,10 +222,9 @@ function renderEvidenceBlock(evidence: StepEvidenceRef): string[] {
       lines.push(`[View ${evidence.type}](${evidence.path})`);
     }
   } else if (evidence.content) {
-    // Mirrors evidenceLang() in src/manuals/generator.ts so captured-evidence
-    // code blocks fence consistently with evidence.results rendering.
-    const lang = evidence.type === 'command_output' ? 'bash' : 'text';
-    lines.push(`\`\`\`${lang}`);
+    // Reuse evidenceLang() so captured-evidence code blocks fence
+    // consistently with evidence.results rendering in the manual generator.
+    lines.push(`\`\`\`${evidenceLang(evidence.type)}`);
     lines.push(evidence.content.trim());
     lines.push('```');
   }

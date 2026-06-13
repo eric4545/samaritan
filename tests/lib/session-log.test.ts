@@ -34,9 +34,9 @@ describe('foldEvents', () => {
     const step = steps[0];
     assert.strictEqual(step.status, 'completed');
     assert.strictEqual(step.pic, 'ops@x.com');
-    assert.strictEqual(step.inputs.commands.length, 1);
-    assert.strictEqual(step.inputs.commands[0].command, 'kubectl apply');
-    assert.strictEqual(step.outputs[0].output, 'created');
+    assert.strictEqual(step.commands.length, 1);
+    assert.strictEqual(step.commands[0].command, 'kubectl apply');
+    assert.strictEqual(step.commands[0].output, 'created');
   });
 
   it('evaluates all verification checks (no short-circuit) with actual/expected', () => {
@@ -123,7 +123,6 @@ describe('foldEvents', () => {
     ]);
     const ids = steps[0].evidence.map((e) => e.id);
     assert.deepStrictEqual(ids, ['keep']);
-    assert.deepStrictEqual(steps[0].evidence_ids, ['keep']);
   });
 
   it('builds a rollback record with command, output and status', () => {
