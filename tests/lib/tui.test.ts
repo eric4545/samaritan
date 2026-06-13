@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { assertOutputDetailed } from '../../src/lib/assertions';
 import {
   createEventLogger,
   type EventLogger,
@@ -11,6 +12,7 @@ import {
   renderAssertOutcome,
   renderCodeBlock,
   renderKeyHints,
+  renderVerifyOutcome,
   StepController,
   type StepControllerOptions,
 } from '../../src/lib/tui';
@@ -490,5 +492,227 @@ describe('renderAssertOutcome', () => {
     assert.ok(out.includes('line-30'), 'tail line must be shown');
     // tail is line-23..line-30, so the substring "line-1" must be gone entirely
     assert.ok(!out.includes('line-1'), 'early lines must be truncated away');
+  });
+});
+
+describe('renderVerifyOutcome', () => {
+  it('PASS: shows header, checklist, and highlights the matched text', () => {
+    const expect = { contains: 'Running' };
+    const output = 'pod/web-0   1/1   Running   0   10s';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+
+    assert.ok(out.includes('✅ PASS'));
+    assert.ok(out.includes('✅'), 'checklist shows a passing check');
+    assert.ok(out.includes('contains: Running'), 'shows the criterion text');
+    // The matched text is wrapped in ANSI highlight codes, but a plain
+    // `includes('Running')` must still succeed — the token stays contiguous.
+    assert.ok(out.includes('Running'));
+    // The highlight escape codes must actually be present
+    assert.ok(out.includes('\x1b[32m'), 'green highlight applied');
+    assert.ok(out.includes('\x1b[7m'), 'inverse highlight applied');
+  });
+
+  it('FAIL: shows the missing expected text', () => {
+    const expect = { contains: 'Running' };
+    const output = 'pod/web-0   0/1   CrashLoopBackOff   3   2m';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+
+    assert.ok(out.includes('❌ FAIL'));
+    assert.ok(out.includes('❌'), 'checklist shows a failing check');
+    assert.ok(out.includes('missing: Running'), 'shows the missing value');
+    assert.ok(out.includes('CrashLoopBackOff'), 'shows captured output');
+  });
+
+  it('shows a per-check checklist for array expects', () => {
+    const expect = [
+      { contains: 'Running' },
+      { not_contains: 'Error' },
+      { not_contains: 'CrashLoopBackOff' },
+    ];
+    const output = 'pod/web-0   1/1   Running   0   10s';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+
+    assert.ok(out.includes('✅ PASS'));
+    assert.ok(out.includes('contains: Running'));
+    assert.ok(out.includes('does not contain: Error'));
+    assert.ok(out.includes('does not contain: CrashLoopBackOff'));
+    // 3 checks => 3 checklist lines, all passing
+    const checklistLines = out
+      .split('\n')
+      .filter((l) => l.includes('✅') && !l.includes('PASS'));
+    assert.strictEqual(checklistLines.length, 3);
+  });
+
+  it('array expect: highlights the offending match on a failing not_contains check', () => {
+    const expect = [{ contains: 'Running' }, { not_contains: 'Error' }];
+    const output = 'pod/web-0   1/1   Running   0   10s\nError: backoff';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+
+    assert.ok(out.includes('❌ FAIL'));
+    assert.ok(out.includes('does not contain: Error'));
+    // RED highlight applied around the offending "Error" match
+    assert.ok(out.includes('\x1b[31m'), 'red highlight applied');
+    assert.ok(out.includes('Error'));
+  });
+
+  it('shows inline computed values for numeric checks', () => {
+    const expect = [{ numeric_gte: 3 }, { not_empty: true }];
+    const output = '2';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+
+    assert.ok(out.includes('❌ FAIL'));
+    assert.ok(out.includes('found "2"'));
+    assert.ok(out.includes('≥ 3'));
+  });
+
+  it('shows inline computed values for line_count checks', () => {
+    const expect = { line_count: 3 };
+    const output = 'a\nb';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+
+    assert.ok(out.includes('❌ FAIL'));
+    assert.ok(out.includes('2'), 'shows the actual line count');
+    assert.ok(out.includes('expected 3'), 'shows the expected line count');
+  });
+
+  it('shows the captured output on PASS (not just on FAIL)', () => {
+    const expect = { contains: 'ok' };
+    const output = 'health check: ok';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+
+    assert.ok(out.includes('✅ PASS'));
+    assert.ok(out.includes('health check'), 'output block shown on PASS too');
+  });
+
+  it('truncates to a tail of output by default, shows full output when expand:true', () => {
+    const expect = { contains: 'Running' };
+    const lines = Array.from({ length: 20 }, (_, i) => `line-${i + 1}`);
+    const output = `${lines.join('\n')}\nRunning`;
+    const detailed = assertOutputDetailed(output, expect);
+
+    const tailOut = renderVerifyOutcome(detailed, expect);
+    assert.ok(
+      !tailOut.includes('line-1\n'),
+      'early lines truncated by default',
+    );
+    assert.ok(tailOut.includes('line-20'), 'recent lines kept in tail');
+
+    const fullOut = renderVerifyOutcome(detailed, expect, { expand: true });
+    assert.ok(fullOut.includes('line-1'), 'full output includes earliest line');
+    assert.ok(fullOut.includes('line-20'));
+  });
+
+  it('keeps the output box aligned when highlight codes are present (stripAnsi-based padding)', () => {
+    const expect = { contains: 'Running' };
+    const output = 'pod/web-0   1/1   Running   0   10s';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+    const boxLines = out.split('\n').filter((l) => l.includes('│'));
+    assert.ok(boxLines.length > 0, 'output block rendered as a box');
+
+    // Strip ANSI codes and confirm every content line has the same visible
+    // width (border alignment) despite the embedded highlight codes.
+    const ANSI_RE_LOCAL = new RegExp(
+      `${String.fromCharCode(27)}\\[[0-9;]*m`,
+      'g',
+    );
+    const widths = boxLines.map((l) => l.replace(ANSI_RE_LOCAL, '').length);
+    const uniqueWidths = new Set(widths);
+    assert.strictEqual(
+      uniqueWidths.size,
+      1,
+      `all box lines must have equal visible width, got: ${[...uniqueWidths]}`,
+    );
+  });
+
+  describe('line-number gutter', () => {
+    it('shows right-aligned line numbers and a → arrow on the matched line', () => {
+      const expect = { contains: 'Running' };
+      const output = 'line-1\nline-2\npod/web-0   1/1   Running   0   10s';
+      const detailed = assertOutputDetailed(output, expect);
+
+      const out = stripAnsi(renderVerifyOutcome(detailed, expect));
+      const outputLines = out.split('\n');
+
+      // 3 lines of output -> line numbers 1, 2, 3
+      assert.ok(outputLines.some((l) => /\b1\s+│ line-1/.test(l)));
+      assert.ok(outputLines.some((l) => /\b2\s+│ line-2/.test(l)));
+      // The matched line gets a → arrow before the │ separator
+      assert.ok(
+        outputLines.some((l) => /\b3 →│ pod\/web-0/.test(l)),
+        `expected an arrow on line 3, got: ${out}`,
+      );
+      // Non-matched lines do NOT get an arrow
+      assert.ok(!outputLines.some((l) => /\b1 →│/.test(l)));
+      assert.ok(!outputLines.some((l) => /\b2 →│/.test(l)));
+    });
+
+    it('uses absolute line numbers when the output is tail-truncated', () => {
+      const expect = { contains: 'Running' };
+      const lines = Array.from({ length: 20 }, (_, i) => `line-${i + 1}`);
+      const output = `${lines.join('\n')}\nRunning`;
+      const detailed = assertOutputDetailed(output, expect);
+
+      // 21 total lines, tail shows the last 12 -> starts at line 10.
+      const out = stripAnsi(renderVerifyOutcome(detailed, expect));
+      assert.ok(out.includes('10 '), 'tail starts at absolute line 10');
+      assert.ok(
+        out.includes('21 →│ Running'),
+        'the matched line keeps its absolute line number (21) and arrow',
+      );
+      assert.ok(!out.includes(' 1 '), 'line 1 is not shown in the tail');
+
+      // When expanded, line numbers restart at 1 (right-padded to the
+      // gutter width, e.g. " 1" when the max line number is "21").
+      const fullOut = stripAnsi(
+        renderVerifyOutcome(detailed, expect, { expand: true }),
+      );
+      assert.ok(/\b1\s+│ line-1/.test(fullOut));
+      assert.ok(fullOut.includes('21 →│ Running'));
+    });
+
+    it('keeps box border alignment with the gutter present', () => {
+      const expect = [{ contains: 'Running' }, { not_contains: 'Error' }];
+      const output =
+        'line-1\nline-2\npod/web-0   1/1   Running   0   10s\nError: backoff';
+      const detailed = assertOutputDetailed(output, expect);
+
+      const out = renderVerifyOutcome(detailed, expect);
+      const boxLines = out.split('\n').filter((l) => l.includes('│'));
+      assert.ok(boxLines.length > 0);
+
+      const widths = boxLines.map((l) => stripAnsi(l).length);
+      const uniqueWidths = new Set(widths);
+      assert.strictEqual(
+        uniqueWidths.size,
+        1,
+        `all box lines must have equal visible width, got: ${[...uniqueWidths]}`,
+      );
+    });
+
+    it('keeps highlighted tokens contiguous so includes() still finds them with the gutter present', () => {
+      const expect = { contains: 'Running' };
+      const output = 'line-1\npod/web-0   1/1   Running   0   10s';
+      const detailed = assertOutputDetailed(output, expect);
+
+      const out = renderVerifyOutcome(detailed, expect);
+      assert.ok(out.includes('Running'));
+      assert.ok(stripAnsi(out).includes('Running'));
+    });
   });
 });

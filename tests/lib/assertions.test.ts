@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
   assertOutput,
+  assertOutputDetailed,
   cleanTerminalOutput,
   renderExpectDescription,
   renderExpectParts,
@@ -429,5 +430,108 @@ describe('cleanTerminalOutput — raw tmux pipe-pane capture normalization', () 
   it('leaves plain text untouched', () => {
     const raw = 'deployment.apps/web created\npod/web-0 Running';
     assert.strictEqual(cleanTerminalOutput(raw), raw);
+  });
+});
+
+describe('assertOutputDetailed — no short-circuit', () => {
+  it('returns a check for every active field on a single ExpectConfig', () => {
+    const detailed = assertOutputDetailed('Running pods: 1', {
+      contains: 'Running',
+      numeric_gte: 3,
+    });
+    assert.strictEqual(detailed.checks.length, 2);
+    assert.strictEqual(detailed.checks[0].type, 'contains');
+    assert.strictEqual(detailed.checks[0].pass, true);
+    assert.strictEqual(detailed.checks[1].type, 'numeric_gte');
+    assert.strictEqual(detailed.checks[1].pass, false);
+    // overall pass = every check passes
+    assert.strictEqual(detailed.pass, false);
+  });
+
+  it('pass is true only when every check passes', () => {
+    const detailed = assertOutputDetailed('Running pods: 5', {
+      contains: 'Running',
+      numeric_gte: 3,
+    });
+    assert.strictEqual(detailed.checks.length, 2);
+    assert.ok(detailed.checks.every((c) => c.pass));
+    assert.strictEqual(detailed.pass, true);
+  });
+
+  it('flattens all elements of an array expect into a single checks list', () => {
+    const detailed = assertOutputDetailed('pod web-0 Running', [
+      { contains: 'Running' },
+      { numeric_gte: 3 },
+      { not_contains: 'Error' },
+    ]);
+    assert.strictEqual(detailed.checks.length, 3);
+    assert.deepStrictEqual(
+      detailed.checks.map((c) => c.type),
+      ['contains', 'numeric_gte', 'not_contains'],
+    );
+    // contains passes, numeric_gte fails (no number found), not_contains passes
+    assert.strictEqual(detailed.checks[0].pass, true);
+    assert.strictEqual(detailed.checks[1].pass, false);
+    assert.strictEqual(detailed.checks[2].pass, true);
+    assert.strictEqual(detailed.pass, false);
+  });
+
+  it('does NOT short-circuit — evaluates every check even after an early failure', () => {
+    const detailed = assertOutputDetailed('nope', [
+      { contains: 'Running' },
+      { contains: 'Ready' },
+      { not_contains: 'nope' },
+    ]);
+    assert.strictEqual(detailed.checks.length, 3);
+    assert.ok(detailed.checks.every((c) => !c.pass));
+  });
+
+  it('delegates string shorthand the same way assertOutput does', () => {
+    const detailed = assertOutputDetailed('pod Running', 'Running');
+    assert.strictEqual(detailed.checks.length, 1);
+    assert.strictEqual(detailed.checks[0].type, 'contains');
+    assert.strictEqual(detailed.pass, true);
+  });
+
+  it('delegates primitive shorthand the same way assertOutput does', () => {
+    const detailed = assertOutputDetailed('replicas: 3', 3);
+    assert.strictEqual(detailed.checks.length, 1);
+    assert.strictEqual(detailed.checks[0].type, 'contains');
+    assert.strictEqual(detailed.pass, true);
+  });
+
+  it('returns pass=true with zero checks when expect has no active fields', () => {
+    const detailed = assertOutputDetailed('anything', {});
+    assert.strictEqual(detailed.checks.length, 0);
+    assert.strictEqual(detailed.pass, true);
+  });
+
+  it('actual is the trimmed output', () => {
+    const detailed = assertOutputDetailed('  pod Running  \n', {
+      contains: 'Running',
+    });
+    assert.strictEqual(detailed.actual, 'pod Running');
+  });
+});
+
+describe('assertOutput still short-circuits on array expect', () => {
+  it('stops at the first failing check and does not evaluate later checks', () => {
+    // numeric_gte would fail too (no number in output), but assertOutput
+    // should report the FIRST failure (contains) and stop there.
+    const r = assertOutput('nope', [
+      { contains: 'Running' },
+      { numeric_gte: 3 },
+    ]);
+    assert.strictEqual(r.pass, false);
+    assert.strictEqual(r.type, 'contains');
+  });
+
+  it('still returns "all" with all checks passed when every check passes', () => {
+    const r = assertOutput('Running pods: 5', [
+      { contains: 'Running' },
+      { numeric_gte: 3 },
+    ]);
+    assert.strictEqual(r.pass, true);
+    assert.strictEqual(r.type, 'all');
   });
 });
