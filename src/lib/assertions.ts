@@ -55,13 +55,21 @@ export interface AssertResult {
   actual: string;
   expected: string;
   type: string;
+  /**
+   * The raw literal a check was looking for, carried alongside the
+   * human-readable `expected` description so renderers can highlight it
+   * without re-parsing the formatted message. Currently set for
+   * `not_contains`/`no_line_contains`, whose `expected` wraps the value in
+   * `not contains "..."` text.
+   */
+  needle?: string;
 }
 
 /**
  * Compile a user-supplied pattern, returning undefined for invalid regex
  * syntax instead of throwing mid-run.
  */
-function compileRegex(pattern: string): RegExp | undefined {
+export function compileRegex(pattern: string): RegExp | undefined {
   try {
     return new RegExp(pattern);
   } catch {
@@ -69,35 +77,16 @@ function compileRegex(pattern: string): RegExp | undefined {
   }
 }
 
-export function assertOutput(
-  output: string,
-  expect: ExpectConfig | ExpectConfig[] | string,
-): AssertResult {
-  if (typeof expect === 'string') {
-    return assertOutput(output, { contains: expect });
-  }
-
-  if (isPrimitiveExpectShorthand(expect)) {
-    return assertOutput(output, { contains: String(expect) });
-  }
-
-  if (Array.isArray(expect)) {
-    for (const check of expect) {
-      const result = assertOutput(output, check);
-      if (!result.pass) return result;
-    }
-    return {
-      pass: true,
-      actual: output.trim(),
-      expected: '(all checks passed)',
-      type: 'all',
-    };
-  }
-
+/**
+ * Build all `AssertResult`s for the active fields on a single (non-array,
+ * non-shorthand) `ExpectConfig` — no short-circuit. Shared by `assertOutput`
+ * (which stops at the first failure) and `assertOutputDetailed` (which keeps
+ * every check for richer rendering).
+ */
+function buildChecks(output: string, expect: ExpectConfig): AssertResult[] {
   const trimmed = output.trim();
   const lines = trimmed.split('\n').filter((l) => l.trim() !== '');
 
-  // Build all checks for each active field, return the first failure
   const checks: AssertResult[] = [];
 
   if (expect.jsonpath !== undefined) {
@@ -126,6 +115,7 @@ export function assertOutput(
       actual: trimmed,
       expected: `not contains "${expect.not_contains}"`,
       type: 'not_contains',
+      needle: expect.not_contains,
     });
   }
 
@@ -167,6 +157,7 @@ export function assertOutput(
       actual: trimmed,
       expected: `no line contains "${target}"`,
       type: 'no_line_contains',
+      needle: target,
     });
   }
 
@@ -231,6 +222,37 @@ export function assertOutput(
     });
   }
 
+  return checks;
+}
+
+export function assertOutput(
+  output: string,
+  expect: ExpectConfig | ExpectConfig[] | string,
+): AssertResult {
+  if (typeof expect === 'string') {
+    return assertOutput(output, { contains: expect });
+  }
+
+  if (isPrimitiveExpectShorthand(expect)) {
+    return assertOutput(output, { contains: String(expect) });
+  }
+
+  if (Array.isArray(expect)) {
+    for (const check of expect) {
+      const result = assertOutput(output, check);
+      if (!result.pass) return result;
+    }
+    return {
+      pass: true,
+      actual: output.trim(),
+      expected: '(all checks passed)',
+      type: 'all',
+    };
+  }
+
+  const trimmed = output.trim();
+  const checks = buildChecks(output, expect);
+
   if (checks.length === 0) {
     return {
       pass: true,
@@ -250,6 +272,47 @@ export function assertOutput(
         expected: '(all checks passed)',
         type: 'all',
       };
+}
+
+/**
+ * Like `assertOutput`, but evaluates EVERY active check with no
+ * short-circuit — used by the sidecar-mode verify UX to show a full
+ * checklist of pass/fail results rather than stopping at the first failure.
+ *
+ * For array `expect`, flattens all elements' checks into a single list.
+ * For string/primitive shorthand, delegates the same way `assertOutput` does.
+ */
+export function assertOutputDetailed(
+  output: string,
+  expect: ExpectConfig | ExpectConfig[] | string,
+): { pass: boolean; actual: string; checks: AssertResult[] } {
+  if (typeof expect === 'string') {
+    return assertOutputDetailed(output, { contains: expect });
+  }
+
+  if (isPrimitiveExpectShorthand(expect)) {
+    return assertOutputDetailed(output, { contains: String(expect) });
+  }
+
+  const trimmed = output.trim();
+
+  if (Array.isArray(expect)) {
+    const checks = expect.flatMap(
+      (e) => assertOutputDetailed(output, e).checks,
+    );
+    return {
+      pass: checks.every((c) => c.pass),
+      actual: trimmed,
+      checks,
+    };
+  }
+
+  const checks = buildChecks(output, expect);
+  return {
+    pass: checks.every((c) => c.pass),
+    actual: trimmed,
+    checks,
+  };
 }
 
 function evalJsonPath(

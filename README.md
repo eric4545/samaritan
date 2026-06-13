@@ -1493,18 +1493,52 @@ At each step, SAMARITAN pauses and shows the step details, then prompts based on
 | `manual` | `✋ Mark done` | `Enter`/notes=confirm, `n`=note, `e`=evidence, `v`=verify, `t`=attach (sidecar), `r`=rollback, `s`=skip, `q`/`abort`=quit |
 | `approval` | `⚡ approve/reject` | `approve`, `reject`, `r`=rollback, `skip` |
 
-When a verify assertion fails, the tail of the actual captured output is shown (so you can see *why* it failed), followed by a secondary prompt:
+Before each step, samaritan prints `Expected: <criteria>` up front (e.g. `Expected: contains: Running, does not contain: CrashLoopBackOff`) so you know what `[v]` will check before you run anything.
+
+### Verify output: checklist, highlighting, and the line-number gutter
+
+Pressing `[v]` runs **every** check in `step.expect` (no short-circuit on the first failure) and renders a PASS/FAIL header, a per-check checklist, and the captured output — on **both** pass and fail:
 
 ```
-❌ FAIL Assert (contains): expected "successfully rolled out"
-    Actual output (tail):
-  ╭─ output ──────────────────────────────╮
-  │ Waiting for deployment "web" rollout… │
-  ╰───────────────────────────────────────╯
-⚠️  Assertion failed. [o=override with reason / r=rollback / Enter=stop]:
+    ✅ PASS
+    ✅ contains: Running
+    ✅ does not contain: CrashLoopBackOff
+    ✅ does not contain: Error
+    ✅ at least 1 line(s) (2 lines, expected ≥ 1)
+  ╭─ output (tail) ────────────────────────────────────────╮
+  │ 1  │ NAME           READY   STATUS    RESTARTS   AGE   │
+  │ 2 →│ web-server-0   1/1     Running   0          45s   │
+  ╰───────────────────────────────────────────────────────╯
 ```
 
-Type `o` to record an override reason in the audit log and continue, `r` to trigger rollback, or press Enter to stop.
+- **Checklist** — one line per check (`✅`/`❌`), in the same order as `Expected:`. Numeric/count checks show their computed value inline, e.g. `found "2", need ≥ 3` or `2 lines, expected ≥ 1`.
+- **Highlighted output** — the captured output (tail of the last 12 lines by default, or full output after `[m]`) is shown with:
+  - **green + inverse** around the text that satisfied a passing `contains` / `any_line_contains` / `matches` check
+  - **red** around the offending text that violated a failing `not_contains` / `no_line_contains` check
+  - `missing: <expected>` for failing checks whose expected text isn't present in the output at all
+- **Line-number gutter** — each line of the output block is prefixed with its absolute line number (accounting for tail truncation) and a `→` arrow on any line containing a highlight, e.g. ` 2 →│ web-server-0   1/1   Running   0   45s`. This makes it easy to see exactly which line satisfied (or violated) a check.
+
+On **FAIL**, a single-key menu follows:
+
+```
+    ❌ FAIL
+    ❌ contains: Running
+    ❌ does not contain: CrashLoopBackOff
+  ╭─ output (tail) ──────────────────────────────────────────────╮
+  │ 1  │ NAME           READY   STATUS             RESTARTS   AGE │
+  │ 2 →│ web-server-0   0/1     CrashLoopBackOff   3          2m  │
+  │ 3  │ missing: Running                                         │
+  ╰─────────────────────────────────────────────────────────────╯
+⚠️  Assertion failed. [o=override with reason / r=rollback / m=more / v=re-verify / Enter=stop]:
+```
+
+- `o` — record an override reason in the audit log and continue
+- `r` — trigger rollback
+- `m` — **more**: re-render the same captured output in full (`output (full)`, starting the gutter at line 1) instead of just the tail
+- `v` — **re-verify**: re-capture the pane output and re-run all checks (useful when the command is still finishing)
+- Enter — stop
+
+On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to re-check.` — `[v]` is not consumed by passing; you can re-run it as often as you like.
 
 > Verification runs against **cleaned** pane output: ANSI color codes and escape sequences are stripped and `\r`-overwrites (progress bars, `\r\n` line endings) are resolved before `expect` assertions run — so `contains`/`equals` match what you actually see on screen, even when tools colorize their output.
 
@@ -1526,7 +1560,7 @@ Type `o` to record an override reason in the audit log and continue, `r` to trig
 
   All evidence bytes — including dragged-in files, screenshots, and videos — are stored exclusively under `~/.samaritan/sessions/<session-id>/evidence/`, alongside the session's own JSON record. SAMARITAN never leaves a second copy elsewhere: the persisted session references the file by path rather than embedding its raw bytes.
 - **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's captured evidence (type, description, and stored path), lets you pick one by number to delete, removes it from the session record, and — for file/screenshot/video evidence copied into the session's evidence directory — deletes the copy from disk too (your original source file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event, and the `--report` Markdown omits removed items entirely.
-- **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutput`/`interpolateExpect` machinery `automatic` steps use), showing PASS/FAIL and — on failure — the same override/rollback/stop prompt as automatic verification. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
+- **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutputDetailed`/`interpolateExpect` machinery `automatic` steps use), evaluating **every** check (not just the first failure) and rendering the PASS/FAIL checklist + highlighted, line-numbered output described in [Verify output: checklist, highlighting, and the line-number gutter](#verify-output-checklist-highlighting-and-the-line-number-gutter) — and, on failure, the override/rollback/`[m]` more/`[v]` re-verify/stop prompt. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
 
 ### Sessions & resume
 

@@ -117,8 +117,19 @@ steps:
     instruction: |
       Run the command and verify all pods show STATUS=Running.
       Press [v] to validate automatically once the command completes.
+
+      This step has a MULTI-CHECK `expect` — pressing [v] runs every check
+      and shows a full checklist (not just the first failure), with the
+      captured output highlighted: matched text shown in green, and any
+      offending "CrashLoopBackOff"/"Error" text shown in red with a
+      "missing: ..." note for each failing check. If the output is long,
+      only the last lines are shown by default — press [m] to see the
+      full output, or [v] to re-verify after re-running the command.
     expect:
-      contains: Running
+      - contains: Running
+      - not_contains: CrashLoopBackOff
+      - not_contains: Error
+      - line_count_gte: 1
     pic: ops-team@example.com
     reviewer: sre-lead@example.com
 

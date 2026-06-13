@@ -270,6 +270,133 @@ describe('run command: manual-step note/evidence/verify actions', () => {
       'should not offer [x] remove evidence when the step has no evidence yet',
     );
   });
+
+  it('shows "Expected:" criteria upfront for a step with expect', () => {
+    const fixture = fixturePath('manualStepActions');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'abort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Expected: contains: successfully rolled out'),
+      `should print the expect criteria upfront; output:\n${combined.slice(-1000)}`,
+    );
+  });
+
+  it('[v] verify without an attached capture shows the attach hint, not a verify outcome', () => {
+    const fixture = fixturePath('manualStepActions');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'v\nabort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Verify requires an attached capture'),
+      'should warn that verify needs an attached capture',
+    );
+    assert.ok(
+      !combined.includes('re-verify') && !combined.includes('more'),
+      'failure menu hints must not appear without a captured outcome',
+    );
+  });
+});
+
+// ─── Sidecar verify UX: checklist, highlighting, [m]/[v] re-verify ───────────
+
+describe('run command: sidecar verify UX (--attach + tmux)', () => {
+  const hasTmux =
+    process.platform === 'linux' &&
+    spawnSync('tmux', ['-V'], { encoding: 'utf8' }).status === 0;
+
+  // Pre-populate a detached tmux pane with output, then attach samaritan to
+  // it and press [v] to verify. The pane echoes its output shortly after
+  // creation so it's present in the pipe-pane capture by the time samaritan
+  // reaches the [v] prompt (~3s in).
+  function withTmuxPane(
+    paneOutput: string,
+    run: (target: string) => { stdout: string; stderr: string },
+  ): { stdout: string; stderr: string } {
+    const session = `samaritan-test-${process.pid}-${Date.now()}`;
+    const target = `${session}:0.0`;
+    spawnSync('tmux', [
+      'new-session',
+      '-d',
+      '-s',
+      session,
+      '-x',
+      '200',
+      '-y',
+      '50',
+      `sleep 1.5 && echo '${paneOutput}' && sleep 30`,
+    ]);
+    try {
+      return run(target);
+    } finally {
+      spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
+    }
+  }
+
+  it(
+    '[v] verify PASS shows checklist, highlighted match, and re-verify hint',
+    { skip: !hasTmux },
+    () => {
+      const fixture = fixturePath('manualStepActions');
+      const { stdout, stderr } = withTmuxPane(
+        'deployment "web" successfully rolled out',
+        (target) => {
+          const cmd = `(sleep 3; printf 'v\\n'; sleep 1; printf 'abort\\n') | timeout 20 node_modules/.bin/tsx src/cli/index.ts run ${fixture} --env default --attach ${target}`;
+          const result = spawnSync('bash', ['-c', cmd], {
+            encoding: 'utf8',
+            timeout: 30_000,
+          });
+          return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+        },
+      );
+      const combined = stdout + stderr;
+      assert.ok(combined.includes('✅ PASS'), 'shows PASS header');
+      assert.ok(
+        combined.includes('contains: successfully rolled out'),
+        'shows the per-check criterion',
+      );
+      assert.ok(
+        combined.includes('Verify passed'),
+        'shows a hint that verify passed',
+      );
+      // Highlighted match: GREEN+INVERSE around "successfully rolled out"
+      assert.ok(
+        combined.includes('\x1b[32m') && combined.includes('\x1b[7m'),
+        'matched text is highlighted green/inverse',
+      );
+    },
+  );
+
+  it(
+    '[v] verify FAIL shows missing-expected output and offers [m]/[v] re-verify',
+    { skip: !hasTmux },
+    () => {
+      const fixture = fixturePath('manualStepActions');
+      const { stdout, stderr } = withTmuxPane(
+        'deployment still progressing...',
+        (target) => {
+          const cmd = `(sleep 3; printf 'v\\n'; sleep 1; printf '\\n'; sleep 1; printf 'abort\\n') | timeout 20 node_modules/.bin/tsx src/cli/index.ts run ${fixture} --env default --attach ${target}`;
+          const result = spawnSync('bash', ['-c', cmd], {
+            encoding: 'utf8',
+            timeout: 30_000,
+          });
+          return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+        },
+      );
+      const combined = stdout + stderr;
+      assert.ok(combined.includes('❌ FAIL'), 'shows FAIL header');
+      assert.ok(
+        combined.includes('missing: successfully rolled out'),
+        'shows the missing expected text',
+      );
+      assert.ok(
+        combined.includes('m=more') && combined.includes('v=re-verify'),
+        `failure menu should offer [m] more and [v] re-verify; output:\n${combined.slice(-1500)}`,
+      );
+    },
+  );
 });
 
 // ─── run --help smoke test ────────────────────────────────────────────────────

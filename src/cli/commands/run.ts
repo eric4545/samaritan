@@ -16,6 +16,7 @@ import {
 } from 'node:readline';
 import { Command } from 'commander';
 import { detectMimeType } from '../../evidence/collector';
+import { renderExpectDescription } from '../../lib/assertions';
 import type { CaptureBackend } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
@@ -36,6 +37,7 @@ import {
   renderAssertOutcome,
   renderCodeBlock,
   renderKeyHints,
+  renderVerifyOutcome,
   StepController,
 } from '../../lib/tui';
 import {
@@ -683,9 +685,15 @@ class OperationRunner {
     // return) to the caller.
     const promptAssertFailureAction = async (
       stepIndex: number,
-    ): Promise<'override' | 'rollback' | 'stop'> => {
+      opts?: { allowReVerify?: boolean; allowMore?: boolean },
+    ): Promise<'override' | 'rollback' | 'stop' | 'reverify' | 'more'> => {
+      const extras = [
+        ...(opts?.allowMore ? ['m=more'] : []),
+        ...(opts?.allowReVerify ? ['v=re-verify'] : []),
+      ];
+      const extraLabel = extras.length ? ` / ${extras.join(' / ')}` : '';
       const overrideAns = await question(
-        '    ⚠️  Assertion failed. [o=override with reason / r=rollback / Enter=stop]: ',
+        `    ⚠️  Assertion failed. [o=override with reason / r=rollback${extraLabel} / Enter=stop]: `,
       );
       const oc = overrideAns.trim().toLowerCase();
       if (oc === 'o' || oc === 'override') {
@@ -701,6 +709,12 @@ class OperationRunner {
         return 'override';
       }
       if (isRollback(oc)) return 'rollback';
+      if (opts?.allowMore && (oc === 'm' || oc === 'more')) return 'more';
+      if (
+        opts?.allowReVerify &&
+        (oc === 'v' || oc === 're-verify' || oc === 'reverify')
+      )
+        return 'reverify';
       return 'stop';
     };
 
@@ -916,7 +930,10 @@ class OperationRunner {
     };
 
     // Verify pane output already produced by a manual step against `step.expect`
-    // — without sending a command (the operator runs it themselves).
+    // — without sending a command (the operator runs it themselves). Renders
+    // the full checklist + highlighted output (PASS or FAIL); on FAIL offers
+    // a single-key menu to override/rollback/stop, re-verify (re-capture and
+    // re-assert), or show the full (non-truncated) output.
     const verifyManualOutput = async (
       step: Step,
       stepIndex: number,
@@ -924,27 +941,53 @@ class OperationRunner {
     ): Promise<void> => {
       if (!step.expect) return;
 
-      const output = captureSinceStepStart();
-      if (output === undefined || !controller) {
-        console.log(
-          '    ⚠️  Verify requires an attached capture — press [t] to attach a tmux pane.',
+      let expand = false;
+
+      while (true) {
+        const output = captureSinceStepStart();
+        if (output === undefined || !controller) {
+          console.log(
+            '    ⚠️  Verify requires an attached capture — press [t] to attach a tmux pane.',
+          );
+          return;
+        }
+
+        console.log('    🔍 Checking expected output...');
+        const { assertResult, detailed } = controller.verifyOutput(
+          step,
+          stepIndex,
+          output,
         );
-        return;
-      }
 
-      console.log('    🔍 Checking expected output...');
-      const { assertResult } = controller.verifyOutput(step, stepIndex, output);
+        if (!assertResult || !detailed) return;
 
-      if (!assertResult) return;
+        console.log(renderVerifyOutcome(detailed, step.expect, { expand }));
 
-      console.log(renderAssertOutcome(assertResult));
-      if (!assertResult.pass) {
-        const action = await promptAssertFailureAction(stepIndex);
+        if (assertResult.pass) {
+          console.log(
+            '    ✅ Verify passed — press [v] again any time to re-check.',
+          );
+          return;
+        }
+
+        const action = await promptAssertFailureAction(stepIndex, {
+          allowReVerify: true,
+          allowMore: !expand,
+        });
+        if (action === 'more') {
+          expand = true;
+          continue;
+        }
+        if (action === 'reverify') {
+          expand = false;
+          continue;
+        }
         if (action === 'rollback') {
           await doRollback(step, stepIndex);
         } else if (action === 'stop') {
           console.log('    ❌ Stopping due to failed assertion.');
         }
+        return;
       }
     };
 
@@ -1124,6 +1167,12 @@ class OperationRunner {
               console.log('\n    Command reference:');
               console.log(renderCodeBlock(resolvedCommand));
             }
+          }
+
+          if (step.expect) {
+            console.log(
+              `    Expected: ${renderExpectDescription(step.expect)}`,
+            );
           }
 
           // Baseline the capture offset at the start of each step.

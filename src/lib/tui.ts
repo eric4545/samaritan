@@ -2,9 +2,12 @@ import type { ExpectConfig, Step } from '../models/operation';
 import {
   type AssertResult,
   assertOutput,
+  assertOutputDetailed,
   cleanTerminalOutput,
+  compileRegex,
   isPrimitiveExpectShorthand,
   renderExpectDescription,
+  renderExpectParts,
 } from './assertions';
 import type { EventLogger } from './event-logger';
 import type { SessionState } from './session-state';
@@ -146,7 +149,10 @@ export class StepController {
     step: Step,
     stepIndex: number,
     output: string,
-  ): { assertResult?: ReturnType<typeof assertOutput> } {
+  ): {
+    assertResult?: ReturnType<typeof assertOutput>;
+    detailed?: ReturnType<typeof assertOutputDetailed>;
+  } {
     const { logger, sessionState } = this.opts;
 
     if (!step.expect) return {};
@@ -156,7 +162,9 @@ export class StepController {
       : step.expect;
     // Pane captures are raw terminal bytes — strip ANSI codes and resolve
     // \r overwrites so assertions match what the operator actually sees.
-    const result = assertOutput(cleanTerminalOutput(output), expect);
+    const cleaned = cleanTerminalOutput(output);
+    const result = assertOutput(cleaned, expect);
+    const detailed = assertOutputDetailed(cleaned, expect);
 
     logger.emit({
       type: 'assert_result',
@@ -167,7 +175,7 @@ export class StepController {
       assertion_type: result.type,
     });
 
-    return { assertResult: result };
+    return { assertResult: result, detailed };
   }
 
   async rollback(
@@ -282,6 +290,24 @@ const DIM = '\x1b[2m';
 const CYAN_BOLD = '\x1b[36;1m';
 const BOLD = '\x1b[1m';
 const RESET = '\x1b[0m';
+const GREEN = '\x1b[32m';
+const RED = '\x1b[31m';
+const INVERSE = '\x1b[7m';
+
+// Built via constructor so the control character never appears in a regex
+// literal (biome noControlCharactersInRegex), matching the assertions.ts
+// convention for ANSI-stripping regexes.
+const ANSI_ESC = String.fromCharCode(0x1b);
+const ANSI_RE = new RegExp(`${ANSI_ESC}\\[[0-9;]*m`, 'g');
+
+/**
+ * Strip ANSI SGR (color/style) escape sequences for VISIBLE-WIDTH
+ * calculations — used when padding lines that contain highlight codes,
+ * since `string.length` counts the invisible escape bytes too.
+ */
+export function stripAnsi(s: string): string {
+  return s.replace(ANSI_RE, '');
+}
 
 export function renderCodeBlock(code: string, language = 'bash'): string {
   const rawLines = code.split('\n');
@@ -306,6 +332,77 @@ export function renderCodeBlock(code: string, language = 'bash'): string {
   return [top, ...codeLines, bottom].join('\n');
 }
 
+/**
+ * Options for the optional line-number gutter rendered by
+ * `renderHighlightedBlock`.
+ */
+export interface GutterOptions {
+  /** 1-based line number of the FIRST rendered line. */
+  startLineNo: number;
+  /** 0-based indices (relative to the rendered lines) that contain a highlight. */
+  arrowLines: Set<number>;
+}
+
+/**
+ * Like `renderCodeBlock`, but pads using VISIBLE width (`stripAnsi(line).length`)
+ * so lines containing highlight escape codes (from `renderVerifyOutcome`)
+ * don't misalign the box border.
+ *
+ * When `opts.gutter` is provided, prefixes each line with a right-aligned
+ * line number, a `→` arrow on lines containing a highlight (else a space),
+ * and a `│` separator — e.g. ` 12 →│ pod web-0 Running`.
+ */
+export function renderHighlightedBlock(
+  styledLines: string[],
+  language = 'output',
+  opts?: { gutter?: GutterOptions },
+): string {
+  const rawLines = styledLines.length > 0 ? [...styledLines] : [''];
+  while (
+    rawLines.length > 1 &&
+    stripAnsi(rawLines[rawLines.length - 1]).trim() === ''
+  ) {
+    rawLines.pop();
+  }
+
+  const gutter = opts?.gutter;
+  const gutterWidth = gutter
+    ? String(gutter.startLineNo + rawLines.length - 1).length
+    : 0;
+
+  const decoratedLines = gutter
+    ? rawLines.map((line, i) => {
+        const lineNo = String(gutter.startLineNo + i).padStart(
+          gutterWidth,
+          ' ',
+        );
+        const arrow = gutter.arrowLines.has(i)
+          ? `${BOLD}${GREEN}→${RESET}`
+          : ' ';
+        return `${DIM}${lineNo} ${RESET}${arrow}${DIM}│${RESET} ${line}`;
+      })
+    : rawLines;
+
+  // Compute each decorated line's visible width once (stripAnsi is otherwise
+  // re-run for both the max-width pass and the per-line padding pass).
+  const visibleWidths = decoratedLines.map((l) => stripAnsi(l).length);
+
+  const MIN_FILL = language.length + 4;
+  const maxLineLen = Math.max(...visibleWidths);
+  const fillWidth = Math.max(maxLineLen + 2, MIN_FILL);
+
+  const topDashes = '─'.repeat(fillWidth - language.length - 3);
+  const top = `  ${DIM}╭─ ${RESET}${CYAN_BOLD}${language}${RESET}${DIM} ${topDashes}╮${RESET}`;
+  const bottom = `  ${DIM}╰${'─'.repeat(fillWidth)}╯${RESET}`;
+
+  const codeLines = decoratedLines.map((line, i) => {
+    const padding = ' '.repeat(fillWidth - visibleWidths[i] - 2);
+    return `  ${DIM}│${RESET} ${line}${padding} ${DIM}│${RESET}`;
+  });
+
+  return [top, ...codeLines, bottom].join('\n');
+}
+
 export function renderKeyHints(
   hints: Array<{ key: string; label: string }>,
 ): string {
@@ -318,6 +415,7 @@ export function renderKeyHints(
 
 const ASSERT_ACTUAL_TAIL_LINES = 8;
 const ASSERT_ACTUAL_MAX_LINE_LEN = 200;
+const VERIFY_OUTPUT_TAIL_LINES = 12;
 
 /**
  * Render a verify assertion outcome for the interactive loop. On failure the
@@ -343,6 +441,265 @@ export function renderAssertOutcome(result: AssertResult): string {
     lines.push(renderCodeBlock(tail, 'output'));
   }
   return lines.join('\n');
+}
+
+/**
+ * Flatten an `expect` (string / primitive shorthand / single config / array)
+ * into single-field criterion descriptions, in the SAME field order
+ * `buildChecks` evaluates them in — so `parts[i]` describes `checks[i]` for
+ * a `assertOutputDetailed` result built from the same `expect`.
+ *
+ * `equals_captured` has no `renderExpectParts` entry (it's a runtime-only
+ * field, dropped from static docs) — callers fall back to `check.expected`
+ * for that one.
+ */
+function describeChecksInOrder(
+  expect: ExpectConfig | ExpectConfig[] | string,
+): string[] {
+  if (typeof expect === 'string')
+    return renderExpectParts({ contains: expect });
+  if (isPrimitiveExpectShorthand(expect))
+    return renderExpectParts({ contains: String(expect) });
+  if (Array.isArray(expect)) return expect.flatMap(describeChecksInOrder);
+  return renderExpectParts(expect);
+}
+
+/**
+ * One highlight span to apply to the captured output: `[start, end)` byte
+ * range plus the color to wrap it in. Spans are computed against the
+ * UNSTYLED `actual` text, then applied (longest-first, non-overlapping) when
+ * building the styled lines.
+ */
+interface HighlightSpan {
+  start: number;
+  end: number;
+  color: typeof GREEN | typeof RED;
+}
+
+/**
+ * Compute highlight spans for a single check against the unstyled `actual`
+ * output:
+ * - passing `contains` / `any_line_contains` / `matches`: GREEN+INVERSE
+ *   around the first match.
+ * - failing `not_contains` / `no_line_contains`: RED around the offending
+ *   match (the text that should NOT have been there).
+ */
+function highlightSpansForCheck(
+  actual: string,
+  check: AssertResult,
+): HighlightSpan[] {
+  if (check.pass) {
+    if (check.type === 'contains' || check.type === 'any_line_contains') {
+      const idx = actual.indexOf(check.expected);
+      if (idx === -1 || !check.expected) return [];
+      return [{ start: idx, end: idx + check.expected.length, color: GREEN }];
+    }
+    if (check.type === 'matches') {
+      const re = compileRegex(check.expected);
+      const match = re?.exec(actual);
+      if (!match || match[0].length === 0) return [];
+      return [
+        {
+          start: match.index,
+          end: match.index + match[0].length,
+          color: GREEN,
+        },
+      ];
+    }
+    return [];
+  }
+
+  if (check.type === 'not_contains' || check.type === 'no_line_contains') {
+    const needle = check.needle;
+    if (!needle) return [];
+    const idx = actual.indexOf(needle);
+    if (idx === -1) return [];
+    return [{ start: idx, end: idx + needle.length, color: RED }];
+  }
+
+  return [];
+}
+
+/**
+ * Apply highlight spans to `actual` text, returning styled lines split on
+ * `\n`. Spans are sorted and applied without overlap so the entire
+ * matched/expected token stays contiguous — a plain `String.includes(...)`
+ * over the rendered (un-stripped) output still finds the literal substring,
+ * just wrapped in color codes around it rather than split in the middle.
+ */
+function applyHighlights(actual: string, spans: HighlightSpan[]): string[] {
+  if (spans.length === 0) return actual.split('\n');
+
+  // Sort by start, then drop spans that overlap an already-placed span —
+  // keeps each highlighted token contiguous and unambiguous.
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const kept: HighlightSpan[] = [];
+  let lastEnd = -1;
+  for (const span of sorted) {
+    if (span.start >= lastEnd) {
+      kept.push(span);
+      lastEnd = span.end;
+    }
+  }
+
+  let styled = '';
+  let pos = 0;
+  for (const span of kept) {
+    styled += actual.slice(pos, span.start);
+    const colorCode = span.color === GREEN ? `${GREEN}${INVERSE}` : RED;
+    styled += `${colorCode}${actual.slice(span.start, span.end)}${RESET}`;
+    pos = span.end;
+  }
+  styled += actual.slice(pos);
+
+  return styled.split('\n');
+}
+
+/**
+ * Compute the 0-based line indices (within `actual`, split on `\n`) that
+ * contain any part of the given highlight spans — used to mark the
+ * line-number gutter with a `→` arrow. A span spanning multiple lines marks
+ * every line it touches.
+ */
+function lineIndicesForSpans(
+  actual: string,
+  spans: HighlightSpan[],
+): Set<number> {
+  const result = new Set<number>();
+  if (spans.length === 0) return result;
+
+  // Precompute the cumulative character offset at the START of each line.
+  const lineStarts: number[] = [0];
+  for (let i = 0; i < actual.length; i++) {
+    if (actual[i] === '\n') lineStarts.push(i + 1);
+  }
+
+  const lineIndexForOffset = (offset: number): number => {
+    // Find the last lineStart <= offset.
+    let lo = 0;
+    let hi = lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (lineStarts[mid] <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+
+  for (const span of spans) {
+    const startLine = lineIndexForOffset(span.start);
+    // `end` is exclusive — for a zero-length span fall back to startLine.
+    const endLine = lineIndexForOffset(Math.max(span.start, span.end - 1));
+    for (let i = startLine; i <= endLine; i++) result.add(i);
+  }
+
+  return result;
+}
+
+/**
+ * Render a richer sidecar-mode verify outcome: a PASS/FAIL header, a
+ * per-check checklist (with inline computed values), and the captured
+ * output (tail by default, full when `opts.expand`) with matches/failures
+ * highlighted in-line.
+ */
+export function renderVerifyOutcome(
+  detailed: { pass: boolean; actual: string; checks: AssertResult[] },
+  expect: ExpectConfig | ExpectConfig[] | string | undefined,
+  opts?: { expand?: boolean },
+): string {
+  const expand = opts?.expand ?? false;
+  const icon = detailed.pass ? '✅ PASS' : '❌ FAIL';
+  const lines = [`    ${icon}`];
+
+  const criteria = expect !== undefined ? describeChecksInOrder(expect) : [];
+  detailed.checks.forEach((check, i) => {
+    const criterion = criteria[i] ?? check.expected;
+    const computed = describeComputedValue(check);
+    const checkIcon = check.pass ? '✅' : '❌';
+    lines.push(
+      `    ${checkIcon} ${criterion}${computed ? ` (${computed})` : ''}`,
+    );
+  });
+
+  if (detailed.actual.trim() || expand) {
+    const allLines = detailed.actual.split('\n');
+    const tailLines = expand
+      ? allLines
+      : allLines.slice(-VERIFY_OUTPUT_TAIL_LINES);
+    const truncated = tailLines
+      .map((l) =>
+        l.length > ASSERT_ACTUAL_MAX_LINE_LEN
+          ? `${l.slice(0, ASSERT_ACTUAL_MAX_LINE_LEN)}…`
+          : l,
+      )
+      .join('\n');
+
+    const spans = detailed.checks.flatMap((check) =>
+      highlightSpansForCheck(truncated, check),
+    );
+    const arrowLines = lineIndicesForSpans(truncated, spans);
+    const styledLines = applyHighlights(truncated, spans);
+
+    // Append a "missing: <expected>" hint for failing string-based checks
+    // whose expected value couldn't be highlighted (it isn't IN the output).
+    for (const check of detailed.checks) {
+      if (check.pass) continue;
+      if (
+        check.type === 'contains' ||
+        check.type === 'equals' ||
+        check.type === 'matches' ||
+        check.type === 'any_line_contains'
+      ) {
+        styledLines.push(`${DIM}${RED}missing: ${check.expected}${RESET}`);
+      }
+    }
+
+    const startLineNo = expand ? 1 : allLines.length - tailLines.length + 1;
+
+    const label = expand ? 'output (full)' : 'output (tail)';
+    lines.push(
+      renderHighlightedBlock(styledLines, label, {
+        gutter: { startLineNo, arrowLines },
+      }),
+    );
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Inline computed-value suffix for a checklist line, e.g.
+ * `found "1", need ≥ 3` or `2 lines, expected 3`. Returns undefined when
+ * the check type has no useful computed value to show inline.
+ */
+function describeComputedValue(check: AssertResult): string | undefined {
+  // `expected` for comparison checks is pre-formatted as `>= N` / `<= N`;
+  // strip the operator to recover the bare threshold for inline display.
+  const threshold = check.expected.replace(/^(?:>=|<=)\s*/, '');
+  switch (check.type) {
+    case 'numeric_gte':
+      return `found "${check.actual}", need ≥ ${threshold}`;
+    case 'numeric_lte':
+      return `found "${check.actual}", need ≤ ${threshold}`;
+    case 'line_count':
+      return `${check.actual} lines, expected ${check.expected}`;
+    case 'line_count_gte':
+      return `${check.actual} lines, expected ≥ ${threshold}`;
+    case 'jsonpath':
+      return check.pass ? undefined : `found "${check.actual}"`;
+    case 'equals': {
+      if (check.pass) return undefined;
+      // `actual` is the full trimmed output for `equals` — keep the
+      // checklist line single-line/readable; the full text is visible in
+      // the output block below.
+      const firstLine = check.actual.split('\n')[0];
+      const snippet =
+        firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+      return `found "${snippet}"`;
+    }
+    default:
+      return undefined;
+  }
 }
 
 export function renderTuiPending(
