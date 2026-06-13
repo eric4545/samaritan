@@ -145,5 +145,9 @@ vite.config.ts.timestamp-*
 session-*.json
 evidence/
 .samaritan/
+# Per-run records (events.jsonl + report.md) written beside the operation.
+# Ignored by default to keep working trees clean; force-add (git add -f) a
+# specific run folder when you want to commit/attach it to a change record.
+.samaritan-runs/
 operations-cache/
 manuals/

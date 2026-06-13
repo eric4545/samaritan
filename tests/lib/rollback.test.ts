@@ -1,12 +1,14 @@
 import assert from 'node:assert';
 import { existsSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import type { EventLogger } from '../../src/lib/event-logger';
 import { createEventLogger } from '../../src/lib/event-logger';
 import { StepController, type StepControllerOptions } from '../../src/lib/tui';
 
 function makeLogger(id: string): EventLogger {
-  return createEventLogger(id);
+  return createEventLogger(id, join(tmpdir(), 'op.yaml'));
 }
 
 function cleanLogger(logger: EventLogger): void {

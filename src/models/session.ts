@@ -1,5 +1,6 @@
 import type { ApprovalRecord, EvidenceItem, RetryRecord } from './evidence';
 import type { ExecutionMode, SessionStatus } from './operation';
+import type { StepRecord } from './step-record';
 
 export interface SessionCheckpoint {
   step_index: number;
@@ -27,4 +28,5 @@ export interface OperationSession {
   variables?: Record<string, any>; // Runtime variable overrides
   operator?: string; // Primary operator running the session
   completion_percentage?: number; // Calculated progress
+  step_log?: StepRecord[]; // Structured per-step record derived from the JSONL event log
 }

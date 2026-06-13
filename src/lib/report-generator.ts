@@ -1,57 +1,26 @@
-import { readFileSync } from 'node:fs';
-
-interface SessionEvent {
-  ts: string;
-  type: string;
-  session_id: string;
-  [key: string]: unknown;
-}
-
-interface CapturedEvidence {
-  evidenceId?: string;
-  evidenceType: string;
-  description?: string;
-  content?: string;
-  filename?: string;
-  path?: string;
-}
-
-interface StepSummary {
-  index: number;
-  name: string;
-  pic?: string;
-  reviewer?: string;
-  startTs?: string;
-  endTs?: string;
-  commands: Array<{
-    session: string;
-    command: string;
-    output?: string;
-    displayed?: boolean;
-  }>;
-  verifiedBy?: string;
-  verifiedAt?: string;
-  failed?: boolean;
-  failedReason?: string;
-  notes: string[];
-  evidence: CapturedEvidence[];
-}
-
-interface RollbackEvent {
-  step: number;
-  triggeredBy: string;
-  commands: Array<{ session: string; command: string; output?: string }>;
-  status?: string;
-}
+import { evidenceLang } from '../manuals/generator';
+import type {
+  RollbackRecord,
+  StepApproval,
+  StepEvidenceRef,
+  StepRecord,
+} from '../models/step-record';
+import { foldEvents, readEvents, type SessionEvent } from './session-log';
 
 export function generateReport(jsonlPath: string): string {
-  const content = readFileSync(jsonlPath, 'utf-8');
-  const events: SessionEvent[] = content
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
+  const events = readEvents(jsonlPath);
+  return renderReport(events, foldEvents(events));
+}
 
+/**
+ * Render the Markdown report from an already-read event stream and its fold.
+ * Lets callers that have just folded the events (e.g. the run loop persisting
+ * `step_log`) reuse the result instead of re-reading and re-folding the file.
+ */
+export function renderReport(
+  events: SessionEvent[],
+  folded: { steps: StepRecord[]; rollbacks: RollbackRecord[] },
+): string {
   const sessionStart = events.find((e) => e.type === 'session_start');
   const sessionEnd = events.find((e) => e.type === 'session_end');
 
@@ -60,144 +29,7 @@ export function generateReport(jsonlPath: string): string {
   const status = (sessionEnd?.status as string) ?? 'unknown';
   const startTs = events[0]?.ts ? formatTs(events[0].ts) : 'unknown';
 
-  // Reconstruct step summaries
-  const steps: StepSummary[] = [];
-  const rollbacks: RollbackEvent[] = [];
-
-  let currentStep: StepSummary | null = null;
-  const pendingOutput: Map<string, string> = new Map();
-  let currentRollback: RollbackEvent | null = null;
-
-  for (const event of events) {
-    switch (event.type) {
-      case 'step_start': {
-        currentStep = {
-          index: event.step as number,
-          name: event.name as string,
-          pic: event.pic as string | undefined,
-          reviewer: event.reviewer as string | undefined,
-          startTs: event.ts,
-          commands: [],
-          notes: [],
-          evidence: [],
-        };
-        steps.push(currentStep);
-        break;
-      }
-
-      case 'command_sent': {
-        if (event.context === 'rollback') {
-          currentRollback?.commands.push({
-            session: event.session as string,
-            command: event.command as string,
-          });
-        } else if (currentStep) {
-          currentStep.commands.push({
-            session: event.session as string,
-            command: event.command as string,
-            displayed: false,
-          });
-          pendingOutput.delete(event.session as string);
-        }
-        break;
-      }
-
-      case 'command_displayed': {
-        if (currentStep) {
-          currentStep.commands.push({
-            session: event.session as string,
-            command: event.command as string,
-            displayed: true,
-          });
-        }
-        break;
-      }
-
-      case 'pane_captured': {
-        const _sessionName = event.session as string;
-        const output = event.output as string;
-        if (event.context === 'rollback') {
-          const last =
-            currentRollback?.commands[currentRollback.commands.length - 1];
-          if (last) last.output = output;
-        } else if (currentStep?.commands.length) {
-          const last = currentStep.commands[currentStep.commands.length - 1];
-          if (last && !last.output) last.output = output;
-        }
-        break;
-      }
-
-      case 'step_complete': {
-        if (currentStep) currentStep.endTs = event.ts;
-        break;
-      }
-
-      case 'step_failed': {
-        if (currentStep) {
-          currentStep.failed = true;
-          currentStep.failedReason = event.reason as string;
-          currentStep.endTs = event.ts;
-        }
-        break;
-      }
-
-      case 'evidence_captured': {
-        if (currentStep) {
-          currentStep.evidence.push({
-            evidenceId: event.evidence_id as string | undefined,
-            evidenceType: event.evidence_type as string,
-            description: event.description as string | undefined,
-            content: event.content as string | undefined,
-            filename: event.filename as string | undefined,
-            path: event.path as string | undefined,
-          });
-        }
-        break;
-      }
-
-      case 'evidence_removed': {
-        if (currentStep) {
-          const removedId = event.evidence_id as string | undefined;
-          currentStep.evidence = currentStep.evidence.filter(
-            (e) => e.evidenceId !== removedId,
-          );
-        }
-        break;
-      }
-
-      case 'user_input': {
-        if (currentStep) {
-          const action = event.action as string;
-          if (action === 'verify_ok') {
-            currentStep.verifiedBy = event.actor as string;
-            currentStep.verifiedAt = event.ts;
-          } else if (action === 'note') {
-            const notes = event.notes as string | undefined;
-            if (notes) currentStep.notes.push(notes);
-          }
-        }
-        break;
-      }
-
-      case 'rollback_start': {
-        currentRollback = {
-          step: event.step as number,
-          triggeredBy: event.triggered_by as string,
-          commands: [],
-        };
-        rollbacks.push(currentRollback);
-        break;
-      }
-
-      case 'rollback_complete': {
-        if (currentRollback) {
-          currentRollback.status = event.status as string;
-          currentRollback = null;
-        }
-        break;
-      }
-    }
-  }
+  const { steps, rollbacks } = folded;
 
   // Calculate duration
   const firstTs = events[0]?.ts;
@@ -205,7 +37,7 @@ export function generateReport(jsonlPath: string): string {
   const duration =
     firstTs && lastTs ? calcDuration(firstTs, lastTs) : 'unknown';
 
-  const stepsCompleted = steps.filter((s) => !s.failed).length;
+  const stepsCompleted = steps.filter((s) => s.status !== 'failed').length;
 
   // Build Markdown
   const lines: string[] = [];
@@ -230,60 +62,30 @@ export function generateReport(jsonlPath: string): string {
   lines.push('');
 
   for (const step of steps) {
-    const stepNum = step.index + 1;
-    const firstCmd = step.commands[0];
-    lines.push(`## Step ${stepNum}: ${step.name}`);
-    lines.push('');
-
-    if (step.startTs) {
-      lines.push(
-        `**Time**: ${formatTs(step.startTs)}${firstCmd ? ` | **Session**: ${firstCmd.session}` : ''}`,
-      );
-    }
-
-    for (const cmd of step.commands) {
-      lines.push('');
-      if (cmd.displayed) {
-        lines.push(`**Command (run by operator)**: \`${cmd.command}\``);
-      } else {
-        lines.push(`**Command sent**: \`${cmd.command}\``);
-      }
-      if (cmd.output) {
-        lines.push('');
-        lines.push('Output');
-        lines.push('');
-        lines.push('```');
-        lines.push(cmd.output.trim());
-        lines.push('```');
-      }
-    }
-
-    if (step.verifiedBy) {
-      lines.push('');
-      lines.push(
-        `**Verified by**: ${step.verifiedBy} at ${formatTs(step.verifiedAt ?? '')} ✅`,
-      );
-    }
-    if (step.failed) {
-      lines.push('');
-      lines.push(`**Failed**: ${step.failedReason ?? 'unknown reason'} ❌`);
-    }
-
-    if (step.notes.length) {
-      lines.push('');
-      lines.push('**Notes**');
-      for (const note of step.notes) lines.push(`- ${note}`);
-    }
-
-    for (const evidence of step.evidence) {
-      lines.push('');
-      lines.push(...renderEvidenceBlock(evidence));
-    }
-
-    lines.push('');
-    lines.push('---');
-    lines.push('');
+    lines.push(...renderStep(step));
   }
+
+  // Approval Trail — aggregates every step-level approve/reject decision so
+  // the change-management gate is auditable in one place.
+  const approved = steps.flatMap((s) =>
+    s.approval ? [{ step: s, approval: s.approval }] : [],
+  );
+  lines.push('## Approval Trail');
+  lines.push('');
+  if (approved.length === 0) {
+    lines.push('_(none)_');
+  } else {
+    for (const { step, approval } of approved) {
+      const decision = approval.approved ? '✅ approved' : '❌ rejected';
+      const who = `${approval.approver} at ${formatTs(approval.timestamp)}`;
+      lines.push(
+        `- **Step ${step.index + 1}: ${step.name}** — ${decision} by ${who}`,
+      );
+      if (approval.rationale)
+        lines.push(`  - Rationale: ${approval.rationale}`);
+    }
+  }
+  lines.push('');
 
   // Rollback section
   lines.push('## Rollback Events');
@@ -312,28 +114,117 @@ export function generateReport(jsonlPath: string): string {
   return lines.join('\n');
 }
 
-function renderEvidenceBlock(evidence: CapturedEvidence): string[] {
+function renderStep(step: StepRecord): string[] {
+  const lines: string[] = [];
+  const stepNum = step.index + 1;
+  const firstCmd = step.commands[0];
+  lines.push(`## Step ${stepNum}: ${step.name}`);
+  lines.push('');
+
+  if (step.started_at) {
+    lines.push(
+      `**Time**: ${formatTs(step.started_at)}${firstCmd ? ` | **Session**: ${firstCmd.session}` : ''}`,
+    );
+  }
+
+  for (const cmd of step.commands) {
+    lines.push('');
+    if (cmd.displayed) {
+      lines.push(`**Command (run by operator)**: \`${cmd.command}\``);
+    } else {
+      lines.push(`**Command sent**: \`${cmd.command}\``);
+    }
+    if (cmd.output) {
+      lines.push('');
+      lines.push('Output');
+      lines.push('');
+      lines.push('```');
+      lines.push(cmd.output.trim());
+      lines.push('```');
+    }
+  }
+
+  if (step.verification) lines.push(...renderVerification(step));
+
+  if (step.verification?.verifiedBy) {
+    lines.push('');
+    lines.push(
+      `**Verified by**: ${step.verification.verifiedBy} at ${formatTs(step.verification.verifiedAt ?? '')} ✅`,
+    );
+  }
+  if (step.status === 'failed') {
+    lines.push('');
+    lines.push(`**Failed**: ${step.failedReason ?? 'unknown reason'} ❌`);
+  }
+
+  if (step.approval) lines.push(...renderApproval(step.approval));
+
+  if (step.notes.length) {
+    lines.push('');
+    lines.push('**Notes**');
+    for (const note of step.notes) lines.push(`- ${note}`);
+  }
+
+  for (const evidence of step.evidence) {
+    lines.push('');
+    lines.push(...renderEvidenceBlock(evidence));
+  }
+
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+  return lines;
+}
+
+function renderVerification(step: StepRecord): string[] {
+  const v = step.verification;
+  if (!v || v.checks.length === 0) return [];
+  const lines: string[] = [''];
+  lines.push(`**Verification**: ${v.pass ? '✅ PASS' : '❌ FAIL'}`);
+  for (const check of v.checks) {
+    const icon = check.pass ? '✅' : '❌';
+    const type = check.type ? ` (${check.type})` : '';
+    const detail = formatCheckDetail(check.expected, check.actual);
+    lines.push(`- ${icon}${type}${detail}`);
+  }
+  return lines;
+}
+
+function formatCheckDetail(expected?: string, actual?: string): string {
+  const parts: string[] = [];
+  if (expected) parts.push(`expected: \`${expected}\``);
+  if (actual) parts.push(`actual: \`${actual}\``);
+  return parts.length ? ` — ${parts.join(', ')}` : '';
+}
+
+function renderApproval(approval: StepApproval): string[] {
+  const decision = approval.approved ? '✅ approved' : '❌ rejected';
+  const lines = [''];
+  lines.push(
+    `**Approval**: ${decision} by ${approval.approver} at ${formatTs(approval.timestamp)}`,
+  );
+  if (approval.rationale) lines.push(`- Rationale: ${approval.rationale}`);
+  return lines;
+}
+
+function renderEvidenceBlock(evidence: StepEvidenceRef): string[] {
   const lines: string[] = [];
   const label = evidence.description
-    ? `**Evidence**: ${evidence.evidenceType} — ${evidence.description}`
-    : `**Evidence**: ${evidence.evidenceType}`;
+    ? `**Evidence**: ${evidence.type} — ${evidence.description}`
+    : `**Evidence**: ${evidence.type}`;
   lines.push(label);
   lines.push('');
 
   if (evidence.path) {
-    if (
-      evidence.evidenceType === 'screenshot' ||
-      evidence.evidenceType === 'photo'
-    ) {
+    if (evidence.type === 'screenshot' || evidence.type === 'photo') {
       lines.push(`![Evidence](${evidence.path})`);
     } else {
-      lines.push(`[View ${evidence.evidenceType}](${evidence.path})`);
+      lines.push(`[View ${evidence.type}](${evidence.path})`);
     }
   } else if (evidence.content) {
-    // Mirrors evidenceLang() in src/manuals/generator.ts so captured-evidence
-    // code blocks fence consistently with evidence.results rendering.
-    const lang = evidence.evidenceType === 'command_output' ? 'bash' : 'text';
-    lines.push(`\`\`\`${lang}`);
+    // Reuse evidenceLang() so captured-evidence code blocks fence
+    // consistently with evidence.results rendering in the manual generator.
+    lines.push(`\`\`\`${evidenceLang(evidence.type)}`);
     lines.push(evidence.content.trim());
     lines.push('```');
   }

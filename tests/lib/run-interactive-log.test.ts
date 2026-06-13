@@ -1,8 +1,7 @@
 import assert from 'node:assert';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
 const CLI = 'node_modules/.bin/tsx';
@@ -37,7 +36,13 @@ function findLogPath(combined: string): string | null {
     /Session:\s+([\w-]{8}-[\w-]{4}-[\w-]{4}-[\w-]{4}-[\w-]{12})/,
   );
   if (!match) return null;
-  return join(tmpdir(), `samaritan-${match[1]}.jsonl`);
+  // Run records are written beside the operation file under .samaritan-runs/.
+  return join(
+    dirname(fixturePath('minimal')),
+    '.samaritan-runs',
+    match[1],
+    'events.jsonl',
+  );
 }
 
 describe('Interactive run JSONL event log', () => {
