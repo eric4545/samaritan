@@ -65,11 +65,11 @@ describe('Array expect rendering', () => {
     const md = generateSingleEnvManual(op, 'staging');
 
     assert.ok(
-      md.includes('> Expected:\n> - [ ] contains: Running'),
+      md.includes('**Expected:**\n- [ ] contains: Running'),
       'should render the first check as a checkbox list item',
     );
     assert.ok(
-      md.includes('> - [ ] does not contain: Error'),
+      md.includes('- [ ] does not contain: Error'),
       'should render the second check as a checkbox list item',
     );
   });
@@ -83,7 +83,7 @@ describe('Array expect rendering', () => {
     const singleEnvMd = generateSingleEnvManual(op, 'staging');
     assert.ok(
       /> Expected:\n> - \[ \] /.test(md) ||
-        /> Expected:\n> - \[ \] /.test(singleEnvMd),
+        /\*\*Expected:\*\*\n- \[ \] /.test(singleEnvMd),
       'single-check expect should still render as a checkbox list',
     );
   });
@@ -144,7 +144,7 @@ describe('Numeric expect rendering (regression: 0 must not be dropped)', () => {
     const md = generateSingleEnvManual(op, 'staging');
 
     assert.ok(
-      md.includes('> Expected:\n> - [ ] 0'),
+      md.includes('**Expected:**\n- [ ] 0'),
       'should render "0" as a checkbox list item, not drop it',
     );
   });

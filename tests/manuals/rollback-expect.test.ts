@@ -51,8 +51,8 @@ describe('Rollback expect rendering across formats', () => {
 
     assert.match(
       manual,
-      /> Expected:\n> - \[ \] contains: rolled back/,
-      'should render rollback expect as a blockquote checkbox in single-env output',
+      /\*\*Expected:\*\*\n- \[ \] contains: rolled back/,
+      'should render rollback expect as a checkbox list in single-env output',
     );
   });
 

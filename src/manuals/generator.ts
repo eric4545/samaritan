@@ -1905,7 +1905,7 @@ export function generateSingleEnvManual(
         lines.push(resolvedCmd.trimEnd());
       } else {
         lines.push('```bash');
-        lines.push(resolvedCmd);
+        lines.push(resolvedCmd.trimEnd());
         lines.push('```');
       }
       lines.push('');
@@ -1938,8 +1938,8 @@ export function generateSingleEnvManual(
         : effectiveStep.expect;
       const parts = renderExpectParts(resolvedExpect);
       if (parts.length > 0) {
-        lines.push('> Expected:');
-        for (const p of parts) lines.push(`> - [ ] ${p}`);
+        lines.push('**Expected:**');
+        for (const p of parts) lines.push(`- [ ] ${p}`);
         lines.push('');
       }
     }
@@ -2032,8 +2032,8 @@ export function generateSingleEnvManual(
             : rb.expect;
         const parts = renderExpectParts(resolvedExpect);
         if (parts.length > 0) {
-          lines.push('> Expected:');
-          for (const p of parts) lines.push(`> - [ ] ${p}`);
+          lines.push('**Expected:**');
+          for (const p of parts) lines.push(`- [ ] ${p}`);
           lines.push('');
         }
       }

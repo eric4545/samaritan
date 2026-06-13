@@ -146,6 +146,22 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     assert.ok(instrIdx < cmdIdx, 'instruction appears before command');
   });
 
+  it('trims trailing blank line from multi-line command code blocks', async () => {
+    const op = await parseFixture('withSessions');
+    // Simulate a YAML block scalar (`command: |`), which retains a trailing newline
+    op.steps[0].command = 'kubectl apply -f deployment.yaml\necho done\n';
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(
+      md.includes('echo done\n```'),
+      'closing fence directly follows the last command line',
+    );
+    assert.ok(
+      !md.includes('echo done\n\n```'),
+      'no blank line before the closing fence',
+    );
+  });
+
   it('renders step description when present', async () => {
     const op = await parseFixture('withSessions');
     op.steps[0].description = 'Deploy the web application to the cluster';
