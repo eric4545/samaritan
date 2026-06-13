@@ -351,7 +351,8 @@ npx github:eric4545/samaritan run <operation.yaml> [options]
                             (does NOT execute commands non-interactively; see note below)
   -m, --mode <mode>         Execution mode: sidecar | manual | automatic | hybrid (default: sidecar)
   --attach <tmux-target>    Attach to an existing tmux pane for sidecar capture
-  --report <dir>            Write Markdown evidence report to directory after run
+  --report <dir>            Write an EXTRA copy of the Markdown report to <dir>
+                            (a report is always written beside the operation — see below)
   --continue-on-error       Continue execution even if a step fails
 
 # List saved run sessions (resumable by default)
@@ -1562,9 +1563,26 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 - **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's captured evidence (type, description, and stored path), lets you pick one by number to delete, removes it from the session record, and — for file/screenshot/video evidence copied into the session's evidence directory — deletes the copy from disk too (your original source file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event, and the `--report` Markdown omits removed items entirely.
 - **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutputDetailed`/`interpolateExpect` machinery `automatic` steps use), evaluating **every** check (not just the first failure) and rendering the PASS/FAIL checklist + highlighted, line-numbered output described in [Verify output: checklist, highlighting, and the line-number gutter](#verify-output-checklist-highlighting-and-the-line-number-gutter) — and, on failure, the override/rollback/`[m]` more/`[v]` re-verify/stop prompt. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
 
+### The run record (durable, beside the operation)
+
+Every `samaritan run`/`resume` writes a **run record next to the operation file**, so the audit trail travels with the operation you ran (operations-as-code) and can be committed or attached to a change ticket:
+
+```
+<operation-dir>/.samaritan-runs/<session-id>/
+├── events.jsonl   # append-only "black box": every step start, command, capture,
+│                  # verification, evidence, approval, and rollback (paths printed as 📝 Audit log)
+└── report.md      # human-readable Markdown report, written automatically every run (📄 Report)
+```
+
+- **Always-on**: `report.md` is generated on every run — `--report <dir>` now writes an *extra copy* to a directory of your choice (e.g. an evidence bundle).
+- **Append-only across resume**: `resume` continues the same `events.jsonl`, so the full history survives across processes.
+- **Verification & approvals**: the report surfaces each `expect` check (pass/fail with expected-vs-actual) and an **Approval Trail** (approver, decision, rationale, timestamp).
+- **Read-only fallback**: if the operation's directory isn't writable, the run record falls back to `~/.samaritan/sessions/<session-id>/`.
+- **Gitignored by default**: `.samaritan-runs/` is in `.gitignore` to keep working trees clean — `git add -f` a specific run folder when you want to commit it.
+
 ### Sessions & resume
 
-Every `samaritan run` creates a session, persisted to `~/.samaritan/sessions/<session-id>.json` after each completed step (the session ID is printed at the start of the run: `📋 Session: <id>`). The JSONL audit log lives separately in `/tmp/samaritan-<session-id>.jsonl` (path printed as `📝 Audit log:`).
+Every `samaritan run` also creates a resumable **session state** file at `~/.samaritan/sessions/<session-id>.json`, persisted after each completed step (the session ID is printed at the start of the run: `📋 Session: <id>`). This file now carries a structured **`step_log`** — per step it records the input command(s), captured output, verification result, approval (with rationale), notes, evidence references, status, and timing — derived by folding `events.jsonl`, so the saved session is meaningful on its own, not just metadata.
 
 ```bash
 # List resumable sessions (running / paused / failed)
@@ -1714,7 +1732,7 @@ If no `rollback:` is defined, the operator is prompted to intervene manually.
 
 ### JSONL audit trail
 
-Every action writes a line to `/tmp/samaritan-<id>.jsonl`:
+Every action appends a line to the run's black box at `<operation-dir>/.samaritan-runs/<id>/events.jsonl` (the exact path is printed as `📝 Audit log:` at the start of the run):
 
 ```jsonl
 {"ts":"2026-04-18T10:00:00Z","type":"session_start","op":"deployment.yaml","session_id":"f3a9b2"}
@@ -1731,10 +1749,10 @@ Query with `jq`:
 
 ```bash
 # All commands sent during the session
-cat /tmp/samaritan-f3a9b2.jsonl | jq 'select(.type=="command_sent")'
+cat .samaritan-runs/f3a9b2/events.jsonl | jq 'select(.type=="command_sent")'
 
 # Assertion failures only
-cat /tmp/samaritan-f3a9b2.jsonl | jq 'select(.type=="assert_result" and .pass==false)'
+cat .samaritan-runs/f3a9b2/events.jsonl | jq 'select(.type=="assert_result" and .pass==false)'
 ```
 
 ### Evidence report
@@ -1742,11 +1760,11 @@ cat /tmp/samaritan-f3a9b2.jsonl | jq 'select(.type=="assert_result" and .pass==f
 Generate a human-readable Markdown report from any JSONL log. Two ways to get one:
 
 ```bash
-# Auto-generate at run time (report written to ./reports/ when run completes)
+# A report.md is ALWAYS written beside the operation; --report adds an extra copy
 samaritan run deployment.yaml --env production --report ./reports
 
 # Generate after the fact from an existing JSONL log
-samaritan report /tmp/samaritan-f3a9b2.jsonl
+samaritan report .samaritan-runs/f3a9b2/events.jsonl
 
 # Save to a specific file
 samaritan report /tmp/samaritan-f3a9b2.jsonl --output evidence-report.md

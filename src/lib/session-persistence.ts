@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { OperationSession } from '../models/session';
 
 function getSessionDir(): string {
@@ -22,14 +22,58 @@ function sessionPath(sessionId: string): string {
 }
 
 /**
+ * Per-session directory under `~/.samaritan/sessions/<sessionId>/`, used as
+ * a fallback home for run artifacts (events log, report, evidence) when
+ * writing beside the operation file isn't possible (e.g. read-only mount).
+ */
+export function getSessionSubdir(sessionId: string): string {
+  const dir = join(getSessionDir(), sessionId);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return dir;
+}
+
+/**
  * Directory where evidence files attached to a session (e.g. dragged-in
  * screenshots/files captured during `samaritan run`) are stored, keeping
  * them alongside the session's persisted JSON under `~/.samaritan/sessions/`.
  */
 export function getSessionEvidenceDir(sessionId: string): string {
-  const dir = join(getSessionDir(), sessionId, 'evidence');
+  const dir = join(getSessionSubdir(sessionId), 'evidence');
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
   return dir;
+}
+
+/**
+ * Directory where a run's JSONL event log and Markdown report are written,
+ * placed beside the operation file under `.samaritan-runs/<sessionId>/` so
+ * operators can find run artifacts alongside the operation they ran. Falls
+ * back to `~/.samaritan/sessions/<sessionId>/` (via `getSessionSubdir`) when
+ * the operation's directory isn't writable (e.g. EACCES/EROFS).
+ */
+export function getRunDir(operationFile: string, sessionId: string): string {
+  const dir = join(dirname(operationFile), '.samaritan-runs', sessionId);
+  try {
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  } catch {
+    return getSessionSubdir(sessionId);
+  }
+}
+
+/** Path to the JSONL event log for a run (see `getRunDir`). */
+export function getRunLogPath(
+  operationFile: string,
+  sessionId: string,
+): string {
+  return join(getRunDir(operationFile, sessionId), 'events.jsonl');
+}
+
+/** Path to the Markdown report for a run (see `getRunDir`). */
+export function getRunReportPath(
+  operationFile: string,
+  sessionId: string,
+): string {
+  return join(getRunDir(operationFile, sessionId), 'report.md');
 }
 
 function reviveDates(session: OperationSession): OperationSession {

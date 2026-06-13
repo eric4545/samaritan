@@ -6,6 +6,7 @@ import type {
 } from '../models/evidence';
 import type { ExecutionMode, SessionStatus } from '../models/operation';
 import type { OperationSession, SessionCheckpoint } from '../models/session';
+import type { StepRecord } from '../models/step-record';
 import type {
   ExecutionContext,
   OperationExecutionState,
@@ -291,6 +292,21 @@ export class SessionManager {
       session.approvals.push(approval);
       session.updated_at = new Date();
       this.sessions.set(sessionId, session);
+    }
+  }
+
+  /**
+   * Persist the structured per-step record (derived by folding the JSONL
+   * event log) onto the session, so the saved session JSON carries each
+   * step's input/output/verification/approval — not just metadata.
+   */
+  updateStepLog(sessionId: string, stepLog: StepRecord[]): void {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.step_log = stepLog;
+      session.updated_at = new Date();
+      this.sessions.set(sessionId, session);
+      saveSession(session);
     }
   }
 

@@ -1,5 +1,7 @@
 import assert from 'node:assert';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { assertOutputDetailed } from '../../src/lib/assertions';
 import {
@@ -18,7 +20,7 @@ import {
 } from '../../src/lib/tui';
 
 function makeLogger(id: string): EventLogger {
-  return createEventLogger(id);
+  return createEventLogger(id, join(tmpdir(), 'op.yaml'));
 }
 
 function cleanLogger(logger: EventLogger): void {

@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -497,6 +498,61 @@ describe('run command: --report flag', () => {
       );
     } finally {
       rmSync(reportDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── durable run record (beside the operation) ──────────────────────────────
+
+describe('run command: durable run record beside the operation', () => {
+  function extractSessionId(output: string): string {
+    const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
+    assert.ok(m, `run output must include the session id; got:\n${output}`);
+    return (m as RegExpMatchArray)[1];
+  }
+
+  it('always writes events.jsonl + report.md beside the operation and a step_log on the session', () => {
+    // Copy a fixture into a writable temp dir so the .samaritan-runs/ folder
+    // lands next to the operation, not in the repo tree.
+    const opDir = mkdtempSync(join(tmpdir(), 'samaritan-run-'));
+    const opFile = join(opDir, 'op.yaml');
+    const src = readFileSync(fixturePath('minimal'), 'utf-8');
+    writeFileSync(opFile, src, 'utf-8');
+
+    try {
+      const result = runCli(['run', opFile, '--env', 'default'], {
+        input: 'q\n',
+      });
+      const combined = result.stdout + result.stderr;
+      const sessionId = extractSessionId(combined);
+
+      const runDir = join(opDir, '.samaritan-runs', sessionId);
+      assert.ok(
+        existsSync(join(runDir, 'events.jsonl')),
+        'events.jsonl must be written beside the operation',
+      );
+      assert.ok(
+        existsSync(join(runDir, 'report.md')),
+        'report.md must be written beside the operation (always-on)',
+      );
+
+      const sessionPath = join(
+        homedir(),
+        '.samaritan',
+        'sessions',
+        `${sessionId}.json`,
+      );
+      const session = JSON.parse(readFileSync(sessionPath, 'utf-8'));
+      assert.ok(
+        Array.isArray(session.step_log) && session.step_log.length >= 1,
+        'session JSON must carry a structured step_log',
+      );
+      assert.ok(
+        session.step_log[0].inputs?.commands?.length >= 1,
+        'step_log must capture the step input command',
+      );
+    } finally {
+      rmSync(opDir, { recursive: true, force: true });
     }
   });
 });

@@ -29,15 +29,18 @@ npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging
 npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging \
   --attach mysession:0.0
 
-# Execute operation with interactive prompts, auto-generating an evidence report
+# Execute operation interactively. A run record is ALWAYS written beside the
+# operation at <op-dir>/.samaritan-runs/<id>/ (events.jsonl + report.md).
+# --report writes an extra copy of the report to a directory of your choice.
 npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging --report ./evidence
 
-# List saved run sessions and resume one (q/abort saves progress as paused)
+# List saved run sessions and resume one (q/abort saves progress as paused).
+# The session JSON carries a structured step_log (input/output/verification/approval per step).
 npx github:eric4545/samaritan sessions
 npx github:eric4545/samaritan resume <session-id>
 
-# Generate evidence report from an existing session log
-npx github:eric4545/samaritan report /tmp/samaritan-<id>.jsonl --output evidence.md
+# Regenerate the report from the run's black box (events.jsonl)
+npx github:eric4545/samaritan report examples/.samaritan-runs/<id>/events.jsonl --output evidence.md
 ```
 
 ### Real-World Workflow

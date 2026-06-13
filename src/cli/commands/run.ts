@@ -23,8 +23,12 @@ import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { generateReport } from '../../lib/report-generator';
+import { buildStepRecords, readEvents } from '../../lib/session-log';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
-import { getSessionEvidenceDir } from '../../lib/session-persistence';
+import {
+  getRunReportPath,
+  getSessionEvidenceDir,
+} from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
 import {
   bootstrapSessions,
@@ -562,7 +566,7 @@ class OperationRunner {
     };
 
     const state = executor.getState();
-    const logger = createEventLogger(state.context.sessionId);
+    const logger = createEventLogger(state.context.sessionId, operationFile);
     console.log(`📝 Audit log: ${logger.path}`);
     const sessionState = new SessionState();
 
@@ -575,6 +579,14 @@ class OperationRunner {
       sessionManager.updateSessionFromExecutor(
         state.context.sessionId,
         executor.getState(),
+      );
+      // Fold the durable event log into a structured per-step record on the
+      // session JSON, so the persisted session carries step input/output/
+      // verification/approval — not just metadata. Crash-safe: refreshed
+      // after every step.
+      sessionManager.updateStepLog(
+        state.context.sessionId,
+        buildStepRecords(readEvents(logger.path)),
       );
     };
 
@@ -1375,23 +1387,45 @@ class OperationRunner {
             continue;
           }
           if (choice === 'approve') {
+            const rationale = (
+              await question('    Rationale (optional): ')
+            ).trim();
             await executor.executeStepManually(i, 'approved');
-            persistProgress();
             logger.emit({
               type: 'user_input',
               action: 'approved',
               step: i,
               actor: state.context.operator,
+              ...(rationale ? { rationale } : {}),
             });
+            sessionManager.addApprovalRecord(state.context.sessionId, {
+              step_id: step.id ?? String(i),
+              approver: state.context.operator,
+              approved: true,
+              timestamp: new Date(),
+              rationale,
+            });
+            persistProgress();
             logger.emit({ type: 'step_complete', step: i });
             console.log('    ✅ Approved.');
           } else if (choice === 'reject') {
+            const rationale = (
+              await question('    Rationale (optional): ')
+            ).trim();
             executor.skipStep(i);
             logger.emit({
               type: 'user_input',
               action: 'rejected',
               step: i,
               actor: state.context.operator,
+              ...(rationale ? { rationale } : {}),
+            });
+            sessionManager.addApprovalRecord(state.context.sessionId, {
+              step_id: step.id ?? String(i),
+              approver: state.context.operator,
+              approved: false,
+              timestamp: new Date(),
+              rationale,
             });
             console.log('    ❌ Rejected — step skipped.');
           } else {
@@ -1422,6 +1456,23 @@ class OperationRunner {
         status: endStatus,
         steps_completed: finalState.completedSteps,
       });
+      // Always write the structured step log and a human-readable Markdown
+      // report beside the operation — the durable run record, available even
+      // without --report. Best-effort: never fail the run on reporting.
+      try {
+        sessionManager.updateStepLog(
+          state.context.sessionId,
+          buildStepRecords(readEvents(logger.path)),
+        );
+        const reportPath = getRunReportPath(
+          operationFile,
+          state.context.sessionId,
+        );
+        writeFileSync(reportPath, generateReport(logger.path), 'utf-8');
+        console.log(`📄 Report: ${reportPath}`);
+      } catch {
+        // reporting is best-effort
+      }
     }
 
     return logger.path;

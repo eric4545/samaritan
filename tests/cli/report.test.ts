@@ -407,6 +407,84 @@ describe('generateReport (issue #10)', () => {
     }
   });
 
+  it('renders per-check verification results with expected/actual', () => {
+    const withVerify = makeJsonl([
+      { type: 'session_start', op: 'deploy.yaml' },
+      { type: 'step_start', step: 0, name: 'Verify rollout' },
+      {
+        type: 'assert_result',
+        step: 0,
+        pass: true,
+        actual: '3',
+        expected: '>= 3',
+        assertion_type: 'count',
+      },
+      {
+        type: 'assert_result',
+        step: 0,
+        pass: false,
+        actual: 'CrashLoopBackOff',
+        expected: 'Running',
+        assertion_type: 'contains',
+      },
+      { type: 'step_complete', step: 0 },
+      { type: 'session_end', status: 'completed', steps_completed: 1 },
+    ]);
+    const jsonlPath = join(tmpdir(), 'test-report-verify.jsonl');
+    writeFileSync(jsonlPath, withVerify, 'utf-8');
+    try {
+      const md = generateReport(jsonlPath);
+      assert.ok(
+        md.includes('**Verification**'),
+        'should have verification block',
+      );
+      assert.ok(
+        md.includes('❌ FAIL'),
+        'overall should fail when any check fails',
+      );
+      assert.ok(md.includes('expected: `>= 3`'), 'should show expected');
+      assert.ok(
+        md.includes('actual: `CrashLoopBackOff`'),
+        'should show actual for failing check',
+      );
+    } finally {
+      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+    }
+  });
+
+  it('renders an Approval Trail with approver, decision and rationale', () => {
+    const withApproval = makeJsonl([
+      { type: 'session_start', op: 'deploy.yaml' },
+      { type: 'step_start', step: 0, name: 'Production gate' },
+      {
+        type: 'user_input',
+        action: 'approved',
+        step: 0,
+        actor: 'lead@example.com',
+        rationale: 'CHG-42 signed off',
+      },
+      { type: 'step_complete', step: 0 },
+      { type: 'session_end', status: 'completed', steps_completed: 1 },
+    ]);
+    const jsonlPath = join(tmpdir(), 'test-report-approval.jsonl');
+    writeFileSync(jsonlPath, withApproval, 'utf-8');
+    try {
+      const md = generateReport(jsonlPath);
+      assert.ok(
+        md.includes('## Approval Trail'),
+        'should have approval trail section',
+      );
+      assert.ok(md.includes('lead@example.com'), 'should name the approver');
+      assert.ok(md.includes('✅ approved'), 'should show the decision');
+      assert.ok(
+        md.includes('CHG-42 signed off'),
+        'should include the rationale',
+      );
+    } finally {
+      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+    }
+  });
+
   it('includes rollback events in dedicated section', () => {
     const withRollback = makeJsonl([
       {

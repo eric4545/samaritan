@@ -1,6 +1,5 @@
 import { appendFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { getRunLogPath } from './session-persistence';
 
 export type EventType =
   | 'session_start'
@@ -38,8 +37,11 @@ export interface EventLogger {
   path: string;
 }
 
-export function createEventLogger(sessionId: string): EventLogger {
-  const logPath = join(tmpdir(), `samaritan-${sessionId}.jsonl`);
+export function createEventLogger(
+  sessionId: string,
+  operationFile: string,
+): EventLogger {
+  const logPath = getRunLogPath(operationFile, sessionId);
 
   function emit(event: LogEvent): void {
     const fullEvent: BaseEvent & Record<string, unknown> = {

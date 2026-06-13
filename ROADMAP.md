@@ -35,12 +35,20 @@ Phases 2.3 and 2.4 below were implemented in v1.1 (see those sections for
 detail). Additional features shipped alongside but not previously tracked
 in this roadmap:
 
-- ✅ JSONL audit log per session (`~/.samaritan/sessions/<id>.jsonl`),
-  recording every action (notes, evidence, verify results, session
-  start/end) for later review
-- ✅ Evidence report generation (`samaritan run --report <dir>` /
-  `samaritan resume --report <dir>`) — Markdown report embedding captured
-  evidence (images, files, code blocks) per step
+- ✅ Durable run record beside the operation
+  (`<op-dir>/.samaritan-runs/<id>/`): an append-only JSONL black box
+  (`events.jsonl`) recording every action (commands, captures, notes,
+  evidence, verify/assert results, approvals, rollbacks, session
+  start/end), plus an always-on Markdown `report.md`. Falls back to
+  `~/.samaritan/sessions/<id>/` when the operation dir is read-only
+- ✅ Structured per-step session log: `OperationSession.step_log` records
+  each step's input/output/verification/approval/notes/evidence/status/
+  timing (folded from the event stream by `src/lib/session-log.ts`), so
+  the persisted session is self-describing, not just metadata
+- ✅ Evidence report generation (always-on, plus `samaritan run --report
+  <dir>` / `samaritan resume --report <dir>` for an extra copy) — Markdown
+  report embedding captured evidence (images, files, code blocks) per
+  step, a per-step verification ledger, and an aggregated Approval Trail
 - ✅ `samaritan diff` command — compares how an operation's steps render
   across two environments (resolved commands, expects, etc.) and reports
   differences as text or Markdown
