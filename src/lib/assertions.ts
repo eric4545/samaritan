@@ -55,6 +55,14 @@ export interface AssertResult {
   actual: string;
   expected: string;
   type: string;
+  /**
+   * The raw literal a check was looking for, carried alongside the
+   * human-readable `expected` description so renderers can highlight it
+   * without re-parsing the formatted message. Currently set for
+   * `not_contains`/`no_line_contains`, whose `expected` wraps the value in
+   * `not contains "..."` text.
+   */
+  needle?: string;
 }
 
 /**
@@ -107,6 +115,7 @@ function buildChecks(output: string, expect: ExpectConfig): AssertResult[] {
       actual: trimmed,
       expected: `not contains "${expect.not_contains}"`,
       type: 'not_contains',
+      needle: expect.not_contains,
     });
   }
 
@@ -148,6 +157,7 @@ function buildChecks(output: string, expect: ExpectConfig): AssertResult[] {
       actual: trimmed,
       expected: `no line contains "${target}"`,
       type: 'no_line_contains',
+      needle: target,
     });
   }
 

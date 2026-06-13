@@ -383,18 +383,20 @@ export function renderHighlightedBlock(
       })
     : rawLines;
 
+  // Compute each decorated line's visible width once (stripAnsi is otherwise
+  // re-run for both the max-width pass and the per-line padding pass).
+  const visibleWidths = decoratedLines.map((l) => stripAnsi(l).length);
+
   const MIN_FILL = language.length + 4;
-  const maxLineLen = Math.max(
-    ...decoratedLines.map((l) => stripAnsi(l).length),
-  );
+  const maxLineLen = Math.max(...visibleWidths);
   const fillWidth = Math.max(maxLineLen + 2, MIN_FILL);
 
   const topDashes = '─'.repeat(fillWidth - language.length - 3);
   const top = `  ${DIM}╭─ ${RESET}${CYAN_BOLD}${language}${RESET}${DIM} ${topDashes}╮${RESET}`;
   const bottom = `  ${DIM}╰${'─'.repeat(fillWidth)}╯${RESET}`;
 
-  const codeLines = decoratedLines.map((line) => {
-    const padding = ' '.repeat(fillWidth - stripAnsi(line).length - 2);
+  const codeLines = decoratedLines.map((line, i) => {
+    const padding = ' '.repeat(fillWidth - visibleWidths[i] - 2);
     return `  ${DIM}│${RESET} ${line}${padding} ${DIM}│${RESET}`;
   });
 
@@ -463,17 +465,6 @@ function describeChecksInOrder(
 }
 
 /**
- * Extract the literal needle a `not_contains`/`no_line_contains` check was
- * looking for out of its human-readable `expected` description
- * (`not contains "X"` / `no line contains "X"`) — used to highlight the
- * offending match in the captured output on failure.
- */
-function extractQuotedNeedle(expected: string): string | undefined {
-  const m = expected.match(/"((?:[^"\\]|\\.)*)"$/);
-  return m?.[1];
-}
-
-/**
  * One highlight span to apply to the captured output: `[start, end)` byte
  * range plus the color to wrap it in. Spans are computed against the
  * UNSTYLED `actual` text, then applied (longest-first, non-overlapping) when
@@ -519,7 +510,7 @@ function highlightSpansForCheck(
   }
 
   if (check.type === 'not_contains' || check.type === 'no_line_contains') {
-    const needle = extractQuotedNeedle(check.expected);
+    const needle = check.needle;
     if (!needle) return [];
     const idx = actual.indexOf(needle);
     if (idx === -1) return [];
@@ -616,6 +607,7 @@ export function renderVerifyOutcome(
   expect: ExpectConfig | ExpectConfig[] | string | undefined,
   opts?: { expand?: boolean },
 ): string {
+  const expand = opts?.expand ?? false;
   const icon = detailed.pass ? '✅ PASS' : '❌ FAIL';
   const lines = [`    ${icon}`];
 
@@ -629,9 +621,9 @@ export function renderVerifyOutcome(
     );
   });
 
-  if (detailed.actual.trim() || opts?.expand) {
+  if (detailed.actual.trim() || expand) {
     const allLines = detailed.actual.split('\n');
-    const tailLines = opts?.expand
+    const tailLines = expand
       ? allLines
       : allLines.slice(-VERIFY_OUTPUT_TAIL_LINES);
     const truncated = tailLines
@@ -662,11 +654,9 @@ export function renderVerifyOutcome(
       }
     }
 
-    const startLineNo = opts?.expand
-      ? 1
-      : allLines.length - tailLines.length + 1;
+    const startLineNo = expand ? 1 : allLines.length - tailLines.length + 1;
 
-    const label = opts?.expand ? 'output (full)' : 'output (tail)';
+    const label = expand ? 'output (full)' : 'output (tail)';
     lines.push(
       renderHighlightedBlock(styledLines, label, {
         gutter: { startLineNo, arrowLines },
@@ -683,15 +673,18 @@ export function renderVerifyOutcome(
  * the check type has no useful computed value to show inline.
  */
 function describeComputedValue(check: AssertResult): string | undefined {
+  // `expected` for comparison checks is pre-formatted as `>= N` / `<= N`;
+  // strip the operator to recover the bare threshold for inline display.
+  const threshold = check.expected.replace(/^(?:>=|<=)\s*/, '');
   switch (check.type) {
     case 'numeric_gte':
-      return `found "${check.actual}", need ≥ ${check.expected.replace(/^>=\s*/, '')}`;
+      return `found "${check.actual}", need ≥ ${threshold}`;
     case 'numeric_lte':
-      return `found "${check.actual}", need ≤ ${check.expected.replace(/^<=\s*/, '')}`;
+      return `found "${check.actual}", need ≤ ${threshold}`;
     case 'line_count':
       return `${check.actual} lines, expected ${check.expected}`;
     case 'line_count_gte':
-      return `${check.actual} lines, expected ≥ ${check.expected.replace(/^>=\s*/, '')}`;
+      return `${check.actual} lines, expected ≥ ${threshold}`;
     case 'jsonpath':
       return check.pass ? undefined : `found "${check.actual}"`;
     case 'equals': {
