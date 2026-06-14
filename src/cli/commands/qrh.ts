@@ -430,7 +430,7 @@ qrhCommand
         if (step.command) console.log(`   Command: ${step.command}`);
         if (step.instruction)
           console.log(`   Instructions: ${step.instruction}`);
-        if (step.evidence_required) console.log(`   Evidence Required: Yes`);
+        if (step.evidence?.required) console.log(`   Evidence Required: Yes`);
       });
 
       if (entry.related_operations && entry.related_operations.length > 0) {

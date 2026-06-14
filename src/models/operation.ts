@@ -150,7 +150,6 @@ export interface StepContent {
   timeout?: number;
   description?: string;
   evidence?: EvidenceConfig;
-  evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
   options?: StepOptions;
   session?: string;
   pic?: string;
@@ -200,7 +199,6 @@ export interface Step extends StepContent {
   uses?: string; // Path to a file whose steps are expanded inline here
   with?: Record<string, any>; // Variables to pass to uses: (also used for parameterized steps)
   variables?: Record<string, any>; // Step-scoped variables (override env and common vars)
-  evidence_types?: EvidenceType[]; // DEPRECATED: Use evidence.types instead
   validation?: StepValidation;
   capture?: CaptureConfig;
   continue_on_error?: boolean;

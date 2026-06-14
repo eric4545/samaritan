@@ -282,25 +282,6 @@
                   }
                 }
               },
-              "evidence_required": {
-                "type": "boolean",
-                "description": "DEPRECATED: Use evidence.required instead"
-              },
-              "evidence_types": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "screenshot",
-                    "log",
-                    "command_output",
-                    "file",
-                    "photo",
-                    "video"
-                  ]
-                },
-                "description": "DEPRECATED: Use evidence.types instead"
-              },
               "continue_on_error": {
                 "type": "boolean"
               },

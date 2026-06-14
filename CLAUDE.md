@@ -306,9 +306,10 @@ evidence:
           pod/web-0    1/1     Running   0    10s
         description: Production deployment output
 
-# ⚠️ Deprecated (still supported for backward compatibility)
-evidence_required: true
-evidence_types: [screenshot, log]
+# ❌ Removed in v2.0 (parser throws a migration error if these appear)
+# evidence_required: true
+# evidence_types: [screenshot, log]
+# Use the nested evidence: { required, types } form above instead.
 ```
 
 **Evidence Results Details:**
@@ -418,7 +419,7 @@ steps:
 - `instruction` — markdown instructions
 - `timeout` — step timeout in seconds
 - `description` — step description
-- `evidence` / `evidence_required` — evidence config
+- `evidence` — evidence config (nested `{ required, types, results }`)
 - `options` — step options (substitute_vars, show_command_separately)
 - `session` — execution session reference
 - `pic` — Person In Charge

@@ -12,8 +12,9 @@ steps:
         exit 1
       fi
     timeout: 30
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     
   - name: database-connectivity-check
     type: automatic
@@ -27,8 +28,9 @@ steps:
         exit 1
       fi
     timeout: 15
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     
   - name: redis-connectivity-check
     type: automatic
@@ -42,8 +44,9 @@ steps:
         exit 1
       fi
     timeout: 10
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     
   - name: kubernetes-cluster-check
     type: automatic
@@ -52,8 +55,9 @@ steps:
       kubectl cluster-info --context ${CLUSTER}
       kubectl get nodes --context ${CLUSTER}
     timeout: 30
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     
   - name: comprehensive-smoke-test
     type: manual
@@ -84,5 +88,6 @@ steps:
          - API response times < 500ms
          - No console errors in browser
     estimated_duration: 900
-    evidence_required: true
-    evidence_types: ["screenshot", "command_output"]
+    evidence:
+      required: true
+      types: ["screenshot", "command_output"]

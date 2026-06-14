@@ -9,8 +9,9 @@ steps:
         --no-password --verbose \
         > ./backups/backup_$(date +%Y%m%d_%H%M%S).sql
     timeout: 600
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     env:
       PGPASSWORD: "${DB_PASSWORD}"
     
@@ -27,8 +28,9 @@ steps:
         exit 1
       fi
     timeout: 1200
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     env:
       PGPASSWORD: "${DB_PASSWORD}"
       
@@ -39,8 +41,9 @@ steps:
       cd ${APP_DIR}
       npm run db:migrate
     timeout: 300
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     
   - name: database-health-check
     type: automatic
@@ -50,7 +53,8 @@ steps:
         --no-password \
         -c "SELECT version(); SELECT NOW(); SELECT COUNT(*) FROM pg_tables;"
     timeout: 30
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     env:
       PGPASSWORD: "${DB_PASSWORD}"

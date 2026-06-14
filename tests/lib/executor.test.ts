@@ -40,8 +40,10 @@ describe('Operation Executor', () => {
         type: 'automatic',
         description: 'Step requiring evidence',
         command: 'ls -la',
-        evidence_required: true,
-        evidence_types: ['screenshot', 'command_output'],
+        evidence: {
+          required: true,
+          types: ['screenshot', 'command_output'],
+        },
       },
     ],
     metadata: {

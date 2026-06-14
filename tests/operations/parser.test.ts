@@ -100,6 +100,23 @@ describe('Enhanced Operation Parser', () => {
     }, /Schema validation failed/);
   });
 
+  it('should reject the removed evidence_required/evidence_types fields', async () => {
+    // Use parseOperation directly (parseFixture flattens the structured error)
+    await assert.rejects(
+      async () => {
+        await parseOperation(getFixturePath('deprecatedEvidenceFields'));
+      },
+      (err: any) => {
+        const fields = (err.errors ?? []).map((e: any) => e.field);
+        return (
+          fields.includes('evidence_required') &&
+          fields.includes('evidence_types')
+        );
+      },
+      'Removed flat evidence fields should throw a migration error',
+    );
+  });
+
   it('should preserve all new enhanced fields when present', async () => {
     const operation = await parseFixture('enhanced');
 

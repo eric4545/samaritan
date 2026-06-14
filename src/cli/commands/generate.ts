@@ -496,7 +496,7 @@ ${step.instruction}`
 
 ${step.timeout ? `**Timeout**: ${step.timeout}s` : ''}
 ${step.estimated_duration ? `**Estimated Duration**: ${step.estimated_duration}s` : ''}
-${step.evidence_required ? `**Evidence Required**: ${step.evidence_types?.join(', ') || 'Yes'}` : ''}
+${step.evidence?.required ? `**Evidence Required**: ${step.evidence.types?.join(', ') || 'Yes'}` : ''}
 ${step.continue_on_error ? `**Continue on Error**: Yes` : ''}
 
 ${(() => {

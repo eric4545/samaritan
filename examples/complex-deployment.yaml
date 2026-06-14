@@ -162,8 +162,9 @@ steps:
     description: Get manager approval for production deployment
     instruction: Create Jira ticket and get approval from engineering manager
     estimated_duration: 1800
-    evidence_required: true
-    evidence_types: ["screenshot"]
+    evidence:
+      required: true
+      types: ["screenshot"]
     approval:
       required: true
       approvers: ["engineering-manager", "sre-lead"]
@@ -183,8 +184,9 @@ steps:
       kubectl apply -f k8s/worker.yaml --context ${CLUSTER} -n ${NAMESPACE}
     timeout: 300
     estimated_duration: 180
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     needs: ["Request Deployment Approval"]
     rollback:
       command: |

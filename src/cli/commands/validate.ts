@@ -209,8 +209,8 @@ class OperationValidator {
 
       // Evidence validation
       if (
-        step.evidence_required &&
-        (!step.evidence_types || step.evidence_types.length === 0)
+        step.evidence?.required &&
+        (!step.evidence.types || step.evidence.types.length === 0)
       ) {
         result.warnings.push(
           `Step ${i + 1} (${step.name}): evidence required but no evidence types specified`,
@@ -297,7 +297,7 @@ class OperationValidator {
       );
     }
 
-    if (operation.steps.filter((s) => s.evidence_required).length === 0) {
+    if (operation.steps.filter((s) => s.evidence?.required).length === 0) {
       result.warnings.push(
         'No steps require evidence collection (recommended for audit trails)',
       );

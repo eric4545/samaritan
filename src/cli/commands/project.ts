@@ -75,9 +75,10 @@ steps:
     description: Build the application artifacts
     command: npm run build
     timeout: 300
-    evidence_required: true
-    evidence_types: ["command_output"]
-    
+    evidence:
+      required: true
+      types: ["command_output"]
+
   - name: verify-build
     type: manual
     description: Verify the build artifacts are correct
@@ -86,15 +87,17 @@ steps:
       2. Verify main.js and main.css are present
       3. Test that index.html loads correctly
     estimated_duration: 120
-    evidence_required: true
-    evidence_types: ["screenshot"]
-    
+    evidence:
+      required: true
+      types: ["screenshot"]
+
   - name: deploy-to-environment
     type: automatic
     description: Deploy to \${environment} environment
     command: kubectl apply -f k8s/ --context \${cluster}
     timeout: 180
-    evidence_required: true
+    evidence:
+      required: true
     rollback:
       command: kubectl rollout undo deployment/app --context \${cluster}
       timeout: 120
@@ -107,8 +110,9 @@ steps:
       2. Verify all \${replicas} pods are running
       3. Test key functionality works correctly
     estimated_duration: 300
-    evidence_required: true
-    evidence_types: ["screenshot", "log"]
+    evidence:
+      required: true
+      types: ["screenshot", "log"]
 
 rollback:
   automatic: false
@@ -143,8 +147,9 @@ procedure:
       1. Test connection from app pods: kubectl exec -it <app-pod> -- telnet db-service 5432
       2. Check service endpoints: kubectl get endpoints db-service -n production
       3. Verify security groups allow traffic on port 5432
-    evidence_required: true
-    
+    evidence:
+      required: true
+
   - name: check-database-logs
     type: automatic
     command: kubectl logs -l app=database -n production --tail=100
