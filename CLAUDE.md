@@ -71,6 +71,7 @@ tests/
 - **Interactive execution** (`run` command — sidecar/manual/automatic/hybrid modes, see Gotcha #3)
 - **Session persistence + resume** (`~/.samaritan/sessions/<id>.json`, `resume <session-id>`)
 - **Mock run** (`run --mock`, `src/lib/mock-run.ts`) — replays each step's `expect` against its `evidence.results[<env>]` `command_output`/`log` output (no tmux/execution); resolves `${VAR}` in `expect`, prints a PASS/FAIL/SKIP report, exits non-zero on failure. Read-only reuse of `evidence.results`.
+- **Auto-capture on verify** (`src/lib/verified-evidence.ts` `buildVerifiedEvidenceItem`) — in the interactive run loop, the first passing `[v]` verify per step auto-records the verified pane output as a `command_output` EvidenceItem (`automatic`/`validated`, `metadata.source: 'verify'`), deduped per step. Keeps `expect` (the check) and `evidence` (the record) as separate concepts while closing the loop.
 - **Command linting** (`validate --lint`, `src/lib/shell-lint.ts`) — optional shellcheck pass over step `command`/`script`; warnings by default, errors under `--strict`, gracefully skipped when shellcheck is absent.
 
 ### 🚧 NOT Implemented (Roadmap)

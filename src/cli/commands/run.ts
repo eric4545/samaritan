@@ -54,6 +54,7 @@ import {
   resolveVars,
   resolveVarsSafe,
 } from '../../lib/variable-resolver';
+import { buildVerifiedEvidenceItem } from '../../lib/verified-evidence';
 import type { EvidenceItem } from '../../models/evidence';
 import type {
   EvidenceType,
@@ -1039,6 +1040,39 @@ class OperationRunner {
     // the full checklist + highlighted output (PASS or FAIL); on FAIL offers
     // a single-key menu to override/rollback/stop, re-verify (re-capture and
     // re-assert), or show the full (non-truncated) output.
+    // Steps whose passing verify already auto-captured evidence — so repeated
+    // [v] presses don't record duplicate command_output items.
+    const autoVerifiedSteps = new Set<number>();
+
+    // Close the loop between expect and evidence: a PASSING [v] verify records
+    // the verified pane output as command_output evidence (once per step), so
+    // the output you checked also becomes the output you keep.
+    const captureVerifiedEvidence = (
+      stepIndex: number,
+      output: string,
+    ): void => {
+      if (autoVerifiedSteps.has(stepIndex) || !output.trim()) return;
+      autoVerifiedSteps.add(stepIndex);
+
+      const item = buildVerifiedEvidenceItem(
+        stepIndex,
+        output,
+        state.context.operator,
+      );
+
+      sessionManager.addEvidence(state.context.sessionId, item);
+      logger.emit({
+        type: 'evidence_captured',
+        step: stepIndex,
+        evidence_id: item.id,
+        evidence_type: 'command_output',
+        automatic: true,
+        description: item.description,
+        content: output,
+      });
+      console.log('    📎 Verified output captured as evidence.');
+    };
+
     const verifyManualOutput = async (
       step: Step,
       stepIndex: number,
@@ -1069,6 +1103,7 @@ class OperationRunner {
         console.log(renderVerifyOutcome(detailed, step.expect, { expand }));
 
         if (assertResult.pass) {
+          captureVerifiedEvidence(stepIndex, output);
           console.log(
             '    ✅ Verify passed — press [v] again any time to re-check.',
           );
