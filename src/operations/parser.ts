@@ -694,7 +694,7 @@ function assertNoDeprecatedEvidenceFields(data: any, stepName?: string): void {
       '  evidence:\n    required: true\n    types: [command_output]',
     removed.map((field) => ({
       field,
-      message: 'removed in v2 — use evidence.required / evidence.types instead',
+      message: 'removed — use evidence.required / evidence.types instead',
     })),
   );
 }

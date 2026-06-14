@@ -306,7 +306,7 @@ evidence:
           pod/web-0    1/1     Running   0    10s
         description: Production deployment output
 
-# ❌ Removed in v2.0 (parser throws a migration error if these appear)
+# ❌ Removed (parser throws a migration error if these appear)
 # evidence_required: true
 # evidence_types: [screenshot, log]
 # Use the nested evidence: { required, types } form above instead.
