@@ -10,6 +10,7 @@ import {
   renderExpectParts,
 } from './assertions';
 import type { EventLogger } from './event-logger';
+import { extractRetryConfig, parseInterval, shouldRetry } from './retry-assert';
 import type { SessionState } from './session-state';
 import type { TmuxSession } from './tmux-session';
 import { isLocalSession } from './tmux-session';
@@ -33,6 +34,8 @@ export interface StepControllerOptions {
   autoSend: boolean;
   autoExec: boolean;
   sessions?: Record<string, { host?: string; user?: string }>;
+  /** Override the delay used by `expect.retry` polling (injected in tests). */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export class StepController {
@@ -130,7 +133,40 @@ export class StepController {
     });
 
     if (!isSSH && step.expect) {
-      const { assertResult } = this.verifyOutput(step, stepIndex, output);
+      let { assertResult } = this.verifyOutput(step, stepIndex, output);
+
+      // expect.retry: poll for eventual consistency. On a failed assertion,
+      // wait `interval` and re-capture/re-assert up to `max` times. A `while`
+      // guard makes only transient failures retryable (otherwise fail fast).
+      const retry = extractRetryConfig(step.expect);
+      if (retry && assertResult && !assertResult.pass) {
+        const sleep =
+          this.opts.sleep ??
+          ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+        let attempt = 0;
+        let latest = output;
+        while (
+          assertResult &&
+          !assertResult.pass &&
+          shouldRetry(attempt, retry, cleanTerminalOutput(latest))
+        ) {
+          await sleep(parseInterval(retry.interval));
+          await tmux.waitForPrompt(sessionName, 30_000);
+          latest = tmux.readOutput(sessionName, offset);
+          logger.emit({
+            type: 'pane_captured',
+            session: sessionName,
+            output: latest,
+          });
+          assertResult = this.verifyOutput(
+            step,
+            stepIndex,
+            latest,
+          ).assertResult;
+          attempt += 1;
+        }
+      }
+
       if (assertResult) return { state: 'assert_result', assertResult };
     }
 

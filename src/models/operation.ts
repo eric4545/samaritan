@@ -22,6 +22,14 @@ export type CaptureConfig = Record<string, CaptureRule>;
 export interface RetryAssertConfig {
   interval: string;
   max: number;
+  /**
+   * Optional "retryable" guard: only keep retrying while the captured output
+   * matches this pattern (substring OR regex) — e.g. a transient marker like
+   * `connection refused|timeout`. When the output stops matching, verification
+   * fails fast instead of burning the remaining attempts. Omit to retry on any
+   * failure up to `max`.
+   */
+  while?: string;
 }
 
 export interface ExpectConfig {

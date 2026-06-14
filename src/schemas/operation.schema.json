@@ -778,12 +778,16 @@
           "properties": {
             "interval": {
               "type": "string",
-              "description": "Polling interval e.g. '5s'"
+              "description": "Polling interval e.g. '5s', '500ms', '1m'"
             },
             "max": {
               "type": "number",
               "minimum": 1,
               "description": "Max retry count"
+            },
+            "while": {
+              "type": "string",
+              "description": "Only retry while the captured output matches this pattern (substring or regex) — a retryable/transient marker; otherwise fail fast"
             }
           },
           "additionalProperties": false

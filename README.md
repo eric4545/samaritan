@@ -1734,6 +1734,34 @@ verify:
 | `jsonpath: "$.status" equals: "ok"` | JSONPath expression equals value |
 | `equals_captured: VAR` | output equals a previously captured variable |
 
+#### Retryable verification (`expect.retry`)
+
+Some checks need a moment to settle (rolling deploys, health endpoints, async
+jobs). Add a `retry` block so an **automatic** step's verify re-captures the
+pane and re-asserts up to `max` times, `interval` apart:
+
+```yaml
+- name: Wait for rollout
+  type: automatic
+  command: kubectl rollout status deployment/web -n staging
+  expect:
+    contains: successfully rolled out
+    retry:
+      interval: 5s          # '5s', '500ms', '2m', or a bare number (ms)
+      max: 10               # stop after 10 retries
+      while: timeout|503    # OPTIONAL: only retry while output looks transient
+```
+
+- Without `while`, **any** failure is retried until it passes or `max` is hit.
+- With `while` (substring **or** regex), only failures whose captured output
+  matches the pattern are retried — a non-transient failure (e.g. a permission
+  error) **fails fast** instead of burning the remaining attempts. This is the
+  "retryable code / retryable message" guard.
+- Polling applies to the automatic-step verify path; manual `[v]` verify stays
+  operator-driven (press `[v]` again to re-check).
+
+See [examples/expect-retry.yaml](examples/expect-retry.yaml).
+
 ### Capture — carry values forward
 
 Extract values from command output and use them in later steps:
