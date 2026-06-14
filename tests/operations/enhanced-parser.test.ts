@@ -207,7 +207,6 @@ steps:
     assert.ok(preflightStep, 'Should have preflight step');
 
     assert.strictEqual(preflightStep.type, 'automatic');
-    assert.strictEqual(preflightStep.condition, 'active');
     assert.strictEqual(preflightStep.timeout, 10);
     assert.strictEqual(preflightStep.evidence?.required, true);
   });

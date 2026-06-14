@@ -114,13 +114,6 @@ export interface StepOptions {
   show_command_separately?: boolean; // Default: false - show command inline with instruction
 }
 
-export interface StepValidation {
-  expect?: string;
-  contains?: string;
-  exit_code?: number;
-  not_contains?: string;
-}
-
 export interface MatrixConfig {
   [key: string]: any[];
   include?: Array<Record<string, any>>;
@@ -201,13 +194,11 @@ export interface Step extends StepContent {
   type: StepType;
   phase?: StepPhase;
   if?: string;
-  condition?: string;
   estimated_duration?: number;
   env?: Record<string, any>;
   uses?: string; // Path to a file whose steps are expanded inline here
   with?: Record<string, any>; // Variables to pass to uses: (also used for parameterized steps)
   variables?: Record<string, any>; // Step-scoped variables (override env and common vars)
-  validation?: StepValidation;
   capture?: CaptureConfig;
   continue_on_error?: boolean;
   retry?: RetryConfig;

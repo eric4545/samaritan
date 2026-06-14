@@ -428,10 +428,10 @@ steps:
 - `session` — execution session reference
 - `pic` — Person In Charge
 - `reviewer` — Reviewer/buddy
-- `verify` — output verification config
+- `expect` — output verification config
 
 **Fields that remain `Step`-only (structural/organizational):**
-`name`, `type`, `id`, `phase`, `if`/`condition`, `foreach`, `sub_steps`, `when`, `variants`, `approval`, `needs`, `template`/`with`, `variables`, `capture`, `retry`, `rollback`, `section_heading`, `timeline`, `ticket`, `manual_override`, `manual_instructions`, `validation`, `estimated_duration`, `env`
+`name`, `type`, `id`, `phase`, `if`, `foreach`, `sub_steps`, `when`, `variants`, `approval`, `needs`, `template`/`with`, `variables`, `capture`, `retry`, `rollback`, `section_heading`, `timeline`, `ticket`, `manual_override`, `manual_instructions`, `estimated_duration`, `env`
 
 **Rule**: Never add a content/execution field directly to `Step` or `RollbackStep` — add it to `StepContent` so both types benefit automatically.
 

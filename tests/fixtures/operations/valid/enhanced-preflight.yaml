@@ -7,7 +7,6 @@ steps:
     type: automatic
     phase: preflight
     command: systemctl is-active docker
-    condition: active
     description: Verify Docker service is running
     timeout: 10
     evidence:
