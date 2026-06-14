@@ -825,6 +825,7 @@ Eliminate environment duplication across operations by using reusable environmen
 
 ```yaml
 # environments/k8s-cluster.yaml - Reusable environment definitions
+# (resolved relative to the operation file; see examples/environments/)
 apiVersion: samaritan/v1
 kind: EnvironmentManifest
 metadata:
@@ -2008,10 +2009,10 @@ samaritan/
 │   ├── models/        # Type definitions
 │   ├── schemas/       # JSON Schema validation
 │   └── validation/    # Schema validators
-├── environments/      # Reusable environment manifests
 ├── templates/         # Operation templates
 │   └── operations/    # Template operations with placeholders
 ├── examples/          # Example operations
+│   └── environments/  # Reusable environment manifests (k8s-cluster, database)
 ├── tests/            # Test suite
 └── bin/              # Executable wrapper
 ```

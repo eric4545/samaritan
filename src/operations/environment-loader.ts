@@ -43,18 +43,13 @@ export class EnvironmentLoader {
       return cached;
     }
 
-    // Try multiple possible locations for environment manifests
+    // Resolve manifests relative to the operation file: either a sibling
+    // `environments/` directory or alongside the operation itself.
     const possiblePaths = [
-      // First try relative to the operation file
       resolve(this.baseDirectory, 'environments', `${manifestName}.yaml`),
       resolve(this.baseDirectory, 'environments', `${manifestName}.yml`),
       resolve(this.baseDirectory, `${manifestName}.yaml`),
       resolve(this.baseDirectory, `${manifestName}.yml`),
-      // Then try project root (go up one level from examples/)
-      resolve(this.baseDirectory, '../environments', `${manifestName}.yaml`),
-      resolve(this.baseDirectory, '../environments', `${manifestName}.yml`),
-      resolve(this.baseDirectory, '..', `${manifestName}.yaml`),
-      resolve(this.baseDirectory, '..', `${manifestName}.yml`),
     ];
 
     let manifestPath: string | null = null;
