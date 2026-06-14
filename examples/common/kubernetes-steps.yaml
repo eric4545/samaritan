@@ -21,8 +21,9 @@ steps:
       docker tag ${IMAGE_NAME}:${VERSION} ${IMAGE_NAME}:latest
       docker push ${IMAGE_NAME}:latest
     timeout: 600
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     
   - name: k8s-deploy
     type: automatic
@@ -36,8 +37,9 @@ steps:
         ${CONTAINER_NAME}=${IMAGE_NAME}:${VERSION} \
         --context ${CLUSTER} -n ${NAMESPACE}
     timeout: 180
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     rollback:
       command: |
         kubectl rollout undo deployment/${DEPLOYMENT_NAME} \
@@ -52,8 +54,9 @@ steps:
         --context ${CLUSTER} -n ${NAMESPACE} \
         --timeout=300s
     timeout: 320
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     
   - name: k8s-scale-deployment
     type: automatic
@@ -68,8 +71,9 @@ steps:
         --context ${CLUSTER} -n ${NAMESPACE} \
         --timeout=180s
     timeout: 200
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     
   - name: k8s-create-namespace
     type: automatic
@@ -79,8 +83,9 @@ steps:
         --context ${CLUSTER} \
         --dry-run=client -o yaml | kubectl apply -f -
     timeout: 30
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
     
   - name: k8s-apply-secrets
     type: automatic
@@ -101,5 +106,6 @@ steps:
           --dry-run=client -o yaml | kubectl apply -f -
       fi
     timeout: 60
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]

@@ -20,7 +20,10 @@ describe('Git Metadata', () => {
       assert.strictEqual(metadata.operation_id, 'test-op-123');
       assert.strictEqual(metadata.operation_version, '2.0.0');
       assert.strictEqual(metadata.target_environment, 'production');
-      assert.strictEqual(metadata.generator_version, '1.0.0');
+      assert.strictEqual(
+        metadata.generator_version,
+        process.env.npm_package_version || '1.0.0',
+      );
 
       // Should have valid ISO timestamp
       assert(
@@ -66,7 +69,10 @@ describe('Git Metadata', () => {
       assert.strictEqual(metadata.source_file, 'examples/test.yaml');
       assert.strictEqual(metadata.operation_id, 'test-op-456');
       assert.strictEqual(metadata.operation_version, '1.5.0');
-      assert.strictEqual(metadata.generator_version, '1.0.0');
+      assert.strictEqual(
+        metadata.generator_version,
+        process.env.npm_package_version || '1.0.0',
+      );
     });
 
     it('should generate git short SHA from full SHA', async () => {

@@ -10,13 +10,16 @@ import {
 } from '../../src/lib/event-logger';
 import { SessionState } from '../../src/lib/session-state';
 import {
+  getTerminalSize,
   interpolateExpect,
   renderAssertOutcome,
   renderCodeBlock,
+  renderHighlightedBlock,
   renderKeyHints,
   renderVerifyOutcome,
   StepController,
   type StepControllerOptions,
+  truncateToWidth,
 } from '../../src/lib/tui';
 
 function makeLogger(id: string): EventLogger {
@@ -716,5 +719,125 @@ describe('renderVerifyOutcome', () => {
       assert.ok(out.includes('Running'));
       assert.ok(stripAnsi(out).includes('Running'));
     });
+  });
+});
+
+describe('responsive rendering (terminal size aware)', () => {
+  // Temporarily pretend stdout is a TTY of a given size, restoring after.
+  function withTerminal(
+    cols: number | undefined,
+    rows: number | undefined,
+    fn: () => void,
+  ): void {
+    const out = process.stdout as unknown as {
+      columns?: number;
+      rows?: number;
+    };
+    const prevCols = out.columns;
+    const prevRows = out.rows;
+    out.columns = cols;
+    out.rows = rows;
+    try {
+      fn();
+    } finally {
+      out.columns = prevCols;
+      out.rows = prevRows;
+    }
+  }
+
+  function visibleWidth(line: string): number {
+    return stripAnsi(line).length;
+  }
+
+  it('getTerminalSize returns Infinity when stdout is not a sized TTY', () => {
+    withTerminal(undefined, undefined, () => {
+      const { columns, rows } = getTerminalSize();
+      assert.strictEqual(columns, Number.POSITIVE_INFINITY);
+      assert.strictEqual(rows, Number.POSITIVE_INFINITY);
+    });
+  });
+
+  it('getTerminalSize reflects a known TTY size', () => {
+    withTerminal(40, 12, () => {
+      assert.deepStrictEqual(getTerminalSize(), { columns: 40, rows: 12 });
+    });
+  });
+
+  it('clamps code-block width to a small terminal and truncates long lines', () => {
+    withTerminal(40, 24, () => {
+      const out = renderCodeBlock('a'.repeat(200));
+      const lines = stripAnsi(out).split('\n');
+      for (const line of lines) {
+        assert.ok(
+          visibleWidth(line) <= 40,
+          `line exceeds 40 cols: ${visibleWidth(line)}`,
+        );
+      }
+      assert.ok(
+        out.includes('…'),
+        'over-long line is truncated with an ellipsis',
+      );
+    });
+  });
+
+  it('does NOT truncate when stdout is unbounded (non-TTY/CI)', () => {
+    withTerminal(undefined, undefined, () => {
+      const longCmd = 'a'.repeat(200);
+      const out = stripAnsi(renderCodeBlock(longCmd));
+      assert.ok(out.includes(longCmd), 'full content preserved when unbounded');
+    });
+  });
+
+  it('keeps highlighted-block borders aligned within a small terminal', () => {
+    withTerminal(48, 24, () => {
+      const styled = ['short', 'b'.repeat(120), 'tail'];
+      const out = renderHighlightedBlock(styled, 'output');
+      const boxLines = stripAnsi(out).split('\n');
+      const widths = new Set(boxLines.map(visibleWidth));
+      assert.strictEqual(
+        widths.size,
+        1,
+        `all box lines must share one width, got ${[...widths]}`,
+      );
+      for (const w of widths) {
+        assert.ok(w <= 48, `box width ${w} exceeds 48`);
+      }
+    });
+  });
+
+  it('shrinks the verify output tail on a short terminal', () => {
+    const detailed = {
+      pass: false,
+      actual: Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n'),
+      checks: [{ pass: false, type: 'contains', expected: 'nope', actual: '' }],
+    };
+    const expect = { contains: 'nope' };
+
+    let shortTailRows = 0;
+    withTerminal(80, 14, () => {
+      shortTailRows = renderVerifyOutcome(detailed, expect).split('\n').length;
+    });
+    let tallTailRows = 0;
+    withTerminal(80, 60, () => {
+      tallTailRows = renderVerifyOutcome(detailed, expect).split('\n').length;
+    });
+    assert.ok(
+      shortTailRows < tallTailRows,
+      `short terminal (${shortTailRows}) should render fewer rows than tall (${tallTailRows})`,
+    );
+  });
+
+  it('truncateToWidth is a no-op for unbounded width and preserves color reset', () => {
+    assert.strictEqual(
+      truncateToWidth('hello', Number.POSITIVE_INFINITY),
+      'hello',
+    );
+    const colored = `${String.fromCharCode(27)}[32mgreen-text-here${String.fromCharCode(27)}[0m`;
+    const cut = truncateToWidth(colored, 6);
+    assert.ok(visibleWidth(cut) <= 6, 'visible width respected');
+    assert.ok(
+      cut.endsWith(`${String.fromCharCode(27)}[0m`),
+      'trailing reset preserved',
+    );
   });
 });

@@ -340,6 +340,7 @@ See `examples/deployment-with-templates.yaml` for a complete example.
 npx github:eric4545/samaritan validate <operation.yaml> [options]
   --strict              Enable strict validation with best practices
   --env <environment>   Validate for specific environment
+  --lint                Lint step commands/scripts with shellcheck
   -v, --verbose         Verbose output
 
 # Execute an operation interactively
@@ -347,6 +348,9 @@ npx github:eric4545/samaritan run <operation.yaml> [options]
   --env <environment>       Target environment (required)
   --var KEY=VALUE           Override a variable (repeatable)
   --dry-run                 Preview full plan without executing
+  --mock                    Replay each step's expect against its
+                            evidence.results output (no tmux); exits non-zero
+                            on any failure — handy in CI
   --auto-approve            Skip manual approval prompts and switch to automatic mode
                             (does NOT execute commands non-interactively; see note below)
   -m, --mode <mode>         Execution mode: sidecar | manual | automatic | hybrid (default: sidecar)
@@ -414,6 +418,22 @@ npx github:eric4545/samaritan create operation [options]
   --env <environments>  Target environments (comma-separated)
 ```
 
+
+### Linting step commands (`--lint`)
+
+Pass `--lint` to `validate` to run every step's inline `command` (and the
+contents of referenced `script` files) through [shellcheck](https://www.shellcheck.net/):
+
+```bash
+npx github:eric4545/samaritan validate deployment.yaml --lint
+```
+
+- Findings are reported as **warnings** by default (they don't fail validation);
+  with `--strict` they become **errors**.
+- shellcheck is **optional** — if it isn't installed, linting is skipped with a
+  notice and validation proceeds normally (CI stays green without it).
+- Each finding shows the step, source (`command`/`script`), line, and SC code,
+  e.g. `shell-lint: step "Deploy" (command) line 1: [SC2086] Double quote to prevent globbing.`
 
 ### Schema Inspection
 
@@ -825,6 +845,7 @@ Eliminate environment duplication across operations by using reusable environmen
 
 ```yaml
 # environments/k8s-cluster.yaml - Reusable environment definitions
+# (resolved relative to the operation file; see examples/environments/)
 apiVersion: samaritan/v1
 kind: EnvironmentManifest
 metadata:
@@ -1543,6 +1564,8 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 
 > Verification runs against **cleaned** pane output: ANSI color codes and escape sequences are stripped and `\r`-overwrites (progress bars, `\r\n` line endings) are resolved before `expect` assertions run — so `contains`/`equals` match what you actually see on screen, even when tools colorize their output.
 
+> **Responsive output**: command boxes and the verify output are sized to your terminal. On a narrow terminal, over-long lines are truncated with `…` so box borders stay aligned, and the captured-output tail shrinks to fit a short window. When output is piped or redirected (no TTY), rendering is unbounded and full content is preserved.
+
 ### Manual-step actions: note, evidence, verify
 
 `manual` steps offer extra operator actions while you're working the step — they don't complete the step, so you can use any of them as many times as you like before pressing Enter to mark the step done:
@@ -1562,6 +1585,30 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
   All evidence bytes — including dragged-in files, screenshots, and videos — are stored exclusively under `~/.samaritan/sessions/<session-id>/evidence/`, alongside the session's own JSON record. SAMARITAN never leaves a second copy elsewhere: the persisted session references the file by path rather than embedding its raw bytes.
 - **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's captured evidence (type, description, and stored path), lets you pick one by number to delete, removes it from the session record, and — for file/screenshot/video evidence copied into the session's evidence directory — deletes the copy from disk too (your original source file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event, and the `--report` Markdown omits removed items entirely.
 - **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutputDetailed`/`interpolateExpect` machinery `automatic` steps use), evaluating **every** check (not just the first failure) and rendering the PASS/FAIL checklist + highlighted, line-numbered output described in [Verify output: checklist, highlighting, and the line-number gutter](#verify-output-checklist-highlighting-and-the-line-number-gutter) — and, on failure, the override/rollback/`[m]` more/`[v]` re-verify/stop prompt. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
+  - **Auto-capture on pass (closes the `expect` ↔ `evidence` loop):** the first time a step's `[v]` verify **passes**, the verified pane output is automatically saved as a `command_output` evidence item (marked `automatic`/`validated`, `source: verify`) — so the output you checked also becomes the output recorded in the session and `--report`. Re-pressing `[v]` won't record duplicates. `evidence` (the record) and `expect` (the check) stay separate concepts; this just records what you verified.
+
+### Mock run (`--mock`): replay `expect` against captured evidence
+
+`samaritan run <op> --env <env> --mock` validates your verification rules
+**without** a terminal, tmux, or executing anything. For each step that defines
+`expect`, it pulls the `command_output`/`log` entries from
+`evidence.results[<env>]` (inline `content` or a referenced `file`), runs them
+through the same `assertOutputDetailed` engine the interactive `[v]` verify
+uses, and prints a per-step PASS/FAIL/SKIP report with the highlighted output:
+
+```bash
+samaritan run examples/mock-run-expect.yaml --env staging --mock
+```
+
+- Steps with `expect` but no replayable evidence for the environment are
+  **skipped** (reported, not failed).
+- `${VAR}` references in `expect` are resolved against the environment's
+  variables, exactly as a real run would.
+- Exits **non-zero** if any assertion fails — so CI can catch the day your
+  `expect` rules drift from the output you actually capture.
+
+This reuses `evidence.results` read-only; it doesn't change what evidence is
+for. See [examples/mock-run-expect.yaml](examples/mock-run-expect.yaml).
 
 ### The run record (durable, beside the operation)
 
@@ -1686,6 +1733,34 @@ verify:
 | `numeric_gte: 80` | first number in output ≥ value |
 | `jsonpath: "$.status" equals: "ok"` | JSONPath expression equals value |
 | `equals_captured: VAR` | output equals a previously captured variable |
+
+#### Retryable verification (`expect.retry`)
+
+Some checks need a moment to settle (rolling deploys, health endpoints, async
+jobs). Add a `retry` block so an **automatic** step's verify re-captures the
+pane and re-asserts up to `max` times, `interval` apart:
+
+```yaml
+- name: Wait for rollout
+  type: automatic
+  command: kubectl rollout status deployment/web -n staging
+  expect:
+    contains: successfully rolled out
+    retry:
+      interval: 5s          # '5s', '500ms', '2m', or a bare number (ms)
+      max: 10               # stop after 10 retries
+      while: timeout|503    # OPTIONAL: only retry while output looks transient
+```
+
+- Without `while`, **any** failure is retried until it passes or `max` is hit.
+- With `while` (substring **or** regex), only failures whose captured output
+  matches the pattern are retried — a non-transient failure (e.g. a permission
+  error) **fails fast** instead of burning the remaining attempts. This is the
+  "retryable code / retryable message" guard.
+- Polling applies to the automatic-step verify path; manual `[v]` verify stays
+  operator-driven (press `[v]` again to re-check).
+
+See [examples/expect-retry.yaml](examples/expect-retry.yaml).
 
 ### Capture — carry values forward
 
@@ -2008,10 +2083,10 @@ samaritan/
 │   ├── models/        # Type definitions
 │   ├── schemas/       # JSON Schema validation
 │   └── validation/    # Schema validators
-├── environments/      # Reusable environment manifests
 ├── templates/         # Operation templates
 │   └── operations/    # Template operations with placeholders
 ├── examples/          # Example operations
+│   └── environments/  # Reusable environment manifests (k8s-cluster, database)
 ├── tests/            # Test suite
 └── bin/              # Executable wrapper
 ```

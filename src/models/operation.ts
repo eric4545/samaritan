@@ -22,6 +22,14 @@ export type CaptureConfig = Record<string, CaptureRule>;
 export interface RetryAssertConfig {
   interval: string;
   max: number;
+  /**
+   * Optional "retryable" guard: only keep retrying while the captured output
+   * matches this pattern (substring OR regex) — e.g. a transient marker like
+   * `connection refused|timeout`. When the output stops matching, verification
+   * fails fast instead of burning the remaining attempts. Omit to retry on any
+   * failure up to `max`.
+   */
+  while?: string;
 }
 
 export interface ExpectConfig {
@@ -106,13 +114,6 @@ export interface StepOptions {
   show_command_separately?: boolean; // Default: false - show command inline with instruction
 }
 
-export interface StepValidation {
-  expect?: string;
-  contains?: string;
-  exit_code?: number;
-  not_contains?: string;
-}
-
 export interface MatrixConfig {
   [key: string]: any[];
   include?: Array<Record<string, any>>;
@@ -150,7 +151,6 @@ export interface StepContent {
   timeout?: number;
   description?: string;
   evidence?: EvidenceConfig;
-  evidence_required?: boolean; // DEPRECATED: Use evidence.required instead
   options?: StepOptions;
   session?: string;
   pic?: string;
@@ -194,14 +194,11 @@ export interface Step extends StepContent {
   type: StepType;
   phase?: StepPhase;
   if?: string;
-  condition?: string;
   estimated_duration?: number;
   env?: Record<string, any>;
   uses?: string; // Path to a file whose steps are expanded inline here
   with?: Record<string, any>; // Variables to pass to uses: (also used for parameterized steps)
   variables?: Record<string, any>; // Step-scoped variables (override env and common vars)
-  evidence_types?: EvidenceType[]; // DEPRECATED: Use evidence.types instead
-  validation?: StepValidation;
   capture?: CaptureConfig;
   continue_on_error?: boolean;
   retry?: RetryConfig;

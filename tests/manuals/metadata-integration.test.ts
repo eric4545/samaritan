@@ -74,7 +74,11 @@ describe('Manual Generation with Metadata Integration', () => {
     assert(manual.includes('operation_id: "metadata-test-123"'));
     assert(manual.includes('operation_version: "3.0.0"'));
     assert(manual.includes('target_environment: "production"'));
-    assert(manual.includes('generator_version: "1.0.0"'));
+    assert(
+      manual.includes(
+        `generator_version: "${process.env.npm_package_version || '1.0.0'}"`,
+      ),
+    );
 
     // Git fields should be present (either real values from actual git or 'unknown' as fallback)
     assert(manual.includes('git_sha:'));

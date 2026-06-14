@@ -111,23 +111,11 @@ function parseEnvFile(filePath: string): Record<string, any> {
 }
 
 function parseEvidence(data: any): EvidenceConfig | undefined {
-  // New nested format
   if (data.evidence) {
     return {
       required: Boolean(data.evidence.required),
       types: data.evidence.types as EvidenceType[],
       results: data.evidence.results, // Pass through results array if present
-    };
-  }
-
-  // Legacy format - convert to new format
-  if (
-    data.evidence_required !== undefined ||
-    data.evidence_types !== undefined
-  ) {
-    return {
-      required: Boolean(data.evidence_required),
-      types: data.evidence_types as EvidenceType[],
     };
   }
 
@@ -692,11 +680,39 @@ function extractExpect(stepData: any): any {
   return undefined;
 }
 
+function assertNoDeprecatedEvidenceFields(data: any, stepName?: string): void {
+  if (!data || typeof data !== 'object') return;
+  const removed = ['evidence_required', 'evidence_types'].filter(
+    (key) => key in data,
+  );
+  if (removed.length === 0) return;
+
+  const where = stepName ? ` in step "${stepName}"` : '';
+  throw new OperationParseError(
+    `Removed field(s) ${removed.join(', ')}${where} are no longer supported. ` +
+      'Migrate to the nested evidence format:\n' +
+      '  evidence:\n    required: true\n    types: [command_output]',
+    removed.map((field) => ({
+      field,
+      message: 'removed — use evidence.required / evidence.types instead',
+    })),
+  );
+}
+
 async function parseStep(
   stepData: any,
   _stepIndex: number,
   importContext?: ImportContext,
 ): Promise<Step> {
+  assertNoDeprecatedEvidenceFields(stepData, stepData?.name);
+  if (Array.isArray(stepData?.rollback)) {
+    for (const r of stepData.rollback) {
+      assertNoDeprecatedEvidenceFields(r, stepData?.name);
+    }
+  } else if (stepData?.rollback) {
+    assertNoDeprecatedEvidenceFields(stepData.rollback, stepData?.name);
+  }
+
   // Parse sub-steps recursively
   let subSteps: Step[] | undefined;
   if (stepData.sub_steps && Array.isArray(stepData.sub_steps)) {
@@ -756,7 +772,6 @@ async function parseStep(
           pic: stepData.rollback.pic,
           reviewer: stepData.rollback.reviewer,
           evidence: parseEvidence(stepData.rollback),
-          evidence_required: Boolean(stepData.rollback.evidence_required),
           expect: extractExpect(stepData.rollback),
           options: stepData.rollback.options
             ? {
@@ -781,7 +796,6 @@ async function parseStep(
     command: stepData.command,
     script: stepData.script,
     instruction: stepData.instruction,
-    condition: stepData.condition,
     timeout: stepData.timeout,
     estimated_duration: stepData.estimated_duration,
     env: stepData.env,
@@ -789,9 +803,6 @@ async function parseStep(
     with: stepData.with,
     variables: stepData.variables,
     evidence: parseEvidence(stepData),
-    evidence_required: Boolean(stepData.evidence_required), // DEPRECATED: Use evidence.required instead
-    evidence_types: stepData.evidence_types as EvidenceType[], // DEPRECATED: Use evidence.types instead
-    validation: stepData.validation,
     session: stepData.session,
     expect: extractExpect(stepData),
     capture: stepData.capture,

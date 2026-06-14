@@ -1,5 +1,10 @@
 import { existsSync } from 'node:fs';
 import { Command } from 'commander';
+import {
+  formatFinding,
+  isShellcheckAvailable,
+  lintOperationCommands,
+} from '../../lib/shell-lint';
 import type { Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
@@ -8,12 +13,14 @@ interface ValidationResult {
   errors: string[];
   warnings: string[];
   operation?: Operation;
+  lintSkipped?: boolean;
 }
 
 interface ValidationOptions {
   strict?: boolean;
   env?: string;
   verbose?: boolean;
+  lint?: boolean;
 }
 
 class OperationValidator {
@@ -55,6 +62,10 @@ class OperationValidator {
 
       if (options.env) {
         this.validateForEnvironment(operation, options.env, result);
+      }
+
+      if (options.lint) {
+        this.lintCommands(operation, filePath, result, options);
       }
     } catch (error: any) {
       result.errors.push(`Parsing error: ${error.message}`);
@@ -209,8 +220,8 @@ class OperationValidator {
 
       // Evidence validation
       if (
-        step.evidence_required &&
-        (!step.evidence_types || step.evidence_types.length === 0)
+        step.evidence?.required &&
+        (!step.evidence.types || step.evidence.types.length === 0)
       ) {
         result.warnings.push(
           `Step ${i + 1} (${step.name}): evidence required but no evidence types specified`,
@@ -297,7 +308,7 @@ class OperationValidator {
       );
     }
 
-    if (operation.steps.filter((s) => s.evidence_required).length === 0) {
+    if (operation.steps.filter((s) => s.evidence?.required).length === 0) {
       result.warnings.push(
         'No steps require evidence collection (recommended for audit trails)',
       );
@@ -336,6 +347,28 @@ class OperationValidator {
       result.warnings.push(`No variables defined for environment '${envName}'`);
     }
   }
+
+  private lintCommands(
+    operation: Operation,
+    filePath: string,
+    result: ValidationResult,
+    options: ValidationOptions,
+  ): void {
+    if (!isShellcheckAvailable()) {
+      // shellcheck is optional — record that we skipped so the CLI can print a
+      // notice, but never fail validation just because it isn't installed.
+      result.lintSkipped = true;
+      return;
+    }
+
+    const findings = lintOperationCommands(operation, filePath);
+    // Under --strict, lint findings are errors (fail the build); otherwise they
+    // are warnings (informational, non-fatal).
+    const sink = options.strict ? result.errors : result.warnings;
+    for (const finding of findings) {
+      sink.push(`shell-lint: ${formatFinding(finding)}`);
+    }
+  }
 }
 
 const validateCommand = new Command('validate')
@@ -344,6 +377,10 @@ const validateCommand = new Command('validate')
   .option('--strict', 'Enable strict validation with best practices')
   .option('-e, --env <environment>', 'Validate for specific environment')
   .option('-v, --verbose', 'Verbose output')
+  .option(
+    '--lint',
+    'Lint step commands/scripts with shellcheck (skipped if not installed)',
+  )
   .action(async (file: string, options: ValidationOptions) => {
     const validator = new OperationValidator();
 
@@ -362,6 +399,12 @@ const validateCommand = new Command('validate')
         );
         console.log(`🔧 Steps: ${result.operation.steps.length}`);
         console.log('');
+      }
+
+      if (result.lintSkipped) {
+        console.log(
+          'ℹ️  shell-lint skipped: shellcheck not found on PATH (install it to enable command linting)\n',
+        );
       }
 
       // Display warnings

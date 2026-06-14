@@ -477,10 +477,10 @@ export class OperationExecutor {
   private initializeEvidenceCollectors(): void {
     this.state.steps.forEach((stepState) => {
       const { step } = stepState;
-      if (step.evidence_required) {
+      if (step.evidence?.required) {
         const requirements = createEvidenceRequirements(
-          step.evidence_required,
-          step.evidence_types,
+          step.evidence.required,
+          step.evidence.types,
           {
             description: `Evidence required for step: ${step.name}`,
           },
@@ -651,7 +651,7 @@ export class OperationExecutor {
       }
 
       // Handle evidence collection
-      if (step.evidence_required && stepState.evidenceCollector) {
+      if (step.evidence?.required && stepState.evidenceCollector) {
         this.emitEvent({
           type: 'evidence_required',
           timestamp: new Date(),

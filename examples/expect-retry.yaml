@@ -1,0 +1,47 @@
+# expect.retry — poll a flaky/eventually-consistent check
+#
+# When an automatic step's [v] verify is configured with `expect.retry`,
+# SAMARITAN re-captures the pane output and re-asserts up to `max` times,
+# waiting `interval` between tries — handy for checks that need a moment to
+# settle (rolling deploys, health endpoints coming up, async jobs).
+#
+# Add a `while` guard to mark which failures are *retryable*: keep polling only
+# while the output matches a transient marker (e.g. "connection refused"); any
+# other failure fails fast instead of burning all the attempts.
+name: Expect Retry Demo
+version: 1.0.0
+description: Demonstrate retryable verification with expect.retry
+author: sre-team@example.com
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+    restrictions: []
+    approval_required: false
+    validation_required: false
+
+steps:
+  - name: Wait for rollout to become Ready
+    type: automatic
+    command: kubectl rollout status deployment/web -n ${NAMESPACE}
+    # Re-check up to 10 times, 5s apart, until the rollout reports success.
+    expect:
+      contains: successfully rolled out
+      retry:
+        interval: 5s
+        max: 10
+
+  - name: Health check (retry only on transient errors)
+    type: automatic
+    command: curl -fsS http://web.${NAMESPACE}.svc/health
+    # Keep retrying ONLY while the output looks transient; a 4xx/permission
+    # error stops immediately instead of waiting out all 6 attempts.
+    expect:
+      contains: '"status":"healthy"'
+      retry:
+        interval: 3s
+        max: 6
+        while: connection refused|timeout|503

@@ -70,6 +70,10 @@ tests/
 ### ✅ Implemented since v1.1
 - **Interactive execution** (`run` command — sidecar/manual/automatic/hybrid modes, see Gotcha #3)
 - **Session persistence + resume** (`~/.samaritan/sessions/<id>.json`, `resume <session-id>`)
+- **Mock run** (`run --mock`, `src/lib/mock-run.ts`) — replays each step's `expect` against its `evidence.results[<env>]` `command_output`/`log` output (no tmux/execution); resolves `${VAR}` in `expect`, prints a PASS/FAIL/SKIP report, exits non-zero on failure. Read-only reuse of `evidence.results`.
+- **Auto-capture on verify** (`src/lib/verified-evidence.ts` `buildVerifiedEvidenceItem`) — in the interactive run loop, the first passing `[v]` verify per step auto-records the verified pane output as a `command_output` EvidenceItem (`automatic`/`validated`, `metadata.source: 'verify'`), deduped per step. Keeps `expect` (the check) and `evidence` (the record) as separate concepts while closing the loop.
+- **Retryable verification** (`expect.retry`, `src/lib/retry-assert.ts`) — `StepController.runVerify` (automatic verify path) now polls on a failed assertion: waits `interval` (`parseInterval`: `5s`/`500ms`/`2m`/bare ms), re-captures the pane, re-asserts up to `max` times. Optional `expect.retry.while` (substring or regex) is a retryable guard — only transient-matching failures are retried, others fail fast (`isRetryableOutput`/`shouldRetry`). Sleep is injectable via `StepControllerOptions.sleep` for tests. (`step.retry` step-level command re-execution remains a ROADMAP item — unimplemented.)
+- **Command linting** (`validate --lint`, `src/lib/shell-lint.ts`) — optional shellcheck pass over step `command`/`script`; warnings by default, errors under `--strict`, gracefully skipped when shellcheck is absent.
 
 ### 🚧 NOT Implemented (Roadmap)
 These features are **documented but not functional**:
@@ -306,9 +310,10 @@ evidence:
           pod/web-0    1/1     Running   0    10s
         description: Production deployment output
 
-# ⚠️ Deprecated (still supported for backward compatibility)
-evidence_required: true
-evidence_types: [screenshot, log]
+# ❌ Removed (parser throws a migration error if these appear)
+# evidence_required: true
+# evidence_types: [screenshot, log]
+# Use the nested evidence: { required, types } form above instead.
 ```
 
 **Evidence Results Details:**
@@ -418,15 +423,15 @@ steps:
 - `instruction` — markdown instructions
 - `timeout` — step timeout in seconds
 - `description` — step description
-- `evidence` / `evidence_required` — evidence config
+- `evidence` — evidence config (nested `{ required, types, results }`)
 - `options` — step options (substitute_vars, show_command_separately)
 - `session` — execution session reference
 - `pic` — Person In Charge
 - `reviewer` — Reviewer/buddy
-- `verify` — output verification config
+- `expect` — output verification config
 
 **Fields that remain `Step`-only (structural/organizational):**
-`name`, `type`, `id`, `phase`, `if`/`condition`, `foreach`, `sub_steps`, `when`, `variants`, `approval`, `needs`, `template`/`with`, `variables`, `capture`, `retry`, `rollback`, `section_heading`, `timeline`, `ticket`, `manual_override`, `manual_instructions`, `validation`, `estimated_duration`, `env`
+`name`, `type`, `id`, `phase`, `if`, `foreach`, `sub_steps`, `when`, `variants`, `approval`, `needs`, `template`/`with`, `variables`, `capture`, `retry`, `rollback`, `section_heading`, `timeline`, `ticket`, `manual_override`, `manual_instructions`, `estimated_duration`, `env`
 
 **Rule**: Never add a content/execution field directly to `Step` or `RollbackStep` — add it to `StepContent` so both types benefit automatically.
 

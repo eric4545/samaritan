@@ -1,0 +1,17 @@
+name: Deprecated Evidence Fields
+version: 1.0.0
+description: Uses the removed flat evidence_required/evidence_types fields
+author: test
+environments:
+  - name: staging
+    description: Staging environment
+    variables: {}
+    restrictions: []
+    approval_required: false
+    validation_required: false
+steps:
+  - name: Old Evidence Step
+    type: automatic
+    command: echo hi
+    evidence_required: true
+    evidence_types: ["command_output"]

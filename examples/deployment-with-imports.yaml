@@ -87,8 +87,9 @@ steps:
         --context ${CLUSTER} -n ${NAMESPACE} \
         --dry-run=client -o yaml | kubectl apply -f -
     timeout: 30
-    evidence_required: true
-    evidence_types: ["command_output"]
+    evidence:
+      required: true
+      types: ["command_output"]
 
   # Expand all Kubernetes steps inline — pass env vars explicitly
   - uses: ./common/kubernetes-steps.yaml

@@ -22,6 +22,7 @@ import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
 import { indexToLetters } from '../../lib/letter-sequence';
+import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { generateReport, renderReport } from '../../lib/report-generator';
 import {
   buildStepRecords,
@@ -53,6 +54,7 @@ import {
   resolveVars,
   resolveVarsSafe,
 } from '../../lib/variable-resolver';
+import { buildVerifiedEvidenceItem } from '../../lib/verified-evidence';
 import type { EvidenceItem } from '../../models/evidence';
 import type {
   EvidenceType,
@@ -75,6 +77,7 @@ interface RunOptions {
   environment?: string;
   autoApprove?: boolean;
   dryRun?: boolean;
+  mock?: boolean;
   mode?: ExecutionMode;
   attach?: string;
   variables?: string[];
@@ -104,6 +107,61 @@ function flattenStepsForExecution(steps: Step[], prefix = ''): FlatStep[] {
 }
 
 class OperationRunner {
+  /**
+   * Mock run: replay each step's `expect` against its pre-captured
+   * `evidence.results[<env>]` output (no tmux, no execution). Prints a per-step
+   * PASS/FAIL/SKIP report and exits non-zero if any assertion failed — useful
+   * for validating verification rules in CI.
+   */
+  async runMock(operationFile: string, options: RunOptions): Promise<void> {
+    const targetEnv = options.env || options.environment;
+    if (!targetEnv) {
+      throw new Error(
+        "Required option '-e, --env <environment>' not specified",
+      );
+    }
+
+    const absFile = existsSync(operationFile)
+      ? realpathSync(operationFile)
+      : operationFile;
+    const operation = await this.parseOperationFile(absFile);
+
+    if (!operation.environments.some((e) => e.name === targetEnv)) {
+      throw new Error(
+        `Environment '${targetEnv}' not found in operation. Available: ${operation.environments.map((e) => e.name).join(', ')}`,
+      );
+    }
+
+    console.log(`🧪 Mock run (expect replay): ${absFile}`);
+    console.log(`🎯 Target environment: ${targetEnv}\n`);
+
+    const result = runMockExpect(operation, targetEnv, dirname(absFile));
+    this.printMockReport(result);
+
+    if (result.failed > 0) {
+      process.exit(1);
+    }
+  }
+
+  private printMockReport(result: MockRunResult): void {
+    for (const step of result.results) {
+      if (step.status === 'skipped') {
+        console.log(`⏭️  ${step.stepName} — skipped (${step.reason})`);
+        continue;
+      }
+      const icon = step.status === 'pass' ? '✅' : '❌';
+      console.log(`${icon} ${step.stepName}`);
+      if (step.detailed) {
+        console.log(renderVerifyOutcome(step.detailed, step.expect));
+      }
+      console.log('');
+    }
+
+    console.log(
+      `Mock run summary: ${result.passed} passed, ${result.failed} failed, ${result.skipped} skipped`,
+    );
+  }
+
   async runOperation(
     operationFile: string,
     options: RunOptions,
@@ -982,6 +1040,39 @@ class OperationRunner {
     // the full checklist + highlighted output (PASS or FAIL); on FAIL offers
     // a single-key menu to override/rollback/stop, re-verify (re-capture and
     // re-assert), or show the full (non-truncated) output.
+    // Steps whose passing verify already auto-captured evidence — so repeated
+    // [v] presses don't record duplicate command_output items.
+    const autoVerifiedSteps = new Set<number>();
+
+    // Close the loop between expect and evidence: a PASSING [v] verify records
+    // the verified pane output as command_output evidence (once per step), so
+    // the output you checked also becomes the output you keep.
+    const captureVerifiedEvidence = (
+      stepIndex: number,
+      output: string,
+    ): void => {
+      if (autoVerifiedSteps.has(stepIndex) || !output.trim()) return;
+      autoVerifiedSteps.add(stepIndex);
+
+      const item = buildVerifiedEvidenceItem(
+        stepIndex,
+        output,
+        state.context.operator,
+      );
+
+      sessionManager.addEvidence(state.context.sessionId, item);
+      logger.emit({
+        type: 'evidence_captured',
+        step: stepIndex,
+        evidence_id: item.id,
+        evidence_type: 'command_output',
+        automatic: true,
+        description: item.description,
+        content: output,
+      });
+      console.log('    📎 Verified output captured as evidence.');
+    };
+
     const verifyManualOutput = async (
       step: Step,
       stepIndex: number,
@@ -1012,6 +1103,7 @@ class OperationRunner {
         console.log(renderVerifyOutcome(detailed, step.expect, { expand }));
 
         if (assertResult.pass) {
+          captureVerifiedEvidence(stepIndex, output);
           console.log(
             '    ✅ Verify passed — press [v] again any time to re-check.',
           );
@@ -1621,6 +1713,10 @@ const runCommand = new Command('run')
   .option('--auto-approve', 'Auto-approve all manual steps and approvals')
   .option('--dry-run', 'Preview full operation plan without executing')
   .option(
+    '--mock',
+    'Replay each step expect against its evidence.results output (no tmux); non-zero exit on failure',
+  )
+  .option(
     '-m, --mode <mode>',
     'Execution mode: sidecar | manual | automatic | hybrid',
     'sidecar',
@@ -1649,7 +1745,11 @@ const runCommand = new Command('run')
         process.exit(1);
       }
       const runner = new OperationRunner();
-      await runner.runOperation(operation, options);
+      if (options.mock) {
+        await runner.runMock(operation, options);
+      } else {
+        await runner.runOperation(operation, options);
+      }
     } catch (error: any) {
       console.error(`❌ Execution failed: ${error.message}`);
       process.exit(1);

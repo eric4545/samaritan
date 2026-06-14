@@ -22,6 +22,10 @@ npx github:eric4545/samaritan generate manual examples/deployment.yaml --env sta
 # Preview operation plan without executing (dry run) — default sidecar mode
 npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging --dry-run
 
+# Replay each step's expect against its captured evidence.results (no tmux);
+# exits non-zero on any failure — handy in CI to catch drifted verify rules
+npx github:eric4545/samaritan run examples/mock-run-expect.yaml --env staging --mock
+
 # Execute with sidecar mode (default): samaritan displays commands, you run them
 npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging
 
