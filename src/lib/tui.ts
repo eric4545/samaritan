@@ -317,15 +317,20 @@ export function renderCodeBlock(code: string, language = 'bash'): string {
   const lines = rawLines.length > 0 ? rawLines : [''];
 
   const MIN_FILL = language.length + 4;
+  const { columns } = getTerminalSize();
+  const maxFill = Math.max(MIN_FILL, columns - BOX_CHROME_COLS + 2);
   const maxLineLen = Math.max(...lines.map((l) => l.length));
-  const fillWidth = Math.max(maxLineLen + 2, MIN_FILL);
+  const fillWidth = Math.min(Math.max(maxLineLen + 2, MIN_FILL), maxFill);
 
   const topDashes = '─'.repeat(fillWidth - language.length - 3);
   const top = `  ${DIM}╭─ ${RESET}${CYAN_BOLD}${language}${RESET}${DIM} ${topDashes}╮${RESET}`;
   const bottom = `  ${DIM}╰${'─'.repeat(fillWidth)}╯${RESET}`;
 
-  const codeLines = lines.map((line) => {
-    const padding = ' '.repeat(fillWidth - line.length - 2);
+  const codeLines = lines.map((raw) => {
+    const line = truncateToWidth(raw, fillWidth - 2);
+    const padding = ' '.repeat(
+      Math.max(0, fillWidth - stripAnsi(line).length - 2),
+    );
     return `  ${DIM}│${RESET} ${line}${padding} ${DIM}│${RESET}`;
   });
 
@@ -383,20 +388,28 @@ export function renderHighlightedBlock(
       })
     : rawLines;
 
+  const MIN_FILL = language.length + 4;
+  const { columns } = getTerminalSize();
+  const maxFill = Math.max(MIN_FILL, columns - BOX_CHROME_COLS + 2);
+
   // Compute each decorated line's visible width once (stripAnsi is otherwise
   // re-run for both the max-width pass and the per-line padding pass).
-  const visibleWidths = decoratedLines.map((l) => stripAnsi(l).length);
+  const rawWidths = decoratedLines.map((l) => stripAnsi(l).length);
+  const maxLineLen = Math.max(...rawWidths);
+  const fillWidth = Math.min(Math.max(maxLineLen + 2, MIN_FILL), maxFill);
 
-  const MIN_FILL = language.length + 4;
-  const maxLineLen = Math.max(...visibleWidths);
-  const fillWidth = Math.max(maxLineLen + 2, MIN_FILL);
+  // Clamp content to the (possibly terminal-bounded) box width.
+  const clippedLines = decoratedLines.map((line, i) =>
+    rawWidths[i] > fillWidth - 2 ? truncateToWidth(line, fillWidth - 2) : line,
+  );
+  const visibleWidths = clippedLines.map((l) => stripAnsi(l).length);
 
   const topDashes = '─'.repeat(fillWidth - language.length - 3);
   const top = `  ${DIM}╭─ ${RESET}${CYAN_BOLD}${language}${RESET}${DIM} ${topDashes}╮${RESET}`;
   const bottom = `  ${DIM}╰${'─'.repeat(fillWidth)}╯${RESET}`;
 
-  const codeLines = decoratedLines.map((line, i) => {
-    const padding = ' '.repeat(fillWidth - visibleWidths[i] - 2);
+  const codeLines = clippedLines.map((line, i) => {
+    const padding = ' '.repeat(Math.max(0, fillWidth - visibleWidths[i] - 2));
     return `  ${DIM}│${RESET} ${line}${padding} ${DIM}│${RESET}`;
   });
 
@@ -417,6 +430,75 @@ const ASSERT_ACTUAL_TAIL_LINES = 8;
 const ASSERT_ACTUAL_MAX_LINE_LEN = 200;
 const VERIFY_OUTPUT_TAIL_LINES = 12;
 
+// Rows reserved (header, checklist, borders, prompt) when scaling output tails
+// to a small terminal; the captured-output tail shrinks to fit the remainder.
+const TAIL_RESERVED_ROWS = 10;
+const MIN_TAIL_LINES = 3;
+// Visible columns consumed by a code-block line OUTSIDE the content area
+// (`  │ ` prefix + ` │` suffix). Content fits in `columns - BOX_CHROME_COLS`.
+const BOX_CHROME_COLS = 6;
+
+const ANSI_SEQ_RE = new RegExp(`^${ANSI_ESC}\\[[0-9;]*m`);
+
+/**
+ * Current terminal size. Returns `Infinity` for either dimension when stdout
+ * is NOT an interactive TTY (pipes, CI, redirected output) so rendering stays
+ * unbounded and byte-for-byte identical to the pre-responsive behavior; only a
+ * real terminal with a known small size triggers clamping/truncation.
+ */
+export function getTerminalSize(): { columns: number; rows: number } {
+  const { columns, rows } = process.stdout;
+  return {
+    columns:
+      typeof columns === 'number' && columns > 0
+        ? columns
+        : Number.POSITIVE_INFINITY,
+    rows:
+      typeof rows === 'number' && rows > 0 ? rows : Number.POSITIVE_INFINITY,
+  };
+}
+
+/**
+ * Truncate a (possibly ANSI-styled) line to `maxWidth` VISIBLE columns,
+ * appending `…`. ANSI escape sequences pass through without counting toward
+ * the width, and a trailing RESET is added when any style code survived so
+ * colors don't bleed past the cut. No-op when `maxWidth` is non-finite.
+ */
+export function truncateToWidth(line: string, maxWidth: number): string {
+  if (!Number.isFinite(maxWidth) || maxWidth <= 0) return line;
+  if (stripAnsi(line).length <= maxWidth) return line;
+
+  const budget = Math.max(1, maxWidth - 1); // reserve a column for the ellipsis
+  let out = '';
+  let visible = 0;
+  let i = 0;
+  let sawAnsi = false;
+  while (i < line.length && visible < budget) {
+    const seq = line.slice(i).match(ANSI_SEQ_RE);
+    if (seq) {
+      out += seq[0];
+      i += seq[0].length;
+      sawAnsi = true;
+      continue;
+    }
+    out += line[i];
+    visible++;
+    i++;
+  }
+  return `${out}…${sawAnsi ? RESET : ''}`;
+}
+
+/**
+ * Scale an output-tail line count to the current terminal height: capped at
+ * `maxTail`, never below `MIN_TAIL_LINES`, and unchanged when the height is
+ * unknown (non-TTY).
+ */
+function scaleTailLines(maxTail: number): number {
+  const { rows } = getTerminalSize();
+  if (!Number.isFinite(rows)) return maxTail;
+  return Math.max(MIN_TAIL_LINES, Math.min(maxTail, rows - TAIL_RESERVED_ROWS));
+}
+
 /**
  * Render a verify assertion outcome for the interactive loop. On failure the
  * tail of the actual captured output is included so the operator can see WHY
@@ -430,7 +512,7 @@ export function renderAssertOutcome(result: AssertResult): string {
   if (!result.pass && result.actual.trim()) {
     const tail = result.actual
       .split('\n')
-      .slice(-ASSERT_ACTUAL_TAIL_LINES)
+      .slice(-scaleTailLines(ASSERT_ACTUAL_TAIL_LINES))
       .map((l) =>
         l.length > ASSERT_ACTUAL_MAX_LINE_LEN
           ? `${l.slice(0, ASSERT_ACTUAL_MAX_LINE_LEN)}…`
@@ -625,7 +707,7 @@ export function renderVerifyOutcome(
     const allLines = detailed.actual.split('\n');
     const tailLines = expand
       ? allLines
-      : allLines.slice(-VERIFY_OUTPUT_TAIL_LINES);
+      : allLines.slice(-scaleTailLines(VERIFY_OUTPUT_TAIL_LINES));
     const truncated = tailLines
       .map((l) =>
         l.length > ASSERT_ACTUAL_MAX_LINE_LEN

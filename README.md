@@ -1544,6 +1544,8 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 
 > Verification runs against **cleaned** pane output: ANSI color codes and escape sequences are stripped and `\r`-overwrites (progress bars, `\r\n` line endings) are resolved before `expect` assertions run — so `contains`/`equals` match what you actually see on screen, even when tools colorize their output.
 
+> **Responsive output**: command boxes and the verify output are sized to your terminal. On a narrow terminal, over-long lines are truncated with `…` so box borders stay aligned, and the captured-output tail shrinks to fit a short window. When output is piped or redirected (no TTY), rendering is unbounded and full content is preserved.
+
 ### Manual-step actions: note, evidence, verify
 
 `manual` steps offer extra operator actions while you're working the step — they don't complete the step, so you can use any of them as many times as you like before pressing Enter to mark the step done:
