@@ -340,6 +340,7 @@ See `examples/deployment-with-templates.yaml` for a complete example.
 npx github:eric4545/samaritan validate <operation.yaml> [options]
   --strict              Enable strict validation with best practices
   --env <environment>   Validate for specific environment
+  --lint                Lint step commands/scripts with shellcheck
   -v, --verbose         Verbose output
 
 # Execute an operation interactively
@@ -414,6 +415,22 @@ npx github:eric4545/samaritan create operation [options]
   --env <environments>  Target environments (comma-separated)
 ```
 
+
+### Linting step commands (`--lint`)
+
+Pass `--lint` to `validate` to run every step's inline `command` (and the
+contents of referenced `script` files) through [shellcheck](https://www.shellcheck.net/):
+
+```bash
+npx github:eric4545/samaritan validate deployment.yaml --lint
+```
+
+- Findings are reported as **warnings** by default (they don't fail validation);
+  with `--strict` they become **errors**.
+- shellcheck is **optional** — if it isn't installed, linting is skipped with a
+  notice and validation proceeds normally (CI stays green without it).
+- Each finding shows the step, source (`command`/`script`), line, and SC code,
+  e.g. `shell-lint: step "Deploy" (command) line 1: [SC2086] Double quote to prevent globbing.`
 
 ### Schema Inspection
 
