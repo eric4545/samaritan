@@ -1,0 +1,61 @@
+# Mock run example
+#
+# Demonstrates `samaritan run examples/mock-run-expect.yaml --env staging --mock`:
+# each step's `expect` rules are replayed against the output already captured in
+# `evidence.results` — no tmux, no command execution. Great for CI to prove your
+# verification rules still match real captured output.
+name: Mock Run Expect Demo
+version: 1.0.0
+description: Validate step expect rules against pre-captured evidence output
+author: sre-team@example.com
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+      MIN_REPLICAS: 3
+    restrictions: []
+    approval_required: false
+    validation_required: false
+
+steps:
+  - name: Deploy Application
+    type: automatic
+    command: kubectl apply -f deployment.yaml -n ${NAMESPACE}
+    # The expect rules below are what `--mock` replays against evidence.results.
+    expect:
+      - contains: deployment.apps/web-server created
+      - any_line_contains: Running
+    evidence:
+      required: true
+      types: [command_output]
+      results:
+        staging:
+          - type: command_output
+            description: Deployment output captured during the staging run
+            content: |
+              deployment.apps/web-server created
+              service/web-server created
+              NAME         READY   STATUS    RESTARTS   AGE
+              pod/web-0    1/1     Running   0          10s
+              pod/web-1    1/1     Running   0          10s
+              pod/web-2    1/1     Running   0          10s
+
+  - name: Verify Replica Count
+    type: automatic
+    command: kubectl get deployment web-server -n ${NAMESPACE}
+    # `${MIN_REPLICAS}` resolves to 3 for staging, so this asserts "3/3" ready.
+    expect:
+      contains: ${MIN_REPLICAS}/${MIN_REPLICAS}
+    evidence:
+      required: true
+      types: [command_output]
+      results:
+        staging:
+          - type: command_output
+            description: Deployment ready replicas
+            content: |
+              NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+              web-server   3/3     3            3           2m

@@ -348,6 +348,9 @@ npx github:eric4545/samaritan run <operation.yaml> [options]
   --env <environment>       Target environment (required)
   --var KEY=VALUE           Override a variable (repeatable)
   --dry-run                 Preview full plan without executing
+  --mock                    Replay each step's expect against its
+                            evidence.results output (no tmux); exits non-zero
+                            on any failure — handy in CI
   --auto-approve            Skip manual approval prompts and switch to automatic mode
                             (does NOT execute commands non-interactively; see note below)
   -m, --mode <mode>         Execution mode: sidecar | manual | automatic | hybrid (default: sidecar)
@@ -1582,6 +1585,29 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
   All evidence bytes — including dragged-in files, screenshots, and videos — are stored exclusively under `~/.samaritan/sessions/<session-id>/evidence/`, alongside the session's own JSON record. SAMARITAN never leaves a second copy elsewhere: the persisted session references the file by path rather than embedding its raw bytes.
 - **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's captured evidence (type, description, and stored path), lets you pick one by number to delete, removes it from the session record, and — for file/screenshot/video evidence copied into the session's evidence directory — deletes the copy from disk too (your original source file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event, and the `--report` Markdown omits removed items entirely.
 - **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutputDetailed`/`interpolateExpect` machinery `automatic` steps use), evaluating **every** check (not just the first failure) and rendering the PASS/FAIL checklist + highlighted, line-numbered output described in [Verify output: checklist, highlighting, and the line-number gutter](#verify-output-checklist-highlighting-and-the-line-number-gutter) — and, on failure, the override/rollback/`[m]` more/`[v]` re-verify/stop prompt. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
+
+### Mock run (`--mock`): replay `expect` against captured evidence
+
+`samaritan run <op> --env <env> --mock` validates your verification rules
+**without** a terminal, tmux, or executing anything. For each step that defines
+`expect`, it pulls the `command_output`/`log` entries from
+`evidence.results[<env>]` (inline `content` or a referenced `file`), runs them
+through the same `assertOutputDetailed` engine the interactive `[v]` verify
+uses, and prints a per-step PASS/FAIL/SKIP report with the highlighted output:
+
+```bash
+samaritan run examples/mock-run-expect.yaml --env staging --mock
+```
+
+- Steps with `expect` but no replayable evidence for the environment are
+  **skipped** (reported, not failed).
+- `${VAR}` references in `expect` are resolved against the environment's
+  variables, exactly as a real run would.
+- Exits **non-zero** if any assertion fails — so CI can catch the day your
+  `expect` rules drift from the output you actually capture.
+
+This reuses `evidence.results` read-only; it doesn't change what evidence is
+for. See [examples/mock-run-expect.yaml](examples/mock-run-expect.yaml).
 
 ### The run record (durable, beside the operation)
 
