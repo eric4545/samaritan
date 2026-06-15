@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { renderExpectParts } from '../../lib/assertions';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { indexToLetters } from '../../lib/letter-sequence';
+import { groupByPhase } from '../../lib/phase-grouping';
 import {
   substituteExpectVars,
   substituteVariables,
@@ -1030,19 +1031,11 @@ gantt
 `;
       // Note: Opening {markdown} tag must be on same line as ```mermaid for Confluence rendering
 
-      // Group steps by phase
-      const ganttPhases: { [key: string]: any[] } = {
-        preflight: [],
-        flight: [],
-        postflight: [],
-      };
-
-      stepsWithTimeline.forEach((step: any) => {
-        const phase = step.phase || 'flight';
-        if (ganttPhases[phase]) {
-          ganttPhases[phase].push(step);
-        }
-      });
+      // Group steps by phase (block-aware: `uses:` blocks stay contiguous)
+      const ganttPhases = groupByPhase(
+        stepsWithTimeline as Step[],
+        (step) => step,
+      );
 
       // Generate sections for each phase
       // Note: Emojis removed from section names as Mermaid doesn't render them correctly in Confluence
@@ -1146,27 +1139,21 @@ ${filteredOperation.environments
 
 `;
 
-  // Group steps by phase, preserving original indices for consistent step numbers
-  const phases: { [key: string]: Array<{ step: any; stepNumber: number }> } = {
-    preflight: [],
-    flight: [],
-    postflight: [],
-  };
-
-  operation.steps
+  // Group steps by phase, preserving original indices for consistent step
+  // numbers (block-aware: `uses:` blocks stay contiguous so a reused block's
+  // preflight checks render next to the block, not hoisted to the top)
+  const stepEntries = operation.steps
     .map((step: any, i: number) => ({ step, stepNumber: i + 1 }))
     .filter(
       ({ step }: { step: any }) =>
         !step.when ||
         step.when.length === 0 ||
         step.when.some((e: string) => environmentNames.includes(e)),
-    )
-    .forEach(({ step, stepNumber }: { step: any; stepNumber: number }) => {
-      const phase = step.phase || 'flight';
-      if (phases[phase]) {
-        phases[phase].push({ step, stepNumber });
-      }
-    });
+    );
+  const phases = groupByPhase(
+    stepEntries,
+    (entry: { step: Step; stepNumber: number }) => entry.step,
+  );
 
   // Generate steps by phase with multi-column table
   Object.entries(phases).forEach(([phaseName, phaseSteps]) => {

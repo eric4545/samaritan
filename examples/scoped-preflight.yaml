@@ -1,0 +1,67 @@
+name: Deployment with Scoped Pre-Flight
+version: 1.0.0
+description: >
+  Demonstrates how `uses:` blocks keep their own pre-flight checks LOCAL to the
+  block. The operation has its own top-level pre-flight step (which hoists into
+  the global Pre-Flight Phase) and reuses a database-migration block that
+  carries its own `phase: preflight` checks. Those reused checks stay next to
+  the migration in the Flight Phase — they are NOT pulled up to the top.
+author: SRE Team
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      SERVICE_NAME: orders
+      DB_HOST: staging-db.example.com
+    approval_required: false
+    validation_required: true
+    restrictions: []
+
+  - name: production
+    description: Production environment
+    variables:
+      SERVICE_NAME: orders
+      DB_HOST: prod-db.example.com
+    approval_required: true
+    validation_required: true
+    restrictions: ["production-access"]
+
+steps:
+  # Top-level pre-flight — hoisted into the global Pre-Flight Phase.
+  - name: Confirm Change Window
+    type: manual
+    phase: preflight
+    instruction: Verify the approved maintenance window is open before proceeding.
+
+  # Main flight work.
+  - name: Scale Down Workers
+    type: manual
+    instruction: |
+      Pause background workers so the migration runs cleanly:
+      ```bash
+      kubectl scale deployment/${SERVICE_NAME}-worker --replicas=0
+      ```
+
+  # Reused block — its `phase: preflight` checks stay LOCAL to this block,
+  # rendered right before the migration in the Flight Phase (not at the top).
+  - name: Database Migration
+    uses: ./templates/db-migration.yaml
+    with:
+      SERVICE_NAME: ${SERVICE_NAME}
+      DB_HOST: ${DB_HOST}
+
+  - name: Scale Workers Back Up
+    type: manual
+    instruction: |
+      Resume background workers:
+      ```bash
+      kubectl scale deployment/${SERVICE_NAME}-worker --replicas=3
+      ```
+
+  # Top-level post-flight — hoisted into the global Post-Flight Phase.
+  - name: Verify Service Health
+    type: manual
+    phase: postflight
+    instruction: Confirm the service is healthy and error rates are nominal.

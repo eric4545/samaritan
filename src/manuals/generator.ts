@@ -6,6 +6,7 @@ import {
   generateYamlFrontmatter,
 } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
+import { groupByPhase } from '../lib/phase-grouping';
 import {
   mergeStepVariant,
   shouldRenderStepForEnvironment,
@@ -290,19 +291,8 @@ function generateGanttChart(operation: Operation): string {
   gantt += '    dateFormat YYYY-MM-DD HH:mm\n';
   gantt += '    axisFormat %m-%d %H:%M\n\n';
 
-  // Group steps by phase
-  const phases: { [key: string]: Step[] } = {
-    preflight: [],
-    flight: [],
-    postflight: [],
-  };
-
-  stepsWithTimeline.forEach((step) => {
-    const phase = step.phase || 'flight';
-    if (phases[phase]) {
-      phases[phase].push(step);
-    }
-  });
+  // Group steps by phase (block-aware: `uses:` blocks stay contiguous)
+  const phases = groupByPhase(stepsWithTimeline, (step) => step);
 
   // Generate sections for each phase
   // Note: Emojis removed from section names as Mermaid doesn't render them correctly
@@ -1428,19 +1418,10 @@ function generateManualContent(
 
   // Group steps by phase and generate sections
   if (operation.steps && operation.steps.length > 0) {
-    // Group steps by phase
-    const phases: { [key: string]: Step[] } = {
-      preflight: [],
-      flight: [],
-      postflight: [],
-    };
-
-    operation.steps.forEach((step) => {
-      const phase = step.phase || 'flight';
-      if (phases[phase]) {
-        phases[phase].push(step);
-      }
-    });
+    // Group steps by phase (block-aware: `uses:` blocks stay contiguous, so a
+    // reused block's preflight checks render next to the block, not hoisted to
+    // the global Pre-Flight section)
+    const phases = groupByPhase(operation.steps, (step) => step);
 
     // Generate section for each phase that has steps
     let globalStepNumber = 1; // Continuous numbering across all phases

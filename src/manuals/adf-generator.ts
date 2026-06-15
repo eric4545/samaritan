@@ -21,6 +21,7 @@ import {
 import { renderExpectParts } from '../lib/assertions';
 import type { GenerationMetadata } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
+import { groupByPhase } from '../lib/phase-grouping';
 import {
   substituteExpectVars,
   substituteVariables,
@@ -164,19 +165,9 @@ export function generateADF(
           step.when.some((e) => environmentNames.includes(e)),
       );
 
-    const phases: { [key: string]: Array<{ step: Step; stepNumber: number }> } =
-      {
-        preflight: [],
-        flight: [],
-        postflight: [],
-      };
-
-    stepEntries.forEach(({ step, stepNumber }) => {
-      const phase = step.phase || 'flight';
-      if (phases[phase]) {
-        phases[phase].push({ step, stepNumber });
-      }
-    });
+    // Block-aware grouping: `uses:` blocks stay contiguous so a reused block's
+    // preflight checks render next to the block, not hoisted to the top.
+    const phases = groupByPhase(stepEntries, (entry) => entry.step);
 
     // Pre-flight phase
     if (phases.preflight.length > 0) {
