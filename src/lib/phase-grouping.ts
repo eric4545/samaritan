@@ -47,15 +47,16 @@ export function groupByPhase<T>(
 
     // Gather the contiguous run of items sharing this `uses:` group id.
     const block: T[] = [items[i]];
-    while (
-      i + 1 < items.length &&
-      getStep(items[i + 1]).usesGroup?.id === groupId
-    ) {
+    const blockSteps: Step[] = [step];
+    while (i + 1 < items.length) {
+      const nextStep = getStep(items[i + 1]);
+      if (nextStep.usesGroup?.id !== groupId) break;
       block.push(items[i + 1]);
+      blockSteps.push(nextStep);
       i++;
     }
 
-    const phase = blockPhase(block.map(getStep));
+    const phase = blockPhase(blockSteps);
     for (const item of block) {
       buckets[phase].push(item);
     }
@@ -69,8 +70,7 @@ function stepPhase(step: Step): StepPhase {
 }
 
 function blockPhase(steps: Step[]): StepPhase {
-  const phases = steps.map(stepPhase);
-  if (phases.includes('flight')) return 'flight';
-  if (phases.includes('postflight')) return 'postflight';
+  if (steps.some((s) => stepPhase(s) === 'flight')) return 'flight';
+  if (steps.some((s) => stepPhase(s) === 'postflight')) return 'postflight';
   return 'preflight';
 }

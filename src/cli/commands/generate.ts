@@ -1032,10 +1032,7 @@ gantt
       // Note: Opening {markdown} tag must be on same line as ```mermaid for Confluence rendering
 
       // Group steps by phase (block-aware: `uses:` blocks stay contiguous)
-      const ganttPhases = groupByPhase(
-        stepsWithTimeline as Step[],
-        (step) => step,
-      );
+      const ganttPhases = groupByPhase<Step>(stepsWithTimeline, (step) => step);
 
       // Generate sections for each phase
       // Note: Emojis removed from section names as Mermaid doesn't render them correctly in Confluence
