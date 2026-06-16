@@ -35,6 +35,7 @@ import {
   getSessionEvidenceDir,
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
+import { substituteExpectVars } from '../../lib/step-resolution';
 import {
   bootstrapSessions,
   listTmuxPanes,
@@ -59,6 +60,7 @@ import type { EvidenceItem } from '../../models/evidence';
 import type {
   EvidenceType,
   ExecutionMode,
+  ExpectConfig,
   Operation,
   Step,
 } from '../../models/operation';
@@ -1077,6 +1079,10 @@ class OperationRunner {
       step: Step,
       stepIndex: number,
       captureSinceStepStart: () => string | undefined,
+      // ${VAR}-resolved copy of step.expect, used only for rendering the
+      // checklist so it matches the "Expected:" line. The assertion itself
+      // still runs through controller.verifyOutput (sessionState interpolation).
+      displayExpect: ExpectConfig | ExpectConfig[] | string | undefined,
     ): Promise<void> => {
       if (!step.expect) return;
 
@@ -1100,7 +1106,11 @@ class OperationRunner {
 
         if (!assertResult || !detailed) return;
 
-        console.log(renderVerifyOutcome(detailed, step.expect, { expand }));
+        console.log(
+          renderVerifyOutcome(detailed, displayExpect ?? step.expect, {
+            expand,
+          }),
+        );
 
         if (assertResult.pass) {
           captureVerifiedEvidence(stepIndex, output);
@@ -1145,6 +1155,14 @@ class OperationRunner {
 
         const resolvedCommand = tryResolve(step.command);
         const resolvedInstruction = tryResolve(step.instruction);
+        // Resolve ${VAR} in `expect` for DISPLAY (the "Expected:" line and the
+        // verify checklist) via the same shared helper the manuals and mock-run
+        // use — so the criteria the operator reads matches the resolved command
+        // instead of leaking raw ${VAR}. The assertion path interpolates
+        // separately (sessionState) inside controller.verifyOutput.
+        const resolvedExpect = step.expect
+          ? substituteExpectVars(step.expect, vars, step.variables)
+          : undefined;
 
         // Emit step_start for every step so the report can reconstruct the timeline
         logger.emit({
@@ -1326,7 +1344,7 @@ class OperationRunner {
             const evidenceForStep = stepEvidence(i);
             if (step.expect) {
               console.log(
-                `\n    Expected: ${renderExpectDescription(step.expect)}`,
+                `\n    Expected: ${renderExpectDescription(resolvedExpect)}`,
               );
             }
             console.log(
@@ -1395,7 +1413,12 @@ class OperationRunner {
               step.expect &&
               (inputChoice === 'v' || inputChoice === 'verify')
             ) {
-              await verifyManualOutput(step, i, captureSinceStepStart);
+              await verifyManualOutput(
+                step,
+                i,
+                captureSinceStepStart,
+                resolvedExpect,
+              );
               continue;
             }
             if (

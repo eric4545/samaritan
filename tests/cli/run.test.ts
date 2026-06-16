@@ -740,6 +740,26 @@ describe('run command: ${VAR} rendering in step display', () => {
     );
   });
 
+  it('resolves ${VAR} in the "Expected:" criteria display', () => {
+    const fixture = fixturePath('varRendering');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes(
+        'Expected: contains: deployment.apps/web scaled in staging-ns',
+      ),
+      `Expected criteria must have ${'${NAMESPACE}'} resolved; output:\n${combined.slice(-1000)}`,
+    );
+    assert.ok(
+      !combined.includes(
+        'contains: deployment.apps/web scaled in ${NAMESPACE}',
+      ),
+      'Expected criteria must not show literal ${NAMESPACE}',
+    );
+  });
+
   it('resolves ${VAR} in rollback command display (no tmux session)', () => {
     const fixture = fixturePath('varRendering');
     // r triggers rollback display for step 1, then q aborts — but multi-prompt
