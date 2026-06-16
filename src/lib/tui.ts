@@ -381,6 +381,14 @@ export interface GutterOptions {
   startLineNo: number;
   /** 0-based indices (relative to the rendered lines) that contain a highlight. */
   arrowLines: Set<number>;
+  /**
+   * Number of leading lines that correspond to real captured output and should
+   * get a line number. Any lines beyond this count (e.g. appended
+   * `missing: …` hint lines that are NOT part of the output) render with a
+   * blank gutter so they aren't numbered past the end of the actual output.
+   * Defaults to all rendered lines.
+   */
+  numberedCount?: number;
 }
 
 /**
@@ -406,19 +414,24 @@ export function renderHighlightedBlock(
   }
 
   const gutter = opts?.gutter;
-  const gutterWidth = gutter
-    ? String(gutter.startLineNo + rawLines.length - 1).length
+  // Lines beyond `numberedCount` (e.g. appended `missing: …` hints) are not
+  // real output, so they get a blank gutter rather than a continuing number.
+  const numberedCount = gutter?.numberedCount ?? rawLines.length;
+  const lastNumber = gutter
+    ? gutter.startLineNo + Math.min(numberedCount, rawLines.length) - 1
     : 0;
+  const gutterWidth = gutter ? String(lastNumber).length : 0;
 
   const decoratedLines = gutter
     ? rawLines.map((line, i) => {
-        const lineNo = String(gutter.startLineNo + i).padStart(
-          gutterWidth,
-          ' ',
-        );
-        const arrow = gutter.arrowLines.has(i)
-          ? `${BOLD}${GREEN}→${RESET}`
-          : ' ';
+        const numbered = i < numberedCount;
+        const lineNo = numbered
+          ? String(gutter.startLineNo + i).padStart(gutterWidth, ' ')
+          : ' '.repeat(gutterWidth);
+        const arrow =
+          numbered && gutter.arrowLines.has(i)
+            ? `${BOLD}${GREEN}→${RESET}`
+            : ' ';
         return `${DIM}${lineNo} ${RESET}${arrow}${DIM}│${RESET} ${line}`;
       })
     : rawLines;
@@ -756,6 +769,9 @@ export function renderVerifyOutcome(
     );
     const arrowLines = lineIndicesForSpans(truncated, spans);
     const styledLines = applyHighlights(truncated, spans);
+    // Real captured-output line count, before appending non-output hint lines —
+    // only these get gutter line numbers.
+    const outputLineCount = styledLines.length;
 
     // Append a "missing: <expected>" hint for failing string-based checks
     // whose expected value couldn't be highlighted (it isn't IN the output).
@@ -776,7 +792,7 @@ export function renderVerifyOutcome(
     const label = expand ? 'output (full)' : 'output (tail)';
     lines.push(
       renderHighlightedBlock(styledLines, label, {
-        gutter: { startLineNo, arrowLines },
+        gutter: { startLineNo, arrowLines, numberedCount: outputLineCount },
       }),
     );
   }

@@ -554,7 +554,16 @@ function createStepsTable(
       typeof step.description === 'string' &&
       step.description.trim().length > 0
     ) {
-      stepCellContent.push(paragraph(text(step.description)));
+      // Resolve like the name cell: common + step vars only (env-specific
+      // placeholders stay literal in this shared cell).
+      const displayDescription = resolveVariables
+        ? substituteVariables(
+            step.description,
+            commonVariables ?? {},
+            step.variables,
+          )
+        : step.description;
+      stepCellContent.push(paragraph(text(displayDescription)));
     }
 
     // Dependencies
@@ -825,7 +834,16 @@ function addSubStepRows(
       typeof subStep.description === 'string' &&
       subStep.description.trim().length > 0
     ) {
-      subStepCellContent.push(paragraph(text(subStep.description)));
+      // Resolve like the name cell: common + step vars only (env-specific
+      // placeholders stay literal in this shared cell).
+      const displaySubDescription = resolveVariables
+        ? substituteVariables(
+            subStep.description,
+            commonVariables ?? {},
+            subStep.variables,
+          )
+        : subStep.description;
+      subStepCellContent.push(paragraph(text(displaySubDescription)));
     }
 
     if (subStep.needs && subStep.needs.length > 0) {

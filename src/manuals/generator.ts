@@ -448,7 +448,16 @@ function generateStepRow(
     typeof step.description === 'string' &&
     step.description.trim().length > 0
   ) {
-    stepCell += `<br>${step.description}`;
+    // Resolve description like the name cell: common + step vars only
+    // (env-specific placeholders stay literal in this shared cell).
+    const displayDescription = resolveVariables
+      ? substituteVariables(
+          step.description,
+          commonVariables ?? {},
+          step.variables,
+        )
+      : step.description;
+    stepCell += `<br>${displayDescription}`;
   }
 
   // Add dependency information
@@ -847,7 +856,16 @@ function generateSubStepRow(
     typeof step.description === 'string' &&
     step.description.trim().length > 0
   ) {
-    stepCell += `<br>${step.description}`;
+    // Resolve description like the name cell: common + step vars only
+    // (env-specific placeholders stay literal in this shared cell).
+    const displayDescription = resolveVariables
+      ? substituteVariables(
+          step.description,
+          commonVariables ?? {},
+          step.variables,
+        )
+      : step.description;
+    stepCell += `<br>${displayDescription}`;
   }
 
   // Add dependency information
@@ -1480,7 +1498,14 @@ function generateManualContent(
             : step.name;
           markdown += `### ${sectionHeadingName}\n\n`;
           if (step.description) {
-            markdown += `${step.description}\n\n`;
+            const sectionDescription = resolveVariables
+              ? substituteVariables(
+                  step.description,
+                  operation.common_variables ?? {},
+                  step.variables,
+                )
+              : step.description;
+            markdown += `${sectionDescription}\n\n`;
           }
 
           // Add PIC and timeline if present in section heading

@@ -444,6 +444,77 @@ describe('Manual Generator Unit Tests', () => {
     );
   });
 
+  it('resolves ${VAR} in step and sub-step descriptions (multi-env name cell)', () => {
+    // The shared name cell resolves common + step variables (not env-specific),
+    // matching how the step name itself is resolved. Descriptions must follow.
+    const testOperation: Operation = {
+      id: 'desc-resolve-123',
+      name: 'Description Resolution Test',
+      version: '1.0.0',
+      common_variables: { SERVICE: 'checkout' },
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+        },
+      ],
+      steps: [
+        {
+          name: 'Deploy',
+          type: 'manual',
+          description: 'Deploy the ${SERVICE} service',
+          sub_steps: [
+            {
+              name: 'Warm cache',
+              type: 'manual',
+              variables: { TIER: 'backend' },
+              description: 'Warm ${SERVICE} ${TIER} cache',
+            },
+          ],
+        },
+      ],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0,
+      },
+    };
+
+    const resolved = generateManualWithMetadata(
+      testOperation,
+      undefined,
+      undefined,
+      true,
+    );
+    assert(
+      resolved.includes('Deploy the checkout service'),
+      'resolves common var in step description',
+    );
+    assert(
+      resolved.includes('Warm checkout backend cache'),
+      'resolves common + step var in sub-step description',
+    );
+    assert(
+      !resolved.includes('${SERVICE}'),
+      'no literal ${SERVICE} placeholder remains',
+    );
+
+    const unresolved = generateManualWithMetadata(
+      testOperation,
+      undefined,
+      undefined,
+      false,
+    );
+    assert(
+      unresolved.includes('Deploy the ${SERVICE} service'),
+      'keeps placeholder when resolveVariables is false',
+    );
+  });
+
   it('should resolve variables for single environment when filtered', () => {
     const testOperation: Operation = {
       id: 'single-env-resolve-123',

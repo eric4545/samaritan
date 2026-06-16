@@ -61,6 +61,14 @@ export function mergeStepVariant(step: Step, environmentName: string): Step {
     // Preserve base properties that shouldn't be overridden
     when: step.when,
     variants: step.variants,
+    // Merge variables instead of letting the variant replace them wholesale.
+    // A variant that defines its own `variables` should layer on top of the
+    // base step's vars (variant wins on key conflicts), not discard them -
+    // otherwise base vars needed to resolve command/instruction/expect are lost.
+    variables:
+      step.variables || variant.variables
+        ? { ...step.variables, ...variant.variables }
+        : undefined,
   };
 }
 
