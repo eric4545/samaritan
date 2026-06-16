@@ -1,0 +1,40 @@
+# Template: Database Migration
+# Description: A reusable block that runs its OWN pre-flight checks immediately
+#   before the migration, then performs the migration. Because these checks are
+#   marked `phase: preflight`, SAMARITAN keeps them scoped to this block — they
+#   render right before the migration steps wherever this block is reused, NOT
+#   hoisted into the operation's top-level Pre-Flight section.
+# Variables: SERVICE_NAME, DB_HOST
+name: Database Migration Template
+version: 1.0.0
+description: Reusable database migration with block-local pre-flight checks
+
+steps:
+  - name: Verify DB Reachable
+    type: automatic
+    phase: preflight
+    command: pg_isready -h ${DB_HOST}
+    description: Block-local check — ${DB_HOST} must accept connections
+    timeout: 15
+
+  - name: Snapshot Before Migration
+    type: automatic
+    phase: preflight
+    command: pg_dump -h ${DB_HOST} ${SERVICE_NAME} > /backups/${SERVICE_NAME}-pre.sql
+    description: Block-local safety backup taken just before migrating
+    timeout: 120
+
+  - name: Run Migrations
+    type: automatic
+    command: migrate -database ${DB_HOST} -path ./migrations up
+    description: Apply pending schema migrations
+    timeout: 300
+    evidence:
+      required: true
+      types: [command_output]
+
+  - name: Verify Schema Version
+    type: automatic
+    command: migrate -database ${DB_HOST} version
+    description: Confirm the schema is at the expected version
+    timeout: 30

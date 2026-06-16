@@ -1,6 +1,10 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { generateSingleEnvManual } from '../../src/manuals/generator';
+import {
+  generateManual,
+  generateSingleEnvManual,
+} from '../../src/manuals/generator';
+import { parseOperation } from '../../src/operations/parser';
 import { parseFixture } from '../fixtures/fixtures';
 
 describe('Bug 3 — preflight instruction field rendered in single-env manual', () => {
@@ -64,6 +68,52 @@ describe('Bug 4 — preflight command with pre-fenced blocks not double-wrapped'
     assert.ok(
       md.includes('```bash\nkubectl apply'),
       'plain command wrapped in ```bash',
+    );
+  });
+});
+
+describe('uses: preflight is scoped to the reused block', () => {
+  it('keeps a reused block preflight local instead of hoisting it', async () => {
+    const op = await parseOperation('examples/scoped-preflight.yaml');
+    const md = generateManual(op);
+
+    const preIdx = md.indexOf('## 🛫 Pre-Flight Phase');
+    const flightIdx = md.indexOf('## ✈️ Flight Phase');
+    const postIdx = md.indexOf('## 🛬 Post-Flight Phase');
+    assert.ok(
+      preIdx >= 0 && flightIdx > preIdx && postIdx > flightIdx,
+      'all three phase sections present and ordered',
+    );
+
+    const preSection = md.slice(preIdx, flightIdx);
+    const flightSection = md.slice(flightIdx, postIdx);
+
+    // The top-level preflight step hoists into the global Pre-Flight section.
+    assert.ok(
+      preSection.includes('Confirm Change Window'),
+      'top-level preflight stays in the Pre-Flight section',
+    );
+    // The reused block's preflight checks do NOT hoist to the top.
+    assert.ok(
+      !preSection.includes('Verify DB Reachable'),
+      'reused block preflight is not in the global Pre-Flight section',
+    );
+
+    // They render locally inside the Flight section, right before the block's
+    // flight steps, and still carry a "Phase: preflight" badge.
+    const dbReachable = flightSection.indexOf('Verify DB Reachable');
+    const runMigrations = flightSection.indexOf('Run Migrations');
+    assert.ok(
+      dbReachable >= 0,
+      'block preflight renders in the Flight section',
+    );
+    assert.ok(
+      runMigrations > dbReachable,
+      'block preflight renders before the block flight steps',
+    );
+    assert.ok(
+      flightSection.includes('Phase: preflight'),
+      'reused preflight step labelled with its phase locally',
     );
   });
 });

@@ -324,10 +324,25 @@ steps:
 - Type-preserving: `timeout: ${TIMEOUT}` with `TIMEOUT: 60` → `timeout: 60` (number, not string)
 - Omit `with:` entirely if the file has no `${VAR}` placeholders
 
+#### Block-scoped pre-flight
+
+Generated manuals group steps into Pre-Flight / Flight / Post-Flight phases. A
+reused file can carry its **own** `phase: preflight` checks (e.g. a migration
+block that verifies the DB is reachable before migrating). Those checks stay
+**local to the reused block** — they render right before that block's steps in
+the Flight phase, not hoisted into the operation's top-level Pre-Flight section.
+The operation's own top-level `phase: preflight` steps still group into the
+global Pre-Flight section as usual. This is automatic; no extra configuration is
+needed. (A reused block whose steps are *all* preflight does group into the
+top-level Pre-Flight section, since it is purely a set of checks.)
+
+See `examples/scoped-preflight.yaml` (+ `examples/templates/db-migration.yaml`).
+
 **Example files:**
 - `examples/templates/health-checks.yaml` — service health verification
 - `examples/templates/kubernetes-deployment.yaml` — K8s deployment workflow
 - `examples/templates/notifications.yaml` — team notification steps
+- `examples/templates/db-migration.yaml` — migration block with local pre-flight
 
 See `examples/deployment-with-templates.yaml` for a complete example.
 

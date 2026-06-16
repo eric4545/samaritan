@@ -214,6 +214,10 @@ export interface Step extends StepContent {
   timeline?: string | TimelineConfig; // Expected date/time or duration for this step
   when?: string[]; // Conditional rendering: only show for these environments
   variants?: Record<string, Partial<Omit<Step, 'variants' | 'when'>>>; // Environment-specific overrides
+  // Internal: set by the parser when this step was expanded from a `uses:` block.
+  // All steps from the same outermost `uses:` share one id, keeping the block
+  // contiguous during phase grouping. Not authored in YAML.
+  usesGroup?: { id: string; name?: string };
 }
 
 export interface Environment {

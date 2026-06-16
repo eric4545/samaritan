@@ -560,10 +560,19 @@ async function resolveStepReferences(
             importContext,
           );
 
+          // Tag every expanded step with one group id for this `uses:` block so
+          // generators keep the block contiguous during phase grouping. Stamp
+          // unconditionally so the OUTERMOST `uses:` wins for nested templates
+          // (recursion expands inner blocks first, then this overwrites).
+          const usesGroup = {
+            id: randomUUID(),
+            name: typeof stepData.name === 'string' ? stepData.name : undefined,
+          };
           for (const templateStep of expandedSteps) {
             if (!templateStep.phase) {
               templateStep.phase = 'flight';
             }
+            templateStep.usesGroup = usesGroup;
             resolvedSteps.push(templateStep);
           }
         } finally {

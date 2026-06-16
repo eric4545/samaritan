@@ -864,6 +864,50 @@ steps:
       }
     });
 
+    it('should tag steps expanded from a uses: block with a shared usesGroup', async () => {
+      const { resolve } = await import('node:path');
+      const templateAbsPath = resolve(
+        'tests/fixtures/templates/preflight-checks.yaml',
+      );
+      const yamlContent = `name: Uses Group Test
+version: 1.0.0
+description: Expanded steps should carry a shared group id
+environments:
+  - name: staging
+steps:
+  - name: Pre-Deploy Checks
+    uses: ${templateAbsPath}
+    with:
+      TOOL_NAME: kubectl
+  - name: Standalone Step
+    type: manual
+    command: echo done
+`;
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const tmpPath = '/tmp/samaritan-usesgroup-test.yaml';
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        const operation = await parseOperation(tmpPath);
+        assert.strictEqual(operation.steps.length, 3);
+        const [a, b, standalone] = operation.steps;
+        // Both expanded steps share one group id, named after the uses: step.
+        assert.ok(
+          a.usesGroup?.id,
+          'first expanded step should have a group id',
+        );
+        assert.strictEqual(
+          a.usesGroup?.id,
+          b.usesGroup?.id,
+          'both expanded steps share the same group id',
+        );
+        assert.strictEqual(a.usesGroup?.name, 'Pre-Deploy Checks');
+        // A regular top-level step is not tagged.
+        assert.strictEqual(standalone.usesGroup, undefined);
+      } finally {
+        unlinkSync(tmpPath);
+      }
+    });
+
     it('should preserve evidence config from template steps', async () => {
       // Use examples/deployment-with-templates.yaml which imports
       // examples/templates/health-checks.yaml — those steps DO have evidence blocks
