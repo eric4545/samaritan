@@ -46,6 +46,23 @@ export function substituteVariables(
 }
 
 /**
+ * Resolve a display string (step name, description, …) shown in the shared
+ * name cell of multi-env tables: substitutes common + step variables when
+ * `resolveVariables` is on, leaving env-specific placeholders literal (they
+ * resolve per-environment in the row cells). A no-op when resolution is off.
+ */
+export function resolveDisplayText(
+  value: string,
+  resolveVariables: boolean | undefined,
+  envVariables: Record<string, any> | undefined,
+  stepVariables?: Record<string, any>,
+): string {
+  return resolveVariables
+    ? substituteVariables(value, envVariables ?? {}, stepVariables)
+    : value;
+}
+
+/**
  * Merge step variants for a specific environment with base step properties.
  * Returns the merged step (base + variant overrides) for the given environment.
  */

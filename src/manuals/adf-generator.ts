@@ -23,6 +23,9 @@ import type { GenerationMetadata } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
 import { groupByPhase } from '../lib/phase-grouping';
 import {
+  mergeStepVariant,
+  resolveDisplayText,
+  shouldRenderStepForEnvironment,
   substituteExpectVars,
   substituteVariables,
 } from '../lib/step-resolution';
@@ -32,38 +35,6 @@ import type { Environment, Operation, Step } from '../models/operation';
  * Merge step variants for a specific environment with base step properties
  * Returns the merged step (base + variant overrides) for the given environment
  */
-function mergeStepVariant(step: Step, environmentName: string): Step {
-  if (!step.variants || !step.variants[environmentName]) {
-    return step;
-  }
-
-  const variant = step.variants[environmentName];
-  return {
-    ...step,
-    ...variant,
-    // Preserve base properties that shouldn't be overridden
-    when: step.when,
-    variants: step.variants,
-  };
-}
-
-/**
- * Check if a step should be rendered for a specific environment
- * Returns true if the step applies to this environment
- */
-function shouldRenderStepForEnvironment(
-  step: Step,
-  environmentName: string,
-): boolean {
-  // If 'when' is not defined, step applies to all environments
-  if (!step.when || step.when.length === 0) {
-    return true;
-  }
-
-  // Check if this environment is in the 'when' list
-  return step.when.includes(environmentName);
-}
-
 /**
  * Convert Operation to Atlassian Document Format (ADF)
  */
@@ -529,9 +500,12 @@ function createStepsTable(
     // The name cell is shared across all env columns, so only common variables +
     // step variables are resolved here — env-specific placeholders intentionally
     // stay literal in this cell (they resolve per-environment in the row cells).
-    const displayStepName = resolveVariables
-      ? substituteVariables(step.name, commonVariables ?? {}, step.variables)
-      : step.name;
+    const displayStepName = resolveDisplayText(
+      step.name,
+      resolveVariables,
+      commonVariables,
+      step.variables,
+    );
 
     stepCellContent.push(
       paragraph(
@@ -548,22 +522,24 @@ function createStepsTable(
       stepCellContent.push(paragraph(em(text(`Phase: ${step.phase}`))));
     }
 
-    // Description
+    // Description (resolve like the name cell: common + step vars only).
     if (
       step.description &&
       typeof step.description === 'string' &&
       step.description.trim().length > 0
     ) {
-      // Resolve like the name cell: common + step vars only (env-specific
-      // placeholders stay literal in this shared cell).
-      const displayDescription = resolveVariables
-        ? substituteVariables(
-            step.description,
-            commonVariables ?? {},
-            step.variables,
-          )
-        : step.description;
-      stepCellContent.push(paragraph(text(displayDescription)));
+      stepCellContent.push(
+        paragraph(
+          text(
+            resolveDisplayText(
+              step.description,
+              resolveVariables,
+              commonVariables,
+              step.variables,
+            ),
+          ),
+        ),
+      );
     }
 
     // Dependencies
@@ -815,13 +791,12 @@ function addSubStepRows(
     // The name cell is shared across all env columns, so only common variables +
     // step variables are resolved here — env-specific placeholders intentionally
     // stay literal in this cell (they resolve per-environment in the row cells).
-    const displaySubStepName = resolveVariables
-      ? substituteVariables(
-          subStep.name,
-          commonVariables ?? {},
-          subStep.variables,
-        )
-      : subStep.name;
+    const displaySubStepName = resolveDisplayText(
+      subStep.name,
+      resolveVariables,
+      commonVariables,
+      subStep.variables,
+    );
 
     subStepCellContent.push(
       paragraph(
@@ -834,16 +809,19 @@ function addSubStepRows(
       typeof subStep.description === 'string' &&
       subStep.description.trim().length > 0
     ) {
-      // Resolve like the name cell: common + step vars only (env-specific
-      // placeholders stay literal in this shared cell).
-      const displaySubDescription = resolveVariables
-        ? substituteVariables(
-            subStep.description,
-            commonVariables ?? {},
-            subStep.variables,
-          )
-        : subStep.description;
-      subStepCellContent.push(paragraph(text(displaySubDescription)));
+      // Resolve like the name cell: common + step vars only.
+      subStepCellContent.push(
+        paragraph(
+          text(
+            resolveDisplayText(
+              subStep.description,
+              resolveVariables,
+              commonVariables,
+              subStep.variables,
+            ),
+          ),
+        ),
+      );
     }
 
     if (subStep.needs && subStep.needs.length > 0) {

@@ -239,6 +239,48 @@ describe('ADF Generator', () => {
     );
   });
 
+  it('merges base + environment-variant variables when resolving (shared mergeStepVariant)', () => {
+    // Base var REGION and variant-only var TIER must BOTH resolve — the variant
+    // layers on top of the base instead of replacing its variables wholesale.
+    const op: Operation = {
+      id: 'adf-variant-merge',
+      name: 'ADF Variant Merge',
+      version: '1.0.0',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+        },
+      ],
+      steps: [
+        {
+          name: 'Deploy',
+          type: 'manual',
+          variables: { REGION: 'eu-west' },
+          variants: { production: { variables: { TIER: 'gold' } } },
+          command: 'deploy --region=${REGION} --tier=${TIER}',
+        },
+      ],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0,
+      },
+    };
+
+    const resolved = generateADFString(op, undefined, 'production', true);
+    assert.ok(resolved.includes('eu-west'), 'base variable REGION resolves');
+    assert.ok(resolved.includes('gold'), 'variant variable TIER resolves');
+    assert.ok(
+      !resolved.includes('${REGION}'),
+      'base variable is not dropped by the variant merge',
+    );
+  });
+
   it('should include step metadata (PIC, timeline, ticket)', () => {
     const adfString = generateADFString(mockOperation);
 
