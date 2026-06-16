@@ -6,7 +6,6 @@ import {
   cleanTerminalOutput,
   compileRegex,
   isPrimitiveExpectShorthand,
-  renderExpectDescription,
   renderExpectParts,
 } from './assertions';
 import type { EventLogger } from './event-logger';
@@ -820,69 +819,8 @@ function describeComputedValue(check: AssertResult): string | undefined {
   }
 }
 
-export function renderTuiPending(
-  step: Step,
-  stepIndex: number,
-  total: number,
-  autoSend: boolean,
-): string {
-  const lines: string[] = [
-    '─'.repeat(49),
-    ` SAMARITAN  step ${stepIndex + 1}/${total}`,
-    '─'.repeat(49),
-    ` Name:      ${step.name}`,
-  ];
-  if (step.session) lines.push(` Session:   ${step.session}`);
-  if (step.pic) lines.push(` PIC:       ${step.pic}`);
-  if (step.reviewer) lines.push(` Reviewer:  ${step.reviewer}`);
-  if (step.command) {
-    lines.push('');
-    lines.push(renderCodeBlock(step.command));
-  }
-  if (step.expect) {
-    lines.push('');
-    lines.push(` Expected: ${renderExpectDescription(step.expect)}`);
-  }
-  lines.push('─'.repeat(49));
-  if (autoSend) {
-    lines.push(' ⟳ Sending command...');
-  } else {
-    lines.push(renderKeyHints([{ key: 's', label: 'send' }]));
-  }
-  lines.push('─'.repeat(49));
-  return lines.join('\n');
-}
-
-export function renderTuiWaiting(elapsed: number, timeout: number): string {
-  return [
-    '─'.repeat(49),
-    ` ⏳ Running... (${elapsed}s / timeout: ${timeout}s)`,
-    '─'.repeat(49),
-    ' [d] mark done    [k] kill & rollback',
-    '─'.repeat(49),
-  ].join('\n');
-}
-
-export function renderTuiAssertResult(
-  result: ReturnType<typeof assertOutput>,
-): string {
-  const icon = result.pass ? '✅ PASS' : '❌ FAIL';
-  return [
-    '─'.repeat(49),
-    ` ${icon} — ${result.type} "${result.expected}"`,
-    ` Output: ${result.actual}`,
-    '─'.repeat(49),
-    ' [c] confirm    [o] override    [r] rollback',
-    '─'.repeat(49),
-  ].join('\n');
-}
-
-export function renderTuiManualVerify(): string {
-  return [
-    '─'.repeat(49),
-    ' Check execution pane and verify manually.',
-    '─'.repeat(49),
-    ' [v] verify OK    [f] verify FAIL    [r] rollback',
-    '─'.repeat(49),
-  ].join('\n');
-}
+// NOTE: The early `renderTui*` prototype renderers were removed — they were
+// unused dead code and `renderTuiPending` rendered `step.command`/`step.expect`
+// raw, which would have re-introduced the ${VAR} display leak. The live run
+// loop renders via renderKeyHints / renderCodeBlock / renderVerifyOutcome /
+// renderAssertOutcome with ${VAR} resolved up front in run.ts.
