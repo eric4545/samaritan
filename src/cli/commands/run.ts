@@ -1309,12 +1309,6 @@ class OperationRunner {
             }
           }
 
-          if (step.expect) {
-            console.log(
-              `    Expected: ${renderExpectDescription(step.expect)}`,
-            );
-          }
-
           // Baseline the capture offset at the start of each step.
           // Uses captureRef so [t] can swap the backend and this closure stays fresh.
           const sessionName = step.session ?? 'default';
@@ -1330,6 +1324,11 @@ class OperationRunner {
           let manualNotes = '';
           while (true) {
             const evidenceForStep = stepEvidence(i);
+            if (step.expect) {
+              console.log(
+                `\n    Expected: ${renderExpectDescription(step.expect)}`,
+              );
+            }
             console.log(
               '\n' +
                 renderKeyHints([

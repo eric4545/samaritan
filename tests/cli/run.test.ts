@@ -284,6 +284,22 @@ describe('run command: manual-step note/evidence/verify actions', () => {
     );
   });
 
+  it('re-renders "Expected:" before each prompt so it never scrolls off', () => {
+    const fixture = fixturePath('manualStepActions');
+    // Copy (single-prompt action) re-displays the prompt; the Expected line
+    // must reappear above it rather than scrolling away after the first render.
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'c\nabort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    const occurrences =
+      combined.split('Expected: contains: successfully rolled out').length - 1;
+    assert.ok(
+      occurrences >= 2,
+      `Expected criteria should re-render before every prompt; saw ${occurrences}\n${combined.slice(-1000)}`,
+    );
+  });
+
   it('[v] verify without an attached capture shows the attach hint, not a verify outcome', () => {
     const fixture = fixturePath('manualStepActions');
     const result = runCli(['run', fixture, '--env', 'default'], {
