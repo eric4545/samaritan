@@ -160,4 +160,52 @@ describe('CLI --env flag', () => {
       );
     });
   });
+
+  describe('generate manual --compact', () => {
+    it('renders checkbox-list sub-steps with --env --compact', () => {
+      const fixture = getFixturePath('nestedSubSteps2Levels');
+      execSync(
+        `node_modules/.bin/tsx src/cli/index.ts generate manual ${fixture} --env staging --compact --output ${outputPath}`,
+        { cwd: process.cwd(), encoding: 'utf-8' },
+      );
+      const content = readFileSync(outputPath, 'utf-8');
+      assert.ok(content.includes('## Step 1:'), 'Top-level step heading kept');
+      assert.ok(
+        content.includes('- [ ] **'),
+        'Sub-steps render as checkbox list items',
+      );
+      assert.ok(
+        !content.includes('### Step 1.1:'),
+        'Sub-steps no longer use heading format',
+      );
+    });
+
+    it('warns and ignores --compact for non-markdown formats', () => {
+      const fixture = getFixturePath('minimal');
+      const result = spawnSync(
+        'node_modules/.bin/tsx',
+        [
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          fixture,
+          '--format',
+          'adf',
+          '--compact',
+          '--output',
+          '/tmp/samaritan-test-cli-flags-manual.json',
+        ],
+        { cwd: process.cwd(), encoding: 'utf-8' },
+      );
+      assert.strictEqual(result.status, 0, 'Should exit successfully');
+      const combined = (result.stdout || '') + (result.stderr || '');
+      assert.ok(
+        combined.includes('--compact is only supported for markdown format'),
+        'Should warn that --compact is ignored',
+      );
+      if (existsSync('/tmp/samaritan-test-cli-flags-manual.json')) {
+        unlinkSync('/tmp/samaritan-test-cli-flags-manual.json');
+      }
+    });
+  });
 });

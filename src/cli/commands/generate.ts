@@ -84,6 +84,7 @@ interface GenerateOptions {
   template?: string;
   gantt?: boolean;
   run?: string;
+  compact?: boolean;
 }
 
 function getTargetEnvironment(options: GenerateOptions): string | undefined {
@@ -101,6 +102,12 @@ class DocumentationGenerator {
     console.log(
       `📄 Generating manual for: ${operationFile}${envSuffix} (format: ${format})`,
     );
+
+    if (options.compact && format !== 'markdown') {
+      console.warn(
+        '⚠️  --compact is only supported for markdown format — ignoring',
+      );
+    }
 
     // Parse operation
     const operation = await parseOperation(operationFile);
@@ -179,6 +186,8 @@ class DocumentationGenerator {
       );
     }
 
+    const formatOptions = { compact: options.compact };
+
     // When --env is specified, use the single-env heading-based format (issue #15)
     let manual: string;
     if (targetEnv) {
@@ -188,6 +197,7 @@ class DocumentationGenerator {
         options.resolveVars,
         operationDir,
         runManifest,
+        formatOptions,
       );
     } else {
       manual = generateManualWithMetadata(
@@ -198,6 +208,7 @@ class DocumentationGenerator {
         options.gantt,
         operationDir,
         runManifest,
+        formatOptions,
       );
     }
 
@@ -2055,6 +2066,10 @@ generateCommand
     'Resolve variables to actual values instead of showing placeholders',
   )
   .option('--gantt', 'Include Mermaid Gantt chart for timeline visualization')
+  .option(
+    '--compact',
+    'Render a denser, operator-friendly format (markdown only)',
+  )
   .option(
     '--run <manifest>',
     'Path to a run manifest YAML to overlay run-specific evidence',

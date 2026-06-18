@@ -343,6 +343,7 @@ When adding features that affect evidence rendering, ensure ALL components are u
      - **Two rendering paths inside this file** (easy to update one and miss the other):
        - `generateStepRow` / `generateSubStepRow` — multi-env table format (used without `--env`)
        - `generateSingleEnvManual` → `renderStep` — heading format (used with `--env`)
+     - **`--compact` (`ManualFormatOptions.compact`)**: an opt-in denser variant of both paths above, NOT a third path — `generateStepRow`/`generateSubStepRow` accept a trailing `compact` arg (via `buildStepCellMeta`, `formatEvidenceInfo`, `renderTableInstruction`) and `generateSingleEnvManual` branches to `renderStepCompact`/`renderStepBodyCompact` instead of `renderStep` when `formatOptions?.compact` is true. The default (non-compact) `renderStep` closure and non-compact branches must remain byte-identical — any new field must be added to both the default and compact renderers, with a regression test asserting `generateSingleEnvManual(op, env)` === `generateSingleEnvManual(op, env, ..., { compact: false })`.
    - `src/manuals/adf-generator.ts` (ADF/JSON)
    - `src/cli/commands/generate.ts` (Confluence markup) - pass `operationDir` for file reading
 5. Update CLI commands to pass operation directory where needed
