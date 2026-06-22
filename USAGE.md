@@ -19,6 +19,10 @@ npx github:eric4545/samaritan generate manual examples/deployment.yaml --output 
 # Generate single-environment heading-based manual (for use during execution)
 npx github:eric4545/samaritan generate manual examples/deployment.yaml --env staging --output staging-manual.md
 
+# Generate one manual per environment at once (e.g. deployment_preprod.md, deployment_production.md)
+# Files land in the current dir; use --output-dir <dir> and --prefix <name> to customize.
+npx github:eric4545/samaritan generate manual examples/deployment.yaml --all-envs
+
 # Preview operation plan without executing (dry run) — default sidecar mode
 npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging --dry-run
 

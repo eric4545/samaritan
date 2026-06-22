@@ -388,6 +388,9 @@ npx github:eric4545/samaritan generate manual <operation.yaml> [options]
   --output <file>       Output file (default: stdout)
   --format <md|confluence>  Output format (default: md)
   --env <environment>   Single-environment heading-based Markdown (no tables); omit for multi-env table format
+  --all-envs            Generate one manual per environment in the operation (e.g. operation_dev.md, operation_prod.md)
+  --output-dir <dir>    Directory for --all-envs output (default: current directory)
+  --prefix <name>       Base filename for --all-envs output (default: operation file name); env name is the suffix
   --resolve-vars        Resolve variables to actual values (ready-to-execute commands)
   --gantt               Include Mermaid Gantt chart for timeline visualization
 
@@ -782,6 +785,15 @@ npx github:eric4545/samaritan generate manual deployment.yaml --env production
 
 # Generate manual with resolved variables (ready-to-execute commands)
 npx github:eric4545/samaritan generate manual deployment.yaml --env production --resolve-vars
+
+# Generate one manual per environment in a single command
+# deployment.yaml (environments: preprod, production) →
+#   ./deployment_preprod.md  ./deployment_production.md
+npx github:eric4545/samaritan generate manual deployment.yaml --all-envs
+
+# Write the per-environment files to a directory, with a custom base name
+#   →  out/release_preprod.md  out/release_production.md
+npx github:eric4545/samaritan generate manual deployment.yaml --all-envs --output-dir out --prefix release
 ```
 
 **Generated YAML frontmatter example:**

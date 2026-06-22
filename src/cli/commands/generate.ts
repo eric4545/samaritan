@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { basename, dirname } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { Command } from 'commander';
 import { renderExpectParts } from '../../lib/assertions';
 import { createGenerationMetadata } from '../../lib/git-metadata';
@@ -84,7 +84,18 @@ interface GenerateOptions {
   template?: string;
   gantt?: boolean;
   run?: string;
+  allEnvs?: boolean;
+  outputDir?: string;
+  prefix?: string;
 }
+
+// File extension per output format for --all-envs naming
+const FORMAT_EXTENSIONS: Record<string, string> = {
+  markdown: '.md',
+  confluence: '.confluence',
+  adf: '.json',
+  html: '.html',
+};
 
 function getTargetEnvironment(options: GenerateOptions): string | undefined {
   return options.env;
@@ -95,6 +106,12 @@ class DocumentationGenerator {
     operationFile: string,
     options: GenerateOptions,
   ): Promise<void> {
+    // --all-envs: emit one manual per environment defined in the operation
+    if (options.allEnvs) {
+      await this.generateAllEnvManuals(operationFile, options);
+      return;
+    }
+
     const targetEnv = getTargetEnvironment(options);
     const envSuffix = targetEnv ? ` (${targetEnv})` : '';
     const format = options.format || 'markdown';
@@ -149,6 +166,63 @@ class DocumentationGenerator {
     if (targetEnv) {
       console.log(`🎯 Filtered for environment: ${targetEnv}`);
     }
+  }
+
+  /**
+   * Generate one manual per environment defined in the operation.
+   * Files are written as `<base>_<env>.<ext>` (base defaults to the operation
+   * file name, overridable via --prefix) into the current directory (or
+   * --output-dir). Reuses the per-format single-env generation by delegating
+   * back into generateManual with a computed output path per environment.
+   */
+  private async generateAllEnvManuals(
+    operationFile: string,
+    options: GenerateOptions,
+  ): Promise<void> {
+    const operation = await parseOperation(operationFile);
+    const environments = operation.environments || [];
+    if (environments.length === 0) {
+      throw new Error(
+        `No environments defined in ${operationFile}; --all-envs needs at least one`,
+      );
+    }
+
+    const format = options.format || 'markdown';
+    const ext = FORMAT_EXTENSIONS[format];
+    if (!ext) {
+      throw new Error(
+        `--all-envs does not support format '${format}'. Supported: ${Object.keys(
+          FORMAT_EXTENSIONS,
+        ).join(', ')}`,
+      );
+    }
+
+    const base = options.prefix || basename(operationFile, '.yaml');
+    const outputDir = options.outputDir || '.';
+
+    console.log(
+      `📄 Generating manuals for ${environments.length} environment(s): ${environments
+        .map((e: any) => e.name)
+        .join(', ')}`,
+    );
+
+    const written: string[] = [];
+    for (const env of environments) {
+      const outputFile = join(outputDir, `${base}_${env.name}${ext}`);
+      await this.generateManual(operationFile, {
+        ...options,
+        allEnvs: false,
+        env: env.name,
+        output: outputFile,
+      });
+      written.push(outputFile);
+    }
+
+    console.log(
+      `✅ Generated ${written.length} manual(s):\n${written
+        .map((f) => `   - ${f}`)
+        .join('\n')}`,
+    );
   }
 
   private async generateMarkdownManual(
@@ -2050,6 +2124,18 @@ generateCommand
     'markdown',
   )
   .option('-e, --env <environment>', 'Generate for specific environment')
+  .option(
+    '--all-envs',
+    'Generate one manual per environment defined in the operation',
+  )
+  .option(
+    '--output-dir <dir>',
+    'Directory for --all-envs output (default: current directory)',
+  )
+  .option(
+    '--prefix <name>',
+    'Base filename for --all-envs output (default: operation file name); env name is appended as suffix',
+  )
   .option(
     '--resolve-vars',
     'Resolve variables to actual values instead of showing placeholders',
