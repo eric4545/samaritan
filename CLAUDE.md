@@ -31,6 +31,7 @@ These rules apply to every code change, no exceptions:
 3. **Lint clean before commit** — run `npx @biomejs/biome check --write <changed files>` and fix all errors before committing; never commit with lint errors
 4. **StepContent is the shared base** — never add execution/content fields directly to `Step` or `RollbackStep`; add them to `StepContent` so both types benefit automatically
 5. **Check ROADMAP.md** — before implementing any "auto", "run", or execution feature, verify it's in scope; most execution features are roadmap items, not v1.0
+6. **Keep Agent Skills in sync** — when a change alters CLI commands/flags, operation YAML fields, the schema, or scope (implemented vs roadmap), update the affected `.claude/skills/**/SKILL.md` (and its `reference/*.md`) in the same commit; never let a skill describe behavior that no longer matches the code
 
 ---
 
@@ -623,6 +624,7 @@ The `.gitignore` contains `manuals/` which also matches `src/manuals/`, so plain
 3. Register in `src/cli/index.ts`
 4. Add tests in `tests/cli/`
 5. Update README.md with command docs
+6. Update `.claude/skills/samaritan-operations/reference/cli.md` (command table / flags)
 
 **Example: Schema Export Command**
 - Created `src/cli/commands/schema.ts` with `schemaCommand`
@@ -641,6 +643,7 @@ The `.gitignore` contains `manuals/` which also matches `src/manuals/`, so plain
 8. **Add example YAML in `examples/`** demonstrating the feature
 9. Update README.md and USAGE.md with the new field/usage
 10. Update CLAUDE.md with any new patterns
+11. Update `.claude/skills/samaritan-operations/reference/operation-yaml.md` with the new field
 
 > **Rule**: Every new feature MUST include a working example file in `examples/` and updated user documentation. The example should demonstrate the golden path usage clearly.
 
@@ -649,6 +652,26 @@ The `.gitignore` contains `manuals/` which also matches `src/manuals/`, so plain
 2. Run `npm run test:snapshots:update` to update snapshots
 3. Review snapshot diffs carefully
 4. Commit generator changes and updated snapshots together
+
+### Maintaining Agent Skills (`.claude/skills/`)
+Agent Skills teach Claude (and contributors using it) how to drive SAMARITAN.
+They live in `.claude/skills/<name>/SKILL.md` (+ optional `reference/*.md`) and
+are committed to the repo (project-scoped). The current skill is
+`samaritan-operations`.
+
+A skill must be updated **in the same commit** as any change that makes it stale:
+- **CLI commands/flags** changed → update `reference/cli.md`
+- **Operation YAML fields / `StepContent` / schema** changed → update `reference/operation-yaml.md`
+- **Scope changed** (a roadmap feature shipped, or a feature was removed) → update the
+  "Scope guardrails" section of `SKILL.md` so implemented-vs-roadmap stays accurate
+- **New skill added** → keep `SKILL.md` short (golden path only) and push depth into
+  `reference/*.md` for progressive disclosure; the frontmatter `description` is the
+  trigger and must state *what it does + when to use it*
+
+Authoritative sources the skills point at (don't duplicate, reference them):
+`src/schemas/operation.schema.json` and `examples/*.yaml`. Because the skill links
+to these rather than restating them, keeping examples and the schema correct keeps
+most of the skill correct automatically.
 
 ---
 
@@ -662,7 +685,7 @@ The `.gitignore` contains `manuals/` which also matches `src/manuals/`, so plain
 
 ---
 
-**Last Updated**: 2025-10-17
+**Last Updated**: 2026-06-22
 **Maintainer**: @sre-team
 
 For questions or clarifications, check:
