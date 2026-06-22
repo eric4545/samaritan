@@ -532,6 +532,45 @@ describe('renderVerifyOutcome', () => {
     assert.ok(out.includes('CrashLoopBackOff'), 'shows captured output');
   });
 
+  it('does not number appended "missing:" hint lines past the real output', () => {
+    const expect = { contains: 'Running' };
+    // 5-line output, none containing "Running" -> a "missing:" hint is appended
+    // BELOW the captured output. That hint is not real output, so it must not
+    // receive a gutter line number continuing past the last output line.
+    const output = 'alpha\nbravo\ncharlie\ndelta\necho';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+
+    const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+    const strip = (s: string): string => s.replace(ansi, '');
+    // Each rendered output line is `  │ <gutter>│ <content> │`; the gutter is
+    // the text between the box-left `│` and the gutter-separator `│`.
+    const gutterOf = (line: string): string => {
+      const first = line.indexOf('│');
+      const second = line.indexOf('│', first + 1);
+      return first >= 0 && second > first ? line.slice(first + 1, second) : '';
+    };
+    const lines = out.split('\n').map(strip);
+
+    const missingLine = lines.find((l) => l.includes('missing: Running'));
+    assert.ok(missingLine, 'missing hint line present');
+    assert.ok(
+      !/\d/.test(gutterOf(missingLine as string)),
+      `missing-hint line must have a blank gutter, got: "${gutterOf(missingLine as string)}"`,
+    );
+
+    // Real output lines stay numbered; none is numbered past the 5th line.
+    const gutterNumbers = lines
+      .map((l) => gutterOf(l).replace('→', '').trim())
+      .filter((g) => /^\d+$/.test(g));
+    assert.ok(gutterNumbers.length > 0, 'real output lines are numbered');
+    assert.ok(
+      !gutterNumbers.includes('6'),
+      'no gutter numbered past the real output length',
+    );
+  });
+
   it('shows a per-check checklist for array expects', () => {
     const expect = [
       { contains: 'Running' },

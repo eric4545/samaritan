@@ -9,6 +9,7 @@ import { indexToLetters } from '../lib/letter-sequence';
 import { groupByPhase } from '../lib/phase-grouping';
 import {
   mergeStepVariant,
+  resolveDisplayText,
   shouldRenderStepForEnvironment,
   substituteExpectVars,
   substituteVariables,
@@ -435,9 +436,12 @@ function generateStepRow(
   // The name cell is shared across all env columns, so only common variables +
   // step variables are resolved here — env-specific placeholders intentionally
   // stay literal in this cell (they resolve per-environment in the row cells).
-  const displayName = resolveVariables
-    ? substituteVariables(step.name, commonVariables ?? {}, step.variables)
-    : step.name;
+  const displayName = resolveDisplayText(
+    step.name,
+    resolveVariables,
+    commonVariables,
+    step.variables,
+  );
   let stepCell = `[ ] ${prefix}Step ${stepNumber}: ${displayName} ${phaseIcon}${typeIcon}`;
   // Only show phase if it differs from the current section phase
   if (step.phase && step.phase !== currentPhase) {
@@ -448,7 +452,7 @@ function generateStepRow(
     typeof step.description === 'string' &&
     step.description.trim().length > 0
   ) {
-    stepCell += `<br>${step.description}`;
+    stepCell += `<br>${resolveDisplayText(step.description, resolveVariables, commonVariables, step.variables)}`;
   }
 
   // Add dependency information
@@ -838,16 +842,19 @@ function generateSubStepRow(
   // The name cell is shared across all env columns, so only common variables +
   // step variables are resolved here — env-specific placeholders intentionally
   // stay literal in this cell (they resolve per-environment in the row cells).
-  const displaySubStepName = resolveVariables
-    ? substituteVariables(step.name, commonVariables ?? {}, step.variables)
-    : step.name;
+  const displaySubStepName = resolveDisplayText(
+    step.name,
+    resolveVariables,
+    commonVariables,
+    step.variables,
+  );
   let stepCell = `[ ] ${indent}Step ${stepId}: ${displaySubStepName} ${typeIcon}`;
   if (
     step.description &&
     typeof step.description === 'string' &&
     step.description.trim().length > 0
   ) {
-    stepCell += `<br>${step.description}`;
+    stepCell += `<br>${resolveDisplayText(step.description, resolveVariables, commonVariables, step.variables)}`;
   }
 
   // Add dependency information
@@ -1471,16 +1478,15 @@ function generateManualContent(
           }
 
           // Add section heading
-          const sectionHeadingName = resolveVariables
-            ? substituteVariables(
-                step.name,
-                operation.common_variables ?? {},
-                step.variables,
-              )
-            : step.name;
+          const sectionHeadingName = resolveDisplayText(
+            step.name,
+            resolveVariables,
+            operation.common_variables,
+            step.variables,
+          );
           markdown += `### ${sectionHeadingName}\n\n`;
           if (step.description) {
-            markdown += `${step.description}\n\n`;
+            markdown += `${resolveDisplayText(step.description, resolveVariables, operation.common_variables, step.variables)}\n\n`;
           }
 
           // Add PIC and timeline if present in section heading

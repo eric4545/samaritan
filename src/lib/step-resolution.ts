@@ -46,6 +46,23 @@ export function substituteVariables(
 }
 
 /**
+ * Resolve a display string (step name, description, …) shown in the shared
+ * name cell of multi-env tables: substitutes common + step variables when
+ * `resolveVariables` is on, leaving env-specific placeholders literal (they
+ * resolve per-environment in the row cells). A no-op when resolution is off.
+ */
+export function resolveDisplayText(
+  value: string,
+  resolveVariables: boolean | undefined,
+  envVariables: Record<string, any> | undefined,
+  stepVariables?: Record<string, any>,
+): string {
+  return resolveVariables
+    ? substituteVariables(value, envVariables ?? {}, stepVariables)
+    : value;
+}
+
+/**
  * Merge step variants for a specific environment with base step properties.
  * Returns the merged step (base + variant overrides) for the given environment.
  */
@@ -61,6 +78,14 @@ export function mergeStepVariant(step: Step, environmentName: string): Step {
     // Preserve base properties that shouldn't be overridden
     when: step.when,
     variants: step.variants,
+    // Merge variables instead of letting the variant replace them wholesale.
+    // A variant that defines its own `variables` should layer on top of the
+    // base step's vars (variant wins on key conflicts), not discard them -
+    // otherwise base vars needed to resolve command/instruction/expect are lost.
+    variables:
+      step.variables || variant.variables
+        ? { ...step.variables, ...variant.variables }
+        : undefined,
   };
 }
 

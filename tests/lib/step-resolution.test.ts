@@ -1,6 +1,10 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { substituteVariables } from '../../src/lib/step-resolution';
+import {
+  mergeStepVariant,
+  substituteVariables,
+} from '../../src/lib/step-resolution';
+import type { Step } from '../../src/models/operation';
 
 describe('substituteVariables (security hardening)', () => {
   it('substitutes plain variable names', () => {
@@ -82,5 +86,54 @@ describe('substituteVariables (chained step variable resolution)', () => {
       { TEST_RECIPIENT: '${EMAIL_A}' },
     );
     assert.strictEqual(literal, 'echo ${X}');
+  });
+});
+
+describe('mergeStepVariant (variables merge)', () => {
+  it('merges base step variables with variant variables instead of replacing them', () => {
+    const step: Step = {
+      name: 'Deploy',
+      type: 'manual',
+      variables: { REGION: 'us-east-1', TIMEOUT: 30 },
+      variants: {
+        production: { variables: { REGION: 'eu-west-1' } },
+      },
+    };
+
+    const merged = mergeStepVariant(step, 'production');
+
+    // Variant overrides REGION but the base-only TIMEOUT must survive.
+    assert.deepStrictEqual(merged.variables, {
+      REGION: 'eu-west-1',
+      TIMEOUT: 30,
+    });
+  });
+
+  it('keeps base variables when the variant has none', () => {
+    const step: Step = {
+      name: 'Deploy',
+      type: 'manual',
+      variables: { REGION: 'us-east-1' },
+      variants: {
+        production: { command: 'kubectl apply -f prod.yaml' },
+      },
+    };
+
+    const merged = mergeStepVariant(step, 'production');
+
+    assert.deepStrictEqual(merged.variables, { REGION: 'us-east-1' });
+    assert.strictEqual(merged.command, 'kubectl apply -f prod.yaml');
+  });
+
+  it('leaves variables undefined when neither base nor variant define them', () => {
+    const step: Step = {
+      name: 'Deploy',
+      type: 'manual',
+      variants: { production: { command: 'echo hi' } },
+    };
+
+    const merged = mergeStepVariant(step, 'production');
+
+    assert.strictEqual(merged.variables, undefined);
   });
 });

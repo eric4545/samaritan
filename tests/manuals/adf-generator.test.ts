@@ -180,6 +180,107 @@ describe('ADF Generator', () => {
     );
   });
 
+  it('resolves ${VAR} in step and sub-step descriptions when resolveVariables is true', () => {
+    const op: Operation = {
+      id: 'adf-desc-resolve',
+      name: 'ADF Description Resolution',
+      version: '1.0.0',
+      common_variables: { SERVICE: 'checkout' },
+      environments: [
+        {
+          name: 'staging',
+          description: 'Staging',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+        },
+      ],
+      steps: [
+        {
+          name: 'Deploy',
+          type: 'manual',
+          description: 'Deploy the ${SERVICE} service',
+          sub_steps: [
+            {
+              name: 'Warm cache',
+              type: 'manual',
+              variables: { TIER: 'backend' },
+              description: 'Warm ${SERVICE} ${TIER} cache',
+            },
+          ],
+        },
+      ],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0,
+      },
+    };
+
+    const resolved = generateADFString(op, undefined, undefined, true);
+    assert.ok(
+      resolved.includes('Deploy the checkout service'),
+      'resolves common var in step description',
+    );
+    assert.ok(
+      resolved.includes('Warm checkout backend cache'),
+      'resolves common + step var in sub-step description',
+    );
+    assert.ok(
+      !resolved.includes('${SERVICE}'),
+      'no literal ${SERVICE} placeholder remains',
+    );
+
+    const unresolved = generateADFString(op, undefined, undefined, false);
+    assert.ok(
+      unresolved.includes('Deploy the ${SERVICE} service'),
+      'keeps placeholder when resolveVariables is false',
+    );
+  });
+
+  it('merges base + environment-variant variables when resolving (shared mergeStepVariant)', () => {
+    // Base var REGION and variant-only var TIER must BOTH resolve — the variant
+    // layers on top of the base instead of replacing its variables wholesale.
+    const op: Operation = {
+      id: 'adf-variant-merge',
+      name: 'ADF Variant Merge',
+      version: '1.0.0',
+      environments: [
+        {
+          name: 'production',
+          description: 'Production',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+        },
+      ],
+      steps: [
+        {
+          name: 'Deploy',
+          type: 'manual',
+          variables: { REGION: 'eu-west' },
+          variants: { production: { variables: { TIER: 'gold' } } },
+          command: 'deploy --region=${REGION} --tier=${TIER}',
+        },
+      ],
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0,
+      },
+    };
+
+    const resolved = generateADFString(op, undefined, 'production', true);
+    assert.ok(resolved.includes('eu-west'), 'base variable REGION resolves');
+    assert.ok(resolved.includes('gold'), 'variant variable TIER resolves');
+    assert.ok(
+      !resolved.includes('${REGION}'),
+      'base variable is not dropped by the variant merge',
+    );
+  });
+
   it('should include step metadata (PIC, timeline, ticket)', () => {
     const adfString = generateADFString(mockOperation);
 

@@ -84,6 +84,45 @@ describe('Confluence Generator Tests', () => {
     assert.match(content, /\$\{REPLICAS\}/);
   });
 
+  it('resolves ${VAR} in step and sub-step descriptions when resolveVars is true', () => {
+    const descriptionYaml = `
+name: Confluence Description Resolution
+version: 1.0.0
+common_variables:
+  SERVICE: checkout
+environments:
+  - name: staging
+    variables: {}
+steps:
+  - name: Deploy
+    type: manual
+    description: Deploy the \${SERVICE} service
+    sub_steps:
+      - name: Warm cache
+        type: manual
+        variables:
+          TIER: backend
+        description: Warm \${SERVICE} \${TIER} cache
+`;
+
+    const resolved = generateConfluence(descriptionYaml, true);
+    assert.match(resolved, /Deploy the checkout service/);
+    assert.match(resolved, /Warm checkout backend cache/);
+    assert.ok(
+      !resolved.includes('SERVICE'),
+      'no literal SERVICE placeholder remains when resolving',
+    );
+
+    // When not resolving, the placeholder is preserved (Confluence escapes the
+    // braces, so match on the variable name rather than the exact `${...}`).
+    const unresolved = generateConfluence(descriptionYaml, false);
+    assert.match(unresolved, /Deploy the \$.?\{?SERVICE/);
+    assert.ok(
+      !unresolved.includes('Deploy the checkout'),
+      'does not resolve description when resolveVars is false',
+    );
+  });
+
   it('should handle sub-steps in table format', () => {
     const content = generateConfluence(subStepsYaml);
 

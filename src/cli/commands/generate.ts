@@ -6,6 +6,8 @@ import { createGenerationMetadata } from '../../lib/git-metadata';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { groupByPhase } from '../../lib/phase-grouping';
 import {
+  mergeStepVariant,
+  shouldRenderStepForEnvironment,
   substituteExpectVars,
   substituteVariables,
 } from '../../lib/step-resolution';
@@ -22,38 +24,6 @@ import { parseRunManifest } from '../../operations/run-manifest-parser';
  * Merge step variants for a specific environment with base step properties
  * Returns the merged step (base + variant overrides) for the given environment
  */
-function mergeStepVariant(step: Step, environmentName: string): Step {
-  if (!step.variants || !step.variants[environmentName]) {
-    return step;
-  }
-
-  const variant = step.variants[environmentName];
-  return {
-    ...step,
-    ...variant,
-    // Preserve base properties that shouldn't be overridden
-    when: step.when,
-    variants: step.variants,
-  };
-}
-
-/**
- * Check if a step should be rendered for a specific environment
- * Returns true if the step applies to this environment
- */
-function shouldRenderStepForEnvironment(
-  step: Step,
-  environmentName: string,
-): boolean {
-  // If 'when' is not defined, step applies to all environments
-  if (!step.when || step.when.length === 0) {
-    return true;
-  }
-
-  // Check if this environment is in the 'when' list
-  return step.when.includes(environmentName);
-}
-
 /**
  * Filter steps (and sub_steps recursively) that don't apply to any of the given environments.
  * Steps without a 'when' field are kept (they apply to all environments).
@@ -1282,7 +1252,7 @@ ${filteredOperation.environments
           // Add section heading
           content += `h3. ${escapeConfluenceMacros(resolveStepName(step.name, step.variables))}\n\n`;
           if (step.description) {
-            content += `${escapeConfluenceMacros(step.description)}\n\n`;
+            content += `${escapeConfluenceMacros(resolveStepName(step.description, step.variables))}\n\n`;
           }
 
           // Reopen table
@@ -1311,7 +1281,7 @@ ${filteredOperation.environments
         // Build step info cell (escape braces to prevent macro interpretation)
         let stepInfo = `${phaseIconForStep}${typeIcon} Step ${stepNumber}: ${escapeConfluenceMacros(resolveStepName(step.name, step.variables))}`;
         if (step.description)
-          stepInfo += `\n${escapeConfluenceMacros(step.description)}`;
+          stepInfo += `\n${escapeConfluenceMacros(resolveStepName(step.description, step.variables))}`;
         if (step.pic)
           stepInfo += `\n(i) PIC: [~${escapeConfluenceMacros(step.pic)}]`;
         if (step.reviewer)
@@ -1904,7 +1874,7 @@ function addConfluenceSubStepRows(
       const headingPrefix = `h${headingLevel}.`;
       content += `${headingPrefix} ${escapeConfluenceMacros(resolveSubStepName(subStep.name, subStep.variables))}\n\n`;
       if (subStep.description) {
-        content += `${escapeConfluenceMacros(subStep.description)}\n\n`;
+        content += `${escapeConfluenceMacros(resolveSubStepName(subStep.description, subStep.variables))}\n\n`;
       }
 
       // Reopen table
@@ -1917,7 +1887,7 @@ function addConfluenceSubStepRows(
 
     let subStepInfo = `${subTypeIcon} Step ${subStepId}: ${escapeConfluenceMacros(resolveSubStepName(subStep.name, subStep.variables))}`;
     if (subStep.description)
-      subStepInfo += `\n${escapeConfluenceMacros(subStep.description)}`;
+      subStepInfo += `\n${escapeConfluenceMacros(resolveSubStepName(subStep.description, subStep.variables))}`;
     if (subStep.pic)
       subStepInfo += `\n(i) PIC: [~${escapeConfluenceMacros(subStep.pic)}]`;
     if (subStep.reviewer)
