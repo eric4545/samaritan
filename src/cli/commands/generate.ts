@@ -112,6 +112,20 @@ class DocumentationGenerator {
       return;
     }
 
+    const operation = await parseOperation(operationFile);
+    await this.renderManual(operation, operationFile, options);
+  }
+
+  /**
+   * Render a single manual from an already-parsed operation. Shared by the
+   * single-file path and the per-environment --all-envs loop so the operation
+   * is parsed only once per invocation.
+   */
+  private async renderManual(
+    operation: any,
+    operationFile: string,
+    options: GenerateOptions,
+  ): Promise<void> {
     const targetEnv = getTargetEnvironment(options);
     const envSuffix = targetEnv ? ` (${targetEnv})` : '';
     const format = options.format || 'markdown';
@@ -119,8 +133,6 @@ class DocumentationGenerator {
       `📄 Generating manual for: ${operationFile}${envSuffix} (format: ${format})`,
     );
 
-    // Parse operation
-    const operation = await parseOperation(operationFile);
     const operationName = basename(operationFile, '.yaml');
     const envFileSuffix = targetEnv ? `-${targetEnv}` : '';
 
@@ -172,8 +184,8 @@ class DocumentationGenerator {
    * Generate one manual per environment defined in the operation.
    * Files are written as `<base>_<env>.<ext>` (base defaults to the operation
    * file name, overridable via --prefix) into the current directory (or
-   * --output-dir). Reuses the per-format single-env generation by delegating
-   * back into generateManual with a computed output path per environment.
+   * --output-dir). Parses the operation once and reuses the per-format
+   * single-env rendering via renderManual with a computed output path per env.
    */
   private async generateAllEnvManuals(
     operationFile: string,
@@ -209,9 +221,8 @@ class DocumentationGenerator {
     const written: string[] = [];
     for (const env of environments) {
       const outputFile = join(outputDir, `${base}_${env.name}${ext}`);
-      await this.generateManual(operationFile, {
+      await this.renderManual(operation, operationFile, {
         ...options,
-        allEnvs: false,
         env: env.name,
         output: outputFile,
       });
