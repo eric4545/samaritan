@@ -1,6 +1,15 @@
 import assert from 'node:assert';
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { getFixturePath } from '../fixtures/fixtures';
 
@@ -216,6 +225,119 @@ describe('Generate Command', () => {
       assert.ok(
         rollbackSection.includes('|| Step ||'),
         'Should have rollback table header',
+      );
+    });
+  });
+
+  describe('All-Environments Generation (--all-envs)', () => {
+    // deployment.yaml defines two environments: preprod, production
+    const deploymentFixture = getFixturePath('deployment');
+    const tmpDirs: string[] = [];
+
+    const makeDir = (): string => {
+      const dir = mkdtempSync(join(tmpdir(), 'samaritan-allenv-'));
+      tmpDirs.push(dir);
+      return dir;
+    };
+
+    after(() => {
+      for (const dir of tmpDirs) {
+        if (existsSync(dir)) {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    it('should generate one markdown manual per environment', () => {
+      const outDir = makeDir();
+      const result = execSync(
+        `npx tsx src/cli/index.ts generate manual ${deploymentFixture} --all-envs --output-dir ${outDir}`,
+        { cwd: process.cwd(), encoding: 'utf-8' },
+      );
+
+      assert.ok(
+        result.includes('Generated 2 manual(s)'),
+        'Should report two generated manuals',
+      );
+
+      const preprodFile = join(outDir, 'deployment_preprod.md');
+      const prodFile = join(outDir, 'deployment_production.md');
+      assert.ok(existsSync(preprodFile), 'preprod manual should exist');
+      assert.ok(existsSync(prodFile), 'production manual should exist');
+
+      // Single-env heading format titles the doc with the environment name
+      const preprodContent = readFileSync(preprodFile, 'utf-8');
+      assert.ok(
+        /preprod/i.test(preprodContent),
+        'preprod manual should reference its environment',
+      );
+    });
+
+    it('should use --prefix as the base filename', () => {
+      const outDir = makeDir();
+      execSync(
+        `npx tsx src/cli/index.ts generate manual ${deploymentFixture} --all-envs --prefix release --output-dir ${outDir}`,
+        { cwd: process.cwd(), encoding: 'utf-8' },
+      );
+
+      assert.ok(
+        existsSync(join(outDir, 'release_preprod.md')),
+        'release_preprod.md should exist',
+      );
+      assert.ok(
+        existsSync(join(outDir, 'release_production.md')),
+        'release_production.md should exist',
+      );
+      // Base name fully replaced (no operation stem)
+      assert.ok(
+        !existsSync(join(outDir, 'deployment_preprod.md')),
+        'operation-stem name should not be used when --prefix is set',
+      );
+    });
+
+    it('should honor the output format extension (adf -> .json)', () => {
+      const outDir = makeDir();
+      execSync(
+        `npx tsx src/cli/index.ts generate manual ${deploymentFixture} --all-envs -f adf --output-dir ${outDir}`,
+        { cwd: process.cwd(), encoding: 'utf-8' },
+      );
+
+      assert.ok(
+        existsSync(join(outDir, 'deployment_preprod.json')),
+        'preprod ADF manual should exist',
+      );
+      assert.ok(
+        existsSync(join(outDir, 'deployment_production.json')),
+        'production ADF manual should exist',
+      );
+    });
+
+    it('should fall back to the parser default environment when none declared', () => {
+      // The parser injects a single `default` environment when an operation
+      // omits `environments:`, so --all-envs still produces one file.
+      const outDir = makeDir();
+      const opFile = join(outDir, 'no-envs.yaml');
+      writeFileSync(
+        opFile,
+        [
+          'name: No Envs',
+          'version: 1.0.0',
+          'steps:',
+          '  - name: Test Step',
+          '    type: automatic',
+          '    command: echo "test"',
+          '',
+        ].join('\n'),
+      );
+
+      execSync(
+        `npx tsx src/cli/index.ts generate manual ${opFile} --all-envs --output-dir ${outDir}`,
+        { cwd: process.cwd(), encoding: 'utf-8' },
+      );
+
+      assert.ok(
+        existsSync(join(outDir, 'no-envs_default.md')),
+        'default-env manual should exist',
       );
     });
   });
