@@ -330,12 +330,10 @@ export function generateADF(
 
   // Operation-level (global) rollback plan
   if (operation.rollback?.steps && operation.rollback.steps.length > 0) {
-    content.push(heading({ level: 2 })(text('🔄 Global Rollback Plan')));
+    content.push(heading({ level: 2 })(text('🔄 Rollback Plan')));
     content.push(
       paragraph(
-        text(
-          'If the operation fails, execute the following global rollback steps:',
-        ),
+        text('If the operation fails, execute the following rollback steps:'),
       ),
     );
     content.push(

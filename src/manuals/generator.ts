@@ -1910,9 +1910,9 @@ function generateManualContent(
 
   // Operation-level (global) rollback plan
   if (operation.rollback?.steps && operation.rollback.steps.length > 0) {
-    markdown += '## 🔄 Global Rollback Plan\n\n';
+    markdown += '## 🔄 Rollback Plan\n\n';
     markdown +=
-      'If the operation fails, execute the following global rollback steps:\n\n';
+      'If the operation fails, execute the following rollback steps:\n\n';
     markdown += `**Automatic:** ${operation.rollback.automatic ? 'Yes' : 'No'}\n\n`;
     if (
       operation.rollback.conditions &&
@@ -2217,11 +2217,9 @@ export function generateSingleEnvManual(
   if (globalRollback?.steps && globalRollback.steps.length > 0) {
     lines.push('---');
     lines.push('');
-    lines.push('## 🔄 Global Rollback Plan');
+    lines.push('## 🔄 Rollback Plan');
     lines.push('');
-    lines.push(
-      'If the operation fails, execute the following global rollback steps:',
-    );
+    lines.push('If the operation fails, execute the following rollback steps:');
     lines.push('');
     lines.push(`**Automatic:** ${globalRollback.automatic ? 'Yes' : 'No'}`);
     lines.push('');

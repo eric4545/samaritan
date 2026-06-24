@@ -209,10 +209,10 @@ describe('Generate Command', () => {
 
       const rollbackSection = content.substring(rollbackSectionStart);
 
-      // Check for global rollback plan
+      // Check for rollback plan
       assert.ok(
-        rollbackSection.includes('Global Rollback Plan'),
-        'Should have Global Rollback Plan section',
+        rollbackSection.includes('Rollback Plan'),
+        'Should have Rollback Plan section',
       );
 
       // Verify it has rollback conditions

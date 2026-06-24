@@ -1832,7 +1832,7 @@ After rolling back step N, SAMARITAN offers to walk back previous steps too.
 
 If no `rollback:` is defined, the operator is prompted to intervene manually.
 
-#### Operation-level (global) rollback
+#### Operation-level rollback
 
 You can also declare a single **top-level** `rollback:` block that describes the rollback procedure for the whole operation (distinct from the per-step `rollback` above). It supports `automatic`, `conditions`, and an ordered list of `steps` (each a full step body — `command`/`script`/`instruction`/`expect`/`pic`/`reviewer`/`evidence`):
 
@@ -1854,7 +1854,7 @@ rollback:
     - instruction: Verify pods are healthy and notify stakeholders.
 ```
 
-This renders as a **🔄 Global Rollback Plan** section in every generated manual — Markdown (multi-env table and single-env headings), Confluence ADF/JSON, and Confluence wiki markup — showing the `automatic` flag, `conditions`, and each rollback step per environment.
+This renders as a **🔄 Rollback Plan** section in every generated manual — Markdown (multi-env table and single-env headings), Confluence ADF/JSON, and Confluence wiki markup — showing the `automatic` flag, `conditions`, and each rollback step per environment.
 
 ### JSONL audit trail
 

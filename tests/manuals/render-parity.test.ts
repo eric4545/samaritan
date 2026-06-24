@@ -278,8 +278,8 @@ describe('Render parity: operation-level (global) rollback across formats', () =
       adf,
     })) {
       assert.ok(
-        content.includes('Global Rollback Plan'),
-        `${label}: should render the global rollback heading`,
+        content.includes('Rollback Plan'),
+        `${label}: should render the rollback plan heading`,
       );
       assert.ok(
         content.includes('No'),
@@ -291,8 +291,8 @@ describe('Render parity: operation-level (global) rollback across formats', () =
         `${label}: should render rollback conditions`,
       );
     }
-    // Confluence renders the global plan under its own heading
-    assert.match(confluence, /Global Rollback Plan/);
+    // Confluence renders the rollback plan under its own heading
+    assert.match(confluence, /Rollback Plan/);
     assert.match(confluence, /health_check_failure/);
   });
 

@@ -16,14 +16,14 @@ environments:                # multi-env matrix
 common_variables: { ... }    # shared vars (priority: common_variables > variables > env_file)
 variables: { ... }
 steps: [ ... ]               # required
-rollback:                    # operation-level (global) rollback plan
+rollback:                    # operation-level rollback plan
   automatic: false
   conditions: [ ... ]
   steps: [ ... ]             # each a full step body (shares StepContent base)
 ```
 
 The top-level `rollback` is a **RollbackPlan object** (`automatic`, `conditions`,
-`steps`) — not a bare array. It renders as a **🔄 Global Rollback Plan** section
+`steps`) — not a bare array. It renders as a **🔄 Rollback Plan** section
 in every manual format (Markdown multi-env + single-env, Confluence ADF, and
 Confluence wiki). Per-step `rollback:` (under `Step-only structural fields`) is a
 separate, bare array of rollback steps.

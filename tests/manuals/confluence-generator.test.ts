@@ -284,7 +284,7 @@ steps:
     const content = generateConfluence(globalRollbackYaml);
 
     // Should have global rollback section
-    assert.match(content, /h3\. Global Rollback Plan/);
+    assert.match(content, /h3\. Rollback Plan/);
     assert.match(content, /\*Automatic\*: No/);
     assert.match(
       content,

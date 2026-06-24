@@ -284,8 +284,8 @@ describe('Format Consistency Tests', () => {
       ['ADF', adfString],
     ] as const) {
       assert(
-        content.includes('Global Rollback Plan'),
-        `${label} should have a Global Rollback Plan section`,
+        content.includes('Rollback Plan'),
+        `${label} should have a Rollback Plan section`,
       );
       assert(
         content.includes('health_check_failure'),
