@@ -14,7 +14,12 @@ import {
   substituteExpectVars,
   substituteVariables,
 } from '../lib/step-resolution';
-import type { Environment, Operation, Step } from '../models/operation';
+import type {
+  Environment,
+  Operation,
+  RollbackStep,
+  Step,
+} from '../models/operation';
 import type { RunEvidenceItem, RunManifest } from '../models/run-manifest';
 
 function slugify(name: string): string {
@@ -399,6 +404,111 @@ function renderTableInstruction(
       ? substituteVariables(instruction, envVars || {}, stepVars)
       : instruction;
   return `**Instructions:**<br>${display.trim().replace(/\|/g, '\\|').replace(/\n/g, '<br>')}`;
+}
+
+/**
+ * Render a single rollback step's content as a Markdown table cell (the `<br>`
+ * inline style used by the multi-env tables). Shared by step-level and
+ * operation-level (global) rollback rendering.
+ */
+function renderRollbackCellMarkdown(
+  rb: RollbackStep,
+  env: Environment,
+  resolveVariables: boolean,
+  operationDir?: string,
+  stepVariables?: Record<string, any>,
+): string {
+  let cellContent = '';
+
+  const substituteVars = rb.options?.substitute_vars ?? true;
+  const showCommandSeparately = rb.options?.show_command_separately ?? false;
+
+  cellContent += renderTableInstruction(
+    rb.instruction,
+    env.variables,
+    stepVariables,
+    resolveVariables,
+    substituteVars,
+  );
+
+  // Process rollback command (code content)
+  if (rb.command) {
+    let displayCommand = rb.command;
+    if (resolveVariables && substituteVars) {
+      displayCommand = substituteVariables(
+        displayCommand,
+        env.variables || {},
+        stepVariables,
+      );
+    }
+    const cleanCommand = displayCommand
+      .trim()
+      .replace(/\n/g, '<br>')
+      .replace(/\|/g, '\\|')
+      .replace(/`/g, '\\`')
+      .replace(/<br>$/, '');
+
+    if (showCommandSeparately && rb.instruction) {
+      cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+    } else if (!rb.instruction) {
+      cellContent += `\`${cleanCommand}\``;
+    } else {
+      cellContent += `<br><br>\`${cleanCommand}\``;
+    }
+  }
+
+  // Process rollback script (external shell script file)
+  if (rb.script) {
+    const sep = cellContent ? '<br><br>' : '';
+    cellContent += `${sep}**Script:** \`${rb.script}\``;
+    if (operationDir) {
+      try {
+        const scriptPath = path.resolve(operationDir, rb.script);
+        const scriptContent = fs
+          .readFileSync(scriptPath, 'utf-8')
+          .trimEnd()
+          .replace(/\|/g, '\\|')
+          .replace(/\n/g, '<br>');
+        cellContent += `<br>\`\`\`bash<br>${scriptContent}<br>\`\`\``;
+      } catch {
+        cellContent += ` <em>(file not found)</em>`;
+      }
+    }
+  }
+
+  // Add rollback expect
+  if (rb.expect != null) {
+    const resolvedExpect =
+      resolveVariables && substituteVars
+        ? substituteExpectVars(rb.expect, env.variables || {}, stepVariables)
+        : rb.expect;
+    const parts = renderExpectParts(resolvedExpect);
+    if (parts.length > 0) {
+      const sep = cellContent ? '<br>' : '';
+      cellContent += `${sep}_Expected:_`;
+      for (const p of parts) cellContent += `<br>- [ ] _${p}_`;
+    }
+  }
+
+  // Rollback sign-off checkboxes
+  if (rb.pic || rb.reviewer) {
+    const sep = cellContent ? '<br><br>' : '';
+    cellContent += `${sep}**Sign-off:**`;
+    if (rb.pic) cellContent += `<br>- [ ] PIC (${rb.pic})`;
+    if (rb.reviewer) cellContent += `<br>- [ ] Reviewer (${rb.reviewer})`;
+  }
+
+  // Environment-specific evidence results
+  if (rb.evidence) {
+    cellContent += formatEvidenceInfo(rb.evidence, env.name, operationDir);
+  }
+
+  // Fallback
+  if (!cellContent) {
+    cellContent = '-';
+  }
+
+  return cellContent;
 }
 
 function generateStepRow(
@@ -1798,6 +1908,47 @@ function generateManualContent(
     });
   }
 
+  // Operation-level (global) rollback plan
+  if (operation.rollback?.steps && operation.rollback.steps.length > 0) {
+    markdown += '## 🔄 Rollback Plan\n\n';
+    markdown +=
+      'If the operation fails, execute the following rollback steps:\n\n';
+    markdown += `**Automatic:** ${operation.rollback.automatic ? 'Yes' : 'No'}\n\n`;
+    if (
+      operation.rollback.conditions &&
+      operation.rollback.conditions.length > 0
+    ) {
+      markdown += `**Conditions:** ${operation.rollback.conditions.join(', ')}\n\n`;
+    }
+
+    markdown += '| Step |';
+    operation.environments.forEach((env) => {
+      markdown += ` ${env.name} |`;
+    });
+    markdown += '\n|------|';
+    operation.environments.forEach(() => {
+      markdown += '---------|';
+    });
+    markdown += '\n';
+
+    operation.rollback.steps.forEach((rb, index) => {
+      markdown += `| Rollback Step ${index + 1} |`;
+      operation.environments.forEach((env) => {
+        const cellContent = renderRollbackCellMarkdown(
+          rb,
+          env,
+          resolveVariables,
+          operationDir,
+          {},
+        );
+        markdown += ` ${cellContent} |`;
+      });
+      markdown += '\n';
+    });
+
+    markdown += '\n';
+  }
+
   return markdown;
 }
 
@@ -2060,6 +2211,85 @@ export function generateSingleEnvManual(
       lines.push('');
     }
   });
+
+  // Operation-level (global) rollback plan, resolved for this environment
+  const globalRollback = workingOperation.rollback;
+  if (globalRollback?.steps && globalRollback.steps.length > 0) {
+    lines.push('---');
+    lines.push('');
+    lines.push('## 🔄 Rollback Plan');
+    lines.push('');
+    lines.push('If the operation fails, execute the following rollback steps:');
+    lines.push('');
+    lines.push(`**Automatic:** ${globalRollback.automatic ? 'Yes' : 'No'}`);
+    lines.push('');
+    if (globalRollback.conditions && globalRollback.conditions.length > 0) {
+      lines.push(`**Conditions:** ${globalRollback.conditions.join(', ')}`);
+      lines.push('');
+    }
+
+    globalRollback.steps.forEach((rb, index) => {
+      const substituteVars = rb.options?.substitute_vars ?? true;
+      const resolve = resolveVariables && substituteVars;
+
+      lines.push(`### Rollback Step ${index + 1}`);
+      lines.push('');
+
+      if (rb.instruction) {
+        lines.push('**Instructions**');
+        lines.push('');
+        lines.push(resolve ? resolveCmd(rb.instruction, {}) : rb.instruction);
+        lines.push('');
+      }
+
+      if (rb.command) {
+        lines.push('**Command**');
+        lines.push('```bash');
+        const cmd = rb.command.trimEnd();
+        lines.push(resolve ? resolveCmd(cmd, {}) : cmd);
+        lines.push('```');
+        lines.push('');
+      }
+
+      if (rb.script) {
+        lines.push(`**Script:** \`${rb.script}\``);
+        lines.push('');
+        if (operationDir) {
+          try {
+            const scriptPath = path.resolve(operationDir, rb.script);
+            const scriptContent = fs
+              .readFileSync(scriptPath, 'utf-8')
+              .trimEnd();
+            lines.push('```bash');
+            lines.push(scriptContent);
+            lines.push('```');
+          } catch {
+            lines.push(`_Script file not found: ${rb.script}_`);
+          }
+          lines.push('');
+        }
+      }
+
+      if (rb.expect != null) {
+        const resolvedExpect = resolve
+          ? substituteExpectVars(rb.expect, envVars, {})
+          : rb.expect;
+        const parts = renderExpectParts(resolvedExpect);
+        if (parts.length > 0) {
+          lines.push('**Expected:**');
+          for (const p of parts) lines.push(`- [ ] ${p}`);
+          lines.push('');
+        }
+      }
+
+      if (rb.pic || rb.reviewer) {
+        lines.push('**Sign-off:**');
+        if (rb.pic) lines.push(`- [ ] PIC (${rb.pic})`);
+        if (rb.reviewer) lines.push(`- [ ] Reviewer (${rb.reviewer})`);
+        lines.push('');
+      }
+    });
+  }
 
   let result = lines.join('\n');
   if (runManifest && orphanedKeys.length > 0) {

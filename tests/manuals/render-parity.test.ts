@@ -230,3 +230,99 @@ describe('Render parity: all StepContent fields across formats', () => {
     }
   });
 });
+
+describe('Render parity: operation-level (global) rollback across formats', () => {
+  async function generateAllGlobalRollback() {
+    const operation = await parseFixture('globalRollback');
+    const operationDir = path.dirname(getFixturePath('globalRollback'));
+
+    const multiEnv = generateManualWithMetadata(
+      operation,
+      undefined,
+      undefined,
+      true,
+      false,
+      operationDir,
+    );
+    const singleEnv = generateSingleEnvManual(
+      operation,
+      'staging',
+      true,
+      operationDir,
+    );
+    const adf = generateADFString(
+      operation,
+      undefined,
+      undefined,
+      true,
+      operationDir,
+    );
+    const confluence = generateConfluenceContent(
+      operation,
+      true,
+      false,
+      undefined,
+      operationDir,
+    );
+
+    return { multiEnv, singleEnv, adf, confluence };
+  }
+
+  it('renders the global rollback heading + automatic/conditions in all formats', async () => {
+    const { multiEnv, singleEnv, adf, confluence } =
+      await generateAllGlobalRollback();
+
+    for (const [label, content] of Object.entries({
+      multiEnv,
+      singleEnv,
+      adf,
+    })) {
+      assert.ok(
+        content.includes('Rollback Plan'),
+        `${label}: should render the rollback plan heading`,
+      );
+      assert.ok(
+        content.includes('No'),
+        `${label}: should render automatic flag`,
+      );
+      assert.ok(
+        content.includes('health_check_failure') &&
+          content.includes('error_rate_spike'),
+        `${label}: should render rollback conditions`,
+      );
+    }
+    // Confluence renders the rollback plan under its own heading
+    assert.match(confluence, /Rollback Plan/);
+    assert.match(confluence, /health_check_failure/);
+  });
+
+  it('renders the global rollback command, instruction, expect, and sign-off in all formats', async () => {
+    const { multiEnv, singleEnv, adf, confluence } =
+      await generateAllGlobalRollback();
+
+    for (const [label, content] of Object.entries({
+      multiEnv,
+      singleEnv,
+      adf,
+      confluence,
+    })) {
+      assert.ok(
+        content.includes('kubectl rollout undo deployment/app'),
+        `${label}: should render global rollback command`,
+      );
+      assert.ok(
+        content.includes('Verify rollback completed:'),
+        `${label}: should render global rollback instruction`,
+      );
+      assert.ok(
+        content.includes('rolled back'),
+        `${label}: should render global rollback expect`,
+      );
+      assert.ok(
+        content.includes('ops-team@example.com') &&
+          content.includes('sre-lead@example.com'),
+        `${label}: should render global rollback sign-off`,
+      );
+    }
+  });
+});

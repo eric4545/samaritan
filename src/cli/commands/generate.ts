@@ -1493,7 +1493,7 @@ ${filteredOperation.environments
 
 {warning}If deployment fails, execute the following rollback steps:{warning}
 
-h3. Global Rollback Plan
+h3. Rollback Plan
 
 *Automatic*: ${filteredOperation.rollback.automatic ? 'Yes' : 'No'}
 ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOperation.rollback.conditions.join(', ')}\n` : ''}
