@@ -1832,6 +1832,30 @@ After rolling back step N, SAMARITAN offers to walk back previous steps too.
 
 If no `rollback:` is defined, the operator is prompted to intervene manually.
 
+#### Operation-level (global) rollback
+
+You can also declare a single **top-level** `rollback:` block that describes the rollback procedure for the whole operation (distinct from the per-step `rollback` above). It supports `automatic`, `conditions`, and an ordered list of `steps` (each a full step body — `command`/`script`/`instruction`/`expect`/`pic`/`reviewer`/`evidence`):
+
+```yaml
+steps:
+  - name: Deploy
+    command: kubectl apply -f deployment.yaml
+
+# Global rollback plan for the whole operation
+rollback:
+  automatic: false
+  conditions:
+    - health_check_failure
+    - error_rate_spike
+  steps:
+    - command: kubectl rollout undo deployment/web
+      expect:
+        contains: rolled back
+    - instruction: Verify pods are healthy and notify stakeholders.
+```
+
+This renders as a **🔄 Global Rollback Plan** section in every generated manual — Markdown (multi-env table and single-env headings), Confluence ADF/JSON, and Confluence wiki markup — showing the `automatic` flag, `conditions`, and each rollback step per environment.
+
 ### JSONL audit trail
 
 Every action appends a line to the run's black box at `<operation-dir>/.samaritan-runs/<id>/events.jsonl` (the exact path is printed as `📝 Audit log:` at the start of the run):

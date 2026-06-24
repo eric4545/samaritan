@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import { generateADFString } from '../../src/manuals/adf-generator';
 import { generateManual } from '../../src/manuals/generator';
+import { parseFixture } from '../fixtures/fixtures';
 import { deploymentOperation } from '../fixtures/operations';
 
 describe('Format Consistency Tests', () => {
@@ -271,6 +272,30 @@ describe('Format Consistency Tests', () => {
       adfString.includes('kubectl rollout undo'),
       'ADF should have rollback command',
     );
+  });
+
+  it('should include operation-level (global) rollback plan consistently', async () => {
+    const operation = await parseFixture('globalRollback');
+    const markdown = generateManual(operation);
+    const adfString = generateADFString(operation);
+
+    for (const [label, content] of [
+      ['Markdown', markdown],
+      ['ADF', adfString],
+    ] as const) {
+      assert(
+        content.includes('Global Rollback Plan'),
+        `${label} should have a Global Rollback Plan section`,
+      );
+      assert(
+        content.includes('health_check_failure'),
+        `${label} should render global rollback conditions`,
+      );
+      assert(
+        content.includes('kubectl rollout undo deployment/app'),
+        `${label} should render the global rollback command`,
+      );
+    }
   });
 
   it('should include step metadata (PIC, timeline, ticket) consistently', () => {

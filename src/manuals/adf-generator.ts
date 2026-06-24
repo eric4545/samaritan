@@ -328,6 +328,143 @@ export function generateADF(
     });
   }
 
+  // Operation-level (global) rollback plan
+  if (operation.rollback?.steps && operation.rollback.steps.length > 0) {
+    content.push(heading({ level: 2 })(text('🔄 Global Rollback Plan')));
+    content.push(
+      paragraph(
+        text(
+          'If the operation fails, execute the following global rollback steps:',
+        ),
+      ),
+    );
+    content.push(
+      paragraph(
+        strong(text('Automatic: ')),
+        text(operation.rollback.automatic ? 'Yes' : 'No'),
+      ),
+    );
+    if (
+      operation.rollback.conditions &&
+      operation.rollback.conditions.length > 0
+    ) {
+      content.push(
+        paragraph(
+          strong(text('Conditions: ')),
+          text(operation.rollback.conditions.join(', ')),
+        ),
+      );
+    }
+
+    const globalRollbackRows = operation.rollback.steps.map((rb, index) => {
+      const envCells = environments.map((env) => {
+        const cellContent = [];
+
+        const substituteVars = rb.options?.substitute_vars ?? true;
+        const showCommandSeparately =
+          rb.options?.show_command_separately ?? false;
+
+        if (rb.instruction) {
+          let displayInstruction = rb.instruction;
+          if (resolveVariables && substituteVars) {
+            displayInstruction = substituteVariables(
+              displayInstruction,
+              env.variables || {},
+              {},
+            );
+          }
+          cellContent.push(paragraph(strong(text('Instructions:'))));
+          cellContent.push(paragraph(text(displayInstruction)));
+        }
+
+        if (rb.command) {
+          let displayCommand = rb.command;
+          if (resolveVariables && substituteVars) {
+            displayCommand = substituteVariables(
+              displayCommand,
+              env.variables || {},
+              {},
+            );
+          }
+          if (showCommandSeparately && rb.instruction) {
+            cellContent.push(paragraph(strong(text('Command:'))));
+          }
+          cellContent.push(
+            codeBlock({ language: 'bash' })(text(displayCommand)),
+          );
+        }
+
+        if (rb.script) {
+          cellContent.push(
+            paragraph(strong(text('Script:')), text(` ${rb.script}`)),
+          );
+          if (operationDir) {
+            try {
+              const scriptPath = path.resolve(operationDir, rb.script);
+              const scriptContent = fs
+                .readFileSync(scriptPath, 'utf-8')
+                .trimEnd();
+              cellContent.push(
+                codeBlock({ language: 'bash' })(text(scriptContent)),
+              );
+            } catch {
+              cellContent.push(
+                paragraph(em(text(`Script file not found: ${rb.script}`))),
+              );
+            }
+          }
+        }
+
+        if (rb.expect != null) {
+          const resolvedExpect =
+            resolveVariables && substituteVars
+              ? substituteExpectVars(rb.expect, env.variables || {}, {})
+              : rb.expect;
+          const parts = renderExpectParts(resolvedExpect);
+          if (parts.length > 0) {
+            cellContent.push(paragraph(strong(text('Expected:'))));
+            for (const p of parts) {
+              cellContent.push(paragraph(em(text(`- [ ] ${p}`))));
+            }
+          }
+        }
+
+        if (rb.pic || rb.reviewer) {
+          cellContent.push(paragraph(strong(text('Sign-off:'))));
+          if (rb.pic)
+            cellContent.push(paragraph(text(`- [ ] PIC (${rb.pic})`)));
+          if (rb.reviewer)
+            cellContent.push(
+              paragraph(text(`- [ ] Reviewer (${rb.reviewer})`)),
+            );
+        }
+
+        if (cellContent.length === 0) {
+          cellContent.push(paragraph(text('-')));
+        }
+
+        return tableCell()(...cellContent);
+      });
+
+      return tableRow([
+        tableCell()(paragraph(text(`Rollback Step ${index + 1}`))),
+        ...envCells,
+      ]);
+    });
+
+    content.push(
+      table(
+        tableRow([
+          tableHeader()(paragraph(text('Step'))),
+          ...environments.map((env) =>
+            tableHeader()(paragraph(text(env.name))),
+          ),
+        ]),
+        ...globalRollbackRows,
+      ),
+    );
+  }
+
   return doc(...content);
 }
 

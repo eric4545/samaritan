@@ -21,6 +21,8 @@ rollback:
     - command: kubectl rollout undo deployment/app
       expect:
         contains: rolled back
+      pic: ops-team@example.com
+      reviewer: sre-lead@example.com
     - instruction: |
         Verify rollback completed:
         1. Check pods are running
