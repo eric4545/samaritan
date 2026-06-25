@@ -35,7 +35,10 @@ import {
   getSessionEvidenceDir,
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
-import { substituteExpectVars } from '../../lib/step-resolution';
+import {
+  substituteExpectVars,
+  substituteVariables,
+} from '../../lib/step-resolution';
 import {
   bootstrapSessions,
   listTmuxPanes,
@@ -747,14 +750,36 @@ class OperationRunner {
     const isRollback = (c: string) => c === 'r' || c === 'rollback';
 
     const warnedUnresolvedVars = new Set<string>();
-    const tryResolve = (text: string | undefined): string | undefined => {
+    // Merge step-scoped variables (e.g. the loop variable a foreach/matrix
+    // expansion injects into step.variables) over the env/common/CLI `vars`,
+    // pre-resolving any step var that is itself a ${VAR} reference — the same
+    // layering substituteVariables/substituteExpectVars use. Without this,
+    // `command`/`instruction`/`description` would leak raw ${LOOP_VAR} in a
+    // matrix step even though `expect` (which already passes step.variables)
+    // resolves fine.
+    const mergeStepVars = (
+      stepVars?: Record<string, any>,
+    ): Record<string, any> => {
+      if (!stepVars || Object.keys(stepVars).length === 0) return vars;
+      const resolved: Record<string, any> = {};
+      for (const [key, value] of Object.entries(stepVars)) {
+        resolved[key] =
+          typeof value === 'string' ? substituteVariables(value, vars) : value;
+      }
+      return { ...vars, ...resolved };
+    };
+    const tryResolve = (
+      text: string | undefined,
+      stepVars?: Record<string, any>,
+    ): string | undefined => {
       if (!text) return text;
+      const scope = mergeStepVars(stepVars);
       try {
-        return resolveVars(text, vars);
+        return resolveVars(text, scope);
       } catch {
         // Fall back to safe resolution (display with unresolved markers),
         // but tell the operator which variables are missing — once each.
-        const missing = listUnresolvedVars(text, vars).filter(
+        const missing = listUnresolvedVars(text, scope).filter(
           (name) => !warnedUnresolvedVars.has(name),
         );
         if (missing.length > 0) {
@@ -763,7 +788,7 @@ class OperationRunner {
             `    ⚠️  Unresolved variable(s): ${missing.join(', ')} — add them to variables: or pass --var`,
           );
         }
-        return resolveVarsSafe(text, vars);
+        return resolveVarsSafe(text, scope);
       }
     };
 
@@ -778,7 +803,7 @@ class OperationRunner {
         // operator what to run; controller still records the audit events.
         console.log('    🔄 Rollback steps (manual — no tmux session):');
         for (const rb of step.rollback ?? []) {
-          console.log(`      $ ${tryResolve(rb.command)}`);
+          console.log(`      $ ${tryResolve(rb.command, step.variables)}`);
         }
         await controller?.rollback(step, i, state.context.operator);
       } else {
@@ -793,37 +818,57 @@ class OperationRunner {
     // return) to the caller.
     const promptAssertFailureAction = async (
       stepIndex: number,
-      opts?: { allowReVerify?: boolean; allowMore?: boolean },
+      opts?: {
+        allowReVerify?: boolean;
+        allowMore?: boolean;
+        // When set, offer `c=copy command` so the operator can re-copy the
+        // (already ${VAR}-resolved) command and re-run it after a failed check.
+        commandToCopy?: string;
+      },
     ): Promise<'override' | 'rollback' | 'stop' | 'reverify' | 'more'> => {
-      const extras = [
-        ...(opts?.allowMore ? ['m=more'] : []),
-        ...(opts?.allowReVerify ? ['v=re-verify'] : []),
-      ];
-      const extraLabel = extras.length ? ` / ${extras.join(' / ')}` : '';
-      const overrideAns = await question(
-        `    ⚠️  Assertion failed. [o=override with reason / r=rollback${extraLabel} / Enter=stop]: `,
-      );
-      const oc = overrideAns.trim().toLowerCase();
-      if (oc === 'o' || oc === 'override') {
-        const reason = await question('    Reason for override: ');
-        logger.emit({
-          type: 'user_input',
-          action: 'override',
-          step: stepIndex,
-          actor: state.context.operator,
-          reason: reason.trim(),
-        });
-        console.log('    ⚠️  Override accepted.');
-        return 'override';
+      // Loop so copying the command re-renders the prompt rather than
+      // consuming the operator's choice — copy is not a terminal action.
+      while (true) {
+        const extras = [
+          ...(opts?.commandToCopy ? ['c=copy command'] : []),
+          ...(opts?.allowMore ? ['m=more'] : []),
+          ...(opts?.allowReVerify ? ['v=re-verify'] : []),
+        ];
+        const extraLabel = extras.length ? ` / ${extras.join(' / ')}` : '';
+        const overrideAns = await question(
+          `    ⚠️  Assertion failed. [o=override with reason / r=rollback${extraLabel} / Enter=stop]: `,
+        );
+        const oc = overrideAns.trim().toLowerCase();
+        if (opts?.commandToCopy && (oc === 'c' || oc === 'copy')) {
+          const ok = await copyToClipboard(opts.commandToCopy);
+          console.log(
+            ok
+              ? '    ✅ Command copied to clipboard!'
+              : '    ⚠️  Clipboard unavailable',
+          );
+          continue;
+        }
+        if (oc === 'o' || oc === 'override') {
+          const reason = await question('    Reason for override: ');
+          logger.emit({
+            type: 'user_input',
+            action: 'override',
+            step: stepIndex,
+            actor: state.context.operator,
+            reason: reason.trim(),
+          });
+          console.log('    ⚠️  Override accepted.');
+          return 'override';
+        }
+        if (isRollback(oc)) return 'rollback';
+        if (opts?.allowMore && (oc === 'm' || oc === 'more')) return 'more';
+        if (
+          opts?.allowReVerify &&
+          (oc === 'v' || oc === 're-verify' || oc === 'reverify')
+        )
+          return 'reverify';
+        return 'stop';
       }
-      if (isRollback(oc)) return 'rollback';
-      if (opts?.allowMore && (oc === 'm' || oc === 'more')) return 'more';
-      if (
-        opts?.allowReVerify &&
-        (oc === 'v' || oc === 're-verify' || oc === 'reverify')
-      )
-        return 'reverify';
-      return 'stop';
     };
 
     const promptAction = async (
@@ -1083,6 +1128,9 @@ class OperationRunner {
       // checklist so it matches the "Expected:" line. The assertion itself
       // still runs through controller.verifyOutput (sessionState interpolation).
       displayExpect: ExpectConfig | ExpectConfig[] | string | undefined,
+      // ${VAR}-resolved command, offered as `c=copy command` on a failed check
+      // so the operator can re-copy and re-run it.
+      commandToCopy?: string,
     ): Promise<void> => {
       if (!step.expect) return;
 
@@ -1123,6 +1171,7 @@ class OperationRunner {
         const action = await promptAssertFailureAction(stepIndex, {
           allowReVerify: true,
           allowMore: !expand,
+          commandToCopy,
         });
         if (action === 'more') {
           expand = true;
@@ -1153,8 +1202,11 @@ class OperationRunner {
         const stepNum = `[${flatSteps[i].label}/${steps.length}]`;
         const typeLabel = step.type.toUpperCase();
 
-        const resolvedCommand = tryResolve(step.command);
-        const resolvedInstruction = tryResolve(step.instruction);
+        const resolvedCommand = tryResolve(step.command, step.variables);
+        const resolvedInstruction = tryResolve(
+          step.instruction,
+          step.variables,
+        );
         // Resolve ${VAR} in `expect` for DISPLAY (the "Expected:" line and the
         // verify checklist) via the same shared helper the manuals and mock-run
         // use — so the criteria the operator reads matches the resolved command
@@ -1176,7 +1228,7 @@ class OperationRunner {
         console.log(`\n${DIVIDER}`);
         console.log(`${stepNum} ${typeLabel}: ${step.name}`);
         if (step.description)
-          console.log(`    ${tryResolve(step.description)}`);
+          console.log(`    ${tryResolve(step.description, step.variables)}`);
         if (step.pic) console.log(`    PIC      : ${step.pic}`);
         if (step.reviewer) console.log(`    Reviewer : ${step.reviewer}`);
         if (step.session) console.log(`    Session  : ${step.session}`);
@@ -1243,14 +1295,16 @@ class OperationRunner {
             // Run verify if defined
             if (step.command && step.expect) {
               console.log(
-                `    🔍 Checking expected output for: ${tryResolve(step.command) ?? step.command}`,
+                `    🔍 Checking expected output for: ${tryResolve(step.command, step.variables) ?? step.command}`,
               );
               const { state: vState, assertResult } =
                 await controller.runVerify(step, i);
               if (assertResult) {
                 console.log(renderAssertOutcome(assertResult));
                 if (!assertResult.pass) {
-                  const action = await promptAssertFailureAction(i);
+                  const action = await promptAssertFailureAction(i, {
+                    commandToCopy: resolvedCommand,
+                  });
                   if (action === 'rollback') {
                     await doRollback(step, i);
                     continue;
@@ -1418,6 +1472,7 @@ class OperationRunner {
                 i,
                 captureSinceStepStart,
                 resolvedExpect,
+                resolvedCommand,
               );
               continue;
             }

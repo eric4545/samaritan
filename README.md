@@ -1578,11 +1578,12 @@ On **FAIL**, a single-key menu follows:
   │ 2 →│ web-server-0   0/1     CrashLoopBackOff   3          2m  │
   │ 3  │ missing: Running                                         │
   ╰─────────────────────────────────────────────────────────────╯
-⚠️  Assertion failed. [o=override with reason / r=rollback / m=more / v=re-verify / Enter=stop]:
+⚠️  Assertion failed. [o=override with reason / r=rollback / c=copy command / m=more / v=re-verify / Enter=stop]:
 ```
 
 - `o` — record an override reason in the audit log and continue
 - `r` — trigger rollback
+- `c` — **copy command**: copy the step's `${VAR}`-resolved command to the clipboard so you can paste and re-run it, then the menu re-renders (copy is not a terminal choice). Only shown when the step has a command.
 - `m` — **more**: re-render the same captured output in full (`output (full)`, starting the gutter at line 1) instead of just the tail
 - `v` — **re-verify**: re-capture the pane output and re-run all checks (useful when the command is still finishing)
 - Enter — stop

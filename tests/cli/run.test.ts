@@ -24,6 +24,7 @@ function fixturePath(name: string): string {
     nestedSubsteps2Levels:
       'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',
     varRendering: 'tests/fixtures/operations/features/var-rendering.yaml',
+    foreachLoop: 'tests/fixtures/operations/features/foreach-loop.yaml',
   };
   return resolve(map[name]);
 }
@@ -412,6 +413,44 @@ describe('run command: sidecar verify UX (--attach + tmux)', () => {
         combined.includes('m=more') && combined.includes('v=re-verify'),
         `failure menu should offer [m] more and [v] re-verify; output:\n${combined.slice(-1500)}`,
       );
+      assert.ok(
+        combined.includes('c=copy command'),
+        `failure menu should offer [c] copy command; output:\n${combined.slice(-1500)}`,
+      );
+    },
+  );
+
+  it(
+    '[c] at the verify-failure prompt copies the command and re-renders the menu',
+    { skip: !hasTmux },
+    () => {
+      const fixture = fixturePath('manualStepActions');
+      const { stdout, stderr } = withTmuxPane(
+        'deployment still progressing...',
+        (target) => {
+          // v → verify fails → menu; c → copy command + re-render menu; Enter → stop; abort.
+          const cmd = `(sleep 3; printf 'v\\n'; sleep 1; printf 'c\\n'; sleep 1; printf '\\n'; sleep 1; printf 'abort\\n') | timeout 20 node_modules/.bin/tsx src/cli/index.ts run ${fixture} --env default --attach ${target}`;
+          const result = spawnSync('bash', ['-c', cmd], {
+            encoding: 'utf8',
+            timeout: 30_000,
+          });
+          return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+        },
+      );
+      const combined = stdout + stderr;
+      // The clipboard binary may be absent in CI — either outcome confirms the
+      // copy branch ran rather than being treated as an unknown key.
+      assert.ok(
+        combined.includes('Command copied to clipboard!') ||
+          combined.includes('Clipboard unavailable'),
+        `pressing c must trigger the copy branch; output:\n${combined.slice(-1500)}`,
+      );
+      // Copy is not terminal: the failure menu must render again afterwards.
+      const menuCount = combined.split('c=copy command').length - 1;
+      assert.ok(
+        menuCount >= 2,
+        `failure menu must re-render after copy (saw ${menuCount}); output:\n${combined.slice(-1500)}`,
+      );
     },
   );
 });
@@ -773,6 +812,26 @@ describe('run command: ${VAR} rendering in step display', () => {
     assert.ok(
       combined.includes('kubectl rollout undo deployment/web -n staging-ns'),
       'rollback command display must have ${NAMESPACE} resolved',
+    );
+  });
+
+  it('resolves a foreach loop variable (step.variables) in the command display', () => {
+    // foreach injects the loop var (SERVICE) into each expanded step's
+    // step.variables — not the env/common vars. The command display must
+    // resolve it the same way `expect` already does, instead of leaking
+    // literal ${SERVICE}.
+    const fixture = fixturePath('foreachLoop');
+    const result = runCli(['run', fixture, '--env', 'production'], {
+      input: 'q\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('kubectl apply -f backend.yaml -n production'),
+      `command must have foreach var ${'${SERVICE}'} resolved; output:\n${combined.slice(-1000)}`,
+    );
+    assert.ok(
+      !combined.includes('${SERVICE}'),
+      'command must not show literal ${SERVICE}',
     );
   });
 
