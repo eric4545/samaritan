@@ -136,6 +136,8 @@ export const EXPECT_STRING_FIELDS = [
   'any_line_contains',
   'no_line_contains',
   'all_lines_match',
+  'any_line_matches',
+  'no_line_matches',
   'jsonpath',
 ] as const satisfies ReadonlyArray<keyof ExpectConfig>;
 

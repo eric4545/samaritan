@@ -41,6 +41,8 @@ export interface ExpectConfig {
   any_line_contains?: string;
   no_line_contains?: string;
   all_lines_match?: string;
+  any_line_matches?: string;
+  no_line_matches?: string;
   line_count?: number;
   line_count_gte?: number;
   numeric_gte?: number;

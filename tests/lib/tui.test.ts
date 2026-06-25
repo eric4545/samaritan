@@ -607,6 +607,32 @@ describe('renderVerifyOutcome', () => {
     assert.ok(out.includes('Error'));
   });
 
+  it('PASS: highlights the matched line on a passing any_line_matches check', () => {
+    const expect = { any_line_matches: '^pod/web-[0-9]+' };
+    const output = 'starting\npod/web-12 ready\ndone';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+
+    assert.ok(out.includes('✅ PASS'));
+    assert.ok(out.includes('any line matches: ^pod/web-[0-9]+'));
+    assert.ok(out.includes('\x1b[32m'), 'green highlight applied');
+    assert.ok(out.includes('pod/web-12'));
+  });
+
+  it('FAIL: highlights the offending match on a failing no_line_matches check', () => {
+    const expect = { no_line_matches: 'ERROR|FATAL' };
+    const output = 'all good\nFATAL: boom';
+    const detailed = assertOutputDetailed(output, expect);
+
+    const out = renderVerifyOutcome(detailed, expect);
+
+    assert.ok(out.includes('❌ FAIL'));
+    assert.ok(out.includes('no line matches: ERROR|FATAL'));
+    assert.ok(out.includes('\x1b[31m'), 'red highlight applied');
+    assert.ok(out.includes('FATAL'));
+  });
+
   it('shows inline computed values for numeric checks', () => {
     const expect = [{ numeric_gte: 3 }, { not_empty: true }];
     const output = '2';

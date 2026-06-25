@@ -814,6 +814,8 @@
         "any_line_contains": { "type": "string" },
         "no_line_contains": { "type": "string" },
         "all_lines_match": { "type": "string" },
+        "any_line_matches": { "type": "string" },
+        "no_line_matches": { "type": "string" },
         "line_count": { "type": "number", "minimum": 0 },
         "line_count_gte": { "type": "number", "minimum": 0 },
         "numeric_gte": { "type": "number" },
