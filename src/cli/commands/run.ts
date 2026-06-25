@@ -36,8 +36,8 @@ import {
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
 import {
+  mergeStepVariables,
   substituteExpectVars,
-  substituteVariables,
 } from '../../lib/step-resolution';
 import {
   bootstrapSessions,
@@ -750,30 +750,17 @@ class OperationRunner {
     const isRollback = (c: string) => c === 'r' || c === 'rollback';
 
     const warnedUnresolvedVars = new Set<string>();
-    // Merge step-scoped variables (e.g. the loop variable a foreach/matrix
-    // expansion injects into step.variables) over the env/common/CLI `vars`,
-    // pre-resolving any step var that is itself a ${VAR} reference — the same
-    // layering substituteVariables/substituteExpectVars use. Without this,
-    // `command`/`instruction`/`description` would leak raw ${LOOP_VAR} in a
-    // matrix step even though `expect` (which already passes step.variables)
-    // resolves fine.
-    const mergeStepVars = (
-      stepVars?: Record<string, any>,
-    ): Record<string, any> => {
-      if (!stepVars || Object.keys(stepVars).length === 0) return vars;
-      const resolved: Record<string, any> = {};
-      for (const [key, value] of Object.entries(stepVars)) {
-        resolved[key] =
-          typeof value === 'string' ? substituteVariables(value, vars) : value;
-      }
-      return { ...vars, ...resolved };
-    };
+    // Resolve display text against the env/common/CLI `vars` merged with the
+    // step's own variables — the latter carry the loop variable a
+    // foreach/matrix expansion injects, so `command`/`instruction`/`description`
+    // resolve `${LOOP_VAR}` the same way `expect` already does (via
+    // substituteExpectVars). mergeStepVariables is the shared layering helper.
     const tryResolve = (
       text: string | undefined,
       stepVars?: Record<string, any>,
     ): string | undefined => {
       if (!text) return text;
-      const scope = mergeStepVars(stepVars);
+      const scope = mergeStepVariables(vars, stepVars);
       try {
         return resolveVars(text, scope);
       } catch {
@@ -811,6 +798,18 @@ class OperationRunner {
       }
     };
 
+    // Copy a command to the clipboard and report the outcome. `indent` matches
+    // the surrounding prompt's left margin (the failure prompt nests deeper
+    // than the action prompts).
+    const copyCommand = async (cmd: string, indent = '  '): Promise<void> => {
+      const ok = await copyToClipboard(cmd);
+      console.log(
+        ok
+          ? `${indent}✅ Copied to clipboard!`
+          : `${indent}⚠️  Clipboard unavailable`,
+      );
+    };
+
     // Shared "what now?" prompt for a failed `expect` assertion — used by both
     // the automatic verify path and manual-step `[v] verify`. Records an
     // override (with reason) in the audit log when chosen; leaves rollback/stop
@@ -840,12 +839,7 @@ class OperationRunner {
         );
         const oc = overrideAns.trim().toLowerCase();
         if (opts?.commandToCopy && (oc === 'c' || oc === 'copy')) {
-          const ok = await copyToClipboard(opts.commandToCopy);
-          console.log(
-            ok
-              ? '    ✅ Command copied to clipboard!'
-              : '    ⚠️  Clipboard unavailable',
-          );
+          await copyCommand(opts.commandToCopy, '    ');
           continue;
         }
         if (oc === 'o' || oc === 'override') {
@@ -879,10 +873,7 @@ class OperationRunner {
       const ans = await readActionKey();
       const choice = ans.trim().toLowerCase();
       if (commandToCopy && (choice === 'c' || choice === 'copy')) {
-        const ok = await copyToClipboard(commandToCopy);
-        console.log(
-          ok ? '  ✅ Copied to clipboard!' : '  ⚠️  Clipboard unavailable',
-        );
+        await copyCommand(commandToCopy);
         return '';
       }
       return choice;
@@ -1295,7 +1286,7 @@ class OperationRunner {
             // Run verify if defined
             if (step.command && step.expect) {
               console.log(
-                `    🔍 Checking expected output for: ${tryResolve(step.command, step.variables) ?? step.command}`,
+                `    🔍 Checking expected output for: ${resolvedCommand ?? step.command}`,
               );
               const { state: vState, assertResult } =
                 await controller.runVerify(step, i);
@@ -1432,10 +1423,7 @@ class OperationRunner {
               resolvedCommand &&
               (inputChoice === 'c' || inputChoice === 'copy')
             ) {
-              const ok = await copyToClipboard(resolvedCommand);
-              console.log(
-                ok ? '  ✅ Copied to clipboard!' : '  ⚠️  Clipboard unavailable',
-              );
+              await copyCommand(resolvedCommand);
               continue;
             }
             if (inputChoice === 'n' || inputChoice === 'note') {

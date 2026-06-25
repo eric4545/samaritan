@@ -441,7 +441,7 @@ describe('run command: sidecar verify UX (--attach + tmux)', () => {
       // The clipboard binary may be absent in CI — either outcome confirms the
       // copy branch ran rather than being treated as an unknown key.
       assert.ok(
-        combined.includes('Command copied to clipboard!') ||
+        combined.includes('Copied to clipboard!') ||
           combined.includes('Clipboard unavailable'),
         `pressing c must trigger the copy branch; output:\n${combined.slice(-1500)}`,
       );
