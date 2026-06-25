@@ -7,30 +7,50 @@ function escapeRegExp(text: string): string {
 }
 
 /**
- * Resolve `${VAR}` placeholders, prioritizing step-scoped variables over environment variables.
+ * Merge step-scoped variables over environment variables — the single
+ * definition of how `step.variables` layer on top of env/common vars. Each
+ * string step var is pre-resolved against the env vars in one pass (so a
+ * foreach/matrix-injected `TEST_RECIPIENT: "${EMAIL_A}"` resolves to the env
+ * value before merging); non-string values pass through untouched. The
+ * pre-resolution pass does not itself receive `stepVariables`, so chaining
+ * terminates.
  *
- * Step variables are pre-resolved against environment variables (one pass) before merging,
- * so a step variable like `TEST_RECIPIENT: "${EMAIL_A}"` (injected by foreach/matrix expansion
- * with an unresolved env-specific reference) fully resolves to the env value of `EMAIL_A`
- * before being substituted into `command`. Non-string step variable values pass through
- * untouched. The pre-resolution pass does not itself receive stepVariables, so chaining
- * terminates; substitution iterates keys in insertion order over the working string, so a
- * value inserted by an earlier key may still be expanded by a later key, but never loops.
+ * Returns `envVariables` unchanged (same reference) when there are no step
+ * vars to layer, so callers on the hot display path don't pay for a spread.
+ * Shared by `substituteVariables` and the interactive run loop so every path
+ * resolves the same way.
+ */
+export function mergeStepVariables(
+  envVariables: Record<string, any>,
+  stepVariables?: Record<string, any>,
+): Record<string, any> {
+  if (!stepVariables || Object.keys(stepVariables).length === 0) {
+    return envVariables;
+  }
+  const resolved: Record<string, any> = {};
+  for (const [key, value] of Object.entries(stepVariables)) {
+    resolved[key] =
+      typeof value === 'string'
+        ? substituteVariables(value, envVariables)
+        : value;
+  }
+  return { ...envVariables, ...resolved };
+}
+
+/**
+ * Resolve `${VAR}` placeholders, prioritizing step-scoped variables over
+ * environment variables (see `mergeStepVariables` for the layering rule).
+ *
+ * Substitution iterates the merged keys in insertion order over the working
+ * string, so a value inserted by an earlier key may still be expanded by a
+ * later key, but never loops.
  */
 export function substituteVariables(
   command: string,
   envVariables: Record<string, any>,
   stepVariables?: Record<string, any>,
 ): string {
-  const resolvedStepVariables: Record<string, any> = {};
-  for (const [key, value] of Object.entries(stepVariables || {})) {
-    resolvedStepVariables[key] =
-      typeof value === 'string'
-        ? substituteVariables(value, envVariables)
-        : value;
-  }
-
-  const mergedVariables = { ...envVariables, ...resolvedStepVariables };
+  const mergedVariables = mergeStepVariables(envVariables, stepVariables);
 
   let result = command;
   for (const key in mergedVariables) {
