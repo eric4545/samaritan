@@ -517,4 +517,26 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
       );
     });
   });
+
+  it('renders evidence metadata (required status and types)', async () => {
+    const op = await parseFixture('evidenceWithResults');
+    const md = generateSingleEnvManual(op, 'staging');
+
+    assert.ok(
+      md.includes('> Evidence Required: screenshot, command_output'),
+      'shows required evidence with types for Deploy Application step',
+    );
+    assert.ok(
+      md.includes('> Evidence Required: screenshot'),
+      'shows required evidence for Manual Verification step',
+    );
+    assert.ok(
+      md.includes('> Evidence Optional: log'),
+      'shows optional evidence for Log Collection step',
+    );
+    assert.ok(
+      md.includes('> Evidence Required: command_output'),
+      'shows required evidence for step without results',
+    );
+  });
 });
