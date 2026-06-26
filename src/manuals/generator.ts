@@ -2082,6 +2082,16 @@ export function generateSingleEnvManual(
       }
     }
 
+    if (effectiveStep.evidence) {
+      const evStatus = effectiveStep.evidence.required
+        ? 'Required'
+        : 'Optional';
+      const evTypes = effectiveStep.evidence.types ?? [];
+      const evTypesText = evTypes.length > 0 ? `: ${evTypes.join(', ')}` : '';
+      lines.push(`> Evidence ${evStatus}${evTypesText}`);
+      lines.push('');
+    }
+
     // Render captured evidence results for this environment
     const envResults = effectiveStep.evidence?.results?.[targetEnv];
     if (envResults && envResults.length > 0) {
