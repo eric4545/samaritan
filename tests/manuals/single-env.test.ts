@@ -539,4 +539,36 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
       'shows required evidence for step without results',
     );
   });
+
+  it('renders an operator evidence-capture prompt when no results are present', async () => {
+    const op = await parseFixture('evidenceRequired');
+    const md = generateSingleEnvManual(op, 'staging');
+
+    // command_output evidence with no captured results → paste-output code block
+    assert.ok(
+      md.includes('```bash\n# Paste command output here\n```'),
+      'command_output evidence renders a paste-output code block',
+    );
+    // screenshot/log evidence with no results → generic capture prompt
+    assert.ok(
+      md.includes('Paste evidence here'),
+      'non-command_output evidence renders a generic capture prompt',
+    );
+  });
+
+  it('renders captured results instead of a prompt when results exist', async () => {
+    const op = await parseFixture('evidenceWithResults');
+    const md = generateSingleEnvManual(op, 'staging');
+
+    // Steps 1-3 have captured results for staging → show them, not the prompt
+    assert.ok(
+      md.includes('**Evidence Captured**'),
+      'captured evidence is rendered when results exist',
+    );
+    // Step 4 (No Evidence Results) has command_output required but no results
+    assert.ok(
+      md.includes('```bash\n# Paste command output here\n```'),
+      'a step without results still prompts the operator to capture output',
+    );
+  });
 });

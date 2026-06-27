@@ -202,6 +202,35 @@ describe('Render parity: all StepContent fields across formats', () => {
     assert.ok(confluence.includes(marker), 'Confluence: evidence content');
   });
 
+  it('renders an operator evidence-capture prompt (no results) in all formats', async () => {
+    const operation = await parseFixture('evidenceRequired');
+    const formats = {
+      multiEnv: generateManualWithMetadata(
+        operation,
+        undefined,
+        undefined,
+        true,
+        false,
+      ),
+      singleEnv: generateSingleEnvManual(operation, 'staging', true),
+      adf: generateADFString(operation, undefined, undefined, true),
+      confluence: generateConfluenceContent(operation, true, false),
+    };
+
+    for (const [label, content] of Object.entries(formats)) {
+      // command_output evidence with no results → a paste-output prompt
+      assert.ok(
+        content.includes('# Paste command output here'),
+        `${label}: should prompt operator to paste command output`,
+      );
+      // screenshot/log evidence with no results → a generic capture prompt
+      assert.ok(
+        content.includes('Paste evidence here'),
+        `${label}: should prompt operator to capture evidence`,
+      );
+    }
+  });
+
   it('renders rollback command, pic/reviewer, and resolved expect in all formats', async () => {
     const { multiEnv, singleEnv, adf, confluence } = await generateAll();
     const commandMarker =

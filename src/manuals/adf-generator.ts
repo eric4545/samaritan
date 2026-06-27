@@ -847,6 +847,7 @@ function createStepsTable(
       const envEvidenceInfo = formatEvidenceInfo(
         effectiveStep.evidence,
         env.name,
+        operationDir,
       );
       if (envEvidenceInfo) {
         if (Array.isArray(envEvidenceInfo)) {
@@ -1135,6 +1136,7 @@ function addSubStepRows(
       const envEvidenceInfo = formatEvidenceInfo(
         effectiveSubStep.evidence,
         env.name,
+        operationDir,
       );
       if (envEvidenceInfo) {
         if (Array.isArray(envEvidenceInfo)) {
@@ -1316,6 +1318,7 @@ function formatEvidenceInfo(
     >;
   },
   environmentName?: string,
+  operationDir?: string,
 ): any {
   if (!evidence) return null;
 
@@ -1330,9 +1333,10 @@ function formatEvidenceInfo(
     nodes.push(paragraph(em(text(`📎 Evidence ${status}${typesText}`))));
   }
 
-  // Render evidence results for specific environment
-  if (evidence.results && environmentName) {
-    const envResults = evidence.results[environmentName];
+  // Render evidence results for a specific environment, or an operator capture
+  // prompt when none have been recorded yet (parity with the other renderers).
+  if (environmentName) {
+    const envResults = evidence.results?.[environmentName];
     if (envResults && envResults.length > 0) {
       nodes.push(paragraph(strong(text('Captured Evidence:'))));
 
@@ -1351,9 +1355,30 @@ function formatEvidenceInfo(
 
         // Render based on storage type
         if (evidenceResult.file) {
-          // File reference - for Confluence, we can only show the path
-          // Actual image embedding would require upload via Confluence API
-          nodes.push(paragraph(text(`File: ${evidenceResult.file}`)));
+          // For text-based evidence (command_output, log), read and embed file
+          // content; for images/other types show the path (true media embedding
+          // requires a Confluence upload).
+          if (
+            (evidenceResult.type === 'command_output' ||
+              evidenceResult.type === 'log') &&
+            operationDir
+          ) {
+            try {
+              const filePath = path.resolve(operationDir, evidenceResult.file);
+              const fileContent = fs.readFileSync(filePath, 'utf-8');
+              const language =
+                evidenceResult.type === 'command_output' ? 'bash' : 'text';
+              nodes.push(codeBlock({ language })(text(fileContent.trimEnd())));
+            } catch (_error) {
+              nodes.push(
+                paragraph(
+                  text(`File: ${evidenceResult.file} (error reading file)`),
+                ),
+              );
+            }
+          } else {
+            nodes.push(paragraph(text(`File: ${evidenceResult.file}`)));
+          }
         } else if (evidenceResult.content) {
           // Inline content - render in code block
           const language =
@@ -1361,6 +1386,12 @@ function formatEvidenceInfo(
           nodes.push(codeBlock({ language })(text(evidenceResult.content)));
         }
       }
+    } else if (types.includes('command_output')) {
+      nodes.push(
+        codeBlock({ language: 'bash' })(text('# Paste command output here')),
+      );
+    } else {
+      nodes.push(paragraph(text('Paste evidence here')));
     }
   }
 

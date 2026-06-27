@@ -194,9 +194,12 @@ function formatEvidenceInfo(
   if (!environmentName) {
     result = `<br>📎 <em>Evidence ${status}${typesText}</em>`;
 
-    // Add code block placeholder for command_output evidence type
+    // Add an operator capture prompt: a code block for command_output, otherwise
+    // a generic "Paste evidence here" line so screenshot/log evidence also prompts.
     if (types.includes('command_output')) {
       result += '<br>```bash<br># Paste command output here<br>```';
+    } else {
+      result += '<br>Paste evidence here';
     }
   }
 
@@ -2090,15 +2093,25 @@ export function generateSingleEnvManual(
       const evTypesText = evTypes.length > 0 ? `: ${evTypes.join(', ')}` : '';
       lines.push(`> Evidence ${evStatus}${evTypesText}`);
       lines.push('');
-    }
 
-    // Render captured evidence results for this environment
-    const envResults = effectiveStep.evidence?.results?.[targetEnv];
-    if (envResults && envResults.length > 0) {
-      lines.push('**Evidence Captured**');
-      lines.push('');
-      for (const item of envResults as RunEvidenceItem[]) {
-        lines.push(renderEvidenceItemMarkdown(item, operationDir).trimEnd());
+      // Render captured evidence results for this environment, or an operator
+      // capture prompt when none have been recorded yet (parity with the
+      // multi-env table and Confluence renderers).
+      const envResults = effectiveStep.evidence.results?.[targetEnv];
+      if (envResults && envResults.length > 0) {
+        lines.push('**Evidence Captured**');
+        lines.push('');
+        for (const item of envResults as RunEvidenceItem[]) {
+          lines.push(renderEvidenceItemMarkdown(item, operationDir).trimEnd());
+          lines.push('');
+        }
+      } else if (evTypes.includes('command_output')) {
+        lines.push('```bash');
+        lines.push('# Paste command output here');
+        lines.push('```');
+        lines.push('');
+      } else {
+        lines.push('Paste evidence here');
         lines.push('');
       }
     }

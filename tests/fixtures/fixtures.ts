@@ -79,6 +79,8 @@ export const FIXTURES = {
   // Evidence with results
   evidenceWithResults:
     'tests/fixtures/operations/features/evidence-with-results.yaml',
+  evidenceWithFileResults:
+    'tests/fixtures/operations/features/evidence-with-file-results.yaml',
   reviewerAndEnvEvidence:
     'tests/fixtures/operations/features/reviewer-and-env-evidence.yaml',
 

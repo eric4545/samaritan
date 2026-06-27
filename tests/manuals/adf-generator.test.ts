@@ -534,4 +534,48 @@ describe('ADF Generator', () => {
       'staging: preprod/prod-only step 5 not shown',
     );
   });
+
+  it('renders an operator evidence-capture prompt when no results exist', async () => {
+    const { parseFixture } = await import('../fixtures/fixtures');
+    const operation = await parseFixture('evidenceRequired');
+
+    const adfString = generateADFString(operation, undefined, 'staging');
+
+    assert.ok(
+      adfString.includes('# Paste command output here'),
+      'command_output evidence prompts the operator to paste output',
+    );
+    assert.ok(
+      adfString.includes('Paste evidence here'),
+      'non-command_output evidence renders a generic capture prompt',
+    );
+  });
+
+  it('embeds file-based command_output evidence content (not just the path)', async () => {
+    const path = await import('node:path');
+    const { parseFixture, getFixturePath } = await import(
+      '../fixtures/fixtures'
+    );
+    const operation = await parseFixture('evidenceWithFileResults');
+    const operationDir = path.dirname(
+      getFixturePath('evidenceWithFileResults'),
+    );
+
+    const adfString = generateADFString(
+      operation,
+      undefined,
+      'staging',
+      false,
+      operationDir,
+    );
+
+    assert.ok(
+      adfString.includes('deployment.apps/web-server created'),
+      'reads and embeds the command_output file content into ADF',
+    );
+    assert.ok(
+      !adfString.includes('File: ./evidence/staging-deploy.log'),
+      'does not fall back to a bare "File:" path for readable command_output files',
+    );
+  });
 });
