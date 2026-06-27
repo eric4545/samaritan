@@ -71,6 +71,10 @@ evidence:
           deployment.apps/web created
 ```
 
+When `results` are absent for an environment, every manual format (Markdown, single-env
+Markdown, Confluence markup, ADF) renders an operator capture prompt: a `# Paste command
+output here` code block for `command_output`, otherwise a `Paste evidence here` line.
+
 ## Verification (`expect`)
 
 ```yaml

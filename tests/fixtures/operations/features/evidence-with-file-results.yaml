@@ -1,0 +1,23 @@
+name: Evidence with File-Based Results
+version: 1.0.0
+description: Evidence results stored as files (command_output read and embedded)
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+
+steps:
+  - name: Deploy Application
+    type: automatic
+    phase: flight
+    command: kubectl apply -f deployment.yaml -n ${NAMESPACE}
+    evidence:
+      required: true
+      types: [command_output]
+      results:
+        staging:
+          - type: command_output
+            file: ./evidence/staging-deploy.log
+            description: Deployment output captured from file

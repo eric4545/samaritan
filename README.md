@@ -139,8 +139,14 @@ steps:
 Evidence results are automatically rendered in generated manuals:
 - **Screenshots/Photos** (file): Rendered as embedded images
 - **Other files**: Rendered as download links
+- **`command_output`/`log` files**: File content is read and embedded as a code block (all formats, including Confluence ADF)
 - **Inline content**: Rendered as code blocks (bash for command_output, text for others)
 - **Descriptions**: Displayed above the evidence content
+
+When evidence is required (or optional) but no results have been captured yet, every
+format (Markdown, single-env Markdown, Confluence markup, and ADF) renders an **operator
+capture prompt** so the operator knows where to record evidence: a `# Paste command output
+here` code block for `command_output` evidence, or a `Paste evidence here` line otherwise.
 
 **Evidence Result Schema:**
 ```yaml

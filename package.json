@@ -54,5 +54,8 @@
     "@biomejs/biome": "^2.2.4",
     "@types/js-yaml": "^4.0.5",
     "tsx": "^4.22.3"
+  },
+  "overrides": {
+    "linkify-it": "^5.0.1"
   }
 }
