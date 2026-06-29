@@ -689,6 +689,36 @@ function extractExpect(stepData: any): any {
   return undefined;
 }
 
+// Normalize one rollback step (array or object YAML form) into a RollbackStep.
+// Rollback steps are structurally like normal steps, so this also carries the
+// optional `name` and recursively normalizes nested `sub_steps` — the parser
+// used to drop both, which is why a step-level rollback with sub_steps rendered
+// as a heading with no body.
+function normalizeRollbackStep(r: any): RollbackStep {
+  return {
+    name: r.name,
+    command: r.command,
+    script: r.script,
+    session: r.session,
+    instruction: r.instruction,
+    description: r.description,
+    timeout: r.timeout,
+    pic: r.pic,
+    reviewer: r.reviewer,
+    evidence: r.evidence ? parseEvidence(r) : undefined,
+    expect: extractExpect(r),
+    options: r.options
+      ? {
+          substitute_vars: r.options.substitute_vars ?? true,
+          show_command_separately: r.options.show_command_separately ?? false,
+        }
+      : undefined,
+    sub_steps: Array.isArray(r.sub_steps)
+      ? r.sub_steps.map(normalizeRollbackStep)
+      : undefined,
+  };
+}
+
 function assertNoDeprecatedEvidenceFields(data: any, stepName?: string): void {
   if (!data || typeof data !== 'object') return;
   const removed = ['evidence_required', 'evidence_types'].filter(
@@ -751,47 +781,9 @@ async function parseStep(
   let rollback: RollbackStep[] | undefined;
   if (stepData.rollback) {
     if (Array.isArray(stepData.rollback)) {
-      rollback = stepData.rollback.map((r: any) => ({
-        command: r.command,
-        script: r.script,
-        session: r.session,
-        instruction: r.instruction,
-        description: r.description,
-        timeout: r.timeout,
-        pic: r.pic,
-        reviewer: r.reviewer,
-        evidence: r.evidence ? parseEvidence(r) : undefined,
-        expect: extractExpect(r),
-        options: r.options
-          ? {
-              substitute_vars: r.options.substitute_vars ?? true,
-              show_command_separately:
-                r.options.show_command_separately ?? false,
-            }
-          : undefined,
-      }));
+      rollback = stepData.rollback.map(normalizeRollbackStep);
     } else {
-      rollback = [
-        {
-          command: stepData.rollback.command,
-          script: stepData.rollback.script,
-          instruction: stepData.rollback.instruction,
-          description: stepData.rollback.description,
-          timeout: stepData.rollback.timeout,
-          pic: stepData.rollback.pic,
-          reviewer: stepData.rollback.reviewer,
-          evidence: parseEvidence(stepData.rollback),
-          expect: extractExpect(stepData.rollback),
-          options: stepData.rollback.options
-            ? {
-                substitute_vars:
-                  stepData.rollback.options.substitute_vars ?? true,
-                show_command_separately:
-                  stepData.rollback.options.show_command_separately ?? false,
-              }
-            : undefined,
-        },
-      ];
+      rollback = [normalizeRollbackStep(stepData.rollback)];
     }
   }
 
@@ -1101,7 +1093,17 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     common_variables: commonVariables,
     env_file: rawOperation.env_file,
     steps,
-    rollback: rawOperation.rollback,
+    // Normalize the operation-level rollback plan's steps through the same
+    // recursive normalizer as step-level rollback, so name/sub_steps/expect
+    // shorthand are handled identically in both (no raw-vs-normalized split).
+    rollback: rawOperation.rollback
+      ? {
+          ...rawOperation.rollback,
+          steps: Array.isArray(rawOperation.rollback.steps)
+            ? rawOperation.rollback.steps.map(normalizeRollbackStep)
+            : rawOperation.rollback.steps,
+        }
+      : undefined,
     metadata,
     needs: rawOperation.needs,
     template: rawOperation.template,
