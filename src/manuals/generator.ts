@@ -7,6 +7,7 @@ import {
 } from '../lib/git-metadata';
 import { indexToLetters } from '../lib/letter-sequence';
 import { groupByPhase } from '../lib/phase-grouping';
+import { hasRollbackContent } from '../lib/rollback';
 import {
   mergeStepVariant,
   resolveDisplayText,
@@ -840,14 +841,7 @@ function generateStepRow(
     // Render rollbacks for all sub-steps AFTER all sub-steps are rendered
     step.sub_steps.forEach((subStep, subIndex) => {
       const rb = subStep.rollback?.[0];
-      if (
-        rb &&
-        (rb.command ||
-          rb.instruction ||
-          rb.script ||
-          rb.expect != null ||
-          (rb.sub_steps && rb.sub_steps.length > 0))
-      ) {
+      if (hasRollbackContent(rb)) {
         const subStepLetter = indexToLetters(subIndex);
         const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
 
@@ -1154,14 +1148,7 @@ function generateSubStepRow(
     // Render rollbacks for all nested sub-steps AFTER all nested sub-steps are rendered
     step.sub_steps.forEach((nestedSubStep, nestedIndex) => {
       const rb = nestedSubStep.rollback?.[0];
-      if (
-        rb &&
-        (rb.command ||
-          rb.instruction ||
-          rb.script ||
-          rb.expect != null ||
-          (rb.sub_steps && rb.sub_steps.length > 0))
-      ) {
+      if (hasRollbackContent(rb)) {
         let nestedStepId: string;
         if (depth % 2 === 1) {
           nestedStepId = `${stepId}${nestedIndex + 1}`;
@@ -1473,14 +1460,7 @@ function generateManualContent(
 
         // Inline rollback rendering - render immediately after step if present
         const rb = step.rollback?.[0];
-        if (
-          rb &&
-          (rb.command ||
-            rb.instruction ||
-            rb.script ||
-            rb.expect != null ||
-            (rb.sub_steps && rb.sub_steps.length > 0))
-        ) {
+        if (hasRollbackContent(rb)) {
           // Close current table (next step row reopens lazily)
           markdown += closeStepTable(tableState);
 
@@ -1544,13 +1524,7 @@ function generateManualContent(
         : step.name;
       markdown += `### Rollback for: ${rollbackSectionName}\n\n`;
 
-      if (
-        rb.command ||
-        rb.instruction ||
-        rb.script ||
-        rb.expect != null ||
-        (rb.sub_steps && rb.sub_steps.length > 0)
-      ) {
+      if (hasRollbackContent(rb)) {
         markdown += '| Environment | Rollback Action |\n';
         markdown += '|-------------|----------------|\n';
 
@@ -1804,14 +1778,7 @@ export function generateSingleEnvManual(
     // rollback position). Reuses the same recursive renderer as the
     // operation-level plan, so a step-level rollback's own sub_steps render too.
     const rb = effectiveStep.rollback?.[0];
-    if (
-      rb &&
-      (rb.command ||
-        rb.instruction ||
-        rb.script ||
-        rb.expect != null ||
-        (rb.sub_steps && rb.sub_steps.length > 0))
-    ) {
+    if (hasRollbackContent(rb)) {
       renderRollbackStepSingleEnv(
         rb,
         '🔄 Rollback',

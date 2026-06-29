@@ -1093,7 +1093,17 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     common_variables: commonVariables,
     env_file: rawOperation.env_file,
     steps,
-    rollback: rawOperation.rollback,
+    // Normalize the operation-level rollback plan's steps through the same
+    // recursive normalizer as step-level rollback, so name/sub_steps/expect
+    // shorthand are handled identically in both (no raw-vs-normalized split).
+    rollback: rawOperation.rollback
+      ? {
+          ...rawOperation.rollback,
+          steps: Array.isArray(rawOperation.rollback.steps)
+            ? rawOperation.rollback.steps.map(normalizeRollbackStep)
+            : rawOperation.rollback.steps,
+        }
+      : undefined,
     metadata,
     needs: rawOperation.needs,
     template: rawOperation.template,

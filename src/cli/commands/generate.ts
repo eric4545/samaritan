@@ -5,6 +5,7 @@ import { renderExpectParts } from '../../lib/assertions';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { groupByPhase } from '../../lib/phase-grouping';
+import { hasRollbackContent } from '../../lib/rollback';
 import {
   mergeStepVariant,
   shouldRenderStepForEnvironment,
@@ -1471,14 +1472,7 @@ ${filteredOperation.environments
         // For parent steps with sub_steps, this renders after sub-steps
         // For regular steps, this renders after the step row
         const rb = step.rollback?.[0];
-        if (
-          rb &&
-          (rb.command ||
-            rb.instruction ||
-            rb.script ||
-            rb.expect != null ||
-            (rb.sub_steps && rb.sub_steps.length > 0))
-        ) {
+        if (hasRollbackContent(rb)) {
           content += renderInlineRollback(
             rb,
             `${stepNumber}`,
@@ -2100,14 +2094,7 @@ function addConfluenceSubStepRows(
 
       // Render rollback for sub-step AFTER all nested sub-steps (inline rendering)
       const subRb = subStep.rollback?.[0];
-      if (
-        subRb &&
-        (subRb.command ||
-          subRb.instruction ||
-          subRb.script ||
-          subRb.expect != null ||
-          (subRb.sub_steps && subRb.sub_steps.length > 0))
-      ) {
+      if (hasRollbackContent(subRb)) {
         // Calculate parent heading level (same formula as section heading)
         const parentHeadingLevel = Math.min(4 + Math.ceil((depth - 1) / 2), 6);
         content += renderInlineRollback(
