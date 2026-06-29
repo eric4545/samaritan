@@ -47,6 +47,14 @@ describe('Bug 1 — multi-line description must not be wrapped in italic markers
     assert.ok(md.includes('```bash'), 'fenced block preserved');
   });
 
+  it('multi-line description preserves authored line breaks', () => {
+    const md = generateSingleEnvManual(makeOp('line one\nline two'), 'staging');
+    assert.ok(
+      md.includes('line one  \nline two'),
+      'consecutive lines kept separate via hard breaks',
+    );
+  });
+
   it('single-line description is wrapped in italic', () => {
     const md = generateSingleEnvManual(
       makeOp('single line description'),

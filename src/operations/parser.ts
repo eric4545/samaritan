@@ -1005,19 +1005,16 @@ export async function parseOperation(filePath: string): Promise<Operation> {
             envData.uses,
           );
           for (const importedEnv of importedEnvs) {
+            const parsedEnv = parseEnvironment(
+              importedEnv,
+              environments.length,
+            );
+            parsedEnv.variables = {
+              ...commonVariables,
+              ...parsedEnv.variables,
+            };
             upsertEnv(
-              {
-                name: importedEnv.name,
-                description: importedEnv.description || '',
-                variables: {
-                  ...commonVariables,
-                  ...(importedEnv.variables || {}),
-                },
-                restrictions: importedEnv.restrictions || [],
-                approval_required: Boolean(importedEnv.approval_required),
-                validation_required: Boolean(importedEnv.validation_required),
-                targets: importedEnv.targets || [],
-              },
+              parsedEnv,
               importedEnv.approval_required !== undefined,
               importedEnv.validation_required !== undefined,
             );

@@ -1685,7 +1685,10 @@ export function generateSingleEnvManual(
 
     if (effectiveStep.description) {
       const desc = resolveText(effectiveStep.description.trim());
-      lines.push(desc.includes('\n') ? desc : `_${desc}_`);
+      // Multi-line descriptions are prose, so preserve authored line breaks
+      // (single-line stays italicised). preserveLineBreaks is a no-op on text
+      // without internal newlines.
+      lines.push(desc.includes('\n') ? preserveLineBreaks(desc) : `_${desc}_`);
       lines.push('');
     }
 
