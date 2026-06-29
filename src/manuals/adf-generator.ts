@@ -1390,8 +1390,6 @@ function formatEvidenceInfo(
       nodes.push(
         codeBlock({ language: 'bash' })(text('# Paste command output here')),
       );
-    } else {
-      nodes.push(paragraph(text('Paste evidence here')));
     }
   }
 

@@ -512,16 +512,17 @@ steps:
       /\{expand:title=📎 Evidence \(Required - screenshot, command_output\)\}\n\{code:bash\}\n# Paste command output here\n\{code\}\n\{expand\}/,
     );
 
-    // Should have evidence expand macro for Manual Verification step (required, single type)
+    // Should have evidence expand macro for Manual Verification step (required,
+    // single type) with no placeholder body (non-command_output evidence)
     assert.match(
       content,
-      /\{expand:title=📎 Evidence \(Required - screenshot\)\}\nPaste evidence here\n\{expand\}/,
+      /\{expand:title=📎 Evidence \(Required - screenshot\)\}\n\{expand\}/,
     );
 
     // Should have evidence expand macro for Optional Check step (optional)
     assert.match(
       content,
-      /\{expand:title=📎 Evidence \(Optional - screenshot, log\)\}\nPaste evidence here\n\{expand\}/,
+      /\{expand:title=📎 Evidence \(Optional - screenshot, log\)\}\n\{expand\}/,
     );
   });
 
@@ -570,10 +571,11 @@ steps:
       /\{code:bash\}\n# Paste command output here\n\{code\}/,
     );
 
-    // Should have regular "Paste evidence here" for evidence without command_output
+    // Evidence without command_output has no placeholder body
+    assert.doesNotMatch(content, /Paste evidence here/);
     assert.match(
       content,
-      /\{expand:title=📎 Evidence \(Required - screenshot\)\}\nPaste evidence here\n\{expand\}/,
+      /\{expand:title=📎 Evidence \(Required - screenshot\)\}\n\{expand\}/,
     );
   });
 

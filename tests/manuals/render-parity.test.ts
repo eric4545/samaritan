@@ -223,10 +223,10 @@ describe('Render parity: all StepContent fields across formats', () => {
         content.includes('# Paste command output here'),
         `${label}: should prompt operator to paste command output`,
       );
-      // screenshot/log evidence with no results → a generic capture prompt
+      // screenshot/log evidence with no results → no generic placeholder line
       assert.ok(
-        content.includes('Paste evidence here'),
-        `${label}: should prompt operator to capture evidence`,
+        !content.includes('Paste evidence here'),
+        `${label}: should not render a generic evidence placeholder`,
       );
     }
   });

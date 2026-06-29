@@ -549,10 +549,10 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
       md.includes('```bash\n# Paste command output here\n```'),
       'command_output evidence renders a paste-output code block',
     );
-    // screenshot/log evidence with no results → generic capture prompt
+    // screenshot/log evidence with no results → no generic placeholder line
     assert.ok(
-      md.includes('Paste evidence here'),
-      'non-command_output evidence renders a generic capture prompt',
+      !md.includes('Paste evidence here'),
+      'non-command_output evidence renders no generic placeholder line',
     );
   });
 
