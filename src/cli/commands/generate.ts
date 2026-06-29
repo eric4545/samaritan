@@ -1473,7 +1473,11 @@ ${filteredOperation.environments
         const rb = step.rollback?.[0];
         if (
           rb &&
-          (rb.command || rb.instruction || rb.script || rb.expect != null)
+          (rb.command ||
+            rb.instruction ||
+            rb.script ||
+            rb.expect != null ||
+            (rb.sub_steps && rb.sub_steps.length > 0))
         ) {
           content += renderInlineRollback(
             rb,
@@ -1709,18 +1713,17 @@ function renderInlineRollback(
   });
   content += '\n';
 
-  // Build rollback row
-  const rollbackCells: string[] = [];
-
-  environments.forEach((env: any) => {
+  // Build one rollback step's cell content for an env, recursing into nested
+  // sub_steps (rendered inline within the same cell). `bare` skips the fallback
+  // dash so empty sub-steps are omitted.
+  const buildCell = (rb: any, env: any, bare = false): string => {
     let cellContent = '';
 
-    const substituteVars = rollback?.options?.substitute_vars ?? true;
-    const showCommandSeparately =
-      rollback?.options?.show_command_separately ?? false;
+    const substituteVars = rb?.options?.substitute_vars ?? true;
+    const showCommandSeparately = rb?.options?.show_command_separately ?? false;
 
-    if (rollback?.instruction) {
-      let displayInstruction = rollback.instruction;
+    if (rb?.instruction) {
+      let displayInstruction = rb.instruction;
       if (resolveVars && substituteVars) {
         displayInstruction = substituteVariables(
           displayInstruction,
@@ -1732,8 +1735,8 @@ function renderInlineRollback(
       cellContent += `*Instructions:*\n{markdown}\n${trimmed}\n{markdown}`;
     }
 
-    if (rollback?.command) {
-      let displayCommand = rollback.command;
+    if (rb?.command) {
+      let displayCommand = rb.command;
       if (resolveVars && substituteVars) {
         displayCommand = substituteVariables(
           displayCommand,
@@ -1743,24 +1746,24 @@ function renderInlineRollback(
       }
       const trimmedCommand = displayCommand.replace(/\n+$/, '');
 
-      if (showCommandSeparately && rollback.instruction) {
+      if (showCommandSeparately && rb.instruction) {
         cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
-      } else if (!rollback.instruction) {
+      } else if (!rb.instruction) {
         cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
       } else {
         cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
       }
     }
 
-    if (rollback?.script) {
+    if (rb?.script) {
       const sep = cellContent ? '\n' : '';
-      cellContent += `${sep}*Script:* \`${rollback.script}\``;
+      cellContent += `${sep}*Script:* \`${rb.script}\``;
       if (operationDir) {
         try {
           // eslint-disable-next-line @typescript-eslint/no-require-imports
           const fs = require('node:fs');
           const nodePath = require('node:path');
-          const scriptPath = nodePath.resolve(operationDir, rollback.script);
+          const scriptPath = nodePath.resolve(operationDir, rb.script);
           const scriptContent = fs.readFileSync(scriptPath, 'utf-8').trimEnd();
           cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
         } catch {
@@ -1769,15 +1772,11 @@ function renderInlineRollback(
       }
     }
 
-    if (rollback?.expect != null) {
+    if (rb?.expect != null) {
       const resolvedExpect =
-        resolveVars && (rollback.options?.substitute_vars ?? true)
-          ? substituteExpectVars(
-              rollback.expect,
-              env.variables || {},
-              stepVariables,
-            )
-          : rollback.expect;
+        resolveVars && (rb.options?.substitute_vars ?? true)
+          ? substituteExpectVars(rb.expect, env.variables || {}, stepVariables)
+          : rb.expect;
       const parts = renderExpectParts(resolvedExpect);
       if (parts.length > 0) {
         const sep = cellContent ? '\n' : '';
@@ -1786,27 +1785,38 @@ function renderInlineRollback(
       }
     }
 
-    if (rollback?.pic || rollback?.reviewer) {
+    if (rb?.pic || rb?.reviewer) {
       const sep = cellContent ? '\n' : '';
       cellContent += `${sep}*Sign-off:*`;
-      if (rollback.pic) cellContent += `\n- [ ] PIC (${rollback.pic})`;
-      if (rollback.reviewer)
-        cellContent += `\n- [ ] Reviewer (${rollback.reviewer})`;
+      if (rb.pic) cellContent += `\n- [ ] PIC (${rb.pic})`;
+      if (rb.reviewer) cellContent += `\n- [ ] Reviewer (${rb.reviewer})`;
     }
 
-    if (!cellContent) {
+    if (rb?.evidence) {
+      cellContent += formatEvidenceArea(rb.evidence, env.name, operationDir);
+    }
+
+    // Nested rollback sub-steps render inline within the same cell
+    rb?.sub_steps?.forEach((sub: any, i: number) => {
+      const subContent = buildCell(sub, env, true);
+      if (subContent) {
+        const sep = cellContent ? '\n' : '';
+        const subName = sub.name ? `: ${sub.name}` : '';
+        cellContent += `${sep}*↳ ${i + 1}${subName}*\n${subContent}`;
+      }
+    });
+
+    if (!bare && !cellContent) {
       cellContent = '-';
     }
 
-    if (rollback?.evidence) {
-      cellContent += formatEvidenceArea(
-        rollback.evidence,
-        env.name,
-        operationDir,
-      );
-    }
+    return cellContent;
+  };
 
-    rollbackCells.push(cellContent);
+  // Build rollback row
+  const rollbackCells: string[] = [];
+  environments.forEach((env: any) => {
+    rollbackCells.push(buildCell(rollback, env));
   });
 
   // Write single rollback row
@@ -2095,7 +2105,8 @@ function addConfluenceSubStepRows(
         (subRb.command ||
           subRb.instruction ||
           subRb.script ||
-          subRb.expect != null)
+          subRb.expect != null ||
+          (subRb.sub_steps && subRb.sub_steps.length > 0))
       ) {
         // Calculate parent heading level (same formula as section heading)
         const parentHeadingLevel = Math.min(4 + Math.ceil((depth - 1) / 2), 6);

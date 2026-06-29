@@ -535,6 +535,7 @@
                     "items": {
                       "type": "object",
                       "properties": {
+                        "name": { "type": "string" },
                         "command": { "type": "string" },
                         "script": {
                           "type": "string",
@@ -562,6 +563,11 @@
                             }
                           ]
                         },
+                        "sub_steps": {
+                          "type": "array",
+                          "description": "Nested rollback sub-steps, rendered recursively under this rollback step",
+                          "items": { "$ref": "#/definitions/rollbackStep" }
+                        },
                         "options": {
                           "type": "object",
                           "properties": {
@@ -587,6 +593,7 @@
                     "type": "object",
                     "description": "Single rollback step (backward-compatible object format)",
                     "properties": {
+                      "name": { "type": "string" },
                       "command": { "type": "string" },
                       "script": {
                         "type": "string",
@@ -609,6 +616,11 @@
                             "minItems": 1
                           }
                         ]
+                      },
+                      "sub_steps": {
+                        "type": "array",
+                        "description": "Nested rollback sub-steps, rendered recursively under this rollback step",
+                        "items": { "$ref": "#/definitions/rollbackStep" }
                       },
                       "options": {
                         "type": "object",
@@ -736,6 +748,13 @@
           "type": "number",
           "minimum": 0
         },
+        "session": {
+          "type": "string",
+          "description": "Session to run rollback in (defaults to step session)"
+        },
+        "type": {
+          "type": "string"
+        },
         "pic": {
           "type": "string",
           "description": "Person In Charge of executing this rollback step"
@@ -743,6 +762,9 @@
         "reviewer": {
           "type": "string",
           "description": "Reviewer/buddy who verifies this rollback step"
+        },
+        "evidence": {
+          "$ref": "#/properties/steps/items/oneOf/1/properties/evidence"
         },
         "expect": {
           "description": "Assert this rollback step's output. String shorthand = expect contains.",

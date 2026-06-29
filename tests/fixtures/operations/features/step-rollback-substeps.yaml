@@ -1,0 +1,32 @@
+name: Step Rollback With Substeps
+version: 1.0.0
+description: A step-level rollback (Step.rollback) whose rollback step nests sub_steps
+
+environments:
+  - name: staging
+    description: Staging
+    variables:
+      NS: stg
+  - name: production
+    description: Production
+    variables:
+      NS: prod
+
+steps:
+  - name: Deploy app
+    type: manual
+    instruction: Deploy the application
+    sub_steps:
+      - name: Apply manifest
+        type: manual
+        command: kubectl apply -f app.yaml -n ${NS}
+    rollback:
+      - name: Multi-part rollback
+        instruction: Undo the deployment in order
+        sub_steps:
+          - command: kubectl scale deployment/app --replicas=0 -n ${NS}
+          - name: Delete pods
+            command: kubectl delete pod -l app=app -n ${NS}
+          - instruction: Confirm no app pods remain
+            expect:
+              no_line_contains: app-

@@ -1836,6 +1836,19 @@ steps:
         session: execution
 ```
 
+A step-level rollback step is structurally **just like a normal step**: it may also carry an optional `name` and nested `sub_steps` for a multi-part rollback, which render recursively in every manual format:
+
+```yaml
+    rollback:
+      - name: Roll back deployment
+        instruction: Undo the deployment in order.
+        sub_steps:
+          - command: kubectl rollout undo deployment/web
+          - instruction: Confirm the previous version is serving traffic.
+            expect:
+              contains: rolled back
+```
+
 After rolling back step N, SAMARITAN offers to walk back previous steps too.
 
 If no `rollback:` is defined, the operator is prompted to intervene manually.

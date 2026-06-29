@@ -23,6 +23,16 @@ steps:
     command: kubectl apply -f deployment.yaml -n ${NAMESPACE}
     expect:
       contains: deployment.apps/web-server
+    # A step-level rollback can ALSO nest sub_steps (same structure as the
+    # operation-level plan below). Rendered after the step in every format.
+    rollback:
+      - name: Roll back web server
+        instruction: Undo this step's deployment in order.
+        sub_steps:
+          - command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
+          - instruction: Confirm the previous ReplicaSet is serving traffic.
+            expect:
+              contains: rolled back
 
 rollback:
   automatic: false

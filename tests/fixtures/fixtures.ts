@@ -102,6 +102,10 @@ export const FIXTURES = {
   globalRollbackSubsteps:
     'tests/fixtures/operations/features/global-rollback-substeps.yaml',
 
+  // Step-level rollback (Step.rollback) whose rollback step nests sub_steps
+  stepRollbackSubsteps:
+    'tests/fixtures/operations/features/step-rollback-substeps.yaml',
+
   // Script file import
   withScript: 'tests/fixtures/operations/features/with-script.yaml',
   confluenceScriptAndExpect:

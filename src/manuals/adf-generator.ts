@@ -205,120 +205,129 @@ export function generateADF(
       ),
     );
 
+    // Build the ADF nodes for one rollback step's cell, recursing into nested
+    // sub_steps (rendered inline within the same cell). `bare` omits the fallback
+    // dash so empty sub-steps are skipped rather than printing "-".
+    const buildRollbackCellNodes = (
+      rb: RollbackStep,
+      env: Environment,
+      stepVariables: Record<string, any> | undefined,
+      bare = false,
+    ): any[] => {
+      const cellContent: any[] = [];
+      const substituteVars = rb.options?.substitute_vars ?? true;
+      const showCommandSeparately =
+        rb.options?.show_command_separately ?? false;
+
+      if (rb.instruction) {
+        let displayInstruction = rb.instruction;
+        if (resolveVariables && substituteVars) {
+          displayInstruction = substituteVariables(
+            displayInstruction,
+            env.variables || {},
+            stepVariables,
+          );
+        }
+        cellContent.push(paragraph(strong(text('Instructions:'))));
+        cellContent.push(paragraph(text(displayInstruction)));
+      }
+
+      if (rb.command) {
+        let displayCommand = rb.command;
+        if (resolveVariables && substituteVars) {
+          displayCommand = substituteVariables(
+            displayCommand,
+            env.variables || {},
+            stepVariables,
+          );
+        }
+        if (showCommandSeparately && rb.instruction) {
+          cellContent.push(paragraph(strong(text('Command:'))));
+        }
+        cellContent.push(codeBlock({ language: 'bash' })(text(displayCommand)));
+      }
+
+      if (rb.script) {
+        cellContent.push(
+          paragraph(strong(text('Script:')), text(` ${rb.script}`)),
+        );
+        if (operationDir) {
+          try {
+            const scriptPath = path.resolve(operationDir, rb.script);
+            const scriptContent = fs
+              .readFileSync(scriptPath, 'utf-8')
+              .trimEnd();
+            cellContent.push(
+              codeBlock({ language: 'bash' })(text(scriptContent)),
+            );
+          } catch {
+            cellContent.push(
+              paragraph(em(text(`Script file not found: ${rb.script}`))),
+            );
+          }
+        }
+      }
+
+      if (rb.expect != null) {
+        const resolvedExpect =
+          resolveVariables && substituteVars
+            ? substituteExpectVars(
+                rb.expect,
+                env.variables || {},
+                stepVariables,
+              )
+            : rb.expect;
+        const parts = renderExpectParts(resolvedExpect);
+        if (parts.length > 0) {
+          cellContent.push(paragraph(strong(text('Expected:'))));
+          for (const p of parts) {
+            cellContent.push(paragraph(em(text(`- [ ] ${p}`))));
+          }
+        }
+      }
+
+      if (rb.pic || rb.reviewer) {
+        cellContent.push(paragraph(strong(text('Sign-off:'))));
+        if (rb.pic) cellContent.push(paragraph(text(`- [ ] PIC (${rb.pic})`)));
+        if (rb.reviewer)
+          cellContent.push(paragraph(text(`- [ ] Reviewer (${rb.reviewer})`)));
+      }
+
+      // Nested rollback sub-steps render inline within the same cell
+      rb.sub_steps?.forEach((sub, i) => {
+        const subNodes = buildRollbackCellNodes(sub, env, stepVariables, true);
+        if (subNodes.length > 0) {
+          const subName = sub.name ? `: ${sub.name}` : '';
+          cellContent.push(paragraph(strong(text(`↳ ${i + 1}${subName}`))));
+          cellContent.push(...subNodes);
+        }
+      });
+
+      if (!bare && cellContent.length === 0) {
+        cellContent.push(paragraph(text('-')));
+      }
+      return cellContent;
+    };
+
     stepsWithRollback.forEach((step) => {
       const rb = step.rollback?.[0];
       if (!rb) return;
 
       content.push(heading({ level: 3 })(text(`Rollback for: ${step.name}`)));
 
-      if (rb.command || rb.instruction || rb.script || rb.expect != null) {
-        const rollbackRows = environments.map((env) => {
-          const cellContent = [];
-
-          // Get rollback options (defaults)
-          const substituteVars = rb.options?.substitute_vars ?? true;
-          const showCommandSeparately =
-            rb.options?.show_command_separately ?? false;
-
-          // Process rollback instruction (paragraph/text content)
-          if (rb.instruction) {
-            let displayInstruction = rb.instruction;
-
-            if (resolveVariables && substituteVars) {
-              displayInstruction = substituteVariables(
-                displayInstruction,
-                env.variables || {},
-                step.variables,
-              );
-            }
-
-            cellContent.push(paragraph(strong(text('Instructions:'))));
-            cellContent.push(paragraph(text(displayInstruction)));
-          }
-
-          // Process rollback command (code block)
-          if (rb.command) {
-            let displayCommand = rb.command;
-
-            if (resolveVariables && substituteVars) {
-              displayCommand = substituteVariables(
-                displayCommand,
-                env.variables || {},
-                step.variables,
-              );
-            }
-
-            if (showCommandSeparately && rb.instruction) {
-              cellContent.push(paragraph(strong(text('Command:'))));
-            }
-
-            cellContent.push(
-              codeBlock({ language: 'bash' })(text(displayCommand)),
-            );
-          }
-
-          // Process rollback script (external shell script file)
-          if (rb.script) {
-            cellContent.push(
-              paragraph(strong(text('Script:')), text(` ${rb.script}`)),
-            );
-            if (operationDir) {
-              try {
-                const scriptPath = path.resolve(operationDir, rb.script);
-                const scriptContent = fs
-                  .readFileSync(scriptPath, 'utf-8')
-                  .trimEnd();
-                cellContent.push(
-                  codeBlock({ language: 'bash' })(text(scriptContent)),
-                );
-              } catch {
-                cellContent.push(
-                  paragraph(em(text(`Script file not found: ${rb.script}`))),
-                );
-              }
-            }
-          }
-
-          // Add rollback expect assertions
-          if (rb.expect != null) {
-            const resolvedExpect =
-              resolveVariables && substituteVars
-                ? substituteExpectVars(
-                    rb.expect,
-                    env.variables || {},
-                    step.variables,
-                  )
-                : rb.expect;
-            const parts = renderExpectParts(resolvedExpect);
-            if (parts.length > 0) {
-              cellContent.push(paragraph(strong(text('Expected:'))));
-              for (const p of parts) {
-                cellContent.push(paragraph(em(text(`- [ ] ${p}`))));
-              }
-            }
-          }
-
-          // Rollback sign-off checkboxes
-          if (rb.pic || rb.reviewer) {
-            cellContent.push(paragraph(strong(text('Sign-off:'))));
-            if (rb.pic)
-              cellContent.push(paragraph(text(`- [ ] PIC (${rb.pic})`)));
-            if (rb.reviewer)
-              cellContent.push(
-                paragraph(text(`- [ ] Reviewer (${rb.reviewer})`)),
-              );
-          }
-
-          // Fallback
-          if (cellContent.length === 0) {
-            cellContent.push(paragraph(text('-')));
-          }
-
-          return tableRow([
+      if (
+        rb.command ||
+        rb.instruction ||
+        rb.script ||
+        rb.expect != null ||
+        (rb.sub_steps && rb.sub_steps.length > 0)
+      ) {
+        const rollbackRows = environments.map((env) =>
+          tableRow([
             tableCell()(paragraph(text(env.name))),
-            tableCell()(...cellContent),
-          ]);
-        });
+            tableCell()(...buildRollbackCellNodes(rb, env, step.variables)),
+          ]),
+        );
 
         content.push(
           table(
