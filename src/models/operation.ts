@@ -158,11 +158,14 @@ export interface StepContent {
   expect?: ExpectConfig | ExpectConfig[] | string;
 }
 
-export interface RollbackStep extends StepContent {
-  // Content fields inherited from StepContent. Rollback steps are "just like
-  // normal steps" structurally too: they may carry an optional display name and
-  // nest sub_steps (rendered recursively in the operation-level rollback plan).
-  name?: string;
+// A rollback step IS a step structurally — it reuses Step's field definitions
+// instead of re-declaring them. Every inherited field is optional (rollback
+// steps don't require `name`/`type` the way normal steps do), and `sub_steps`
+// is overridden to nest RollbackSteps. The strict schema definition
+// `#/definitions/rollbackStep` remains the runtime contract: it permits only the
+// subset the rollback renderers actually support, so authoring an unsupported
+// Step field (e.g. `foreach`) fails validation rather than being silently dropped.
+export interface RollbackStep extends Omit<Partial<Step>, 'sub_steps'> {
   sub_steps?: RollbackStep[];
 }
 
