@@ -20,7 +20,7 @@ import {
 } from '@atlaskit/adf-utils/builders';
 import { renderExpectParts } from '../lib/assertions';
 import type { GenerationMetadata } from '../lib/git-metadata';
-import { buildGlobalRollback } from '../lib/global-rollback';
+import { buildEffectiveRollback } from '../lib/global-rollback';
 import { indexToLetters } from '../lib/letter-sequence';
 import { groupByPhase } from '../lib/phase-grouping';
 import { hasRollbackContent } from '../lib/rollback';
@@ -354,11 +354,10 @@ export function generateADF(
   }
 
   // Operation-level (global) rollback plan
-  const globalRollbackSteps = operation.rollback
-    ? buildGlobalRollback(operation.rollback.steps ?? [], operation.steps, {
-        aggregate: operation.rollback.aggregate_step_rollbacks,
-      })
-    : [];
+  const globalRollbackSteps = buildEffectiveRollback(
+    operation.rollback,
+    operation.steps,
+  );
   if (operation.rollback && globalRollbackSteps.length > 0) {
     content.push(heading({ level: 2 })(text('🔄 Rollback Plan')));
     content.push(

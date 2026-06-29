@@ -1,5 +1,22 @@
-import type { RollbackStep, Step } from '../models/operation';
+import type { RollbackPlan, RollbackStep, Step } from '../models/operation';
 import { hasRollbackContent } from './rollback';
+
+/**
+ * Resolve an operation's effective global rollback from its `RollbackPlan`:
+ * the explicit `rollback.steps`, grouped with per-step rollbacks when
+ * `aggregate_step_rollbacks` is set. Thin wrapper over `buildGlobalRollback`
+ * so the four manual renderers and the run loop share one call shape instead
+ * of repeating the plan→opts ternary. Returns `[]` when there is no plan.
+ */
+export function buildEffectiveRollback(
+  rollback: RollbackPlan | undefined,
+  stepsToAggregate: Step[],
+): RollbackStep[] {
+  if (!rollback) return [];
+  return buildGlobalRollback(rollback.steps ?? [], stepsToAggregate, {
+    aggregate: rollback.aggregate_step_rollbacks,
+  });
+}
 
 /**
  * Build the effective global (operation-level) rollback by grouping per-step

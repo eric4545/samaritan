@@ -21,7 +21,7 @@ import type { CaptureBackend } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
-import { buildGlobalRollback } from '../../lib/global-rollback';
+import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { generateReport, renderReport } from '../../lib/report-generator';
@@ -756,6 +756,10 @@ class OperationRunner {
     // block (explicit plan and/or aggregate_step_rollbacks). What actually runs
     // is computed per-invocation from completed steps in doGlobalRollback.
     const hasGlobalRollback = !!operation.rollback;
+    // Spread into each action menu so the [g] hint appears only when available.
+    const globalRollbackMenuItem = hasGlobalRollback
+      ? [{ key: 'g', label: 'global rollback' }]
+      : [];
 
     const warnedUnresolvedVars = new Set<string>();
     // Resolve display text against the env/common/CLI `vars` merged with the
@@ -816,11 +820,7 @@ class OperationRunner {
         .getState()
         .steps.filter((s) => s.status === 'completed')
         .map((s) => s.step);
-      const rbSteps = buildGlobalRollback(
-        operation.rollback?.steps ?? [],
-        completed,
-        { aggregate: operation.rollback?.aggregate_step_rollbacks },
-      );
+      const rbSteps = buildEffectiveRollback(operation.rollback, completed);
       if (rbSteps.length === 0) {
         console.log(
           '    ℹ️  Nothing to roll back globally (no rollback plan and no completed steps with rollback).',
@@ -1342,9 +1342,7 @@ class OperationRunner {
                 { key: 'c', label: 'copy' },
                 { key: 's', label: 'skip' },
                 { key: 'r', label: 'rollback' },
-                ...(hasGlobalRollback
-                  ? [{ key: 'g', label: 'global rollback' }]
-                  : []),
+                ...globalRollbackMenuItem,
                 { key: 'q', label: 'quit' },
               ],
               resolvedCommand,
@@ -1415,9 +1413,7 @@ class OperationRunner {
                 ...(resolvedCommand ? [{ key: 'c', label: 'copy' }] : []),
                 { key: 's', label: 'skip' },
                 { key: 'r', label: 'rollback' },
-                ...(hasGlobalRollback
-                  ? [{ key: 'g', label: 'global rollback' }]
-                  : []),
+                ...globalRollbackMenuItem,
                 { key: 'q', label: 'quit' },
               ],
               resolvedCommand,
@@ -1507,9 +1503,7 @@ class OperationRunner {
                     : []),
                   { key: 's', label: 'skip' },
                   { key: 'r', label: 'rollback' },
-                  ...(hasGlobalRollback
-                    ? [{ key: 'g', label: 'global rollback' }]
-                    : []),
+                  ...globalRollbackMenuItem,
                   { key: 'abort', label: 'abort' },
                 ]),
             );
@@ -1682,9 +1676,7 @@ class OperationRunner {
             { key: 'approve', label: 'approve' },
             { key: 'reject', label: 'reject' },
             { key: 'r', label: 'rollback' },
-            ...(hasGlobalRollback
-              ? [{ key: 'g', label: 'global rollback' }]
-              : []),
+            ...globalRollbackMenuItem,
             { key: 's', label: 'skip' },
           ]);
           if (isGlobalRollback(choice)) {

@@ -5,7 +5,7 @@ import {
   type GenerationMetadata,
   generateYamlFrontmatter,
 } from '../lib/git-metadata';
-import { buildGlobalRollback } from '../lib/global-rollback';
+import { buildEffectiveRollback } from '../lib/global-rollback';
 import { indexToLetters } from '../lib/letter-sequence';
 import { groupByPhase } from '../lib/phase-grouping';
 import { hasRollbackContent } from '../lib/rollback';
@@ -1585,11 +1585,10 @@ function generateManualContent(
   // Operation-level (global) rollback plan. When aggregate_step_rollbacks is on,
   // the per-step rollbacks are grouped in (reverse step order) after the explicit
   // plan steps, so the section shows the whole recovery at once.
-  const globalRollbackSteps = operation.rollback
-    ? buildGlobalRollback(operation.rollback.steps ?? [], operation.steps, {
-        aggregate: operation.rollback.aggregate_step_rollbacks,
-      })
-    : [];
+  const globalRollbackSteps = buildEffectiveRollback(
+    operation.rollback,
+    operation.steps,
+  );
   if (operation.rollback && globalRollbackSteps.length > 0) {
     markdown += '## 🔄 Rollback Plan\n\n';
     markdown +=
@@ -1949,11 +1948,7 @@ export function generateSingleEnvManual(
   // Operation-level (global) rollback plan, resolved for this environment.
   // aggregate_step_rollbacks groups the per-step rollbacks (reverse order) in.
   const globalRollback = workingOperation.rollback;
-  const globalRollbackSteps = globalRollback
-    ? buildGlobalRollback(globalRollback.steps ?? [], allSteps, {
-        aggregate: globalRollback.aggregate_step_rollbacks,
-      })
-    : [];
+  const globalRollbackSteps = buildEffectiveRollback(globalRollback, allSteps);
   if (globalRollback && globalRollbackSteps.length > 0) {
     lines.push('---');
     lines.push('');
