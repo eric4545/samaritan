@@ -120,6 +120,29 @@ steps:
 ```
 All `${VAR}` in the template must be supplied in `with:` or the parser errors.
 
+## Environment reuse (DRY)
+
+Pick the smallest mechanism that fits:
+
+```yaml
+environments:
+  - uses: ./environments/shared-app-envs.yaml  # import ALL envs from a shared file
+  - name: production                           # optional: override one by name
+    variables: { DB_HOST: prod-db-replica }    # merged over the imported production
+```
+
+- **`common_variables:`** — values shared across *all* envs in one file.
+- **`uses:`** (entry under `environments:`) — import a *whole* env set across files;
+  expands inline in array order; later same-name entry merges its `variables`; booleans
+  (e.g. `approval_required`) preserved unless re-stated. Accepts a plain
+  `{ environments: [...] }` file or a `kind: EnvironmentManifest` file.
+- **`from:`** (per-env) — inherit one named env from a manifest, with overrides.
+- **YAML anchors** (`<<: *base`) — same-file env-to-env reuse, no SAMARITAN syntax.
+
+Precedence (low → high): `common_variables` → imported/manifest env vars → inline override
+vars → `step.variables`. Examples: `examples/reuse-envs-a.yaml`,
+`examples/reuse-envs-b.yaml`, `examples/deployment-with-env-ref.yaml`.
+
 ## foreach / matrix
 
 ```yaml

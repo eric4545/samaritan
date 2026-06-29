@@ -5,10 +5,37 @@ import {
   generateManual,
   generateManualWithMetadata,
   generateSingleEnvManual,
+  preserveLineBreaks,
 } from '../../src/manuals/generator';
 import type { Operation } from '../../src/models/operation';
 import { loadYaml, parseFixture } from '../fixtures/fixtures';
 import { deploymentOperation } from '../fixtures/operations';
+
+describe('preserveLineBreaks', () => {
+  it('turns single newlines between non-blank lines into hard breaks', () => {
+    assert.strictEqual(preserveLineBreaks('aa\nbb\ncc'), 'aa  \nbb  \ncc');
+  });
+
+  it('leaves blank-line paragraph separators untouched', () => {
+    assert.strictEqual(
+      preserveLineBreaks('para one\n\npara two'),
+      'para one\n\npara two',
+    );
+  });
+
+  it('leaves fenced code blocks verbatim', () => {
+    const input = 'Do this:\n```bash\nls -la\nrm tmp\n```\nThen confirm.';
+    const out = preserveLineBreaks(input);
+    assert.ok(out.includes('```bash\nls -la\nrm tmp\n```'), 'fence verbatim');
+    assert.ok(!out.includes('ls -la  '), 'no hard break inside fence');
+    // line before an opening fence is not given a trailing hard break
+    assert.ok(out.includes('Do this:\n```bash'), 'no break before fence');
+  });
+
+  it('does not double-up an existing hard break', () => {
+    assert.strictEqual(preserveLineBreaks('aa  \nbb'), 'aa  \nbb');
+  });
+});
 
 describe('Manual Generator Unit Tests', () => {
   it('should generate proper table format for multi-environment operations', (t) => {

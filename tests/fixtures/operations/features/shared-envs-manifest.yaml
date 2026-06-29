@@ -1,0 +1,13 @@
+# Shared environments (EnvironmentManifest format) for `uses:` import tests
+apiVersion: samaritan/v1
+kind: EnvironmentManifest
+metadata:
+  name: shared-envs-manifest
+  description: Manifest-format shared envs
+  version: 1.0.0
+environments:
+  - name: dev
+    description: Dev
+    variables:
+      ENDPOINT: https://dev.api.com
+      NAMESPACE: dev

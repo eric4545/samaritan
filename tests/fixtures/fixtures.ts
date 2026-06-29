@@ -53,6 +53,13 @@ export const FIXTURES = {
   topLevelVariables:
     'tests/fixtures/operations/features/top-level-variables.yaml',
 
+  // Wholesale environment import (uses:)
+  envUsesImport: 'tests/fixtures/operations/features/env-uses-import.yaml',
+  envUsesManifest: 'tests/fixtures/operations/features/env-uses-manifest.yaml',
+  envUsesMissing: 'tests/fixtures/operations/features/env-uses-missing.yaml',
+  envUsesMalformed:
+    'tests/fixtures/operations/features/env-uses-malformed.yaml',
+
   // Conditional steps
   conditional: 'tests/fixtures/operations/features/conditional.yaml',
 

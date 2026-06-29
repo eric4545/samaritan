@@ -34,6 +34,42 @@ export function evidenceLang(type: string): string {
   return type === 'command_output' ? 'bash' : 'text';
 }
 
+/**
+ * Preserve authored single-newline line breaks in Markdown prose without
+ * mangling block structure. Fenced code blocks (``` / ~~~) are left verbatim;
+ * outside fences, a single newline between two non-blank lines becomes a
+ * Markdown hard break ("  \n"). Blank lines (paragraph separators) and the
+ * lines around code fences are left untouched, so lists/headings/code fences
+ * keep rendering correctly.
+ *
+ * Without this, the single-env heading layout pushes raw multiline text and
+ * Markdown collapses adjacent non-blank lines into one paragraph (e.g.
+ * "aa\nbb\ncc" rendered as "aa bb cc").
+ */
+export function preserveLineBreaks(text: string): string {
+  const isFence = (line: string | undefined): boolean =>
+    line !== undefined && /^\s*(```|~~~)/.test(line);
+  const lines = text.split('\n');
+  let inFence = false;
+  return lines
+    .map((line, i) => {
+      if (isFence(line)) {
+        inFence = !inFence;
+        return line;
+      }
+      if (inFence) return line;
+      const next = lines[i + 1];
+      const wantsBreak =
+        line.trim() !== '' &&
+        next !== undefined &&
+        next.trim() !== '' &&
+        !isFence(next) &&
+        !/ {2,}$/.test(line);
+      return wantsBreak ? `${line}  ` : line;
+    })
+    .join('\n');
+}
+
 function resolveStepKey(step: Step): string {
   return step.id ?? slugify(step.name);
 }
@@ -1678,7 +1714,7 @@ export function generateSingleEnvManual(
     if (effectiveStep.instruction) {
       lines.push('**Instructions**');
       lines.push('');
-      lines.push(resolveText(effectiveStep.instruction));
+      lines.push(preserveLineBreaks(resolveText(effectiveStep.instruction)));
       lines.push('');
     }
 

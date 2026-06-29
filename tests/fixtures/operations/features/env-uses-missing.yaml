@@ -1,0 +1,9 @@
+name: Env Uses Missing File
+version: 1.0.0
+description: uses points to a non-existent file
+environments:
+  - uses: ./does-not-exist.yaml
+steps:
+  - name: Deploy
+    type: manual
+    instruction: Deploy

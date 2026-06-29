@@ -1,0 +1,2 @@
+# Intentionally missing an `environments:` array
+some_other_key: true

@@ -1,0 +1,16 @@
+# Shared environments (plain format) for `uses:` import tests
+environments:
+  - name: staging
+    description: Staging
+    variables:
+      ENDPOINT: https://staging.api.com
+      SERVICE_NAME: svc
+      NAMESPACE: staging
+  - name: production
+    description: Production
+    approval_required: true
+    variables:
+      ENDPOINT: https://api.example.com
+      SERVICE_NAME: svc
+      NAMESPACE: production
+      DB_HOST: prod-db

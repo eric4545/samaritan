@@ -1,0 +1,26 @@
+# Shared environment definitions reused across multiple operations.
+#
+# Reference this file from any operation with a single wholesale import:
+#
+#   environments:
+#     - uses: ./environments/shared-app-envs.yaml
+#
+# A plain `{ environments: [...] }` file (like this one) and a
+# `kind: EnvironmentManifest` file are both accepted by `uses:`.
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      ENDPOINT: https://staging.api.com
+      DB_HOST: staging-db
+      SERVICE_NAME: my-service
+      NAMESPACE: staging
+
+  - name: production
+    description: Production environment
+    approval_required: true
+    variables:
+      ENDPOINT: https://api.example.com
+      DB_HOST: prod-db
+      SERVICE_NAME: my-service
+      NAMESPACE: production

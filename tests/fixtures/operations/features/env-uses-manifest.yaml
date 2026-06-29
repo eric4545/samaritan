@@ -1,0 +1,9 @@
+name: Env Uses Manifest Format
+version: 1.0.0
+description: uses accepts EnvironmentManifest files too
+environments:
+  - uses: ./shared-envs-manifest.yaml
+steps:
+  - name: Deploy
+    type: manual
+    instruction: Deploy

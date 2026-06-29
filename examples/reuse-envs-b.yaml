@@ -1,0 +1,19 @@
+# Operation B — reuses the SAME shared environments, plus a local override.
+name: Deploy Service B
+version: 1.0.0
+description: Same shared environments as Operation A, with a production override
+author: sre-team@example.com
+category: deployment
+
+environments:
+  - uses: ./environments/shared-app-envs.yaml
+  - name: production            # override just this one
+    variables:
+      DB_HOST: prod-db-replica  # merged on top of the imported production
+
+steps:
+  - name: Deploy ${SERVICE_NAME}
+    type: manual
+    phase: flight
+    instruction: |
+      Connect to ${DB_HOST} and deploy to ${NAMESPACE}.

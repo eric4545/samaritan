@@ -840,6 +840,64 @@ function parseEnvironment(envData: any, _envIndex: number): Environment {
   };
 }
 
+/**
+ * Load the raw environment entries from a shared environments file referenced
+ * by `environments: [{ uses: ./file.yaml }]`. Accepts both a
+ * `kind: EnvironmentManifest` file and a plain `{ environments: [...] }`
+ * (or operation-style) file — both expose a top-level `environments` array.
+ */
+function loadSharedEnvironments(absolutePath: string, refPath: string): any[] {
+  let content: string;
+  try {
+    content = fs.readFileSync(absolutePath, 'utf8');
+  } catch (_error) {
+    throw new OperationParseError(`Environment file '${refPath}' not found`, [
+      {
+        field: 'environments.uses',
+        message: `Cannot read environment file: ${refPath}`,
+      },
+    ]);
+  }
+
+  let parsed: any;
+  try {
+    parsed = yaml.load(content);
+  } catch (error) {
+    throw new OperationParseError(
+      `Invalid YAML in environment file '${refPath}'`,
+      [{ field: 'environments.uses', message: (error as Error).message }],
+    );
+  }
+
+  if (!parsed || !Array.isArray(parsed.environments)) {
+    throw new OperationParseError(
+      `Environment file '${refPath}' must contain an 'environments' array`,
+      [
+        {
+          field: 'environments.uses',
+          message: `No 'environments' array found in ${refPath}`,
+        },
+      ],
+    );
+  }
+
+  for (const env of parsed.environments) {
+    if (!env || typeof env.name !== 'string' || env.name.length === 0) {
+      throw new OperationParseError(
+        `Environment file '${refPath}' has an entry without a 'name'`,
+        [
+          {
+            field: 'environments.uses',
+            message: `Every environment in ${refPath} must have a name`,
+          },
+        ],
+      );
+    }
+  }
+
+  return parsed.environments;
+}
+
 export async function parseOperation(filePath: string): Promise<Operation> {
   let fileContents: string;
 
@@ -903,9 +961,68 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   try {
     if (rawOperation.environments && Array.isArray(rawOperation.environments)) {
       const environmentLoader = new EnvironmentLoader(baseDirectory);
+      const envIndexByName = new Map<string, number>();
+
+      // Add an environment, or merge it onto an existing one of the same name
+      // (e.g. an inline override entry following a `uses:` wholesale import).
+      // `hasApproval`/`hasValidation` indicate whether the source entry set
+      // those booleans explicitly, so a variables-only override doesn't reset
+      // them.
+      const upsertEnv = (
+        env: Environment,
+        hasApproval: boolean,
+        hasValidation: boolean,
+      ): void => {
+        const existingIdx = envIndexByName.get(env.name);
+        if (existingIdx === undefined) {
+          envIndexByName.set(env.name, environments.length);
+          environments.push(env);
+          return;
+        }
+        const existing = environments[existingIdx];
+        existing.variables = { ...existing.variables, ...env.variables };
+        if (env.from) existing.from = env.from;
+        if (env.description) existing.description = env.description;
+        if (env.restrictions.length)
+          existing.restrictions = [
+            ...existing.restrictions,
+            ...env.restrictions,
+          ];
+        if (env.targets.length)
+          existing.targets = [...existing.targets, ...env.targets];
+        if (hasApproval) existing.approval_required = env.approval_required;
+        if (hasValidation)
+          existing.validation_required = env.validation_required;
+      };
 
       for (const envData of rawOperation.environments) {
-        if (envData.from) {
+        if (envData.uses) {
+          // Wholesale import: expand ALL environments from the referenced file
+          // inline (reuses the `uses:` inline-expansion model). Common
+          // variables remain the base layer for each imported environment.
+          const importedEnvs = loadSharedEnvironments(
+            resolve(baseDirectory, envData.uses),
+            envData.uses,
+          );
+          for (const importedEnv of importedEnvs) {
+            upsertEnv(
+              {
+                name: importedEnv.name,
+                description: importedEnv.description || '',
+                variables: {
+                  ...commonVariables,
+                  ...(importedEnv.variables || {}),
+                },
+                restrictions: importedEnv.restrictions || [],
+                approval_required: Boolean(importedEnv.approval_required),
+                validation_required: Boolean(importedEnv.validation_required),
+                targets: importedEnv.targets || [],
+              },
+              importedEnv.approval_required !== undefined,
+              importedEnv.validation_required !== undefined,
+            );
+          }
+        } else if (envData.from) {
           // Inherit from manifest and merge with local overrides
           const manifest = await environmentLoader.loadEnvironmentManifest(
             envData.from,
@@ -954,12 +1071,20 @@ export async function parseOperation(filePath: string): Promise<Operation> {
             ],
           };
 
-          environments.push(environment);
+          upsertEnv(
+            environment,
+            envData.approval_required !== undefined,
+            envData.validation_required !== undefined,
+          );
         } else {
           // Regular inline environment - merge with common variables
           const parsedEnv = parseEnvironment(envData, environments.length);
           parsedEnv.variables = { ...commonVariables, ...parsedEnv.variables };
-          environments.push(parsedEnv);
+          upsertEnv(
+            parsedEnv,
+            envData.approval_required !== undefined,
+            envData.validation_required !== undefined,
+          );
         }
       }
     } else {
