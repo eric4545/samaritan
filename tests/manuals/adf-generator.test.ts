@@ -546,8 +546,8 @@ describe('ADF Generator', () => {
       'command_output evidence prompts the operator to paste output',
     );
     assert.ok(
-      adfString.includes('Paste evidence here'),
-      'non-command_output evidence renders a generic capture prompt',
+      !adfString.includes('Paste evidence here'),
+      'non-command_output evidence renders no generic placeholder',
     );
   });
 

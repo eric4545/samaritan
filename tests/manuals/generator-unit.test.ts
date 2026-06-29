@@ -2325,6 +2325,31 @@ echo "Deploying at: \${TIMESTAMP}"`,
       'Rollback 1b should appear before rollback 1c',
     );
   });
+
+  it('does not emit dangling empty step-table headers after sub-step rollbacks', async () => {
+    const operation = await parseFixture('substepRollback');
+    const markdown = generateManual(operation);
+
+    // Regression: sub-step rollback tables used to eagerly "reopen" a step
+    // table header (`| Step | env... |`) even when no rows followed, leaving
+    // empty header/separator pairs in the output. Tables now open lazily, so a
+    // step-table header must always be immediately followed by a step row.
+    const lines = markdown.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\| Step \|/.test(lines[i])) {
+        const separator = lines[i + 1] ?? '';
+        const firstRow = lines[i + 2] ?? '';
+        assert(
+          /^\|-+\|/.test(separator),
+          `Step header at line ${i} should be followed by a separator row`,
+        );
+        assert(
+          /^\| \[ \] /.test(firstRow),
+          `Step header at line ${i} should be followed by at least one step row, got: ${JSON.stringify(firstRow)}`,
+        );
+      }
+    }
+  });
 });
 
 describe('Verify / expect rendering snapshots', () => {

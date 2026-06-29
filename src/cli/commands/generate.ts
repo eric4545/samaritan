@@ -985,11 +985,9 @@ export function generateConfluenceContent(
         }
       }
     } else {
-      // No results - show placeholder
+      // No results - show a command_output capture prompt
       if (types.includes('command_output')) {
         content += '\n{code:bash}\n# Paste command output here\n{code}';
-      } else {
-        content += '\nPaste evidence here';
       }
     }
 

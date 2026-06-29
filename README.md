@@ -143,10 +143,11 @@ Evidence results are automatically rendered in generated manuals:
 - **Inline content**: Rendered as code blocks (bash for command_output, text for others)
 - **Descriptions**: Displayed above the evidence content
 
-When evidence is required (or optional) but no results have been captured yet, every
-format (Markdown, single-env Markdown, Confluence markup, and ADF) renders an **operator
-capture prompt** so the operator knows where to record evidence: a `# Paste command output
-here` code block for `command_output` evidence, or a `Paste evidence here` line otherwise.
+When `command_output` evidence is required (or optional) but no results have been
+captured yet, every format (Markdown, single-env Markdown, Confluence markup, and ADF)
+renders a `# Paste command output here` code block so the operator knows where to record
+the output. Other evidence types (e.g. `screenshot`, `log`) show only the evidence
+metadata, with no placeholder body.
 
 **Evidence Result Schema:**
 ```yaml

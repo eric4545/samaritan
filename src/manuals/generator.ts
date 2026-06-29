@@ -194,12 +194,10 @@ function formatEvidenceInfo(
   if (!environmentName) {
     result = `<br>📎 <em>Evidence ${status}${typesText}</em>`;
 
-    // Add an operator capture prompt: a code block for command_output, otherwise
-    // a generic "Paste evidence here" line so screenshot/log evidence also prompts.
+    // Add an operator capture prompt for command_output evidence: a code block
+    // where the operator pastes the command output.
     if (types.includes('command_output')) {
       result += '<br>```bash<br># Paste command output here<br>```';
-    } else {
-      result += '<br>Paste evidence here';
     }
   }
 
@@ -514,6 +512,48 @@ function renderRollbackCellMarkdown(
   return cellContent;
 }
 
+/**
+ * Tracks whether a multi-environment step table is currently "open" (its header
+ * has been emitted and rows can be appended). Used to lazily open tables right
+ * before a row is written instead of eagerly reopening after every rollback or
+ * section heading — which previously left dangling empty `| Step | ... |`
+ * headers in the output (notably after sub-step rollback tables).
+ */
+interface TableState {
+  open: boolean;
+}
+
+/** Build the `| Step | env... |` table header + separator for the given envs. */
+function renderStepTableHeader(environments: Environment[]): string {
+  let header = '| Step |';
+  for (const env of environments) {
+    header += ` ${env.name} |`;
+  }
+  header += '\n|------|';
+  for (const _ of environments) {
+    header += '---------|';
+  }
+  header += '\n';
+  return header;
+}
+
+/** Emit the step table header only if a table isn't already open (lazy open). */
+function ensureStepTableOpen(
+  state: TableState,
+  environments: Environment[],
+): string {
+  if (state.open) return '';
+  state.open = true;
+  return renderStepTableHeader(environments);
+}
+
+/** Close an open step table with a trailing blank line; no-op if already closed. */
+function closeStepTable(state: TableState): string {
+  if (!state.open) return '';
+  state.open = false;
+  return '\n';
+}
+
 function generateStepRow(
   step: Step,
   stepNumber: number,
@@ -523,6 +563,7 @@ function generateStepRow(
   currentPhase?: string,
   operationDir?: string,
   commonVariables?: Record<string, any>,
+  tableState: TableState = { open: true },
 ): string {
   let rows = '';
 
@@ -602,6 +643,7 @@ function generateStepRow(
   // Add evidence requirements if present (metadata only, no env-specific results here)
   stepCell += formatEvidenceInfo(step.evidence);
 
+  rows += ensureStepTableOpen(tableState, environments);
   rows += `| ${stepCell} |`;
 
   // Subsequent columns: Commands for each environment
@@ -742,8 +784,8 @@ function generateStepRow(
 
       // Handle section headings for sub-steps
       if (subStep.section_heading) {
-        // Close current table
-        rows += '\n';
+        // Close current table (the next row reopens lazily)
+        rows += closeStepTable(tableState);
 
         // Add section heading
         rows += `#### ${subStep.name}\n\n`;
@@ -759,18 +801,6 @@ function generateStepRow(
             metadata.push(`⏱️ Timeline: ${subStep.timeline}`);
           rows += `_${metadata.join(' • ')}_\n\n`;
         }
-
-        // Reopen table with headers
-        rows += '| Step |';
-        environments.forEach((env) => {
-          rows += ` ${env.name} |`;
-        });
-        rows += '\n';
-        rows += '|------|';
-        environments.forEach(() => {
-          rows += '---------|';
-        });
-        rows += '\n';
       }
 
       rows += generateSubStepRow(
@@ -781,18 +811,22 @@ function generateStepRow(
         1,
         operationDir,
         commonVariables,
+        tableState,
       );
     });
 
     // Render rollbacks for all sub-steps AFTER all sub-steps are rendered
     step.sub_steps.forEach((subStep, subIndex) => {
       const rb = subStep.rollback?.[0];
-      if (rb && (rb.command || rb.instruction || rb.script)) {
+      if (
+        rb &&
+        (rb.command || rb.instruction || rb.script || rb.expect != null)
+      ) {
         const subStepLetter = indexToLetters(subIndex);
         const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
 
-        // Close current table
-        rows += '\n';
+        // Close current table (the next step row reopens lazily)
+        rows += closeStepTable(tableState);
 
         // Add rollback heading (h4 level for sub-step rollbacks)
         const subStepRollbackName = resolveVariables
@@ -907,18 +941,8 @@ function generateStepRow(
           rows += `| ${env.name} | ${cellContent} |\n`;
         });
 
-        rows += '\n';
-
-        // Reopen table with headers
-        rows += '| Step |';
-        environments.forEach((env) => {
-          rows += ` ${env.name} |`;
-        });
-        rows += '\n';
-        rows += '|------|';
-        environments.forEach(() => {
-          rows += '---------|';
-        });
+        // Blank line after the rollback table; the next step row reopens the
+        // step table lazily, so no dangling empty header is emitted here.
         rows += '\n';
       }
     });
@@ -935,6 +959,7 @@ function generateSubStepRow(
   depth: number = 1,
   operationDir?: string,
   commonVariables?: Record<string, any>,
+  tableState: TableState = { open: true },
 ): string {
   let rows = '';
 
@@ -1004,6 +1029,7 @@ function generateSubStepRow(
   // Add evidence requirements if present (metadata only)
   stepCell += formatEvidenceInfo(step.evidence);
 
+  rows += ensureStepTableOpen(tableState, environments);
   rows += `| ${stepCell} |`;
 
   // Subsequent columns: Commands for each environment
@@ -1152,8 +1178,8 @@ function generateSubStepRow(
 
       // Handle section headings for nested sub-steps
       if (nestedSubStep.section_heading) {
-        // Close current table
-        rows += '\n';
+        // Close current table (the next row reopens lazily)
+        rows += closeStepTable(tableState);
 
         // Add section heading with appropriate level (h5 for double-nested)
         const headingLevel = '#'.repeat(Math.min(4 + depth, 6)); // Max h6
@@ -1172,18 +1198,6 @@ function generateSubStepRow(
             );
           rows += `_${metadata.join(' • ')}_\n\n`;
         }
-
-        // Reopen table with headers
-        rows += '| Step |';
-        environments.forEach((env) => {
-          rows += ` ${env.name} |`;
-        });
-        rows += '\n';
-        rows += '|------|';
-        environments.forEach(() => {
-          rows += '---------|';
-        });
-        rows += '\n';
       }
 
       rows += generateSubStepRow(
@@ -1194,13 +1208,17 @@ function generateSubStepRow(
         depth + 1,
         operationDir,
         commonVariables,
+        tableState,
       );
     });
 
     // Render rollbacks for all nested sub-steps AFTER all nested sub-steps are rendered
     step.sub_steps.forEach((nestedSubStep, nestedIndex) => {
       const rb = nestedSubStep.rollback?.[0];
-      if (rb && (rb.command || rb.instruction || rb.script)) {
+      if (
+        rb &&
+        (rb.command || rb.instruction || rb.script || rb.expect != null)
+      ) {
         let nestedStepId: string;
         if (depth % 2 === 1) {
           nestedStepId = `${stepId}${nestedIndex + 1}`;
@@ -1209,8 +1227,8 @@ function generateSubStepRow(
           nestedStepId = `${stepId}${letter}`;
         }
 
-        // Close current table
-        rows += '\n';
+        // Close current table (the next step row reopens lazily)
+        rows += closeStepTable(tableState);
 
         // Determine heading level based on depth
         const headingLevel = '#'.repeat(Math.min(3 + depth, 6));
@@ -1325,18 +1343,8 @@ function generateSubStepRow(
           rows += `| ${env.name} | ${cellContent} |\n`;
         });
 
-        rows += '\n';
-
-        // Reopen table with headers
-        rows += '| Step |';
-        environments.forEach((env) => {
-          rows += ` ${env.name} |`;
-        });
-        rows += '\n';
-        rows += '|------|';
-        environments.forEach(() => {
-          rows += '---------|';
-        });
+        // Blank line after the rollback table; the next step row reopens the
+        // step table lazily, so no dangling empty header is emitted here.
         rows += '\n';
       }
     });
@@ -1558,37 +1566,17 @@ function generateManualContent(
 
       markdown += `${phaseHeaders[phaseName as keyof typeof phaseHeaders]}\n\n`;
 
-      // Only build initial table header if first step is not a section heading
-      const firstStepIsSection =
-        phaseSteps.length > 0 && phaseSteps[0].section_heading;
-      let tableOpen = false;
-
-      if (!firstStepIsSection) {
-        // Build table header
-        markdown += '| Step |';
-        operation.environments.forEach((env) => {
-          markdown += ` ${env.name} |`;
-        });
-        markdown += '\n';
-
-        // Build table separator
-        markdown += '|------|';
-        operation.environments.forEach(() => {
-          markdown += '---------|';
-        });
-        markdown += '\n';
-        tableOpen = true;
-      }
+      // Tables open lazily: the header is emitted right before the first row
+      // that needs it (see ensureStepTableOpen) instead of eagerly, so section
+      // headings and rollbacks never leave a dangling empty `| Step | ... |`.
+      const tableState: TableState = { open: false };
 
       // Build table rows for this phase with continuous numbering
-      // Handle section headings by closing/reopening tables
+      // Handle section headings by closing tables (next row reopens lazily)
       phaseSteps.forEach((step, _index) => {
         if (step.section_heading) {
           // Close current table if one is open
-          if (tableOpen) {
-            markdown += '\n';
-            tableOpen = false;
-          }
+          markdown += closeStepTable(tableState);
 
           // Add section heading
           const sectionHeadingName = resolveDisplayText(
@@ -1612,19 +1600,6 @@ function generateManualContent(
               );
             markdown += `_${metadata.join(' • ')}_\n\n`;
           }
-
-          // Reopen table
-          markdown += '| Step |';
-          operation.environments.forEach((env) => {
-            markdown += ` ${env.name} |`;
-          });
-          markdown += '\n';
-          markdown += '|------|';
-          operation.environments.forEach(() => {
-            markdown += '---------|';
-          });
-          markdown += '\n';
-          tableOpen = true;
         }
 
         markdown += generateStepRow(
@@ -1636,13 +1611,17 @@ function generateManualContent(
           phaseName,
           operationDir,
           operation.common_variables ?? {},
+          tableState,
         );
 
         // Inline rollback rendering - render immediately after step if present
         const rb = step.rollback?.[0];
-        if (rb && (rb.command || rb.instruction || rb.script)) {
-          // Close current table
-          markdown += '\n';
+        if (
+          rb &&
+          (rb.command || rb.instruction || rb.script || rb.expect != null)
+        ) {
+          // Close current table (next step row reopens lazily)
+          markdown += closeStepTable(tableState);
 
           // Add rollback heading
           const rollbackHeadingName = resolveVariables
@@ -1757,27 +1736,15 @@ function generateManualContent(
             markdown += `| ${env.name} | ${cellContent} |\n`;
           });
 
-          markdown += '\n';
-
-          // Reopen table with headers
-          markdown += '| Step |';
-          operation.environments.forEach((env) => {
-            markdown += ` ${env.name} |`;
-          });
-          markdown += '\n';
-          markdown += '|------|';
-          operation.environments.forEach(() => {
-            markdown += '---------|';
-          });
+          // Blank line after the rollback table; the next step row reopens the
+          // step table lazily, so no dangling empty header is emitted here.
           markdown += '\n';
         }
 
         globalStepNumber++; // Increment for next step
       });
 
-      if (tableOpen) {
-        markdown += '\n';
-      }
+      markdown += closeStepTable(tableState);
     });
   }
 
@@ -2094,9 +2061,9 @@ export function generateSingleEnvManual(
       lines.push(`> Evidence ${evStatus}${evTypesText}`);
       lines.push('');
 
-      // Render captured evidence results for this environment, or an operator
-      // capture prompt when none have been recorded yet (parity with the
-      // multi-env table and Confluence renderers).
+      // Render captured evidence results for this environment, or a
+      // command_output capture prompt when none have been recorded yet
+      // (parity with the multi-env table and Confluence renderers).
       const envResults = effectiveStep.evidence.results?.[targetEnv];
       if (envResults && envResults.length > 0) {
         lines.push('**Evidence Captured**');
@@ -2109,9 +2076,6 @@ export function generateSingleEnvManual(
         lines.push('```bash');
         lines.push('# Paste command output here');
         lines.push('```');
-        lines.push('');
-      } else {
-        lines.push('Paste evidence here');
         lines.push('');
       }
     }
