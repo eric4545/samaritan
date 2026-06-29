@@ -173,6 +173,31 @@ function buildChecks(output: string, expect: ExpectConfig): AssertResult[] {
     });
   }
 
+  if (expect.any_line_matches !== undefined) {
+    const re = compileRegex(expect.any_line_matches);
+    checks.push({
+      pass: re !== undefined && lines.some((l) => re.test(l)),
+      actual: trimmed,
+      expected: re
+        ? expect.any_line_matches
+        : `valid regex (invalid pattern: ${expect.any_line_matches})`,
+      type: 'any_line_matches',
+    });
+  }
+
+  if (expect.no_line_matches !== undefined) {
+    const re = compileRegex(expect.no_line_matches);
+    checks.push({
+      pass: re !== undefined && !lines.some((l) => re.test(l)),
+      actual: trimmed,
+      expected: re
+        ? `no line matches "${expect.no_line_matches}"`
+        : `valid regex (invalid pattern: ${expect.no_line_matches})`,
+      type: 'no_line_matches',
+      needle: expect.no_line_matches,
+    });
+  }
+
   if (expect.line_count !== undefined) {
     checks.push({
       pass: lines.length === expect.line_count,
@@ -424,6 +449,10 @@ export function renderExpectParts(
     parts.push(`no line contains: ${expect.no_line_contains}`);
   if (expect.all_lines_match !== undefined)
     parts.push(`all lines match: ${expect.all_lines_match}`);
+  if (expect.any_line_matches !== undefined)
+    parts.push(`any line matches: ${expect.any_line_matches}`);
+  if (expect.no_line_matches !== undefined)
+    parts.push(`no line matches: ${expect.no_line_matches}`);
   if (expect.line_count !== undefined)
     parts.push(`exactly ${expect.line_count} line(s)`);
   if (expect.line_count_gte !== undefined)

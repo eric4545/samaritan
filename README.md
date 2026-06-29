@@ -1569,8 +1569,8 @@ Pressing `[v]` runs **every** check in `step.expect` (no short-circuit on the fi
 
 - **Checklist** — one line per check (`✅`/`❌`), in the same order as `Expected:`. Numeric/count checks show their computed value inline, e.g. `found "2", need ≥ 3` or `2 lines, expected ≥ 1`.
 - **Highlighted output** — the captured output (tail of the last 12 lines by default, or full output after `[m]`) is shown with:
-  - **green + inverse** around the text that satisfied a passing `contains` / `any_line_contains` / `matches` check
-  - **red** around the offending text that violated a failing `not_contains` / `no_line_contains` check
+  - **green + inverse** around the text that satisfied a passing `contains` / `any_line_contains` / `matches` / `any_line_matches` check
+  - **red** around the offending text that violated a failing `not_contains` / `no_line_contains` / `no_line_matches` check
   - `missing: <expected>` for failing checks whose expected text isn't present in the output at all
 - **Line-number gutter** — each line of the output block is prefixed with its absolute line number (accounting for tail truncation) and a `→` arrow on any line containing a highlight, e.g. ` 2 →│ web-server-0   1/1   Running   0   45s`. This makes it easy to see exactly which line satisfied (or violated) a check.
 
@@ -1763,11 +1763,22 @@ verify:
 | `any_line_contains: "text"` | at least one line includes substring |
 | `no_line_contains: "Error"` | no line includes substring |
 | `all_lines_match: "regex"` | every non-empty line matches pattern |
+| `any_line_matches: "regex"` | at least one line matches pattern (regex sibling of `any_line_contains`) |
+| `no_line_matches: "Error\|FATAL"` | no line matches pattern (regex sibling of `no_line_contains`) |
 | `line_count: 3` | exactly N non-empty lines |
 | `line_count_gte: 1` | at least N non-empty lines |
 | `numeric_gte: 80` | first number in output ≥ value |
 | `jsonpath: "$.status" equals: "ok"` | JSONPath expression equals value |
 | `equals_captured: VAR` | output equals a previously captured variable |
+
+> **Regex semantics**: `matches`, `all_lines_match`, `any_line_matches`, and
+> `no_line_matches` compile with Node's `new RegExp(pattern)` using **default
+> flags** — case-sensitive, no multiline, and an **unanchored partial match**
+> (`Running` matches anywhere; anchor with `^...$` for a full-string/full-line
+> match). `samaritan validate` runs a built-in **regex-lint** pass over these
+> fields (and `expect.retry.while`): an uncompilable pattern is a hard **error**,
+> and an obviously catastrophic (ReDoS-prone) pattern such as `(a+)+` is a
+> **warning** (promoted to an error under `--strict`).
 
 #### Retryable verification (`expect.retry`)
 

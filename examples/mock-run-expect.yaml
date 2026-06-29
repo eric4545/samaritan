@@ -25,9 +25,14 @@ steps:
     type: automatic
     command: kubectl apply -f deployment.yaml -n ${NAMESPACE}
     # The expect rules below are what `--mock` replays against evidence.results.
+    # `any_line_matches` / `no_line_matches` are the regex siblings of the
+    # literal `any_line_contains` / `no_line_contains` (default Node regex:
+    # case-sensitive, unanchored — anchor with ^...$ for a full-line match).
     expect:
       - contains: deployment.apps/web-server created
       - any_line_contains: Running
+      - any_line_matches: '^pod/web-[0-9]+'   # at least one pod line
+      - no_line_matches: 'Error|CrashLoopBackOff'  # no failing pod
     evidence:
       required: true
       types: [command_output]

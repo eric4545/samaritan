@@ -91,13 +91,23 @@ Markdown, Confluence markup, ADF) renders a `# Paste command output here` code b
 expect:
   contains: "Running"
   not_contains: "Error"
-  any_line_contains: ["ready", "ok"]
-  matches: "^pod/web-[0-9]+"               # regex
+  any_line_contains: "ready"
+  no_line_contains: "Error"
+  matches: "^pod/web-[0-9]+"               # whole-output regex
+  all_lines_match: "Running|Ready"         # every non-empty line matches regex
+  any_line_matches: "^pod/web-[0-9]+"      # ≥1 line matches regex (sibling of any_line_contains)
+  no_line_matches: "Error|FATAL"           # no line matches regex (sibling of no_line_contains)
   retry:                                    # retryable assertion (automatic verify path)
     max: 5
     interval: 5s                            # 5s / 500ms / 2m / bare ms
     while: "Pending"                        # only retry transient-matching failures
 ```
+
+Regex fields (`matches`, `all_lines_match`, `any_line_matches`, `no_line_matches`)
+use Node's default `new RegExp(pattern)` — case-sensitive, unanchored partial
+match (anchor with `^...$` for full-line). `samaritan validate` regex-lints
+these: uncompilable patterns are errors, ReDoS-prone ones are warnings
+(errors under `--strict`).
 
 ## Templates (DRY reuse)
 

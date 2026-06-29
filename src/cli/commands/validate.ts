@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { Command } from 'commander';
+import { formatRegexFinding, lintOperationRegex } from '../../lib/regex-lint';
 import {
   formatFinding,
   isShellcheckAvailable,
@@ -55,6 +56,7 @@ class OperationValidator {
       this.validateEnvironments(operation, result, options);
       this.validateSteps(operation, result, options);
       this.validateVariables(operation, result, options);
+      this.validateExpectRegex(operation, result, options);
 
       if (options.strict) {
         this.strictValidation(operation, result, options);
@@ -345,6 +347,24 @@ class OperationValidator {
 
     if (Object.keys(envVariables).length === 0) {
       result.warnings.push(`No variables defined for environment '${envName}'`);
+    }
+  }
+
+  private validateExpectRegex(
+    operation: Operation,
+    result: ValidationResult,
+    options: ValidationOptions,
+  ): void {
+    // Regex compilation is built-in and free (unlike shellcheck), so this runs
+    // unconditionally. Invalid patterns are always errors (the check can never
+    // pass); catastrophic-looking patterns are warnings (errors under --strict).
+    for (const finding of lintOperationRegex(operation)) {
+      const message = `regex-lint: ${formatRegexFinding(finding)}`;
+      if (finding.level === 'error' || options.strict) {
+        result.errors.push(message);
+      } else {
+        result.warnings.push(message);
+      }
     }
   }
 

@@ -157,6 +157,56 @@ describe('assertOutput (issue #12)', () => {
     assert.strictEqual(r.pass, false);
   });
 
+  it('any_line_matches - passes when at least one line matches the regex', () => {
+    const r = assertOutput('starting\npod/web-12 ready\ndone', {
+      any_line_matches: '^pod/web-[0-9]+',
+    });
+    assert.strictEqual(r.pass, true);
+    assert.strictEqual(r.type, 'any_line_matches');
+  });
+
+  it('any_line_matches - fails when no line matches the regex', () => {
+    const r = assertOutput('starting\nfinished\ndone', {
+      any_line_matches: '^pod/web-[0-9]+',
+    });
+    assert.strictEqual(r.pass, false);
+  });
+
+  it('any_line_matches - ignores empty lines', () => {
+    const r = assertOutput('\n\nERROR 42\n\n', { any_line_matches: 'ERROR' });
+    assert.strictEqual(r.pass, true);
+  });
+
+  it('no_line_matches - passes when no line matches the regex', () => {
+    const r = assertOutput('all good\nstill good', {
+      no_line_matches: 'ERROR|FATAL',
+    });
+    assert.strictEqual(r.pass, true);
+    assert.strictEqual(r.type, 'no_line_matches');
+  });
+
+  it('no_line_matches - fails when a line matches the regex', () => {
+    const r = assertOutput('all good\nFATAL: boom', {
+      no_line_matches: 'ERROR|FATAL',
+    });
+    assert.strictEqual(r.pass, false);
+    assert.strictEqual(r.needle, 'ERROR|FATAL');
+  });
+
+  it('any_line_matches with invalid regex fails the check instead of throwing', () => {
+    const r = assertOutput('line1\nline2', { any_line_matches: '[bad' });
+    assert.strictEqual(r.pass, false);
+    assert.strictEqual(r.type, 'any_line_matches');
+    assert.ok(r.expected.includes('invalid pattern'));
+  });
+
+  it('no_line_matches with invalid regex fails the check instead of throwing', () => {
+    const r = assertOutput('line1\nline2', { no_line_matches: '[bad' });
+    assert.strictEqual(r.pass, false);
+    assert.strictEqual(r.type, 'no_line_matches');
+    assert.ok(r.expected.includes('invalid pattern'));
+  });
+
   it('result includes actual and expected fields', () => {
     const r = assertOutput('Running', { equals: 'Stopped' });
     assert.ok('actual' in r, 'should have actual');

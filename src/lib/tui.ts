@@ -290,6 +290,8 @@ const EXPECT_STRING_FIELDS = [
   'any_line_contains',
   'no_line_contains',
   'all_lines_match',
+  'any_line_matches',
+  'no_line_matches',
   'jsonpath',
 ] as const satisfies ReadonlyArray<keyof ExpectConfig>;
 
@@ -607,6 +609,31 @@ interface HighlightSpan {
 }
 
 /**
+ * Find the first line of `actual` that matches `pattern` and return an absolute
+ * span for the match within `actual`. Used by the per-line regex matchers
+ * (`any_line_matches` / `no_line_matches`), where `^`/`$` anchors are meant
+ * per-line and so a whole-string `exec` would miss them.
+ */
+function firstLineRegexSpan(
+  actual: string,
+  pattern: string,
+  color: typeof GREEN | typeof RED,
+): HighlightSpan[] {
+  const re = compileRegex(pattern);
+  if (!re) return [];
+  let offset = 0;
+  for (const line of actual.split('\n')) {
+    const match = re.exec(line);
+    if (match && match[0].length > 0) {
+      const start = offset + match.index;
+      return [{ start, end: start + match[0].length, color }];
+    }
+    offset += line.length + 1; // +1 for the consumed '\n'
+  }
+  return [];
+}
+
+/**
  * Compute highlight spans for a single check against the unstyled `actual`
  * output:
  * - passing `contains` / `any_line_contains` / `matches`: GREEN+INVERSE
@@ -636,6 +663,9 @@ function highlightSpansForCheck(
         },
       ];
     }
+    if (check.type === 'any_line_matches') {
+      return firstLineRegexSpan(actual, check.expected, GREEN);
+    }
     return [];
   }
 
@@ -645,6 +675,12 @@ function highlightSpansForCheck(
     const idx = actual.indexOf(needle);
     if (idx === -1) return [];
     return [{ start: idx, end: idx + needle.length, color: RED }];
+  }
+
+  if (check.type === 'no_line_matches') {
+    const needle = check.needle;
+    if (!needle) return [];
+    return firstLineRegexSpan(actual, needle, RED);
   }
 
   return [];
@@ -781,7 +817,8 @@ export function renderVerifyOutcome(
         check.type === 'contains' ||
         check.type === 'equals' ||
         check.type === 'matches' ||
-        check.type === 'any_line_contains'
+        check.type === 'any_line_contains' ||
+        check.type === 'any_line_matches'
       ) {
         styledLines.push(`${DIM}${RED}missing: ${check.expected}${RESET}`);
       }

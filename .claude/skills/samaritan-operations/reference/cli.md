@@ -23,6 +23,10 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
 ### validate
 - `--lint` — run shellcheck over `command`/`script` (warnings by default).
 - `--strict` — promote lint warnings and schema warnings to errors.
+- Always runs a built-in regex-lint over `expect` regex fields (`matches`,
+  `all_lines_match`, `any_line_matches`, `no_line_matches`, `retry.while`):
+  uncompilable patterns are errors; ReDoS-prone ones (e.g. `(a+)+`) are warnings
+  (errors under `--strict`). No flag needed — regex compilation is built-in.
 
 ### generate manual / confluence
 - `--env <name>` — single-environment heading format. Omitting it produces the
