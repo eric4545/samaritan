@@ -25,6 +25,8 @@ function fixturePath(name: string): string {
       'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',
     varRendering: 'tests/fixtures/operations/features/var-rendering.yaml',
     foreachLoop: 'tests/fixtures/operations/features/foreach-loop.yaml',
+    aggregatedGlobalRollback:
+      'tests/fixtures/operations/features/aggregated-global-rollback.yaml',
   };
   return resolve(map[name]);
 }
@@ -832,6 +834,32 @@ describe('run command: ${VAR} rendering in step display', () => {
     assert.ok(
       !combined.includes('${SERVICE}'),
       'command must not show literal ${SERVICE}',
+    );
+  });
+
+  it('offers [g] global rollback and previews the consolidated recovery', () => {
+    // Single-action interaction only — the confirm prompt is a second
+    // question() call, and piped multi-line stdin is unreliable (CLAUDE.md
+    // Gotcha #3). `g` fires the jump and previews; EOF then ends the run.
+    const fixture = fixturePath('aggregatedGlobalRollback');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'g\n',
+    });
+    const combined = result.stdout + result.stderr;
+    // The action menu advertises the global rollback jump.
+    assert.ok(
+      combined.includes('global rollback'),
+      'manual step menu must offer [g] global rollback',
+    );
+    // Pressing g previews the consolidated rollback (explicit plan step here,
+    // since no step has been completed yet).
+    assert.ok(
+      combined.includes('Global rollback will run the following'),
+      'g must preview the consolidated rollback',
+    );
+    assert.ok(
+      combined.includes('Notify on-call'),
+      'preview must include the explicit operation-level rollback step',
     );
   });
 

@@ -1,4 +1,4 @@
-import type { ExpectConfig, Step } from '../models/operation';
+import type { ExpectConfig, RollbackStep, Step } from '../models/operation';
 import {
   type AssertResult,
   assertOutput,
@@ -35,6 +35,23 @@ export interface StepControllerOptions {
   sessions?: Record<string, { host?: string; user?: string }>;
   /** Override the delay used by `expect.retry` polling (injected in tests). */
   sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Flatten a rollback step list (depth-first) so nested `sub_steps` are included
+ * in execution order. Used by the global-rollback runner and the no-tmux
+ * display path, both of which need the full command sequence, not just the
+ * top-level steps.
+ */
+export function flattenRollbackSteps(steps: RollbackStep[]): RollbackStep[] {
+  const out: RollbackStep[] = [];
+  for (const rb of steps) {
+    out.push(rb);
+    if (rb.sub_steps && rb.sub_steps.length > 0) {
+      out.push(...flattenRollbackSteps(rb.sub_steps));
+    }
+  }
+  return out;
 }
 
 export class StepController {
@@ -256,6 +273,60 @@ export class StepController {
       type: 'rollback_complete',
       step: stepIndex,
       status: 'success',
+    });
+  }
+
+  /**
+   * Run an arbitrary list of rollback steps (e.g. the aggregated global
+   * rollback) rather than a single step's `rollback`. Unlike `rollback()`, this
+   * flattens nested `sub_steps` so the whole recovery is sent, and tags the
+   * audit events with `context` (defaults to 'global'). Steps with no `command`
+   * (instruction-only) are recorded but not sent to tmux.
+   */
+  async runRollbackSteps(
+    steps: RollbackStep[],
+    stepIndex: number,
+    triggeredBy: string,
+    context = 'global',
+  ): Promise<void> {
+    const { logger, tmux } = this.opts;
+
+    logger.emit({
+      type: 'rollback_start',
+      step: stepIndex,
+      triggered_by: triggeredBy,
+      context,
+    });
+
+    for (const rb of flattenRollbackSteps(steps)) {
+      if (!rb.command) continue;
+      const sessionName = rb.session ?? 'default';
+
+      logger.emit({
+        type: 'command_sent',
+        session: sessionName,
+        command: rb.command,
+        context,
+      });
+
+      if (tmux) {
+        tmux.send(sessionName, rb.command);
+        await tmux.waitForPrompt(sessionName, 60_000);
+        const output = tmux.readOutput(sessionName, 0);
+        logger.emit({
+          type: 'pane_captured',
+          session: sessionName,
+          output,
+          context,
+        });
+      }
+    }
+
+    logger.emit({
+      type: 'rollback_complete',
+      step: stepIndex,
+      status: 'success',
+      context,
     });
   }
 

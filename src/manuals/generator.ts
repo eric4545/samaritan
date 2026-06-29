@@ -5,6 +5,7 @@ import {
   type GenerationMetadata,
   generateYamlFrontmatter,
 } from '../lib/git-metadata';
+import { buildEffectiveRollback } from '../lib/global-rollback';
 import { indexToLetters } from '../lib/letter-sequence';
 import { groupByPhase } from '../lib/phase-grouping';
 import { hasRollbackContent } from '../lib/rollback';
@@ -1581,8 +1582,14 @@ function generateManualContent(
     });
   }
 
-  // Operation-level (global) rollback plan
-  if (operation.rollback?.steps && operation.rollback.steps.length > 0) {
+  // Operation-level (global) rollback plan. When aggregate_step_rollbacks is on,
+  // the per-step rollbacks are grouped in (reverse step order) after the explicit
+  // plan steps, so the section shows the whole recovery at once.
+  const globalRollbackSteps = buildEffectiveRollback(
+    operation.rollback,
+    operation.steps,
+  );
+  if (operation.rollback && globalRollbackSteps.length > 0) {
     markdown += '## 🔄 Rollback Plan\n\n';
     markdown +=
       'If the operation fails, execute the following rollback steps:\n\n';
@@ -1625,7 +1632,7 @@ function generateManualContent(
       });
     };
 
-    operation.rollback.steps.forEach((rb, index) => {
+    globalRollbackSteps.forEach((rb, index) => {
       emitRollbackRow(rb, `Rollback Step ${index + 1}`);
     });
 
@@ -1938,9 +1945,11 @@ export function generateSingleEnvManual(
     }
   });
 
-  // Operation-level (global) rollback plan, resolved for this environment
+  // Operation-level (global) rollback plan, resolved for this environment.
+  // aggregate_step_rollbacks groups the per-step rollbacks (reverse order) in.
   const globalRollback = workingOperation.rollback;
-  if (globalRollback?.steps && globalRollback.steps.length > 0) {
+  const globalRollbackSteps = buildEffectiveRollback(globalRollback, allSteps);
+  if (globalRollback && globalRollbackSteps.length > 0) {
     lines.push('---');
     lines.push('');
     lines.push('## 🔄 Rollback Plan');
@@ -1954,7 +1963,7 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
-    globalRollback.steps.forEach((rb, index) => {
+    globalRollbackSteps.forEach((rb, index) => {
       renderRollbackStepSingleEnv(rb, `Rollback Step ${index + 1}`, 3);
     });
   }

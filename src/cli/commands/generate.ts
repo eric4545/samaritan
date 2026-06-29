@@ -3,6 +3,7 @@ import { basename, dirname, join } from 'node:path';
 import { Command } from 'commander';
 import { renderExpectParts } from '../../lib/assertions';
 import { createGenerationMetadata } from '../../lib/git-metadata';
+import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { groupByPhase } from '../../lib/phase-grouping';
 import { hasRollbackContent } from '../../lib/rollback';
@@ -1495,11 +1496,13 @@ ${filteredOperation.environments
     content += '\n';
   });
 
-  // Global rollback section if available
-  if (
-    filteredOperation.rollback?.steps &&
-    filteredOperation.rollback.steps.length > 0
-  ) {
+  // Global rollback section if available. aggregate_step_rollbacks groups the
+  // per-step rollbacks (reverse step order) in after the explicit plan steps.
+  const globalRollbackSteps = buildEffectiveRollback(
+    filteredOperation.rollback,
+    filteredOperation.steps,
+  );
+  if (filteredOperation.rollback && globalRollbackSteps.length > 0) {
     content += `h2. (<) Rollback Procedures
 
 {warning}If deployment fails, execute the following rollback steps:{warning}
@@ -1645,11 +1648,9 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
       });
     };
 
-    filteredOperation.rollback.steps.forEach(
-      (rollbackStep: any, index: number) => {
-        emitRollbackRow(rollbackStep, `Rollback Step ${index + 1}`);
-      },
-    );
+    globalRollbackSteps.forEach((rollbackStep: any, index: number) => {
+      emitRollbackRow(rollbackStep, `Rollback Step ${index + 1}`);
+    });
 
     content += '\n';
   }

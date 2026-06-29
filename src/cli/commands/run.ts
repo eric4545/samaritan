@@ -21,6 +21,7 @@ import type { CaptureBackend } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
+import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { generateReport, renderReport } from '../../lib/report-generator';
@@ -47,6 +48,7 @@ import {
   validateTmuxTarget,
 } from '../../lib/tmux-session';
 import {
+  flattenRollbackSteps,
   renderAssertOutcome,
   renderCodeBlock,
   renderKeyHints,
@@ -570,6 +572,7 @@ class OperationRunner {
       't',
       's',
       'r',
+      'g',
       'q',
     ]);
 
@@ -748,6 +751,15 @@ class OperationRunner {
     const isQuit = (c: string) => c === 'q' || c === 'quit';
     const isSkip = (c: string) => c === 's' || c === 'skip';
     const isRollback = (c: string) => c === 'r' || c === 'rollback';
+    const isGlobalRollback = (c: string) => c === 'g' || c === 'global';
+    // A global rollback is offered whenever the operation declares a rollback
+    // block (explicit plan and/or aggregate_step_rollbacks). What actually runs
+    // is computed per-invocation from completed steps in doGlobalRollback.
+    const hasGlobalRollback = !!operation.rollback;
+    // Spread into each action menu so the [g] hint appears only when available.
+    const globalRollbackMenuItem = hasGlobalRollback
+      ? [{ key: 'g', label: 'global rollback' }]
+      : [];
 
     const warnedUnresolvedVars = new Set<string>();
     // Resolve display text against the env/common/CLI `vars` merged with the
@@ -796,6 +808,79 @@ class OperationRunner {
       } else {
         console.log('    ℹ️  No rollback defined for this step.');
       }
+    };
+
+    // Jump to the global rollback: build the consolidated recovery from the
+    // explicit operation.rollback plan plus (when aggregate_step_rollbacks is
+    // on) every COMPLETED step's own rollback in reverse order, preview it,
+    // confirm, run it, then abort the operation (a full rollback ends forward
+    // progress). Returns true when the operation was aborted.
+    const doGlobalRollback = async (i: number): Promise<boolean> => {
+      const completed = executor
+        .getState()
+        .steps.filter((s) => s.status === 'completed')
+        .map((s) => s.step);
+      const rbSteps = buildEffectiveRollback(operation.rollback, completed);
+      if (rbSteps.length === 0) {
+        console.log(
+          '    ℹ️  Nothing to roll back globally (no rollback plan and no completed steps with rollback).',
+        );
+        return false;
+      }
+
+      console.log(
+        '\n    🔄 Global rollback will run the following (reverse order):',
+      );
+      for (const rb of flattenRollbackSteps(rbSteps)) {
+        const cmd = rb.command
+          ? `$ ${tryResolve(rb.command)}`
+          : rb.instruction
+            ? `(manual) ${tryResolve(rb.instruction)}`
+            : '';
+        const label = rb.name ?? '';
+        console.log(
+          `      • ${label}${label && cmd ? ' — ' : ''}${cmd}`.trimEnd(),
+        );
+      }
+
+      const confirm = (
+        await question(
+          '\n    Run global rollback and abort the operation? [y/N]: ',
+        )
+      )
+        .trim()
+        .toLowerCase();
+      if (confirm !== 'y' && confirm !== 'yes') {
+        console.log('    ↩  Global rollback cancelled.');
+        return false;
+      }
+
+      if (controller && tmuxSession) {
+        console.log('    🔄 Running global rollback...');
+        await controller.runRollbackSteps(
+          rbSteps,
+          i,
+          state.context.operator,
+          'global',
+        );
+        console.log('    ↩  Global rollback complete.');
+      } else {
+        // No tmux to send through — commands were listed above; record audit
+        // events so the run log still captures the global rollback.
+        console.log(
+          '    🔄 Run the global rollback commands above manually (no tmux session).',
+        );
+        await controller?.runRollbackSteps(
+          rbSteps,
+          i,
+          state.context.operator,
+          'global',
+        );
+      }
+
+      executor.cancel();
+      console.log('\n⛔ Operation aborted after global rollback.');
+      return true;
     };
 
     // Copy a command to the clipboard and report the outcome. `indent` matches
@@ -1257,6 +1342,7 @@ class OperationRunner {
                 { key: 'c', label: 'copy' },
                 { key: 's', label: 'skip' },
                 { key: 'r', label: 'rollback' },
+                ...globalRollbackMenuItem,
                 { key: 'q', label: 'quit' },
               ],
               resolvedCommand,
@@ -1265,6 +1351,10 @@ class OperationRunner {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
               break;
+            }
+            if (isGlobalRollback(choice)) {
+              if (await doGlobalRollback(i)) break;
+              continue;
             }
             if (isRollback(choice)) {
               await doRollback(step, i);
@@ -1323,6 +1413,7 @@ class OperationRunner {
                 ...(resolvedCommand ? [{ key: 'c', label: 'copy' }] : []),
                 { key: 's', label: 'skip' },
                 { key: 'r', label: 'rollback' },
+                ...globalRollbackMenuItem,
                 { key: 'q', label: 'quit' },
               ],
               resolvedCommand,
@@ -1331,6 +1422,10 @@ class OperationRunner {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
               break;
+            }
+            if (isGlobalRollback(choice)) {
+              if (await doGlobalRollback(i)) break;
+              continue;
             }
             if (isRollback(choice)) {
               await doRollback(step, i);
@@ -1408,6 +1503,7 @@ class OperationRunner {
                     : []),
                   { key: 's', label: 'skip' },
                   { key: 'r', label: 'rollback' },
+                  ...globalRollbackMenuItem,
                   { key: 'abort', label: 'abort' },
                 ]),
             );
@@ -1531,6 +1627,13 @@ class OperationRunner {
               );
               continue;
             }
+            if (hasGlobalRollback && isGlobalRollback(inputChoice)) {
+              if (await doGlobalRollback(i)) {
+                manualNotes = '';
+                break;
+              }
+              continue;
+            }
             manualNotes = input;
             break;
           }
@@ -1573,8 +1676,13 @@ class OperationRunner {
             { key: 'approve', label: 'approve' },
             { key: 'reject', label: 'reject' },
             { key: 'r', label: 'rollback' },
+            ...globalRollbackMenuItem,
             { key: 's', label: 'skip' },
           ]);
+          if (isGlobalRollback(choice)) {
+            if (await doGlobalRollback(i)) break;
+            continue;
+          }
           if (isRollback(choice)) {
             await doRollback(step, i);
             continue;
