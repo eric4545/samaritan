@@ -1,0 +1,9 @@
+name: Env Uses Malformed
+version: 1.0.0
+description: uses points to a file with no environments array
+environments:
+  - uses: ./malformed-envs.yaml
+steps:
+  - name: Deploy
+    type: manual
+    instruction: Deploy

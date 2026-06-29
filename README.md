@@ -941,6 +941,48 @@ steps:
       types: [screenshot]
 ```
 
+##### Wholesale import with `uses:`
+
+When several operations share the **same** environments (e.g. `a.yaml` and `b.yaml`
+with identical `staging`/`production` blocks), import the whole set in one line with a
+`uses:` entry — no need to re-list each environment by name:
+
+```yaml
+# environments/shared-app-envs.yaml — define the shared envs once.
+# A plain `{ environments: [...] }` file OR a `kind: EnvironmentManifest`
+# file are both accepted.
+environments:
+  - name: staging
+    variables: { ENDPOINT: https://staging.api.com, DB_HOST: staging-db, NAMESPACE: staging }
+  - name: production
+    approval_required: true
+    variables: { ENDPOINT: https://api.example.com, DB_HOST: prod-db, NAMESPACE: production }
+```
+
+```yaml
+# a.yaml / b.yaml — reuse them with a single line
+environments:
+  - uses: ./environments/shared-app-envs.yaml   # expands to ALL envs in that file
+  - name: production                            # OPTIONAL: override just one
+    variables:
+      DB_HOST: prod-db-replica                  # merged on top of the imported production
+```
+
+- `uses:` entries expand **inline, in array order** (same model as step-level `uses:`).
+- A later inline (or imported) entry sharing a `name` **merges its `variables`** over the
+  earlier one; booleans like `approval_required` are preserved unless re-stated.
+- Precedence (lowest → highest): `common_variables` → imported env vars → inline override
+  vars → `step.variables` (at generation time).
+- The path is resolved relative to the operation file.
+
+See `examples/reuse-envs-a.yaml`, `examples/reuse-envs-b.yaml`, and
+`examples/environments/shared-app-envs.yaml`.
+
+**Which DRY mechanism when:** `common_variables:` for values shared across *all* envs in one
+file; `uses:` to reuse a *whole* environment set across files; per-env `from:` to inherit a
+single named environment from a manifest with overrides; native YAML anchors (`<<: *base`)
+for same-file env-to-env reuse.
+
 #### Person In Charge & Reviewer
 
 Aviation-inspired fields that identify who executes and who monitors each step. Generated manuals include sign-off checkboxes for both when these fields are set.

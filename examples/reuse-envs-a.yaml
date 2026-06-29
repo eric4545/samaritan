@@ -1,0 +1,17 @@
+# Operation A — reuses the shared environment definitions (no per-env duplication).
+name: Deploy Service A
+version: 1.0.0
+description: Demonstrates wholesale environment reuse via `uses:`
+author: sre-team@example.com
+category: deployment
+
+environments:
+  - uses: ./environments/shared-app-envs.yaml
+
+steps:
+  - name: Deploy ${SERVICE_NAME}
+    type: manual
+    phase: flight
+    instruction: |
+      Deploy to ${NAMESPACE}:
+      kubectl apply -f service-a.yaml --namespace ${NAMESPACE}

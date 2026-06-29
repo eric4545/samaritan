@@ -53,41 +53,55 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["name"],
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1
-          },
-          "from": {
-            "type": "string",
-            "description": "Inherit environment definition from manifest"
-          },
-          "description": {
-            "type": "string"
-          },
-          "variables": {
-            "type": "object"
-          },
-          "targets": {
-            "type": "array",
-            "items": {
-              "type": "string"
+        "oneOf": [
+          {
+            "required": ["name"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "from": {
+                "type": "string",
+                "description": "Inherit environment definition from manifest"
+              },
+              "description": {
+                "type": "string"
+              },
+              "variables": {
+                "type": "object"
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "approval_required": {
+                "type": "boolean"
+              },
+              "validation_required": {
+                "type": "boolean"
+              },
+              "restrictions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           },
-          "approval_required": {
-            "type": "boolean"
-          },
-          "validation_required": {
-            "type": "boolean"
-          },
-          "restrictions": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          {
+            "required": ["uses"],
+            "properties": {
+              "uses": {
+                "type": "string",
+                "description": "Import ALL environments from a shared environments/manifest file (relative to this operation)"
+              }
+            },
+            "additionalProperties": false
           }
-        }
+        ]
       }
     },
     "variables": {

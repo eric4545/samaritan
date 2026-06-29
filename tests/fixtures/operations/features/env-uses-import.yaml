@@ -1,0 +1,14 @@
+name: Env Uses Import
+version: 1.0.0
+description: Wholesale environment import via uses with a local override
+common_variables:
+  REGION: us-east-1
+environments:
+  - uses: ./shared-envs.yaml
+  - name: production
+    variables:
+      DB_HOST: prod-db-replica
+steps:
+  - name: Deploy
+    type: manual
+    instruction: Deploy to ${NAMESPACE}

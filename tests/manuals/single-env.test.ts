@@ -47,6 +47,33 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     assert.ok(md.includes('Running'), 'shows expected value');
   });
 
+  it('preserves authored line breaks in multiline instructions', async () => {
+    const op = await parseFixture('withSessions');
+    op.steps[0].instruction = 'aa\nbb\ncc';
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(
+      md.includes('aa  \nbb  \ncc'),
+      'consecutive lines kept as separate lines via hard breaks',
+    );
+  });
+
+  it('leaves fenced code blocks verbatim inside instructions', async () => {
+    const op = await parseFixture('withSessions');
+    op.steps[0].instruction =
+      'Do this:\n```bash\nkubectl get pods\n```\nThen confirm.';
+    const md = generateSingleEnvManual(op, 'production');
+
+    assert.ok(
+      md.includes('```bash\nkubectl get pods\n```'),
+      'code fence rendered verbatim',
+    );
+    assert.ok(
+      !md.includes('kubectl get pods  '),
+      'no hard break injected inside the fence',
+    );
+  });
+
   it('renders PIC and Reviewer as blockquotes', async () => {
     const op = await parseFixture('withSessions');
     // Patch step with pic/reviewer

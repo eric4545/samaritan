@@ -500,6 +500,70 @@ describe('Enhanced Operation Parser', () => {
     });
   });
 
+  describe('Environment wholesale import (uses:)', () => {
+    it('imports all environments from a shared file inline', async () => {
+      const operation = await parseFixture('envUsesImport');
+
+      assert.deepStrictEqual(
+        operation.environments.map((e) => e.name),
+        ['staging', 'production'],
+        'imports envs in file order',
+      );
+    });
+
+    it('keeps common_variables as the base layer for imported envs', async () => {
+      const operation = await parseFixture('envUsesImport');
+      const staging = operation.environments.find((e) => e.name === 'staging');
+
+      assert.strictEqual(staging?.variables.REGION, 'us-east-1');
+      assert.strictEqual(
+        staging?.variables.ENDPOINT,
+        'https://staging.api.com',
+      );
+    });
+
+    it('merges a later inline override entry onto the imported env by name', async () => {
+      const operation = await parseFixture('envUsesImport');
+      const prod = operation.environments.find((e) => e.name === 'production');
+
+      // overridden
+      assert.strictEqual(prod?.variables.DB_HOST, 'prod-db-replica');
+      // preserved from import
+      assert.strictEqual(prod?.variables.ENDPOINT, 'https://api.example.com');
+      assert.strictEqual(prod?.variables.NAMESPACE, 'production');
+      // common var still present
+      assert.strictEqual(prod?.variables.REGION, 'us-east-1');
+      // boolean preserved (override entry set only variables)
+      assert.strictEqual(prod?.approval_required, true);
+    });
+
+    it('accepts an EnvironmentManifest-format shared file', async () => {
+      const operation = await parseFixture('envUsesManifest');
+      const dev = operation.environments.find((e) => e.name === 'dev');
+
+      assert.ok(dev, 'dev environment imported from manifest file');
+      assert.strictEqual(dev?.variables.ENDPOINT, 'https://dev.api.com');
+    });
+
+    it('throws when the uses file is missing', async () => {
+      await assert.rejects(
+        async () => parseOperation(getFixturePath('envUsesMissing')),
+        (err: any) =>
+          Array.isArray(err.errors) &&
+          err.errors.some((e: any) => /not found|Cannot read/.test(e.message)),
+      );
+    });
+
+    it('throws when the uses file has no environments array', async () => {
+      await assert.rejects(
+        async () => parseOperation(getFixturePath('envUsesMalformed')),
+        (err: any) =>
+          Array.isArray(err.errors) &&
+          err.errors.some((e: any) => /environments/.test(e.message)),
+      );
+    });
+  });
+
   it('should parse overview field with flexible metadata', async () => {
     const operation = await parseFixture('withOverview');
 
