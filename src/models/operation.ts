@@ -175,6 +175,12 @@ export interface RollbackPlan {
   steps: RollbackStep[];
   automatic?: boolean;
   conditions?: string[];
+  // When true, the global rollback also groups every step's own `rollback`
+  // (reverse step order — most-recently-completed first), appended after the
+  // explicit `steps` above. Lets operators author rollback next to the step it
+  // undoes while still seeing/running one consolidated recovery. Opt-in
+  // (default false) so existing manuals are unchanged. See src/lib/global-rollback.ts.
+  aggregate_step_rollbacks?: boolean;
 }
 
 export interface StepForeach {

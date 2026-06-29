@@ -19,6 +19,7 @@ steps: [ ... ]               # required
 rollback:                    # operation-level rollback plan
   automatic: false
   conditions: [ ... ]
+  aggregate_step_rollbacks: false  # opt-in: group step.rollback[] into this plan
   steps: [ ... ]             # each a full step body (shares StepContent base)
 ```
 
@@ -37,6 +38,13 @@ rollback (`Step.rollback[]`). Nested sub-steps render recursively in every forma
 step's **🔄 Rollback** section. The operation-level rollback step schema is strict
 (`additionalProperties: false`), so a typo'd key fails validation rather than
 being silently dropped. Example: `examples/rollback-with-substeps.yaml`.
+
+Set `rollback.aggregate_step_rollbacks: true` to **group** every step's own
+`rollback` into the global plan: after the explicit `steps:`, each step's
+rollback is appended in **reverse step order**, labelled `↩ Rollback for "<step>"`.
+This drives both the rendered Rollback Plan ("see all rollbacks at once") and the
+interactive `[g]` global-rollback jump (which uses only **completed** steps).
+Opt-in (default false). Example: `examples/global-rollback-aggregated.yaml`.
 
 ## Step content fields (shared by steps AND rollback steps — `StepContent`)
 

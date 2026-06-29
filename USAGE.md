@@ -42,6 +42,12 @@ npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging
 # --report writes an extra copy of the report to a directory of your choice.
 npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging --report ./evidence
 
+# If a failure means unwinding everything done so far, press [g] global rollback
+# at any step prompt: it runs the consolidated recovery (the operation-level
+# rollback plan + each completed step's rollback in reverse, when the plan sets
+# aggregate_step_rollbacks: true) and then aborts. See examples/global-rollback-aggregated.yaml.
+npx github:eric4545/samaritan run examples/global-rollback-aggregated.yaml --env staging
+
 # List saved run sessions and resume one (q/abort saves progress as paused).
 # The session JSON carries a structured step_log (input/output/verification/approval per step).
 npx github:eric4545/samaritan sessions

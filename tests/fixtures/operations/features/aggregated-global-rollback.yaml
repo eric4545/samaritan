@@ -1,0 +1,39 @@
+name: Aggregated Global Rollback
+version: 1.0.0
+description: Global rollback that groups per-step rollbacks (reverse step order).
+
+environments:
+  - name: staging
+    description: Staging
+    variables:
+      NS: web-staging
+  - name: production
+    description: Production
+    variables:
+      NS: web-prod
+
+steps:
+  - name: Backup database
+    type: manual
+    command: pg_dump -n ${NS} > backup.sql
+    rollback:
+      - name: Discard backup
+        command: rm -f backup.sql
+
+  - name: Deploy app
+    type: automatic
+    command: kubectl apply -f app.yaml -n ${NS}
+    rollback:
+      - name: Roll back app
+        sub_steps:
+          - command: kubectl rollout undo deployment/app -n ${NS}
+          - instruction: Confirm previous version is live.
+            expect:
+              contains: rolled back
+
+rollback:
+  automatic: false
+  aggregate_step_rollbacks: true
+  steps:
+    - name: Notify on-call
+      instruction: Page the on-call SRE before rolling back.

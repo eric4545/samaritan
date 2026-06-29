@@ -1223,7 +1223,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
           ...rawOperation.rollback,
           steps: Array.isArray(rawOperation.rollback.steps)
             ? rawOperation.rollback.steps.map(normalizeRollbackStep)
-            : rawOperation.rollback.steps,
+            : [],
         }
       : undefined,
     metadata,

@@ -113,6 +113,10 @@ export const FIXTURES = {
   stepRollbackSubsteps:
     'tests/fixtures/operations/features/step-rollback-substeps.yaml',
 
+  // Global rollback that aggregates per-step rollbacks (aggregate_step_rollbacks)
+  aggregatedGlobalRollback:
+    'tests/fixtures/operations/features/aggregated-global-rollback.yaml',
+
   // Script file import
   withScript: 'tests/fixtures/operations/features/with-script.yaml',
   confluenceScriptAndExpect:
