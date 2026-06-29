@@ -29,7 +29,12 @@ import {
   substituteExpectVars,
   substituteVariables,
 } from '../lib/step-resolution';
-import type { Environment, Operation, Step } from '../models/operation';
+import type {
+  Environment,
+  Operation,
+  RollbackStep,
+  Step,
+} from '../models/operation';
 
 /**
  * Merge step variants for a specific environment with base step properties
@@ -354,8 +359,8 @@ export function generateADF(
       );
     }
 
-    const globalRollbackRows = operation.rollback.steps.map((rb, index) => {
-      const envCells = environments.map((env) => {
+    const buildRollbackEnvCells = (rb: RollbackStep) =>
+      environments.map((env) => {
         const cellContent = [];
 
         const substituteVars = rb.options?.substitute_vars ?? true;
@@ -444,10 +449,23 @@ export function generateADF(
         return tableCell()(...cellContent);
       });
 
-      return tableRow([
-        tableCell()(paragraph(text(`Rollback Step ${index + 1}`))),
-        ...envCells,
-      ]);
+    // Flatten each rollback step (and its nested sub_steps) into table rows so
+    // nested rollback structure renders as Rollback Step N, N.M, N.M.K, …
+    const globalRollbackRows: ReturnType<typeof tableRow>[] = [];
+    const pushRollbackRows = (rb: RollbackStep, label: string): void => {
+      const namedLabel = rb.name ? `${label}: ${rb.name}` : label;
+      globalRollbackRows.push(
+        tableRow([
+          tableCell()(paragraph(text(namedLabel))),
+          ...buildRollbackEnvCells(rb),
+        ]),
+      );
+      rb.sub_steps?.forEach((sub, subIndex) => {
+        pushRollbackRows(sub, `${label}.${subIndex + 1}`);
+      });
+    };
+    operation.rollback.steps.forEach((rb, index) => {
+      pushRollbackRows(rb, `Rollback Step ${index + 1}`);
     });
 
     content.push(

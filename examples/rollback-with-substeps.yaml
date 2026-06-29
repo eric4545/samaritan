@@ -1,0 +1,48 @@
+name: Rollback With Sub-Steps
+version: 1.0.0
+description: |
+  Demonstrates an operation-level rollback plan whose steps nest sub_steps.
+  Rollback steps are structurally like normal steps — they can carry a name and
+  break a multi-part rollback into ordered sub-steps that render recursively
+  (Rollback Step N, N.M, …) in every manual format.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: web-staging
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: web-prod
+
+steps:
+  - name: Deploy web server
+    type: automatic
+    phase: flight
+    command: kubectl apply -f deployment.yaml -n ${NAMESPACE}
+    expect:
+      contains: deployment.apps/web-server
+
+rollback:
+  automatic: false
+  conditions:
+    - health_check_failure
+    - error_rate_spike
+  steps:
+    # A simple single-action rollback step
+    - command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
+      expect:
+        contains: rolled back
+
+    # A multi-part rollback step broken into ordered sub-steps
+    - name: Decommission canary
+      sub_steps:
+        - command: kubectl scale deployment/web-canary --replicas=0 -n ${NAMESPACE}
+        - name: Remove canary service
+          command: kubectl delete service web-canary -n ${NAMESPACE}
+        - instruction: Confirm no canary pods remain before declaring rollback complete.
+          expect:
+            no_line_contains: web-canary
+      pic: ops-team@example.com
+      reviewer: sre-lead@example.com

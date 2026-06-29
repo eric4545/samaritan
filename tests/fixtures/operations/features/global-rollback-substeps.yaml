@@ -1,0 +1,32 @@
+name: Global Rollback With Substeps
+version: 1.0.0
+description: Operation-level rollback plan whose steps nest sub_steps
+
+environments:
+  - name: staging
+    description: Staging
+    variables:
+      NAMESPACE: stg
+  - name: production
+    description: Production
+    variables:
+      NAMESPACE: prod
+
+steps:
+  - name: Deploy
+    type: automatic
+    phase: flight
+    command: kubectl apply -f app.yaml -n ${NAMESPACE}
+
+rollback:
+  automatic: false
+  conditions:
+    - health_check_failure
+  steps:
+    - command: kubectl rollout undo deployment/app -n ${NAMESPACE}
+    - name: Tear down canary
+      sub_steps:
+        - command: kubectl scale deployment/app-canary --replicas=0 -n ${NAMESPACE}
+        - instruction: Confirm canary pods are gone before proceeding
+          expect:
+            no_line_contains: app-canary

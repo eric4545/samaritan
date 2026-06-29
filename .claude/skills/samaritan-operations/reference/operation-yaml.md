@@ -28,6 +28,15 @@ in every manual format (Markdown multi-env + single-env, Confluence ADF, and
 Confluence wiki). Per-step `rollback:` (under `Step-only structural fields`) is a
 separate, bare array of rollback steps.
 
+Operation-level rollback steps are structurally like normal steps: in addition to
+their `StepContent` body each may carry an optional `name` and nested `sub_steps`
+(a recursive list of rollback steps) for multi-part rollbacks. Nested sub-steps
+render as **Rollback Step N**, **N.M**, **N.M.K**, … in every format. The schema
+for a rollback step is strict (`additionalProperties: false`), so a typo'd key
+fails validation rather than being silently dropped. (Per-step `Step.rollback[]`
+does NOT render nested `sub_steps` — only the operation-level plan does.)
+Example: `examples/rollback-with-substeps.yaml`.
+
 ## Step content fields (shared by steps AND rollback steps — `StepContent`)
 
 `command`, `script`, `instruction`, `timeout`, `description`, `evidence`,

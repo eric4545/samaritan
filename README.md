@@ -1842,7 +1842,7 @@ If no `rollback:` is defined, the operator is prompted to intervene manually.
 
 #### Operation-level rollback
 
-You can also declare a single **top-level** `rollback:` block that describes the rollback procedure for the whole operation (distinct from the per-step `rollback` above). It supports `automatic`, `conditions`, and an ordered list of `steps` (each a full step body — `command`/`script`/`instruction`/`expect`/`pic`/`reviewer`/`evidence`):
+You can also declare a single **top-level** `rollback:` block that describes the rollback procedure for the whole operation (distinct from the per-step `rollback` above). It supports `automatic`, `conditions`, and an ordered list of `steps`. A rollback step is structurally **just like a normal step**: a full step body (`command`/`script`/`instruction`/`expect`/`pic`/`reviewer`/`evidence`) plus an optional `name` and nested `sub_steps` for multi-part rollbacks:
 
 ```yaml
 steps:
@@ -1859,10 +1859,16 @@ rollback:
     - command: kubectl rollout undo deployment/web
       expect:
         contains: rolled back
-    - instruction: Verify pods are healthy and notify stakeholders.
+    # A multi-part rollback step broken into ordered sub-steps
+    - name: Decommission canary
+      sub_steps:
+        - command: kubectl scale deployment/web-canary --replicas=0
+        - instruction: Confirm no canary pods remain.
+          expect:
+            no_line_contains: web-canary
 ```
 
-This renders as a **🔄 Rollback Plan** section in every generated manual — Markdown (multi-env table and single-env headings), Confluence ADF/JSON, and Confluence wiki markup — showing the `automatic` flag, `conditions`, and each rollback step per environment.
+This renders as a **🔄 Rollback Plan** section in every generated manual — Markdown (multi-env table and single-env headings), Confluence ADF/JSON, and Confluence wiki markup — showing the `automatic` flag, `conditions`, and each rollback step per environment. Nested `sub_steps` render recursively as **Rollback Step N**, **N.M**, **N.M.K**, … (see `examples/rollback-with-substeps.yaml`).
 
 ### JSONL audit trail
 

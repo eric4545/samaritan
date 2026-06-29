@@ -687,49 +687,7 @@
         },
         "steps": {
           "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "command": {
-                "type": "string"
-              },
-              "instruction": {
-                "type": "string"
-              },
-              "timeout": {
-                "type": "number",
-                "minimum": 0
-              },
-              "expect": {
-                "description": "Assert this rollback step's output. String shorthand = expect contains.",
-                "oneOf": [
-                  { "type": "string" },
-                  { "$ref": "#/definitions/expectConfig" },
-                  {
-                    "type": "array",
-                    "items": { "$ref": "#/definitions/expectConfig" },
-                    "minItems": 1
-                  }
-                ]
-              },
-              "options": {
-                "type": "object",
-                "properties": {
-                  "substitute_vars": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Substitute ${VAR} in instruction and command (default: true)"
-                  },
-                  "show_command_separately": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Show command in separate section from instruction (default: false)"
-                  }
-                },
-                "additionalProperties": false
-              }
-            }
-          }
+          "items": { "$ref": "#/definitions/rollbackStep" }
         }
       }
     },
@@ -754,6 +712,74 @@
     }
   },
   "definitions": {
+    "rollbackStep": {
+      "type": "object",
+      "description": "A rollback step. Structurally like a normal step: it may carry an optional name and nest sub_steps (rendered recursively in the rollback plan).",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "script": {
+          "type": "string",
+          "description": "Path to an external shell script whose content is embedded in the manual"
+        },
+        "instruction": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pic": {
+          "type": "string",
+          "description": "Person In Charge of executing this rollback step"
+        },
+        "reviewer": {
+          "type": "string",
+          "description": "Reviewer/buddy who verifies this rollback step"
+        },
+        "expect": {
+          "description": "Assert this rollback step's output. String shorthand = expect contains.",
+          "oneOf": [
+            { "type": "string" },
+            { "$ref": "#/definitions/expectConfig" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/definitions/expectConfig" },
+              "minItems": 1
+            }
+          ]
+        },
+        "sub_steps": {
+          "type": "array",
+          "description": "Nested rollback sub-steps, rendered recursively under this step",
+          "items": { "$ref": "#/definitions/rollbackStep" }
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "substitute_vars": {
+              "type": "boolean",
+              "default": true,
+              "description": "Substitute ${VAR} in instruction and command (default: true)"
+            },
+            "show_command_separately": {
+              "type": "boolean",
+              "default": false,
+              "description": "Show command in separate section from instruction (default: false)"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "expectConfig": {
       "type": "object",
       "description": "Rule-based assertion config for verify output",

@@ -159,7 +159,11 @@ export interface StepContent {
 }
 
 export interface RollbackStep extends StepContent {
-  // All content fields inherited from StepContent
+  // Content fields inherited from StepContent. Rollback steps are "just like
+  // normal steps" structurally too: they may carry an optional display name and
+  // nest sub_steps (rendered recursively in the operation-level rollback plan).
+  name?: string;
+  sub_steps?: RollbackStep[];
 }
 
 export interface RollbackPlan {
