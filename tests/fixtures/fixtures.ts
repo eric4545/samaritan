@@ -98,6 +98,10 @@ export const FIXTURES = {
   nestedSubstepWithRollback:
     'tests/fixtures/operations/features/nested-substep-with-rollback.yaml',
 
+  // Operation-level rollback plan whose steps nest sub_steps
+  globalRollbackSubsteps:
+    'tests/fixtures/operations/features/global-rollback-substeps.yaml',
+
   // Script file import
   withScript: 'tests/fixtures/operations/features/with-script.yaml',
   confluenceScriptAndExpect:

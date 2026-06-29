@@ -71,6 +71,25 @@ function getTargetEnvironment(options: GenerateOptions): string | undefined {
   return options.env;
 }
 
+/**
+ * Render a single operation-level rollback step (and its nested sub_steps) for
+ * the simple Markdown documentation output. `label` is the dotted number path
+ * (e.g. "2", "2.1"). Rollback steps are structurally like normal steps, so
+ * sub_steps recurse as `2.1`, `2.1.1`, …
+ */
+function renderRollbackDocStep(step: any, label: string): string {
+  const name = step.name ? `: ${step.name}` : '';
+  let out = `
+### ${label}. Rollback Step${name}
+${step.command ? `**Command**: \`${step.command}\`` : ''}
+${step.instruction ? `**Instructions**: ${step.instruction}` : ''}
+`;
+  step.sub_steps?.forEach((sub: any, subIndex: number) => {
+    out += renderRollbackDocStep(sub, `${label}.${subIndex + 1}`);
+  });
+  return out;
+}
+
 class DocumentationGenerator {
   async generateManual(
     operationFile: string,
@@ -574,12 +593,8 @@ ${
 
 ${
   operation.rollback.steps
-    ?.map(
-      (step: any, index: number) => `
-### ${index + 1}. Rollback Step
-${step.command ? `**Command**: \`${step.command}\`` : ''}
-${step.instruction ? `**Instructions**: ${step.instruction}` : ''}
-`,
+    ?.map((step: any, index: number) =>
+      renderRollbackDocStep(step, `${index + 1}`),
     )
     .join('') || ''
 }
@@ -1499,126 +1514,142 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
 || Step || ${filteredOperation.environments.map((e: any) => `${e.name} ||`).join(' ')}
 `;
 
-    filteredOperation.rollback.steps.forEach(
-      (rollbackStep: any, index: number) => {
-        const rollbackCells: string[] = [];
+    const buildRollbackCells = (rollbackStep: any): string[] => {
+      const rollbackCells: string[] = [];
 
-        filteredOperation.environments.forEach((env: any) => {
-          let cellContent = '';
+      filteredOperation.environments.forEach((env: any) => {
+        let cellContent = '';
 
-          // Get rollback options (defaults)
-          const substituteVars = rollbackStep.options?.substitute_vars ?? true;
-          const showCommandSeparately =
-            rollbackStep.options?.show_command_separately ?? false;
+        // Get rollback options (defaults)
+        const substituteVars = rollbackStep.options?.substitute_vars ?? true;
+        const showCommandSeparately =
+          rollbackStep.options?.show_command_separately ?? false;
 
-          // Process rollback instruction (always markdown)
-          if (rollbackStep.instruction) {
-            let displayInstruction = rollbackStep.instruction;
+        // Process rollback instruction (always markdown)
+        if (rollbackStep.instruction) {
+          let displayInstruction = rollbackStep.instruction;
 
-            if (resolveVars && substituteVars) {
-              displayInstruction = substituteVariables(
-                displayInstruction,
-                env.variables || {},
-                {},
-              );
-            }
-
-            const trimmed = displayInstruction.replace(/\s+$/, '');
-            cellContent += `*Instructions:*\n{markdown}\n${trimmed}\n{markdown}`;
-          }
-
-          // Process rollback command (always code block)
-          if (rollbackStep.command) {
-            let displayCommand = rollbackStep.command;
-
-            if (resolveVars && substituteVars) {
-              displayCommand = substituteVariables(
-                displayCommand,
-                env.variables || {},
-                {},
-              );
-            }
-
-            const trimmedCommand = displayCommand.replace(/\n+$/, '');
-
-            if (showCommandSeparately && rollbackStep.instruction) {
-              cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
-            } else if (!rollbackStep.instruction) {
-              cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
-            } else {
-              cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
-            }
-          }
-
-          // Process rollback script
-          if (rollbackStep.script) {
-            const sep = cellContent ? '\n' : '';
-            cellContent += `${sep}*Script:* \`${rollbackStep.script}\``;
-            if (operationDir) {
-              try {
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                const fs = require('node:fs');
-                const nodePath = require('node:path');
-                const scriptPath = nodePath.resolve(
-                  operationDir,
-                  rollbackStep.script,
-                );
-                const scriptContent = fs
-                  .readFileSync(scriptPath, 'utf-8')
-                  .trimEnd();
-                cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
-              } catch {
-                cellContent += ' _(file not found)_';
-              }
-            }
-          }
-
-          // Add rollback expect assertions
-          if (rollbackStep.expect != null) {
-            const resolvedExpect =
-              resolveVars && substituteVars
-                ? substituteExpectVars(
-                    rollbackStep.expect,
-                    env.variables || {},
-                    {},
-                  )
-                : rollbackStep.expect;
-            const parts = renderExpectParts(resolvedExpect);
-            if (parts.length > 0) {
-              const sep = cellContent ? '\n' : '';
-              cellContent += `${sep}*Expected:*`;
-              for (const p of parts) cellContent += `\n* [ ] _${p}_`;
-            }
-          }
-
-          // Process rollback pic/reviewer sign-off
-          if (rollbackStep.pic || rollbackStep.reviewer) {
-            const sep = cellContent ? '\n' : '';
-            cellContent += `${sep}*Sign-off:*`;
-            if (rollbackStep.pic)
-              cellContent += `\n- [ ] PIC (${rollbackStep.pic})`;
-            if (rollbackStep.reviewer)
-              cellContent += `\n- [ ] Reviewer (${rollbackStep.reviewer})`;
-          }
-
-          // Fallback
-          if (!cellContent) {
-            cellContent = '-';
-          }
-
-          // Add evidence area with environment-specific results for global rollback step
-          if (rollbackStep.evidence) {
-            cellContent += formatEvidenceArea(
-              rollbackStep.evidence,
-              env.name,
-              operationDir,
+          if (resolveVars && substituteVars) {
+            displayInstruction = substituteVariables(
+              displayInstruction,
+              env.variables || {},
+              {},
             );
           }
 
-          rollbackCells.push(cellContent);
-        });
+          const trimmed = displayInstruction.replace(/\s+$/, '');
+          cellContent += `*Instructions:*\n{markdown}\n${trimmed}\n{markdown}`;
+        }
 
-        content += `| Rollback Step ${index + 1} | ${rollbackCells.join(' | ')} |\n`;
+        // Process rollback command (always code block)
+        if (rollbackStep.command) {
+          let displayCommand = rollbackStep.command;
+
+          if (resolveVars && substituteVars) {
+            displayCommand = substituteVariables(
+              displayCommand,
+              env.variables || {},
+              {},
+            );
+          }
+
+          const trimmedCommand = displayCommand.replace(/\n+$/, '');
+
+          if (showCommandSeparately && rollbackStep.instruction) {
+            cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+          } else if (!rollbackStep.instruction) {
+            cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
+          } else {
+            cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
+          }
+        }
+
+        // Process rollback script
+        if (rollbackStep.script) {
+          const sep = cellContent ? '\n' : '';
+          cellContent += `${sep}*Script:* \`${rollbackStep.script}\``;
+          if (operationDir) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              const fs = require('node:fs');
+              const nodePath = require('node:path');
+              const scriptPath = nodePath.resolve(
+                operationDir,
+                rollbackStep.script,
+              );
+              const scriptContent = fs
+                .readFileSync(scriptPath, 'utf-8')
+                .trimEnd();
+              cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
+            } catch {
+              cellContent += ' _(file not found)_';
+            }
+          }
+        }
+
+        // Add rollback expect assertions
+        if (rollbackStep.expect != null) {
+          const resolvedExpect =
+            resolveVars && substituteVars
+              ? substituteExpectVars(
+                  rollbackStep.expect,
+                  env.variables || {},
+                  {},
+                )
+              : rollbackStep.expect;
+          const parts = renderExpectParts(resolvedExpect);
+          if (parts.length > 0) {
+            const sep = cellContent ? '\n' : '';
+            cellContent += `${sep}*Expected:*`;
+            for (const p of parts) cellContent += `\n* [ ] _${p}_`;
+          }
+        }
+
+        // Process rollback pic/reviewer sign-off
+        if (rollbackStep.pic || rollbackStep.reviewer) {
+          const sep = cellContent ? '\n' : '';
+          cellContent += `${sep}*Sign-off:*`;
+          if (rollbackStep.pic)
+            cellContent += `\n- [ ] PIC (${rollbackStep.pic})`;
+          if (rollbackStep.reviewer)
+            cellContent += `\n- [ ] Reviewer (${rollbackStep.reviewer})`;
+        }
+
+        // Fallback
+        if (!cellContent) {
+          cellContent = '-';
+        }
+
+        // Add evidence area with environment-specific results for global rollback step
+        if (rollbackStep.evidence) {
+          cellContent += formatEvidenceArea(
+            rollbackStep.evidence,
+            env.name,
+            operationDir,
+          );
+        }
+
+        rollbackCells.push(cellContent);
+      });
+
+      return rollbackCells;
+    };
+
+    // Emit a table row per rollback step and recurse into its sub_steps so
+    // nested rollback structure renders as Rollback Step N, N.M, N.M.K, …
+    const emitRollbackRow = (rollbackStep: any, label: string): void => {
+      const namedLabel = rollbackStep.name
+        ? `${label}: ${rollbackStep.name}`
+        : label;
+      content += `| ${namedLabel} | ${buildRollbackCells(rollbackStep).join(' | ')} |\n`;
+      rollbackStep.sub_steps?.forEach((sub: any, subIndex: number) => {
+        emitRollbackRow(sub, `${label}.${subIndex + 1}`);
+      });
+    };
+
+    filteredOperation.rollback.steps.forEach(
+      (rollbackStep: any, index: number) => {
+        emitRollbackRow(rollbackStep, `Rollback Step ${index + 1}`);
       },
     );
 

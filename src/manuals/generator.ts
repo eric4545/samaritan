@@ -1901,8 +1901,11 @@ function generateManualContent(
     });
     markdown += '\n';
 
-    operation.rollback.steps.forEach((rb, index) => {
-      markdown += `| Rollback Step ${index + 1} |`;
+    // Emit a table row for a rollback step (and recurse into its sub_steps as
+    // Rollback Step N.M rows) so nested rollback structure isn't dropped.
+    const emitRollbackRow = (rb: RollbackStep, label: string): void => {
+      const namedLabel = rb.name ? `${label}: ${rb.name}` : label;
+      markdown += `| ${namedLabel} |`;
       operation.environments.forEach((env) => {
         const cellContent = renderRollbackCellMarkdown(
           rb,
@@ -1914,6 +1917,13 @@ function generateManualContent(
         markdown += ` ${cellContent} |`;
       });
       markdown += '\n';
+      rb.sub_steps?.forEach((sub, subIndex) => {
+        emitRollbackRow(sub, `${label}.${subIndex + 1}`);
+      });
+    };
+
+    operation.rollback.steps.forEach((rb, index) => {
+      emitRollbackRow(rb, `Rollback Step ${index + 1}`);
     });
 
     markdown += '\n';
@@ -2215,11 +2225,21 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
-    globalRollback.steps.forEach((rb, index) => {
+    // Render one rollback step (and its nested sub_steps) recursively. Rollback
+    // steps are structurally like normal steps: an optional name in the heading
+    // plus nested sub_steps numbered Rollback Step N.M, N.M.K, …
+    const renderGlobalRollbackStep = (
+      rb: RollbackStep,
+      label: string,
+      headingLevel: number,
+    ): void => {
       const substituteVars = rb.options?.substitute_vars ?? true;
       const resolve = resolveVariables && substituteVars;
-
-      lines.push(`### Rollback Step ${index + 1}`);
+      const hashes = '#'.repeat(Math.min(headingLevel, 6));
+      const heading = rb.name
+        ? `${label}: ${resolve ? resolveCmd(rb.name, {}) : rb.name}`
+        : label;
+      lines.push(`${hashes} ${heading}`);
       lines.push('');
 
       if (rb.instruction) {
@@ -2275,6 +2295,19 @@ export function generateSingleEnvManual(
         if (rb.reviewer) lines.push(`- [ ] Reviewer (${rb.reviewer})`);
         lines.push('');
       }
+
+      // Recurse into nested rollback sub-steps (Rollback Step N.M)
+      rb.sub_steps?.forEach((sub, subIndex) => {
+        renderGlobalRollbackStep(
+          sub,
+          `${label}.${subIndex + 1}`,
+          Math.min(headingLevel + 1, 6),
+        );
+      });
+    };
+
+    globalRollback.steps.forEach((rb, index) => {
+      renderGlobalRollbackStep(rb, `Rollback Step ${index + 1}`, 3);
     });
   }
 

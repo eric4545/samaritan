@@ -32,6 +32,7 @@ These rules apply to every code change, no exceptions:
 4. **StepContent is the shared base** — never add execution/content fields directly to `Step` or `RollbackStep`; add them to `StepContent` so both types benefit automatically
 5. **Check ROADMAP.md** — before implementing any "auto", "run", or execution feature, verify it's in scope; most execution features are roadmap items, not v1.0
 6. **Keep Agent Skills in sync** — when a change alters CLI commands/flags, operation YAML fields, the schema, or scope (implemented vs roadmap), update the affected `.claude/skills/**/SKILL.md` (and its `reference/*.md`) in the same commit; never let a skill describe behavior that no longer matches the code
+7. **Reproduce before you diagnose — NO GUESSING** — never claim a root cause or call a bug fixed from reading code alone. First write the smallest YAML that triggers it and run `validate` + the relevant `generate manual` (multi-env AND `--env <name>` single-env, since they are separate code paths) to see the actual broken output. Then fix, then re-run the SAME repro to prove the output changed. A fix without a before/after repro and a regression test (rule 1) is not done. This is why bugs like "global rollback step renders heading-only" kept coming back — earlier passes patched an adjacent path (step-level `Step.rollback` with sub_steps) without reproducing the actual failing path (operation-level `rollback.steps[]`).
 
 ---
 
@@ -594,6 +595,12 @@ evidence:
 
 ### 5. `git add src/manuals/` Requires `-f`
 The `.gitignore` contains `manuals/` which also matches `src/manuals/`, so plain `git add src/manuals/*.ts` silently fails. Since those files are already tracked, use `git add -f src/manuals/<file>` to stage them.
+
+### 6. Two distinct rollback concepts — don't conflate them
+- **Step-level rollback** (`Step.rollback: RollbackStep[]`) on a step that has `sub_steps` — the parent step's sub-steps render, then its rollback renders after them (`tests/manuals/parent-step-rollback.test.ts`, fixtures `substep-rollback.yaml`, `nested-substep-with-rollback.yaml`). Step-level rollback steps do **not** themselves render nested `sub_steps`.
+- **Operation-level rollback plan** (`operation.rollback.steps[]`, type `RollbackStep`) — supports an optional `name` and nested `sub_steps`, rendered recursively as **`Rollback Step N`, `N.M`, `N.M.K` …** in ALL formats (single-env headings, multi-env table rows, ADF rows, Confluence rows, and the simple `generate docs` Markdown). Fixture `global-rollback-substeps.yaml`; tests `tests/manuals/global-rollback-substeps.test.ts`; example `examples/rollback-with-substeps.yaml`.
+
+`RollbackStep` carries `name`/`sub_steps` (the only structural fields on it) in addition to its `StepContent`. The schema definition `#/definitions/rollbackStep` (referenced by `rollback.steps.items`) has **`additionalProperties: false`**, so a typo'd key on a rollback step now fails validation loudly instead of being silently dropped. **When you touch the operation-level rollback plan, update ALL five render paths** — `generator.ts` `generateSingleEnvManual` (`renderGlobalRollbackStep`) AND multi-env (`emitRollbackRow`), `adf-generator.ts` (`pushRollbackRows`), `generate.ts` `generateConfluenceContent` (`emitRollbackRow`) AND `createMarkdownDocumentation` (`renderRollbackDocStep`). This split is exactly why the "Rollback Step N renders heading-only" bug kept coming back: earlier passes fixed one path and left the rest. Reproduce in every format (rule 7) before claiming it fixed.
 
 ---
 
