@@ -519,3 +519,89 @@ describe('Bug fixes — review findings', () => {
     assert.strictEqual(state.status, 'running');
   });
 });
+
+describe('goToStep (back-to-previous-step navigation)', () => {
+  const threeStepOperation: Operation = {
+    id: 'goto-op',
+    name: 'Go To Step Op',
+    version: '1.0.0',
+    description: 'Three-step op for goToStep tests',
+    environments: [
+      {
+        name: 'test',
+        description: 'Test env',
+        variables: {},
+        restrictions: [],
+        approval_required: false,
+        validation_required: false,
+      },
+    ],
+    variables: { test: {} },
+    steps: [
+      { name: 'Step A', type: 'manual', description: 'First step' },
+      { name: 'Step B', type: 'manual', description: 'Second step' },
+      { name: 'Step C', type: 'manual', description: 'Third step' },
+    ],
+    metadata: {
+      created_at: new Date(),
+      updated_at: new Date(),
+      execution_count: 0,
+    },
+  };
+
+  const newExecutor = () =>
+    createExecutor(
+      threeStepOperation,
+      ExecutorUtils.createContext('goto-op', 'test', {}, 'tester'),
+    );
+
+  it('rewinds target + later steps to pending and resets currentStepIndex', () => {
+    const executor = newExecutor();
+    // Advance to the last step: steps 0 and 1 completed.
+    executor.resumeFromIndex(2);
+    let state = executor.getState();
+    assert.strictEqual(state.completedSteps, 2);
+
+    executor.goToStep(0);
+    state = executor.getState();
+    assert.strictEqual(state.currentStepIndex, 0);
+    assert.strictEqual(state.completedSteps, 0);
+    assert.strictEqual(state.steps[0].status, 'pending');
+    assert.strictEqual(state.steps[1].status, 'pending');
+    assert.strictEqual(state.steps[2].status, 'pending');
+  });
+
+  it('only rewinds from the target onward, leaving earlier steps intact', () => {
+    const executor = newExecutor();
+    executor.resumeFromIndex(2); // steps 0,1 completed, at step 2
+    executor.goToStep(1);
+    const state = executor.getState();
+    assert.strictEqual(state.currentStepIndex, 1);
+    assert.strictEqual(state.completedSteps, 1);
+    assert.strictEqual(state.steps[0].status, 'completed');
+    assert.strictEqual(state.steps[1].status, 'pending');
+    assert.strictEqual(state.steps[2].status, 'pending');
+  });
+
+  it('rewinds a skipped step counter too', () => {
+    const executor = newExecutor();
+    executor.startInteractive();
+    executor.skipStep(0);
+    assert.strictEqual(executor.getState().skippedSteps, 1);
+    executor.goToStep(0);
+    const state = executor.getState();
+    assert.strictEqual(state.skippedSteps, 0);
+    assert.strictEqual(state.steps[0].status, 'pending');
+    assert.strictEqual(state.currentStepIndex, 0);
+  });
+
+  it('is a no-op for an out-of-range index', () => {
+    const executor = newExecutor();
+    executor.resumeFromIndex(2);
+    executor.goToStep(99);
+    executor.goToStep(-1);
+    const state = executor.getState();
+    assert.strictEqual(state.currentStepIndex, 2);
+    assert.strictEqual(state.completedSteps, 2);
+  });
+});

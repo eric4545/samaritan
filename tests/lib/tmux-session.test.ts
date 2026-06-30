@@ -95,6 +95,15 @@ describe('TmuxSession (issue #6)', () => {
     assert.strictEqual(typeof session.send, 'function');
   });
 
+  it('pasteCommand() exists and is a graceful no-op when tmux is unavailable', () => {
+    const session = new TmuxSession('paste-test', 'samaritan-paste-test');
+    session.registerPane('execution', 'samaritan-paste-test:0.0');
+    assert.strictEqual(typeof session.pasteCommand, 'function');
+    assert.doesNotThrow(() => {
+      session.pasteCommand('execution', 'echo "review me"');
+    });
+  });
+
   it('getPaneMap returns registered panes as a ReadonlyMap', () => {
     const session = new TmuxSession('pane-map-test', 'samaritan-pane-map-test');
     session.registerPane('execution', 'samaritan-pane-map-test:0.0');
@@ -258,6 +267,14 @@ describe('TmuxPaneCapture (capture-backend)', () => {
     const capture = new TmuxPaneCapture('test-cap-td-missing', 'mysession:0.0');
     assert.doesNotThrow(() => {
       capture.teardown();
+    });
+  });
+
+  it('pasteCommand() exists and is a graceful no-op when tmux is unavailable', () => {
+    const capture = new TmuxPaneCapture('test-cap-paste', 'mysession:0.0');
+    assert.strictEqual(typeof capture.pasteCommand, 'function');
+    assert.doesNotThrow(() => {
+      capture.pasteCommand('ignored', 'kubectl get pods');
     });
   });
 });

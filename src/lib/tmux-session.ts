@@ -10,6 +10,29 @@ export function isLocalSession(config: SessionConfig | undefined): boolean {
 }
 
 /**
+ * Paste a command into a tmux pane WITHOUT executing it (no Enter), via a named
+ * paste buffer so the operator's own buffers are untouched (`-d` deletes ours
+ * after pasting). Used by the sidecar `[p]` action — the operator reviews the
+ * command at their prompt and presses Enter themselves. Never throws: when tmux
+ * is unavailable spawnSync returns an error status and this is a no-op.
+ */
+function pasteBufferTo(target: string, command: string): void {
+  try {
+    spawnSync('tmux', ['set-buffer', '-b', 'samaritan-send', '--', command]);
+    spawnSync('tmux', [
+      'paste-buffer',
+      '-d',
+      '-b',
+      'samaritan-send',
+      '-t',
+      target,
+    ]);
+  } catch {
+    // tmux missing or pane gone — best effort, operator can copy/paste instead
+  }
+}
+
+/**
  * Validate that a tmux target string (e.g. "mysession:0.0" or "%12") refers to
  * an existing pane. Returns true when the target resolves, false otherwise.
  * Never throws — a bad target simply returns false.
@@ -96,6 +119,12 @@ export class TmuxSession implements CaptureBackend {
       ? ['send-keys', '-t', pane, command, 'Enter']
       : ['send-keys', '-t', pane, command];
     spawnSync('tmux', args);
+  }
+
+  /** Paste a command into the pane without executing it (no Enter). */
+  pasteCommand(sessionName: string, command: string): void {
+    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    pasteBufferTo(pane, command);
   }
 
   hasTarget(sessionName: string): boolean {
@@ -242,6 +271,11 @@ export class TmuxPaneCapture implements CaptureBackend {
 
   describeTarget(_sessionName: string): string {
     return `tmux pane ${this.target}`;
+  }
+
+  /** Paste a command into the attached pane without executing it (no Enter). */
+  pasteCommand(_sessionName: string, command: string): void {
+    pasteBufferTo(this.target, command);
   }
 
   /**

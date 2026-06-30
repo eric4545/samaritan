@@ -570,6 +570,8 @@ class OperationRunner {
       'x',
       'v',
       't',
+      'p',
+      'b',
       's',
       'r',
       'g',
@@ -1480,6 +1482,9 @@ class OperationRunner {
           };
 
           let manualNotes = '';
+          // Set by the [b] back action: the index to re-run from. Handled right
+          // after the inner loop so step execution is bypassed.
+          let navTarget: number | undefined;
           while (true) {
             const evidenceForStep = stepEvidence(i);
             if (step.expect) {
@@ -1501,6 +1506,10 @@ class OperationRunner {
                   ...(mode === 'sidecar'
                     ? [{ key: 't', label: 'attach pane' }]
                     : []),
+                  ...(mode === 'sidecar' && resolvedCommand
+                    ? [{ key: 'p', label: 'send to pane' }]
+                    : []),
+                  ...(i > 0 ? [{ key: 'b', label: 'back' }] : []),
                   { key: 's', label: 'skip' },
                   { key: 'r', label: 'rollback' },
                   ...globalRollbackMenuItem,
@@ -1627,6 +1636,69 @@ class OperationRunner {
               );
               continue;
             }
+            if (
+              mode === 'sidecar' &&
+              resolvedCommand &&
+              (inputChoice === 'p' || inputChoice === 'send')
+            ) {
+              // [p] — paste the resolved command into the attached pane WITHOUT
+              // executing it (no Enter). Operator reviews it, presses Enter
+              // themselves, then [v] to verify. Only available once a pane is
+              // attached (spawn-own session or [t]/--attach).
+              const backend = captureRef.backend;
+              if (!backend?.hasTarget(sessionName) || !backend.pasteCommand) {
+                console.log(
+                  '    ⚠️  No tmux pane attached — press [t] to attach a pane first.',
+                );
+                continue;
+              }
+              backend.pasteCommand(sessionName, resolvedCommand);
+              // Recorded as a user_input breadcrumb (not command_sent): sidecar
+              // never executes, so folding it into the step's command list would
+              // render a misleading duplicate "Command sent" row in the report.
+              logger.emit({
+                type: 'user_input',
+                action: 'send_to_pane',
+                step: i,
+                session: sessionName,
+                command: resolvedCommand,
+                actor: state.context.operator,
+              });
+              console.log(
+                `    ⌨️  Pasted into ${backend.describeTarget(sessionName)} — review it, press Enter there to run, then [v] to verify.`,
+              );
+              continue;
+            }
+            if (i > 0 && (inputChoice === 'b' || inputChoice === 'back')) {
+              // [b] — go back to an earlier (already-processed) step and re-run
+              // from there. Single sub-prompt (number) keeps within the readline
+              // batch-stdin constraint (Gotcha #3).
+              console.log('\n    Go back to which step?');
+              for (let k = 0; k < i; k++) {
+                console.log(
+                  `      ${k + 1}) [${flatSteps[k].label}] ${steps[k].step.name} (${steps[k].status})`,
+                );
+              }
+              const ans = (
+                await question('    Step number [Enter to cancel]: ')
+              ).trim();
+              if (!ans) {
+                console.log('    ↩  Cancelled.');
+                continue;
+              }
+              const picked = Number.parseInt(ans, 10);
+              if (
+                !Number.isInteger(picked) ||
+                picked < 1 ||
+                picked > i ||
+                String(picked) !== ans
+              ) {
+                console.log('    ⚠️  Invalid step.');
+                continue;
+              }
+              navTarget = picked - 1;
+              break;
+            }
             if (hasGlobalRollback && isGlobalRollback(inputChoice)) {
               if (await doGlobalRollback(i)) {
                 manualNotes = '';
@@ -1640,6 +1712,26 @@ class OperationRunner {
 
           // If the loop exited via [q]/quit, executor was already cancelled.
           if (executor.getState().status === 'cancelled') break;
+
+          // [b] back: rewind to the chosen step and re-enter it, bypassing the
+          // step-execution block below. Setting i = t - 1 lets the outer for's
+          // i++ land exactly on the target.
+          if (navTarget !== undefined) {
+            executor.goToStep(navTarget);
+            persistProgress();
+            logger.emit({
+              type: 'user_input',
+              action: 'back',
+              step: i,
+              actor: state.context.operator,
+              notes: `re-running from step ${navTarget + 1}`,
+            });
+            console.log(
+              `    ↩  Going back to step ${navTarget + 1} — re-running from there.`,
+            );
+            i = navTarget - 1;
+            continue;
+          }
 
           const choice = manualNotes.trim().toLowerCase();
           if (choice === 'abort') {

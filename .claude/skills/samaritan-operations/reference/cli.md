@@ -55,6 +55,8 @@ Per manual/sidecar step:
 - `[x]` remove evidence — only shown once evidence exists
 - `[v]` verify — run `step.expect` against captured pane output
 - `[t]` attach pane — (sidecar) attach/swap a tmux capture backend mid-run
+- `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it); only when the step has a command and a pane is attached. Re-run during verify = `[p]` then `[v]`
+- `[b]` back — go back to an earlier step and re-run from there (resets it + later steps to pending; audit log keeps the prior attempt); not offered on the first step
 - `[r]` rollback — run *this step's* `rollback`, stay on the step
 - `[g]` global rollback — only when the operation declares a top-level `rollback:`. Previews + runs the consolidated recovery (explicit `rollback.steps` + every **completed** step's rollback in reverse order when `aggregate_step_rollbacks: true`), then aborts the operation
 - `q` / `quit` — **aborts** the operation, persists session as `paused` (resumable)

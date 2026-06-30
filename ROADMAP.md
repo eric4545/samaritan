@@ -102,14 +102,18 @@ in this roadmap:
 - [x] Step completion confirmation
 - [x] Pause/resume functionality
 - [x] Skip step capability
+- [x] Back/re-run navigation (`[b]` returns to an earlier step and re-runs from there)
+- [x] Sidecar send-to-pane (`[p]` pastes the command into the attached pane without executing)
 - [x] Rollback on failure
 - [x] Progress tracking and display
 
 `samaritan run` supports `sidecar` (default), `manual`, `automatic`, and `hybrid`
 modes. Sidecar mode displays each resolved command and verifies `step.expect`
-against captured tmux pane output without sending the command itself. See
-CLAUDE.md Gotcha #3 for full details on supported actions
-(`[n]` note, `[e]` evidence, `[x]` remove evidence, `[v]` verify, `[t]` attach pane).
+against captured tmux pane output without sending the command automatically — the
+operator can optionally `[p]` paste it into the attached pane (no Enter) and runs
+it themselves. See CLAUDE.md Gotcha #3 for full details on supported actions
+(`[n]` note, `[e]` evidence, `[x]` remove evidence, `[v]` verify, `[t]` attach pane,
+`[p]` send to pane, `[b]` back to a previous step).
 
 ### 2.4 Session Management — ✅ IMPLEMENTED (v1.1)
 - [x] Session state persistence (`~/.samaritan/sessions/<id>.json`)
