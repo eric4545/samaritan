@@ -706,6 +706,54 @@ describe('run command: sidecar mode', () => {
       'must still reach the step loop even with invalid --attach',
     );
   });
+
+  it('[p] send to pane hint appears in sidecar mode for a step with a command', () => {
+    const fixture = fixturePath('sidecar');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('send to pane') || combined.includes('[p]'),
+      'sidecar mode should show the [p] send-to-pane hint',
+    );
+  });
+
+  it('[p] without an attached pane warns to attach first, then continues', () => {
+    const fixture = fixturePath('sidecar');
+    // 'p' is a single-token action; the warning must appear and the loop must
+    // survive so 'abort' is still consumed afterwards.
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'p\nabort\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('No tmux pane attached'),
+      `[p] with no attached pane must warn to attach first; output:\n${combined.slice(-800)}`,
+    );
+    // It must NOT auto-run anything (sidecar never executes on the operator's behalf)
+    assert.ok(
+      !combined.includes('Sent to tmux') && !combined.includes('📤'),
+      'sidecar [p] must never auto-execute a command',
+    );
+  });
+
+  it('[b] back hint is not offered on the very first step', () => {
+    const fixture = fixturePath('sidecar');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    // Isolate the first step's prompt block (before any second step header).
+    const firstStepBlock = combined.split('Verify Health')[0];
+    assert.ok(
+      !/\bback\b/.test(firstStepBlock),
+      'the [b] back action must not appear on the first step',
+    );
+  });
 });
 
 // ─── Sub-steps support ────────────────────────────────────────────────────────

@@ -383,6 +383,37 @@ export class OperationExecutor {
   }
 
   /**
+   * Move execution back to an earlier step for an interactive re-run (the `[b]`
+   * action). Resets that step and every later step to 'pending', rewinding the
+   * matching status counters, then points currentStepIndex at it so the loop
+   * re-runs from there. Append-only audit events are NOT touched — the JSONL log
+   * keeps the full history of the prior attempt.
+   */
+  goToStep(stepIndex: number): void {
+    if (stepIndex < 0 || stepIndex >= this.state.steps.length) return;
+    for (let k = stepIndex; k < this.state.steps.length; k++) {
+      const s = this.state.steps[k];
+      if (s.status === 'completed') {
+        this.state.completedSteps = Math.max(0, this.state.completedSteps - 1);
+      } else if (s.status === 'failed') {
+        this.state.failedSteps = Math.max(0, this.state.failedSteps - 1);
+      } else if (s.status === 'skipped') {
+        this.state.skippedSteps = Math.max(0, this.state.skippedSteps - 1);
+      } else if (s.status === 'waiting') {
+        this.state.waitingSteps = Math.max(0, this.state.waitingSteps - 1);
+      }
+      s.status = 'pending';
+    }
+    this.state.currentStepIndex = stepIndex;
+    this.emitEvent({
+      type: 'operation_started',
+      timestamp: new Date(),
+      operationId: this.state.operation.id,
+      message: `Re-running from step ${stepIndex + 1}: ${this.state.operation.name}`,
+    });
+  }
+
+  /**
    * Finalize operation status after all steps have been processed.
    * Must be called after an interactive loop completes.
    */
