@@ -1646,22 +1646,23 @@ class OperationRunner {
               // themselves, then [v] to verify. Only available once a pane is
               // attached (spawn-own session or [t]/--attach).
               const backend = captureRef.backend;
-              if (
-                !backend?.hasTarget(sessionName) ||
-                typeof backend.pasteCommand !== 'function'
-              ) {
+              if (!backend?.hasTarget(sessionName) || !backend.pasteCommand) {
                 console.log(
                   '    ⚠️  No tmux pane attached — press [t] to attach a pane first.',
                 );
                 continue;
               }
               backend.pasteCommand(sessionName, resolvedCommand);
+              // Recorded as a user_input breadcrumb (not command_sent): sidecar
+              // never executes, so folding it into the step's command list would
+              // render a misleading duplicate "Command sent" row in the report.
               logger.emit({
-                type: 'command_sent',
+                type: 'user_input',
+                action: 'send_to_pane',
                 step: i,
                 session: sessionName,
                 command: resolvedCommand,
-                context: 'sidecar',
+                actor: state.context.operator,
               });
               console.log(
                 `    ⌨️  Pasted into ${backend.describeTarget(sessionName)} — review it, press Enter there to run, then [v] to verify.`,
@@ -1716,20 +1717,19 @@ class OperationRunner {
           // step-execution block below. Setting i = t - 1 lets the outer for's
           // i++ land exactly on the target.
           if (navTarget !== undefined) {
-            const t = navTarget;
-            executor.goToStep(t);
+            executor.goToStep(navTarget);
             persistProgress();
             logger.emit({
               type: 'user_input',
               action: 'back',
               step: i,
               actor: state.context.operator,
-              notes: `re-running from step ${t + 1}`,
+              notes: `re-running from step ${navTarget + 1}`,
             });
             console.log(
-              `    ↩  Going back to step ${t + 1} — re-running from there.`,
+              `    ↩  Going back to step ${navTarget + 1} — re-running from there.`,
             );
-            i = t - 1;
+            i = navTarget - 1;
             continue;
           }
 
