@@ -69,7 +69,8 @@ export interface OperationView {
 function buildEnvView(
   effectiveStep: Step,
   env: Environment,
-  operationDir?: string,
+  operationDir: string | undefined,
+  readScript: (relPath: string) => string,
 ): FlatStepEnvView {
   const envVars = env.variables ?? {};
   const view: FlatStepEnvView = {};
@@ -84,14 +85,7 @@ function buildEnvView(
 
   if (effectiveStep.script) {
     view.script = effectiveStep.script;
-    if (operationDir) {
-      try {
-        const scriptPath = path.resolve(operationDir, effectiveStep.script);
-        view.scriptContent = fs.readFileSync(scriptPath, 'utf-8');
-      } catch {
-        view.scriptContent = `Script file not found: ${effectiveStep.script}`;
-      }
-    }
+    if (operationDir) view.scriptContent = readScript(effectiveStep.script);
   }
 
   if (effectiveStep.instruction) {
@@ -146,23 +140,46 @@ export function buildOperationView(
           },
         ];
 
+  // Read each referenced `script:` file at most once — the same script is
+  // commonly shared across environments, so keying the cache by relative path
+  // avoids re-reading identical bytes once per environment.
+  const scriptCache = new Map<string, string>();
+  const readScript = (relPath: string): string => {
+    const cached = scriptCache.get(relPath);
+    if (cached !== undefined) return cached;
+    let content: string;
+    try {
+      content = fs.readFileSync(
+        path.resolve(operationDir as string, relPath),
+        'utf-8',
+      );
+    } catch {
+      content = `Script file not found: ${relPath}`;
+    }
+    scriptCache.set(relPath, content);
+    return content;
+  };
+
   const steps: FlatStep[] = [];
-  let nextIndex = 0;
 
   function flatten(stepList: Step[], labelPrefix: string): void {
     stepList.forEach((step, i) => {
       const label = labelPrefix ? `${labelPrefix}.${i + 1}` : `${i + 1}`;
-      const index = nextIndex++;
 
       const perEnv: Record<string, FlatStepEnvView> = {};
       for (const env of environments) {
         if (!shouldRenderStepForEnvironment(step, env.name)) continue;
         const effectiveStep = mergeStepVariant(step, env.name);
-        perEnv[env.name] = buildEnvView(effectiveStep, env, operationDir);
+        perEnv[env.name] = buildEnvView(
+          effectiveStep,
+          env,
+          operationDir,
+          readScript,
+        );
       }
 
       steps.push({
-        index,
+        index: steps.length,
         label,
         name: step.name,
         phase: step.phase,

@@ -7,7 +7,6 @@ interface ServeCommandOptions {
   port?: string;
   host?: string;
   env?: string;
-  open?: boolean;
 }
 
 /**
@@ -52,9 +51,12 @@ const serveCommand = new Command('serve')
       return;
     }
 
+    // `--port`/`--host` always carry commander's registered defaults, so no
+    // extra `??` fallback is needed here (the sole defensive default lives in
+    // `startServer` for non-CLI callers).
     const operationFile = resolve(file);
-    const port = Number.parseInt(options.port ?? '4600', 10);
-    const host = options.host ?? '127.0.0.1';
+    const port = Number.parseInt(options.port as string, 10);
+    const host = options.host as string;
 
     try {
       const { url, close } = await startServer(operation, operationFile, {

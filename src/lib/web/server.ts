@@ -6,6 +6,7 @@ import path from 'node:path';
 import { detectMimeType } from '../../evidence/collector';
 import type { EvidenceItem } from '../../models/evidence';
 import type { EvidenceType, Operation } from '../../models/operation';
+import type { OperationSession } from '../../models/session';
 import type { StepEvidenceRef, StepRecord } from '../../models/step-record';
 import { SessionManager } from '../session-manager';
 import {
@@ -49,21 +50,42 @@ class HttpError extends Error {
   }
 }
 
-interface HistorySummary {
-  id: string;
-  operation_id: string;
-  environment: string;
-  status: string;
-  completion_percentage: number;
-  started_at: Date;
-  updated_at: Date;
-}
+// Route patterns are compiled once at module load rather than per request.
+const HISTORY_ITEM_RE = /^\/api\/history\/([^/]+)$/;
+const STEP_EVIDENCE_RE = /^\/api\/runs\/([^/]+)\/steps\/(\d+)\/evidence$/;
+const STEP_UPDATE_RE = /^\/api\/runs\/([^/]+)\/steps\/(\d+)$/;
+
+type HistorySummary = Pick<
+  OperationSession,
+  | 'id'
+  | 'operation_id'
+  | 'environment'
+  | 'status'
+  | 'completion_percentage'
+  | 'started_at'
+  | 'updated_at'
+>;
 
 interface ServerContext {
   operation: Operation;
   operationFile: string;
   view: OperationView;
+  /** `JSON.stringify(view)` cached once — the view is immutable after boot. */
+  viewJson: string;
   sessionManager: SessionManager;
+}
+
+/** Send an already-serialized JSON string (avoids re-stringifying immutable data). */
+function sendJsonString(
+  res: http.ServerResponse,
+  status: number,
+  payload: string,
+): void {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(payload),
+  });
+  res.end(payload);
 }
 
 function sendJson(
@@ -71,12 +93,7 @@ function sendJson(
   status: number,
   body: unknown,
 ): void {
-  const payload = JSON.stringify(body);
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(payload),
-  });
-  res.end(payload);
+  sendJsonString(res, status, JSON.stringify(body));
 }
 
 function sendHtml(
@@ -353,7 +370,7 @@ async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: ServerContext,
-  bootstrap: { name?: string; version?: string; initialEnv?: string },
+  appHtml: string,
 ): Promise<void> {
   const method = req.method ?? 'GET';
   const parsedUrl = new URL(req.url ?? '/', 'http://localhost');
@@ -361,14 +378,14 @@ async function handleRequest(
 
   try {
     if (method === 'GET' && pathname === '/api/operation') {
-      return sendJson(res, 200, ctx.view);
+      return sendJsonString(res, 200, ctx.viewJson);
     }
 
     if (method === 'GET' && pathname === '/api/history') {
       return sendJson(res, 200, buildHistorySummaries());
     }
 
-    const historyMatch = pathname.match(/^\/api\/history\/([^/]+)$/);
+    const historyMatch = pathname.match(HISTORY_ITEM_RE);
     if (method === 'GET' && historyMatch) {
       const session = loadSession(historyMatch[1]);
       if (!session) return sendJson(res, 404, { error: 'Session not found' });
@@ -379,9 +396,7 @@ async function handleRequest(
       return await handleCreateRun(req, res, ctx);
     }
 
-    const evidenceMatch = pathname.match(
-      /^\/api\/runs\/([^/]+)\/steps\/(\d+)\/evidence$/,
-    );
+    const evidenceMatch = pathname.match(STEP_EVIDENCE_RE);
     if (method === 'POST' && evidenceMatch) {
       return await handleStepEvidence(
         req,
@@ -392,7 +407,7 @@ async function handleRequest(
       );
     }
 
-    const stepMatch = pathname.match(/^\/api\/runs\/([^/]+)\/steps\/(\d+)$/);
+    const stepMatch = pathname.match(STEP_UPDATE_RE);
     if (method === 'POST' && stepMatch) {
       return await handleStepUpdate(req, res, ctx, stepMatch[1], stepMatch[2]);
     }
@@ -405,7 +420,7 @@ async function handleRequest(
     // is no on-disk static file serving keyed off the URL, so there is no
     // path-traversal surface here.
     if (method === 'GET') {
-      return sendHtml(res, 200, renderAppHtml(bootstrap));
+      return sendHtml(res, 200, appHtml);
     }
 
     return sendJson(res, 404, { error: 'Not found' });
@@ -436,15 +451,23 @@ export function startServer(
   const view = buildOperationView(operation, operationDir);
   const sessionManager = new SessionManager();
 
-  const ctx: ServerContext = { operation, operationFile, view, sessionManager };
-  const bootstrap = {
+  // The view model and the SPA shell are immutable for the server's lifetime,
+  // so serialize/render them once here instead of per request.
+  const ctx: ServerContext = {
+    operation,
+    operationFile,
+    view,
+    viewJson: JSON.stringify(view),
+    sessionManager,
+  };
+  const appHtml = renderAppHtml({
     name: operation.name,
     version: operation.version,
     initialEnv: options.initialEnv,
-  };
+  });
 
   const server = http.createServer((req, res) => {
-    handleRequest(req, res, ctx, bootstrap).catch((err) => {
+    handleRequest(req, res, ctx, appHtml).catch((err) => {
       sendJson(res, 500, {
         error: err instanceof Error ? err.message : 'Internal server error',
       });
