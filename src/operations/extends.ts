@@ -45,93 +45,41 @@ function rebasePathValue(value: unknown, dir: string): unknown {
   return resolve(dir, value);
 }
 
-/** Recursively rebase relative-path fields inside a rollback step (and its nested sub_steps). */
-function walkRollbackStepsRebase(
-  steps: RawOperation[] | undefined,
-  dir: string,
-): void {
-  if (!Array.isArray(steps)) return;
-  for (const step of steps) {
-    if (!step || typeof step !== 'object') continue;
-    if (step.script !== undefined) {
-      step.script = rebasePathValue(step.script, dir);
-    }
-    if (step.evidence?.results && typeof step.evidence.results === 'object') {
-      for (const envResults of Object.values(step.evidence.results)) {
-        if (!Array.isArray(envResults)) continue;
-        for (const result of envResults) {
-          if (
-            result &&
-            typeof result === 'object' &&
-            result.file !== undefined
-          ) {
-            result.file = rebasePathValue(result.file, dir);
-          }
-        }
+/** Rebase every `evidence.results[<env>][].file` on a node (step/rollback step/variant). */
+function rebaseEvidenceResults(node: RawOperation, dir: string): void {
+  const results = node.evidence?.results;
+  if (!results || typeof results !== 'object') return;
+  for (const envResults of Object.values(results)) {
+    if (!Array.isArray(envResults)) continue;
+    for (const result of envResults) {
+      if (result && typeof result === 'object' && result.file !== undefined) {
+        result.file = rebasePathValue(result.file, dir);
       }
-    }
-    if (Array.isArray(step.sub_steps)) {
-      walkRollbackStepsRebase(step.sub_steps, dir);
     }
   }
 }
 
-/** Recursively rebase relative-path fields inside a step (and its nested sub_steps/variants/rollback). */
+/**
+ * Recursively rebase relative-path fields inside a list of steps and every
+ * nested structure (sub_steps, rollback, variants). A rollback step and a
+ * variant are structurally steps with fewer fields populated, so one walker
+ * handles all three — the `!== undefined` / `Array.isArray` guards no-op on
+ * fields a given node doesn't carry.
+ */
 function walkStepsRebase(steps: RawOperation[] | undefined, dir: string): void {
   if (!Array.isArray(steps)) return;
   for (const step of steps) {
     if (!step || typeof step !== 'object') continue;
 
-    if (step.uses !== undefined) {
-      step.uses = rebasePathValue(step.uses, dir);
-    }
-    if (step.script !== undefined) {
+    if (step.uses !== undefined) step.uses = rebasePathValue(step.uses, dir);
+    if (step.script !== undefined)
       step.script = rebasePathValue(step.script, dir);
-    }
-    if (step.evidence?.results && typeof step.evidence.results === 'object') {
-      for (const envResults of Object.values(step.evidence.results)) {
-        if (!Array.isArray(envResults)) continue;
-        for (const result of envResults) {
-          if (
-            result &&
-            typeof result === 'object' &&
-            result.file !== undefined
-          ) {
-            result.file = rebasePathValue(result.file, dir);
-          }
-        }
-      }
-    }
-    if (Array.isArray(step.rollback)) {
-      walkRollbackStepsRebase(step.rollback, dir);
-    }
-    if (Array.isArray(step.sub_steps)) {
-      walkStepsRebase(step.sub_steps, dir);
-    }
+    rebaseEvidenceResults(step, dir);
+
+    if (Array.isArray(step.rollback)) walkStepsRebase(step.rollback, dir);
+    if (Array.isArray(step.sub_steps)) walkStepsRebase(step.sub_steps, dir);
     if (step.variants && typeof step.variants === 'object') {
-      for (const variant of Object.values(step.variants) as RawOperation[]) {
-        if (!variant || typeof variant !== 'object') continue;
-        if (
-          variant.evidence?.results &&
-          typeof variant.evidence.results === 'object'
-        ) {
-          for (const envResults of Object.values(variant.evidence.results)) {
-            if (!Array.isArray(envResults)) continue;
-            for (const result of envResults) {
-              if (
-                result &&
-                typeof result === 'object' &&
-                result.file !== undefined
-              ) {
-                result.file = rebasePathValue(result.file, dir);
-              }
-            }
-          }
-        }
-        if (Array.isArray(variant.rollback)) {
-          walkRollbackStepsRebase(variant.rollback, dir);
-        }
-      }
+      walkStepsRebase(Object.values(step.variants) as RawOperation[], dir);
     }
   }
 }
@@ -139,16 +87,16 @@ function walkStepsRebase(steps: RawOperation[] | undefined, dir: string): void {
 /**
  * Rebase every relative-path field authored in a single raw operation file to
  * an absolute path anchored at that file's own directory (`dir`). Mutates
- * `raw` in place and returns it. Must run BEFORE merging layers together, so
- * every layer's paths resolve correctly regardless of which file (base or
- * child) ends up "hosting" the merged value.
+ * `raw` in place. Must run BEFORE merging layers together, so every layer's
+ * paths resolve correctly regardless of which file (base or child) ends up
+ * "hosting" the merged value.
  *
  * NOT rebased (documented limitation): `environments[].from` is a manifest
  * *name* (resolved as `baseDir/environments/<name>.yaml` at env-parse time),
  * not a path — use `environments: - uses: ./shared-envs.yaml` in a base
  * instead, which IS rebased below.
  */
-function rebaseOperationPaths(raw: RawOperation, dir: string): RawOperation {
+function rebaseOperationPaths(raw: RawOperation, dir: string): void {
   if (raw.env_file !== undefined) {
     raw.env_file = rebasePathValue(raw.env_file, dir);
   }
@@ -162,12 +110,10 @@ function rebaseOperationPaths(raw: RawOperation, dir: string): RawOperation {
   }
 
   if (raw.rollback && Array.isArray(raw.rollback.steps)) {
-    walkRollbackStepsRebase(raw.rollback.steps, dir);
+    walkStepsRebase(raw.rollback.steps, dir);
   }
 
   walkStepsRebase(raw.steps, dir);
-
-  return raw;
 }
 
 /**
@@ -218,9 +164,9 @@ function normalizeExtendsField(raw: RawOperation): string[] {
   const value = raw.extends;
   if (value === undefined) return [];
 
+  // A bare scalar always yields length 1, so an empty list means `extends: []`.
   const entries = Array.isArray(value) ? value : [value];
-
-  if (Array.isArray(value) && value.length === 0) {
+  if (entries.length === 0) {
     throw new OperationParseError("'extends' array must not be empty", [
       { field: 'extends', message: 'extends: [] is not allowed' },
     ]);
