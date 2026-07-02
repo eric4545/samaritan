@@ -8,6 +8,7 @@ import { qrhCommand } from './commands/qrh';
 import { reportCommand } from './commands/report';
 import { resumeCommand, runCommand } from './commands/run';
 import { schemaCommand } from './commands/schema';
+import { serveCommand } from './commands/serve';
 import { sessionsCommand } from './commands/sessions';
 import { validateCommand } from './commands/validate';
 
@@ -30,6 +31,9 @@ program.addCommand(generateCommand);
 program.addCommand(runCommand);
 program.addCommand(resumeCommand);
 program.addCommand(sessionsCommand);
+
+// Experimental: interactive web UI (display-only, localhost by default)
+program.addCommand(serveCommand);
 
 // Schema inspection
 program.addCommand(schemaCommand);
