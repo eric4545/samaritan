@@ -1520,6 +1520,58 @@ gantt
 
 See `tests/fixtures/operations/confluence/gantt-timeline.yaml` for a complete example.
 
+#### Standalone Mermaid Diagrams (experimental)
+
+While `--gantt` embeds a chart inside a full manual, `generate mermaid` outputs a
+**pure Mermaid diagram** (no surrounding document, no code fences) that you can
+pipe straight into a `.mmd` file, a Mermaid live editor, or a docs pipeline.
+
+```bash
+# Flowchart of the operation's steps, grouped by phase (default)
+npx github:eric4545/samaritan generate mermaid deployment.yaml --diagram flowchart
+
+# Gantt timeline (same data as --gantt, but raw Mermaid to stdout)
+npx github:eric4545/samaritan generate mermaid deployment.yaml --diagram gantt
+
+# Left-to-right flowchart written to a file
+npx github:eric4545/samaritan generate mermaid deployment.yaml \
+  --diagram flowchart --direction LR --output diagram.mmd
+```
+
+**Options:**
+
+| Flag | Values | Default | Description |
+|------|--------|---------|-------------|
+| `-d, --diagram <type>` | `gantt`, `flowchart` | `flowchart` | Diagram type to emit |
+| `--direction <dir>` | `TD`, `LR` | `TD` | Flowchart layout direction (flowchart only) |
+| `-o, --output <file>` | path | stdout | Write the diagram to a file |
+
+The **flowchart** wires steps sequentially through per-phase subgraphs
+(Pre-Flight / Flight / Post-Flight), renders `approval`/`if` steps as decision
+diamonds, and — when the operation declares a top-level `rollback:` — adds a
+dashed "on failure" edge to a `Rollback Plan` node:
+
+```mermaid
+flowchart TD
+    Start(["Start"])
+    End(["Done"])
+    subgraph phase_preflight["Pre-Flight"]
+        step_0["Verify cluster health"]
+        step_1{"Approve production deployment"}
+    end
+    subgraph phase_flight["Flight"]
+        step_2["Deploy web server"]
+    end
+    Start --> step_0
+    step_0 --> step_1
+    step_1 --> step_2
+    step_2 --> End
+    Rollback[["Rollback Plan"]]
+    step_2 -.->|on failure| Rollback
+```
+
+See `examples/mermaid-diagrams.yaml` for a complete example exercising both diagrams.
+
 
 ## ⚡ Interactive Execution & Run Commands
 

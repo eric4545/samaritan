@@ -1,0 +1,72 @@
+name: Mermaid Diagrams Demo
+version: 1.0.0
+description: |
+  Demonstrates the experimental `samaritan generate mermaid` command. This
+  operation has pre-flight / flight / post-flight phases, per-step `timeline`
+  data (for the Gantt diagram), an `approval` gate (rendered as a decision node
+  in the flowchart), and a top-level `rollback:` block (rendered as a dashed
+  "on failure" edge in the flowchart).
+
+  Generate diagrams with:
+    samaritan generate mermaid examples/mermaid-diagrams.yaml --diagram flowchart
+    samaritan generate mermaid examples/mermaid-diagrams.yaml --diagram gantt
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: web-staging
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: web-prod
+
+steps:
+  - name: Verify cluster health
+    type: manual
+    phase: preflight
+    instruction: Confirm the cluster is green before deploying.
+    command: kubectl get nodes -n ${NAMESPACE}
+    timeline:
+      start: 2025-01-15 09:00
+      duration: 10m
+
+  - name: Approve production deployment
+    type: manual
+    phase: preflight
+    instruction: Obtain sign-off before proceeding to the flight phase.
+    approval:
+      required: true
+      approvers: ["sre-lead", "engineering-manager"]
+    timeline:
+      after: Verify cluster health
+      duration: 5m
+
+  - name: Deploy web server
+    type: automatic
+    phase: flight
+    command: kubectl apply -f deployment.yaml -n ${NAMESPACE}
+    expect:
+      contains: deployment.apps/web-server
+    timeline:
+      status: active
+      duration: 15m
+    rollback:
+      - name: Roll back web server
+        command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
+
+  - name: Smoke test endpoints
+    type: automatic
+    phase: postflight
+    command: curl -sf https://${NAMESPACE}.example.com/health
+    timeline:
+      after: Deploy web server
+      duration: 10m
+
+rollback:
+  automatic: false
+  conditions:
+    - health_check_failure
+  steps:
+    - name: Page the on-call SRE
+      instruction: Notify the on-call engineer before executing the rollback.

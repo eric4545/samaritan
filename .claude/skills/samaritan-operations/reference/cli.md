@@ -12,6 +12,7 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
 | `validate <file>` | JSON-Schema validation of an operation |
 | `generate manual <file>` | Render a Markdown runbook |
 | `generate confluence <file>` | Render Confluence ADF (JSON) |
+| `generate mermaid <file>` | Output a pure Mermaid diagram (gantt or flowchart) — experimental |
 | `schema` | Export the JSON schema (IDE / tooling integration) |
 | `run <file>` | Drive an operation interactively |
 | `resume <session-id>` | Resume a paused session |
@@ -34,6 +35,15 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
 - `--output <path>` — write to file (defaults to stdout for Markdown).
 - `--resolve-vars` — substitute `${VAR}` against the selected env's variables at
   generation time.
+
+### generate mermaid (experimental)
+- Outputs a **pure Mermaid diagram** (no code fences, no surrounding document) to
+  stdout, or to a file with `--output`.
+- `-d, --diagram <gantt|flowchart>` — diagram type (default `flowchart`).
+- `--direction <TD|LR>` — flowchart layout direction (default `TD`).
+- Flowchart groups steps into per-phase subgraphs, renders `approval`/`if` steps
+  as decision diamonds, and adds a dashed rollback edge when the operation has a
+  top-level `rollback:`. Gantt reuses the same timeline data as `--gantt`.
 
 ### run
 - Default mode is **sidecar**: SAMARITAN displays each resolved command but does

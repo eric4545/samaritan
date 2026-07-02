@@ -341,4 +341,45 @@ describe('Generate Command', () => {
       );
     });
   });
+
+  describe('Mermaid Diagram Generation', () => {
+    it('outputs a pure Mermaid flowchart to stdout', () => {
+      const fixtureFile = getFixturePath('mermaidDiagrams');
+      const result = execSync(
+        `npx tsx src/cli/index.ts generate mermaid ${fixtureFile} --diagram flowchart`,
+        { cwd: process.cwd(), encoding: 'utf-8' },
+      );
+
+      assert.ok(result.includes('flowchart TD'), 'should emit a flowchart');
+      assert.ok(result.includes('subgraph'), 'should group steps into phases');
+      assert.ok(
+        !result.includes('```'),
+        'pure Mermaid output must not be fenced',
+      );
+    });
+
+    it('outputs a pure Mermaid gantt to stdout', () => {
+      const fixtureFile = getFixturePath('mermaidDiagrams');
+      const result = execSync(
+        `npx tsx src/cli/index.ts generate mermaid ${fixtureFile} --diagram gantt`,
+        { cwd: process.cwd(), encoding: 'utf-8' },
+      );
+
+      assert.ok(result.includes('gantt'), 'should emit a gantt diagram');
+      assert.ok(
+        result.includes('section Pre-Flight Phase'),
+        'should include phase sections',
+      );
+    });
+
+    it('errors on an unknown --diagram type', () => {
+      const fixtureFile = getFixturePath('mermaidDiagrams');
+      assert.throws(() => {
+        execSync(
+          `npx tsx src/cli/index.ts generate mermaid ${fixtureFile} --diagram bogus`,
+          { cwd: process.cwd(), encoding: 'utf-8', stdio: 'pipe' },
+        );
+      }, 'should exit non-zero for an invalid diagram type');
+    });
+  });
 });

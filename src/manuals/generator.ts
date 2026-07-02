@@ -23,6 +23,10 @@ import type {
   Step,
 } from '../models/operation';
 import type { RunEvidenceItem, RunManifest } from '../models/run-manifest';
+import {
+  collectAllStepsWithTimeline,
+  generateMermaidGantt,
+} from './mermaid-generator';
 
 function slugify(name: string): string {
   return name
@@ -303,25 +307,6 @@ function formatEvidenceInfo(
   return result;
 }
 
-/**
- * Recursively collect all steps with timeline information, including nested sub-steps
- */
-function collectAllStepsWithTimeline(steps: Step[]): Step[] {
-  const result: Step[] = [];
-
-  function traverse(step: Step) {
-    if (step.timeline) {
-      result.push(step);
-    }
-    if (step.sub_steps && step.sub_steps.length > 0) {
-      step.sub_steps.forEach(traverse);
-    }
-  }
-
-  steps.forEach(traverse);
-  return result;
-}
-
 function generateGanttChart(operation: Operation): string {
   // Filter steps that have timeline information (including sub-steps)
   const stepsWithTimeline = collectAllStepsWithTimeline(operation.steps);
@@ -330,82 +315,9 @@ function generateGanttChart(operation: Operation): string {
     return '';
   }
 
-  let gantt = '```mermaid\n';
-  gantt += 'gantt\n';
-  gantt += `    title ${operation.name} Timeline\n`;
-  gantt += '    dateFormat YYYY-MM-DD HH:mm\n';
-  gantt += '    axisFormat %m-%d %H:%M\n\n';
-
-  // Group steps by phase (block-aware: `uses:` blocks stay contiguous)
-  const phases = groupByPhase(stepsWithTimeline, (step) => step);
-
-  // Generate sections for each phase
-  // Note: Emojis removed from section names as Mermaid doesn't render them correctly
-  const phaseNames = {
-    preflight: 'Pre-Flight Phase',
-    flight: 'Flight Phase',
-    postflight: 'Post-Flight Phase',
-  };
-
-  // Track previous step name across all phases for auto-dependency
-  let previousStepName: string | null = null;
-
-  Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
-    if (phaseSteps.length === 0) return;
-
-    gantt += `    section ${phaseNames[phaseName as keyof typeof phaseNames]}\n`;
-
-    phaseSteps.forEach((step, _index) => {
-      const taskName = step.name.replace(/:/g, ''); // Remove colons as they break Mermaid syntax
-      const pic = step.pic ? ` (${step.pic})` : '';
-
-      // Convert timeline to Mermaid syntax
-      let timelineSyntax = '';
-      if (step.timeline) {
-        if (typeof step.timeline === 'string') {
-          // Legacy string format - use as-is
-          timelineSyntax = step.timeline;
-        } else {
-          // Structured format - convert to Mermaid syntax
-          const parts: string[] = [];
-
-          // Add status if specified
-          if (step.timeline.status) {
-            parts.push(step.timeline.status);
-          }
-
-          // Determine start point
-          if (step.timeline.start) {
-            // Absolute start time
-            parts.push(step.timeline.start);
-          } else if (step.timeline.after) {
-            // Explicit dependency
-            parts.push(`after ${step.timeline.after.replace(/:/g, '')}`);
-          } else if (previousStepName) {
-            // Auto-dependency on previous step
-            parts.push(`after ${previousStepName}`);
-          }
-
-          // Add duration
-          if (step.timeline.duration) {
-            parts.push(step.timeline.duration);
-          }
-
-          timelineSyntax = parts.join(', ');
-        }
-      }
-
-      // Format: Task name :status, start, duration or end
-      gantt += `    ${taskName}${pic} :${timelineSyntax}\n`;
-
-      // Track previous step name for auto-dependency
-      previousStepName = taskName;
-    });
-    gantt += '\n';
-  });
-
-  gantt += '```\n\n';
-  return gantt;
+  // Delegate the diagram body to the shared pure-Mermaid builder, then wrap it
+  // in a fenced code block for embedding in the Markdown manual.
+  return `\`\`\`mermaid\n${generateMermaidGantt(operation)}\`\`\`\n\n`;
 }
 
 /**

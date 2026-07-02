@@ -18,6 +18,10 @@ import {
   generateManualWithMetadata,
   generateSingleEnvManual,
 } from '../../manuals/generator';
+import {
+  generateMermaidFlowchart,
+  generateMermaidGantt,
+} from '../../manuals/mermaid-generator';
 import type { Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 import { parseRunManifest } from '../../operations/run-manifest-parser';
@@ -59,6 +63,8 @@ interface GenerateOptions {
   allEnvs?: boolean;
   outputDir?: string;
   prefix?: string;
+  diagram?: string;
+  direction?: string;
 }
 
 // File extension per output format for --all-envs naming
@@ -2198,6 +2204,61 @@ generateCommand
       await generator.generateSchedule(operation, options);
     } catch (error: any) {
       console.error(`❌ Failed to generate schedule: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
+generateCommand
+  .command('mermaid <operation>')
+  .description(
+    '(experimental) Output a pure Mermaid diagram (gantt or flowchart)',
+  )
+  .option(
+    '-d, --diagram <type>',
+    'Diagram type (gantt, flowchart)',
+    'flowchart',
+  )
+  .option('--direction <dir>', 'Flowchart direction (TD, LR)', 'TD')
+  .option('-o, --output <file>', 'Output file path')
+  .action(async (operation: string, options: GenerateOptions) => {
+    try {
+      const diagram = (options.diagram || 'flowchart').toLowerCase();
+      if (diagram !== 'gantt' && diagram !== 'flowchart') {
+        console.error(
+          `\u274c Unknown --diagram '${options.diagram}'. Use 'gantt' or 'flowchart'.`,
+        );
+        process.exit(1);
+      }
+
+      const direction = (options.direction || 'TD').toUpperCase();
+      if (direction !== 'TD' && direction !== 'LR') {
+        console.error(
+          `\u274c Unknown --direction '${options.direction}'. Use 'TD' or 'LR'.`,
+        );
+        process.exit(1);
+      }
+
+      const op = await parseOperation(operation);
+      const mermaid =
+        diagram === 'gantt'
+          ? generateMermaidGantt(op)
+          : generateMermaidFlowchart(op, {
+              direction: direction as 'TD' | 'LR',
+            });
+
+      if (options.output) {
+        await mkdir(dirname(options.output), { recursive: true });
+        await writeFile(options.output, `${mermaid}\n`);
+        console.log(
+          `\u2705 Mermaid ${diagram} diagram written: ${options.output}`,
+        );
+      } else {
+        console.log(mermaid);
+      }
+    } catch (error: any) {
+      console.error(
+        `\u274c Failed to generate mermaid diagram: ${error.message}`,
+      );
       process.exit(1);
     }
   });
