@@ -31,6 +31,7 @@ npx github:eric4545/samaritan#branch-name validate my-operation.yaml
 - [CLI Commands](#-cli-commands)
 - [Operation Definition](#-operation-definition)
 - [Interactive Execution & Run Commands](#-interactive-execution--run-commands)
+- [Experimental: Web UI (`serve`)](#-experimental-web-ui-serve)
 - [Execution Workflows](#-execution-workflows)
 - [Examples](#-examples)
 - [Roadmap](#-roadmap)
@@ -2034,6 +2035,60 @@ Or preview the full plan without executing:
 samaritan run examples/deployment-with-run.yaml --env production --dry-run
 ```
 
+
+## 🌐 Experimental: Web UI (`serve`)
+
+> **Experimental.** `serve` is a new, evolving feature — flags and the JSON
+> API may change without a major version bump. It ships alongside the CLI,
+> not instead of it.
+
+`samaritan serve <operation.yaml>` starts a local `node:http` server (no new
+npm dependencies) that renders the operation as an interactive single-page
+web UI, for operators who'd rather click through a run in a browser tab than
+drive the terminal loop:
+
+```bash
+samaritan serve examples/serve-demo.yaml
+# 🌐 SAMARITAN serve: http://127.0.0.1:4600
+
+# Pick a port/host, and which environment tab is selected first
+samaritan serve examples/serve-demo.yaml --port 4600 --host 127.0.0.1 --env staging
+```
+
+Four capabilities, all backed by the same session/evidence model as `run`:
+
+1. **Environment tabs** — switch environments in the browser; each step's
+   command/instruction/`expect`/evidence re-renders already resolved for
+   that environment (same `${VAR}` resolution as `generate manual --env`).
+2. **Add evidence from the browser** — paste text or upload a file (read as
+   base64 client-side) against any step; stored the same way as `run`'s `[e]`
+   evidence capture (`~/.samaritan/sessions/<id>/evidence/`).
+3. **All-steps sidecar view** — unlike the terminal's one-step-at-a-time
+   loop, every step renders as a scrollable card up front, each with its own
+   Done/Failed/Skip control, note field, and progress bar.
+4. **History** — browse past runs from `~/.samaritan/sessions`, and drill
+   into one to see its per-step ledger (status, notes, evidence refs).
+
+**Hard constraints, by design:**
+- **Commands are DISPLAY-ONLY.** The server never executes, spawns, or
+  sends a step's `command`/`script` anywhere — it only shows the resolved
+  text for the operator to run themselves, exactly like the terminal's
+  `sidecar` mode. There is no `child_process` usage for step commands
+  anywhere in `src/lib/web/`.
+- **Binds to `127.0.0.1` by default.** This is a local operator tool that
+  can read/write session variables and evidence; don't put `--host 0.0.0.0`
+  on a shared or untrusted network without understanding the exposure.
+- The page is a **self-contained SPA** (`src/lib/web/app-html.ts`): inline
+  CSS/JS, no CDN, no external requests — it works even fully offline.
+
+Routes exposed by the server (`src/lib/web/server.ts`): `GET /api/operation`
+(the per-env view model), `GET /api/history` / `GET /api/history/:id`,
+`POST /api/runs`, `POST /api/runs/:id/steps/:index`, and
+`POST /api/runs/:id/steps/:index/evidence`.
+
+See [`examples/serve-demo.yaml`](examples/serve-demo.yaml) (two environments,
+evidence.results, an `expect` block) or point it at any existing operation,
+e.g. [`examples/sidecar-deployment.yaml`](examples/sidecar-deployment.yaml).
 
 ## 🔄 Execution Workflows
 

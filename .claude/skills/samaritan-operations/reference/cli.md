@@ -16,6 +16,7 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
 | `run <file>` | Drive an operation interactively |
 | `resume <session-id>` | Resume a paused session |
 | `sessions` | List saved sessions (`--all` for everything) |
+| `serve <file>` | **[EXPERIMENTAL]** Local web UI: env tabs, all-steps sidecar view, evidence upload, history. Display-only, localhost by default |
 | `qrh` | Quick Reference Handbook (scaffold only, no DB yet) |
 
 ## Key flags
@@ -60,6 +61,23 @@ Per manual/sidecar step:
 - `[r]` rollback — run *this step's* `rollback`, stay on the step
 - `[g]` global rollback — only when the operation declares a top-level `rollback:`. Previews + runs the consolidated recovery (explicit `rollback.steps` + every **completed** step's rollback in reverse order when `aggregate_step_rollbacks: true`), then aborts the operation
 - `q` / `quit` — **aborts** the operation, persists session as `paused` (resumable)
+
+### serve [EXPERIMENTAL]
+
+- `samaritan serve <file>` starts a local `node:http` server (no new npm
+  deps) rendering the operation as a self-contained single-page web UI.
+- Flags: `--port <n>` (default 4600), `--host <host>` (default `127.0.0.1`),
+  `--env <name>` (initial environment tab), `--no-open` (no-op — samaritan
+  never auto-opens a browser; it always just prints the URL).
+- Routes: `GET /api/operation` (per-env resolved view model), `GET
+  /api/history` / `GET /api/history/:id`, `POST /api/runs`, `POST
+  /api/runs/:id/steps/:index`, `POST /api/runs/:id/steps/:index/evidence`.
+- **Commands are DISPLAY-ONLY** — the server never executes/spawns/sends a
+  step's `command`/`script` (same rule as terminal sidecar mode). Evidence
+  uploads and step status/notes persist to the same
+  `~/.samaritan/sessions/<id>.json` + evidence dir that `run` uses.
+- Binds to `127.0.0.1` by default — this is a local operator tool, not a
+  hosted service.
 
 ## Run artifacts
 

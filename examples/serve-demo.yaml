@@ -1,0 +1,76 @@
+# Serve Demo
+#
+# Demonstrates `samaritan serve` (EXPERIMENTAL web UI): two environments with
+# different variables (to show env tabs resolving commands differently),
+# a step with pre-captured evidence.results, and a manual step with an
+# `expect` block for the "Add evidence" / status controls in the browser.
+#
+# Usage:
+#   samaritan serve examples/serve-demo.yaml
+#   samaritan serve examples/serve-demo.yaml --port 4600 --env staging
+
+name: Serve Demo
+version: 1.0.0
+description: Small operation used to demo the experimental `serve` web UI.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+      REPLICAS: 2
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: production
+      REPLICAS: 5
+    approval_required: true
+
+steps:
+  - name: Check cluster access
+    type: automatic
+    phase: preflight
+    description: Verify kubectl can reach the target cluster
+    command: kubectl cluster-info --context ${NAMESPACE}
+    expect:
+      contains: Kubernetes control plane
+
+  - name: Deploy application
+    type: automatic
+    phase: flight
+    description: Apply manifests and scale to the environment's replica count
+    command: kubectl apply -f k8s/ -n ${NAMESPACE} && kubectl scale deployment web --replicas=${REPLICAS} -n ${NAMESPACE}
+    expect:
+      contains: configured
+    evidence:
+      required: true
+      types: [command_output]
+      results:
+        staging:
+          - type: command_output
+            content: |
+              deployment.apps/web configured
+              deployment.apps/web scaled
+        production:
+          - type: command_output
+            content: |
+              deployment.apps/web configured
+              deployment.apps/web scaled
+
+  - name: Verify pod health
+    type: manual
+    phase: postflight
+    description: Confirm all pods are Running before closing out the operation
+    instruction: |
+      Run the command below yourself, then use the browser UI to mark this
+      step Done/Failed/Skip and attach evidence (paste output or upload a
+      screenshot).
+    command: kubectl get pods -n ${NAMESPACE} -l app=web
+    expect:
+      - contains: Running
+      - not_contains: CrashLoopBackOff
+    pic: ops-team@example.com
+    reviewer: sre-lead@example.com
+    evidence:
+      required: true
+      types: [screenshot, command_output]

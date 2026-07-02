@@ -28,6 +28,9 @@ samaritan generate confluence path/to/op.yaml --output manual.json
 samaritan run path/to/op.yaml
 samaritan resume <session-id>
 samaritan sessions          # list resumable sessions
+
+# EXPERIMENTAL: local web UI (env tabs, all-steps view, evidence upload, history)
+samaritan serve path/to/op.yaml
 ```
 
 Run any command with `--help` for full flags. Locally, use
@@ -74,9 +77,10 @@ steps:
 SAMARITAN's roadmap matters. **Do not** assume execution features exist.
 Implemented: parsing, manual/Confluence generation, JSON-schema validation,
 shellcheck lint, interactive `run`/`resume`/`sessions`, `run --mock`, templates,
-`foreach`/matrix, evidence embedding. NOT implemented: non-interactive command
-execution, automatic evidence collection, QRH, external integrations (Jira/Slack),
-AI assistant. When unsure, check `ROADMAP.md`.
+`foreach`/matrix, evidence embedding, and an EXPERIMENTAL `serve` web UI
+(display-only, localhost by default — see `reference/cli.md`). NOT implemented:
+non-interactive command execution, automatic evidence collection, QRH, external
+integrations (Jira/Slack), AI assistant. When unsure, check `ROADMAP.md`.
 
 ## When to load the reference files
 

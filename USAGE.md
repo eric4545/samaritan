@@ -55,6 +55,11 @@ npx github:eric4545/samaritan resume <session-id>
 
 # Regenerate the report from the run's black box (events.jsonl)
 npx github:eric4545/samaritan report examples/.samaritan-runs/<id>/events.jsonl --output evidence.md
+
+# EXPERIMENTAL: local web UI — env tabs, all-steps sidecar view, evidence
+# upload from the browser, and a history view. Localhost by default; commands
+# are DISPLAY-ONLY (never executed by the server). See README for details.
+npx github:eric4545/samaritan serve examples/serve-demo.yaml --port 4600
 ```
 
 ### Real-World Workflow

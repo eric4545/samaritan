@@ -223,16 +223,23 @@ everything) with a `samaritan resume <id>` hint per resumable session.
 ---
 
 ### Web UI
+- [x] **EXPERIMENTAL** `samaritan serve <file>` — a self-contained `node:http`
+  server (no new deps) with environment tabs, an all-steps sidecar checklist,
+  evidence upload (paste/file), and a history view over
+  `~/.samaritan/sessions`. Display-only (never executes/spawns a step's
+  command) and localhost-bound by default. See README's "Experimental: Web UI"
+  section and `src/lib/web/`.
 - [ ] Operation editor (visual YAML builder)
-- [ ] Execution dashboard
+- [ ] Execution dashboard (beyond the experimental sidecar view above)
 - [ ] Evidence gallery viewer
-- [ ] Real-time execution monitoring
+- [ ] Real-time execution monitoring (live command output; still no
+  execution engine, so this remains blocked on Phase 2.1)
 - [ ] Historical data visualization
 - [ ] Team collaboration features
 
 **Priority**: LOW
 **Complexity**: Very High
-**Estimated**: 12+ weeks
+**Estimated**: 12+ weeks (core `serve` shipped as an experiment; the rest above remains future work)
 
 ---
 
