@@ -1,0 +1,16 @@
+name: Base A
+version: 1.0.0
+description: Base A description (should be overridden by Base B)
+category: base-a-category
+common_variables:
+  A_VAR: from-a
+  SHARED_VAR: from-a
+environments:
+  - name: staging
+    description: Staging (from Base A)
+    variables:
+      NAMESPACE: staging
+steps:
+  - name: Base A Step
+    type: manual
+    instruction: Step contributed by Base A.

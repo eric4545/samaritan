@@ -1,0 +1,6 @@
+name: Base With Uses Template
+version: 1.0.0
+description: "Base operation with a step-level uses block reused inline"
+steps:
+  - name: Reused Health Check Block
+    uses: ./templates/base-health-check.yaml

@@ -263,6 +263,7 @@ export interface Operation {
   id: string;
   name: string;
   version: string;
+  extends?: string | string[]; // Path(s) to base operation(s) to inherit from (merged left-to-right, child wins last)
   description: string;
   author?: string;
   category?: string;

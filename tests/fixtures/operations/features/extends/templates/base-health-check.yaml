@@ -1,0 +1,3 @@
+- name: Base Health Check
+  type: manual
+  instruction: Check the health endpoint before proceeding.

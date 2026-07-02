@@ -353,6 +353,68 @@ See `examples/scoped-preflight.yaml` (+ `examples/templates/db-migration.yaml`).
 
 See `examples/deployment-with-templates.yaml` for a complete example.
 
+### Operation Inheritance with `extends:`
+
+While `uses:` reuses a *block of steps*, `extends:` inherits an entire base
+**operation** — environments, variables, steps, and rollback — and lets a
+child operation append its own steps on top.
+
+```yaml
+# base-deployment.yaml
+name: Base Web Server Deployment
+version: 1.0.0
+environments:
+  - name: staging
+  - name: production
+steps:
+  - name: Confirm Cluster Access
+    type: manual
+    phase: preflight
+    instruction: Confirm kubectl context before deploying.
+  - name: Run Deployment Script
+    type: manual
+    script: ./scripts/deploy.sh
+rollback:
+  steps:
+    - name: Roll Back Deployment
+      command: kubectl rollout undo deployment/web-server
+```
+
+```yaml
+# orders-service.yaml
+name: Orders Service Deployment
+version: 1.0.0
+extends: ./base-deployment.yaml   # or a list: [./base-a.yaml, ./base-b.yaml]
+
+steps:
+  - name: Run Orders Smoke Test    # appended AFTER the inherited steps
+    type: manual
+    command: curl -f https://orders.example.com/health
+```
+
+`samaritan generate manual orders-service.yaml` renders **five** steps in
+order: the two inherited from `base-deployment.yaml`, then the child's own
+smoke test — plus the inherited rollback plan.
+
+**Merge rules** (multiple bases merge left→right, child always wins last):
+- Scalars (`name`, `version`, `description`, `tags`, …) — last-defined layer wins.
+- `variables` / `common_variables` — spread-merged, later layer wins per key.
+- `environments` — concatenated; same-named environments across layers merge.
+- `steps` — **appended**: `base1.steps ++ base2.steps ++ … ++ child.steps` (no override-by-id).
+- `rollback` — whole-object last-wins (child's `rollback:` replaces the base's; inherited if omitted).
+
+A base's own relative paths (`script:`, `evidence.results[].file`, step
+`uses:`, `env_file`, `environments[].uses`) are resolved relative to the
+**base file's own directory**, so a base can live anywhere and still work
+correctly when extended from a different directory. `environments[].from`
+(manifest-name inheritance) is a name, not a path, and is **not** rebased —
+use `environments: - uses: ./shared-envs.yaml` in the base instead. Circular
+`extends:` chains (A extends B extends A) fail validation with a clear
+`Circular extends detected` error. Remote bases (`github:`/`https:`) are not
+supported yet — `extends:` only accepts local file paths.
+
+See `examples/extends-base-deployment.yaml` + `examples/extends-child-deployment.yaml`.
+
 ## 🛠 CLI Commands
 
 ### Core Operations

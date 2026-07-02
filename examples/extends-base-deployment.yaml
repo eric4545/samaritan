@@ -1,0 +1,59 @@
+name: Base Web Server Deployment
+version: 1.0.0
+description: >
+  Shared base deployment operation providing common preflight checks, the
+  standard deployment script, and a rollback plan. Meant to be extended by
+  service-specific child operations via `extends:` — see
+  examples/extends-child-deployment.yaml.
+author: SRE Team
+category: deployment
+tags: [base, deployment]
+
+common_variables:
+  REGION: us-east-1
+  SERVICE_NAME: web-server
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+      REPLICAS: 2
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: production
+      REPLICAS: 5
+    approval_required: true
+
+steps:
+  - name: Confirm Cluster Access
+    type: manual
+    phase: preflight
+    instruction: Confirm kubectl is pointed at the correct cluster for ${NAMESPACE} before deploying ${SERVICE_NAME}.
+
+  - name: Run Base Deployment Script
+    type: manual
+    phase: flight
+    instruction: |
+      Review the script below, then run it to deploy ${SERVICE_NAME}.
+    script: ./scripts/extends-base-deploy.sh
+
+  - name: Verify Base Deployment
+    type: manual
+    phase: flight
+    instruction: Confirm the deployment rolled out cleanly using the captured output below.
+    evidence:
+      required: true
+      types: [command_output]
+      results:
+        production:
+          - type: command_output
+            file: ./evidence/extends-base-deploy.log
+            description: Deployment rollout output captured from staging/production
+
+rollback:
+  steps:
+    - name: Roll Back Base Deployment
+      instruction: Revert to the previous deployment revision.
+      command: kubectl rollout undo deployment/${SERVICE_NAME} -n ${NAMESPACE}

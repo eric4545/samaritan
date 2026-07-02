@@ -90,3 +90,28 @@ ${expectYaml}
     assert.match(result.stdout, /regex-lint:.*catastrophic/);
   });
 });
+
+describe('validate extends', () => {
+  const FIXTURE_DIR = 'tests/fixtures/operations/features/extends';
+
+  it('validates a child operation that extends a base operation', () => {
+    const result = runCli(['validate', `${FIXTURE_DIR}/child-simple.yaml`]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Operation validation passed/);
+  });
+
+  it('fails with a circular extends message', () => {
+    const result = runCli(['validate', `${FIXTURE_DIR}/cycle-a.yaml`]);
+    assert.notStrictEqual(result.status, 0);
+    assert.match(result.stdout + result.stderr, /Circular extends/);
+  });
+
+  it('fails clearly when the base file is missing', () => {
+    const result = runCli(['validate', `${FIXTURE_DIR}/missing-base.yaml`]);
+    assert.notStrictEqual(result.status, 0);
+    assert.match(
+      result.stdout + result.stderr,
+      /does-not-exist\.yaml|Failed to read file/,
+    );
+  });
+});

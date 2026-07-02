@@ -25,6 +25,7 @@ import {
   validateOperationSchemaStrict,
 } from '../validation/schema-validator';
 import { EnvironmentLoader } from './environment-loader';
+import { loadRawOperationWithExtends } from './extends';
 
 interface ImportContext {
   templateFiles: Set<string>; // Prevent circular uses: imports
@@ -899,22 +900,15 @@ function loadSharedEnvironments(absolutePath: string, refPath: string): any[] {
 }
 
 export async function parseOperation(filePath: string): Promise<Operation> {
-  let fileContents: string;
-
-  try {
-    fileContents = fs.readFileSync(filePath, 'utf8');
-  } catch (error) {
-    throw new OperationParseError(`Failed to read file: ${filePath}`, [
-      { field: 'file', message: (error as Error).message },
-    ]);
-  }
-
   let data: unknown;
   try {
-    data = yaml.load(fileContents);
+    data = loadRawOperationWithExtends(filePath);
   } catch (error) {
-    throw new OperationParseError('Invalid YAML format', [
-      { field: 'yaml', message: (error as Error).message },
+    if (error instanceof OperationParseError) {
+      throw error;
+    }
+    throw new OperationParseError(`Failed to read file: ${filePath}`, [
+      { field: 'file', message: (error as Error).message },
     ]);
   }
 

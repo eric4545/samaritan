@@ -1,0 +1,10 @@
+name: Child Array Deployment
+version: 1.0.0
+extends:
+  - ./base-a.yaml
+  - ./base-b.yaml
+description: Child extending two bases; later base wins on overlapping scalars
+steps:
+  - name: Child Array Step
+    type: manual
+    instruction: Step contributed by the child.

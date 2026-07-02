@@ -1,0 +1,8 @@
+name: Child With Uses Base
+version: 1.0.0
+extends: ./base-with-uses-template.yaml
+description: "Child extending a base whose step-level uses path must be rebased"
+steps:
+  - name: Child Step After Reused Block
+    type: manual
+    instruction: Runs after the reused health check block from the base.

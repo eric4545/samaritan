@@ -27,6 +27,11 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
   `all_lines_match`, `any_line_matches`, `no_line_matches`, `retry.while`):
   uncompilable patterns are errors; ReDoS-prone ones (e.g. `(a+)+`) are warnings
   (errors under `--strict`). No flag needed — regex compilation is built-in.
+- If the file (or any of its `extends:` bases) declares `extends:`, `validate`
+  (and every other command — they all funnel through the same parser) resolves
+  and merges the base chain BEFORE schema validation, so only the merged
+  result needs to validate cleanly. A cyclic `extends:` chain fails with
+  `Circular extends detected: <chain>`. See `reference/operation-yaml.md`.
 
 ### generate manual / confluence
 - `--env <name>` — single-environment heading format. Omitting it produces the

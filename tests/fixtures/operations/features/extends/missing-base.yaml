@@ -1,0 +1,8 @@
+name: Missing Base
+version: 1.0.0
+extends: ./does-not-exist.yaml
+description: Extends a base file that does not exist
+steps:
+  - name: Step
+    type: manual
+    instruction: Step.

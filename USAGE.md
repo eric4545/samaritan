@@ -142,6 +142,27 @@ npx github:eric4545/samaritan validate my-operation.yaml
 npx github:eric4545/samaritan run my-operation.yaml --env staging
 ```
 
+### Operation inheritance with `extends:`
+
+Share a base operation across services instead of copy-pasting it:
+
+```yaml
+# orders-service.yaml
+name: Orders Service Deployment
+version: 1.0.0
+extends: ./base-deployment.yaml   # inherit environments/variables/steps/rollback
+
+steps:
+  - name: Run Orders Smoke Test   # appended after the inherited steps
+    type: manual
+    command: curl -f https://orders.example.com/health
+```
+
+`extends:` accepts a single base or an array of bases (merged left→right,
+child wins last); steps from every base are appended before the child's own
+steps. See the [README's "Operation Inheritance" section](README.md#operation-inheritance-with-extends)
+and `examples/extends-base-deployment.yaml` / `examples/extends-child-deployment.yaml`.
+
 ## 🎯 Key Benefits
 
 - **No Installation**: Run directly with `npx`

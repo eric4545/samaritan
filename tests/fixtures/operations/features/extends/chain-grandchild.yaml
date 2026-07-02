@@ -1,0 +1,8 @@
+name: Chain Grandchild Deployment
+version: 1.0.0
+extends: ./child-simple.yaml
+description: Grandchild extending child-simple, which itself extends base-deploy
+steps:
+  - name: Grandchild Final Step
+    type: manual
+    instruction: Final step contributed by the grandchild.

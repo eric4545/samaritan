@@ -1,0 +1,5 @@
+environments:
+  - name: canary
+    description: Canary environment imported via wholesale `uses:`
+    variables:
+      NAMESPACE: canary

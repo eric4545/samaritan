@@ -1,0 +1,8 @@
+name: Cycle A
+version: 1.0.0
+extends: ./cycle-b.yaml
+description: Circularly extends cycle-b, which extends cycle-a
+steps:
+  - name: Cycle A Step
+    type: manual
+    instruction: Step in Cycle A.

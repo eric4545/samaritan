@@ -1,0 +1,8 @@
+name: Child With Env Uses Base
+version: 1.0.0
+extends: ./base-with-env-uses.yaml
+description: Child extending a base whose environments[].uses path must be rebased
+steps:
+  - name: Child Step
+    type: manual
+    instruction: Child step after canary environment import.

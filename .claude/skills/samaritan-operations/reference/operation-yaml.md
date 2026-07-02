@@ -9,6 +9,7 @@ over writing from scratch.
 ```yaml
 name: string                 # required
 version: string              # e.g. 1.0.0
+extends: string | [string]   # inherit from one or more base operation files
 description: string
 environments:                # multi-env matrix
   - name: staging
@@ -45,6 +46,60 @@ rollback is appended in **reverse step order**, labelled `↩ Rollback for "<ste
 This drives both the rendered Rollback Plan ("see all rollbacks at once") and the
 interactive `[g]` global-rollback jump (which uses only **completed** steps).
 Opt-in (default false). Example: `examples/global-rollback-aggregated.yaml`.
+
+## Operation inheritance (`extends:`)
+
+A child operation can inherit everything (metadata, environments, variables,
+steps, rollback) from one or more **base** operation files, then append its
+own steps:
+
+```yaml
+name: Orders Service Deployment
+version: 1.0.0
+extends: ./base-deployment.yaml        # or a list: [./base-a.yaml, ./base-b.yaml]
+steps:
+  - name: Run Orders Smoke Test        # appended AFTER the inherited steps
+    type: manual
+    command: curl -f https://orders.${NAMESPACE}.example.com/health
+```
+
+**Merge semantics** (bases merge left→right, child always wins last):
+
+| Field(s) | Rule |
+|---|---|
+| `name`, `version`, `description`, `author`, `category`, `emergency`, `overview`, `sessions`, `run`, `reporting`, `needs`, `with`, `matrix`, `env_file`, `metadata`, `uses`, `template`, `tags` | Last-defined layer wins (whole value replaced, `tags` included — not concatenated) |
+| `variables`, `common_variables` | Spread-merged; later layer wins per key |
+| `environments` | Concatenated in layer order; same-named environments across layers merge (vars spread, targets/restrictions appended) via the same `uses:` merge logic |
+| `steps` | **Appended**: `base1.steps ++ base2.steps ++ … ++ child.steps` — no override-by-id, no positional insert |
+| `rollback` | Whole-object last-wins (child's `rollback:` replaces the base's; inherited unchanged if the child omits it) |
+
+**Relative paths in a base are rebased automatically.** A base's own
+`script:`, `evidence.results[].file`, step `uses:`, `env_file`, and
+`environments[].uses` are resolved relative to *that base file's own
+directory* before merging, so a base can live anywhere and still work when
+extended by a child in a different directory. Only non-root files (bases,
+and bases-of-bases) are rebased this way — the file you actually run
+`validate`/`generate` on keeps its paths exactly as authored.
+
+**Known limitations:**
+- `environments[].from` (manifest-name inheritance) is **not** rebased — it's
+  a name, not a path. Use `environments: - uses: ./shared-envs.yaml` in the
+  base instead (that path form IS rebased).
+- `env_file` is a single-winner scalar — if both a base and the child set it,
+  only the winning layer's `.env` variables load.
+- A **diamond** (two bases sharing a common ancestor) is not an error —
+  because steps append, the shared ancestor's steps are duplicated in the
+  merged result. A true **cycle** (A extends B extends A) throws
+  `Circular extends detected: <chain>`.
+- Remote bases (`github:`/`https:`) are **not supported yet** — `extends:`
+  only accepts local file paths. (Step-level `uses:` *inside* a base can
+  still reference remote templates.)
+
+Only the fully **merged** result is schema-validated — a base file doesn't
+need to validate standalone (though it usually will, since it's a normal
+operation file).
+
+See `examples/extends-base-deployment.yaml` + `examples/extends-child-deployment.yaml`.
 
 ## Step content fields (shared by steps AND rollback steps — `StepContent`)
 
@@ -174,6 +229,7 @@ hoisted by raw `phase`. See `examples/scoped-preflight.yaml`.
 - `examples/deployment.yaml` — canonical baseline
 - `examples/deployment-with-scripts.yaml` — `script:` import
 - `examples/deployment-with-templates.yaml` — templates
+- `examples/extends-base-deployment.yaml` + `examples/extends-child-deployment.yaml` — operation inheritance (`extends:`)
 - `examples/multi-env-deployment.yaml` — environment matrix
 - `examples/sidecar-deployment.yaml` — interactive `run` (sidecar)
 - `examples/expect-retry.yaml` — retryable verification

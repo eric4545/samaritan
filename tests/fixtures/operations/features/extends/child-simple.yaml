@@ -1,0 +1,17 @@
+name: Child Deployment
+version: 1.0.0
+extends: ./base-deploy.yaml
+description: Child deployment operation extending the base deployment
+tags: [child, deployment]
+variables:
+  EXTRA_FLAG: enabled
+
+steps:
+  - name: Child Deploy Script
+    type: manual
+    instruction: Run the child-specific deployment script.
+    script: ./scripts/child.sh
+
+  - name: Child Smoke Test
+    type: manual
+    instruction: Run smoke tests against ${SERVICE} in ${NAMESPACE}.

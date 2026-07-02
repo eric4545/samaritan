@@ -1,0 +1,16 @@
+name: Base B
+version: 1.0.0
+description: Base B description (should win over Base A, lose to child)
+category: base-b-category
+common_variables:
+  B_VAR: from-b
+  SHARED_VAR: from-b
+environments:
+  - name: production
+    description: Production (from Base B)
+    variables:
+      NAMESPACE: production
+steps:
+  - name: Base B Step
+    type: manual
+    instruction: Step contributed by Base B.

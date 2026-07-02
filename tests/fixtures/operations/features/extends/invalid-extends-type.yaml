@@ -1,0 +1,8 @@
+name: Invalid Extends Type
+version: 1.0.0
+extends: 123
+description: extends must be a string or array of strings, not a number
+steps:
+  - name: Step
+    type: manual
+    instruction: Step.

@@ -1,0 +1,9 @@
+name: Base With Env Uses
+version: 1.0.0
+description: Base operation that wholesale-imports environments via uses
+environments:
+  - uses: ./shared-envs.yaml
+steps:
+  - name: Base Canary Step
+    type: manual
+    instruction: Deploy to the canary environment.

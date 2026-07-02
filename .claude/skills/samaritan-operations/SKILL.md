@@ -74,7 +74,7 @@ steps:
 SAMARITAN's roadmap matters. **Do not** assume execution features exist.
 Implemented: parsing, manual/Confluence generation, JSON-schema validation,
 shellcheck lint, interactive `run`/`resume`/`sessions`, `run --mock`, templates,
-`foreach`/matrix, evidence embedding. NOT implemented: non-interactive command
+operation inheritance (`extends:`), `foreach`/matrix, evidence embedding. NOT implemented: non-interactive command
 execution, automatic evidence collection, QRH, external integrations (Jira/Slack),
 AI assistant. When unsure, check `ROADMAP.md`.
 

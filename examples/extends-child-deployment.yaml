@@ -1,0 +1,16 @@
+name: Orders Service Deployment
+version: 1.0.0
+extends: ./extends-base-deployment.yaml
+description: >
+  Orders service deployment. Inherits environments, common variables,
+  preflight/deploy/verify steps, and the rollback plan from
+  extends-base-deployment.yaml, then appends its own smoke test step.
+  See CLAUDE.md and .claude/skills/samaritan-operations/reference/operation-yaml.md
+  for the full `extends:` merge semantics.
+
+steps:
+  - name: Run Orders Smoke Test
+    type: manual
+    phase: flight
+    instruction: Hit the orders service health endpoint in ${NAMESPACE} and confirm a 200 response.
+    command: curl -f https://orders.${NAMESPACE}.example.com/health

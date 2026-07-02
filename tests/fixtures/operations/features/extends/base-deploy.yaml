@@ -1,0 +1,49 @@
+name: Base Deployment
+version: 1.0.0
+description: Base deployment operation providing shared preflight/deploy steps
+tags: [base, deployment]
+common_variables:
+  REGION: us-east-1
+  SERVICE: base-web
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: production
+
+steps:
+  - name: Base Preflight Check
+    type: manual
+    phase: preflight
+    instruction: Confirm cluster access before deploying ${SERVICE}.
+
+  - name: Base Deploy Script
+    type: manual
+    instruction: Run the base deployment script.
+    script: ./scripts/base.sh
+
+  - name: Base Deploy Verification
+    type: manual
+    instruction: Confirm the base deployment rolled out cleanly.
+    evidence:
+      required: true
+      types: [command_output]
+      results:
+        production:
+          - type: command_output
+            file: ./evidence/base.log
+            description: Base deployment output captured from file
+
+rollback:
+  steps:
+    - name: Base Rollback
+      script: ./scripts/base.sh
+      instruction: Revert the base deployment.
+      sub_steps:
+        - name: Confirm rollback target
+          instruction: Confirm rollback target revision.

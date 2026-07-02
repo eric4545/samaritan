@@ -1,0 +1,2 @@
+deployment.apps/base-web-server created
+pod/base-web-0    1/1     Running   0    5s
