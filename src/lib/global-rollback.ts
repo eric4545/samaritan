@@ -14,7 +14,11 @@ export function buildEffectiveRollback(
 ): RollbackStep[] {
   if (!rollback) return [];
   return buildGlobalRollback(rollback.steps ?? [], stepsToAggregate, {
-    aggregate: rollback.aggregate_step_rollbacks,
+    // `link_step_rollbacks` replaces the inline per-step rollback with a jump to
+    // this consolidated plan, so it must aggregate the step rollbacks here too
+    // (otherwise the link would point at a plan that omits them).
+    aggregate:
+      rollback.aggregate_step_rollbacks || rollback.link_step_rollbacks,
   });
 }
 

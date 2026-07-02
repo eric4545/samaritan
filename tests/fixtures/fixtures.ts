@@ -21,6 +21,7 @@ export const FIXTURES = {
   complexDeployment: 'examples/complex-deployment.yaml',
   nestedDeployment: 'examples/nested-deployment.yaml',
   mermaidDiagrams: 'examples/mermaid-diagrams.yaml',
+  rollbackJumpLinks: 'examples/rollback-jump-links.yaml',
 
   // Test-specific valid fixtures
   minimal: 'tests/fixtures/operations/valid/minimal.yaml',

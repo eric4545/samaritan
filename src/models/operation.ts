@@ -181,6 +181,12 @@ export interface RollbackPlan {
   // undoes while still seeing/running one consolidated recovery. Opt-in
   // (default false) so existing manuals are unchanged. See src/lib/global-rollback.ts.
   aggregate_step_rollbacks?: boolean;
+  // When true, the Markdown manual renders each step's rollback inline as a
+  // jump-link to the consolidated "Rollback Plan" section instead of repeating
+  // the full rollback body per step. Implies the same consolidation as
+  // `aggregate_step_rollbacks` (so the linked Rollback Plan actually contains
+  // every step's rollback and no content is lost). Opt-in (default false).
+  link_step_rollbacks?: boolean;
 }
 
 export interface StepForeach {

@@ -362,6 +362,18 @@ function renderTableInstruction(
  * inline style used by the multi-env tables). Shared by step-level and
  * operation-level (global) rollback rendering.
  */
+const ROLLBACK_PLAN_ANCHOR = 'rollback-plan';
+
+/**
+ * One-line Markdown pointer to the consolidated "Rollback Plan" section, used in
+ * place of an inline per-step rollback body when `rollback.link_step_rollbacks`
+ * is set. GitHub derives the `#rollback-plan` anchor from the heading; an
+ * explicit anchor is also emitted at the heading for non-GitHub renderers.
+ */
+function rollbackJumpLinkText(): string {
+  return `> 🔄 Rollback for this step is consolidated in the [Rollback Plan](#${ROLLBACK_PLAN_ANCHOR}) section.`;
+}
+
 function renderRollbackCellMarkdown(
   rb: RollbackStep,
   env: Environment,
@@ -536,6 +548,7 @@ function generateStepRow(
   operationDir?: string,
   commonVariables?: Record<string, any>,
   tableState: TableState = { open: true },
+  linkStepRollbacks = false,
 ): string {
   let rows = '';
 
@@ -784,6 +797,7 @@ function generateStepRow(
         operationDir,
         commonVariables,
         tableState,
+        linkStepRollbacks,
       );
     });
 
@@ -796,6 +810,11 @@ function generateStepRow(
 
         // Close current table (the next step row reopens lazily)
         rows += closeStepTable(tableState);
+
+        if (linkStepRollbacks) {
+          rows += `${rollbackJumpLinkText()}\n\n`;
+          return;
+        }
 
         // Add rollback heading (h4 level for sub-step rollbacks)
         const subStepRollbackName = resolveVariables
@@ -842,6 +861,7 @@ function generateSubStepRow(
   operationDir?: string,
   commonVariables?: Record<string, any>,
   tableState: TableState = { open: true },
+  linkStepRollbacks = false,
 ): string {
   let rows = '';
 
@@ -1091,6 +1111,7 @@ function generateSubStepRow(
         operationDir,
         commonVariables,
         tableState,
+        linkStepRollbacks,
       );
     });
 
@@ -1108,6 +1129,11 @@ function generateSubStepRow(
 
         // Close current table (the next step row reopens lazily)
         rows += closeStepTable(tableState);
+
+        if (linkStepRollbacks) {
+          rows += `${rollbackJumpLinkText()}\n\n`;
+          return;
+        }
 
         // Determine heading level based on depth
         const headingLevel = '#'.repeat(Math.min(3 + depth, 6));
@@ -1280,6 +1306,7 @@ function generateManualContent(
   operationDir?: string,
 ): string {
   let markdown = `# Manual for: ${operation.name} (v${operation.version})\n\n`;
+  const linkStepRollbacks = Boolean(operation.rollback?.link_step_rollbacks);
   if (operation.description) {
     markdown += `_${operation.description}_\n\n`;
   }
@@ -1405,6 +1432,7 @@ function generateManualContent(
           operationDir,
           operation.common_variables ?? {},
           tableState,
+          linkStepRollbacks,
         );
 
         // Inline rollback rendering - render immediately after step if present
@@ -1413,35 +1441,40 @@ function generateManualContent(
           // Close current table (next step row reopens lazily)
           markdown += closeStepTable(tableState);
 
-          // Add rollback heading
-          const rollbackHeadingName = resolveVariables
-            ? substituteVariables(
-                step.name,
-                operation.common_variables ?? {},
+          if (linkStepRollbacks) {
+            // Point at the consolidated Rollback Plan instead of repeating.
+            markdown += `${rollbackJumpLinkText()}\n\n`;
+          } else {
+            // Add rollback heading
+            const rollbackHeadingName = resolveVariables
+              ? substituteVariables(
+                  step.name,
+                  operation.common_variables ?? {},
+                  step.variables,
+                )
+              : step.name;
+            markdown += `### 🔄 Rollback for Step ${globalStepNumber}: ${rollbackHeadingName}\n\n`;
+
+            // Render rollback table (shared cell renderer; sub_steps inline)
+            markdown += '| Environment | Rollback Action |\n';
+            markdown += '|-------------|----------------|\n';
+
+            operation.environments.forEach((env) => {
+              const cellContent = renderRollbackCellMarkdown(
+                rb,
+                env,
+                resolveVariables,
+                operationDir,
                 step.variables,
-              )
-            : step.name;
-          markdown += `### 🔄 Rollback for Step ${globalStepNumber}: ${rollbackHeadingName}\n\n`;
+                true,
+              );
+              markdown += `| ${env.name} | ${cellContent} |\n`;
+            });
 
-          // Render rollback table (shared cell renderer; sub_steps inline)
-          markdown += '| Environment | Rollback Action |\n';
-          markdown += '|-------------|----------------|\n';
-
-          operation.environments.forEach((env) => {
-            const cellContent = renderRollbackCellMarkdown(
-              rb,
-              env,
-              resolveVariables,
-              operationDir,
-              step.variables,
-              true,
-            );
-            markdown += `| ${env.name} | ${cellContent} |\n`;
-          });
-
-          // Blank line after the rollback table; the next step row reopens the
-          // step table lazily, so no dangling empty header is emitted here.
-          markdown += '\n';
+            // Blank line after the rollback table; the next step row reopens the
+            // step table lazily, so no dangling empty header is emitted here.
+            markdown += '\n';
+          }
         }
 
         globalStepNumber++; // Increment for next step
@@ -1455,7 +1488,7 @@ function generateManualContent(
   const stepsWithRollback = operation.steps.filter(
     (step) => step.rollback && step.rollback.length > 0,
   );
-  if (stepsWithRollback.length > 0) {
+  if (stepsWithRollback.length > 0 && !linkStepRollbacks) {
     markdown += '## 🔄 Rollback Procedures\n\n';
     markdown +=
       'If deployment fails, execute the following rollback steps:\n\n';
@@ -1502,6 +1535,9 @@ function generateManualContent(
     operation.steps,
   );
   if (operation.rollback && globalRollbackSteps.length > 0) {
+    if (linkStepRollbacks) {
+      markdown += `<a id="${ROLLBACK_PLAN_ANCHOR}"></a>\n\n`;
+    }
     markdown += '## 🔄 Rollback Plan\n\n';
     markdown +=
       'If the operation fails, execute the following rollback steps:\n\n';
@@ -1580,6 +1616,9 @@ export function generateSingleEnvManual(
 
   const env = workingOperation.environments.find((e) => e.name === targetEnv);
   const envVars = env?.variables ?? {};
+  const linkStepRollbacks = Boolean(
+    workingOperation.rollback?.link_step_rollbacks,
+  );
 
   function resolveCmd(
     cmd: string,
@@ -1737,12 +1776,17 @@ export function generateSingleEnvManual(
     // operation-level plan, so a step-level rollback's own sub_steps render too.
     const rb = effectiveStep.rollback?.[0];
     if (hasRollbackContent(rb)) {
-      renderRollbackStepSingleEnv(
-        rb,
-        '🔄 Rollback',
-        Math.min(headingLevel + 1, 6),
-        effectiveStep.variables ?? {},
-      );
+      if (linkStepRollbacks) {
+        lines.push(rollbackJumpLinkText());
+        lines.push('');
+      } else {
+        renderRollbackStepSingleEnv(
+          rb,
+          '🔄 Rollback',
+          Math.min(headingLevel + 1, 6),
+          effectiveStep.variables ?? {},
+        );
+      }
     }
   }
 
@@ -1864,6 +1908,10 @@ export function generateSingleEnvManual(
   if (globalRollback && globalRollbackSteps.length > 0) {
     lines.push('---');
     lines.push('');
+    if (linkStepRollbacks) {
+      lines.push(`<a id="${ROLLBACK_PLAN_ANCHOR}"></a>`);
+      lines.push('');
+    }
     lines.push('## 🔄 Rollback Plan');
     lines.push('');
     lines.push('If the operation fails, execute the following rollback steps:');

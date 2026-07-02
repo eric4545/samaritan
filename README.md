@@ -2009,6 +2009,36 @@ rollback:
 
 During `samaritan run`, every step prompt offers **`[g]` global rollback**: it previews the consolidated recovery (explicit plan steps + the **completed** steps' rollbacks, reversed), asks for confirmation, runs it (sending via tmux when a session is attached, otherwise listing the commands to run manually), then aborts the operation — a full rollback ends forward progress, and the session is resumable. See `examples/global-rollback-aggregated.yaml`.
 
+#### Jump to the global rollback instead of repeating (`link_step_rollbacks`)
+
+By default, a step's own `rollback:` is rendered **inline** in the generated
+Markdown manual, right after the step. When you also declare an operation-level
+`rollback:` with `aggregate_step_rollbacks`, that same content is repeated in the
+consolidated **Rollback Plan** — so each undo appears twice.
+
+Set `link_step_rollbacks: true` to render each step's rollback inline as a
+**jump-link** to the Rollback Plan instead of repeating the full body:
+
+```yaml
+rollback:
+  automatic: false
+  link_step_rollbacks: true   # inline rollback -> link to the Rollback Plan
+  steps:
+    - name: Page the on-call SRE
+      instruction: Notify the on-call engineer before rolling back.
+```
+
+Inline, each step then shows:
+
+> 🔄 Rollback for this step is consolidated in the [Rollback Plan](#rollback-plan) section.
+
+`link_step_rollbacks` implies the same consolidation as `aggregate_step_rollbacks`
+(the Rollback Plan aggregates every step's rollback), so **no undo content is
+lost** — it just lives in exactly one place. An explicit `<a id="rollback-plan">`
+anchor is emitted at the Rollback Plan heading so the link resolves in non-GitHub
+Markdown renderers too. Works in both the multi-environment table manual and the
+`--env` single-environment manual. See `examples/rollback-jump-links.yaml`.
+
 ### JSONL audit trail
 
 Every action appends a line to the run's black box at `<operation-dir>/.samaritan-runs/<id>/events.jsonl` (the exact path is printed as `📝 Audit log:` at the start of the run):

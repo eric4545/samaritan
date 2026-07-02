@@ -20,6 +20,7 @@ rollback:                    # operation-level rollback plan
   automatic: false
   conditions: [ ... ]
   aggregate_step_rollbacks: false  # opt-in: group step.rollback[] into this plan
+  link_step_rollbacks: false       # opt-in: inline step rollback -> link to the plan
   steps: [ ... ]             # each a full step body (shares StepContent base)
 ```
 
@@ -45,6 +46,13 @@ rollback is appended in **reverse step order**, labelled `↩ Rollback for "<ste
 This drives both the rendered Rollback Plan ("see all rollbacks at once") and the
 interactive `[g]` global-rollback jump (which uses only **completed** steps).
 Opt-in (default false). Example: `examples/global-rollback-aggregated.yaml`.
+
+Set `rollback.link_step_rollbacks: true` to render each step's inline rollback
+in the **Markdown** manual as a one-line jump-link to the consolidated Rollback
+Plan section instead of repeating the full body. It implies the same
+consolidation as `aggregate_step_rollbacks` (so nothing is lost) and emits an
+explicit `<a id="rollback-plan">` anchor at the heading. Multi-env + single-env.
+Opt-in (default false). Example: `examples/rollback-jump-links.yaml`.
 
 ## Step content fields (shared by steps AND rollback steps — `StepContent`)
 

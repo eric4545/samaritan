@@ -716,6 +716,11 @@
           "default": false,
           "description": "When true, the global rollback also groups every step's own rollback (reverse step order), appended after the explicit steps below. Lets operators author rollback next to the step it undoes while still seeing/running one consolidated recovery."
         },
+        "link_step_rollbacks": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, the Markdown manual renders each step's rollback inline as a jump-link to the consolidated Rollback Plan section instead of repeating the full rollback body per step. Implies the same consolidation as aggregate_step_rollbacks so no content is lost."
+        },
         "steps": {
           "type": "array",
           "items": { "$ref": "#/definitions/rollbackStep" }

@@ -1,0 +1,49 @@
+name: Rollback Jump Links
+version: 1.0.0
+description: |
+  Demonstrates `rollback.link_step_rollbacks: true`. Instead of repeating each
+  step's rollback inline in the Markdown manual, the generator renders a one-line
+  jump-link to the consolidated "Rollback Plan" section. The Rollback Plan itself
+  aggregates every step's rollback (like `aggregate_step_rollbacks`), so no undo
+  content is lost — it lives in exactly one place.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: web-staging
+  - name: production
+    description: Production environment
+    variables:
+      NAMESPACE: web-prod
+
+steps:
+  - name: Create database backup
+    type: manual
+    phase: preflight
+    instruction: Snapshot the database before any changes.
+    command: pg_dump -n ${NAMESPACE} > backup.sql
+    rollback:
+      - name: Discard the backup snapshot
+        command: rm -f backup.sql
+
+  - name: Deploy web server
+    type: automatic
+    phase: flight
+    command: kubectl apply -f deployment.yaml -n ${NAMESPACE}
+    expect:
+      contains: deployment.apps/web-server
+    rollback:
+      - name: Roll back web server
+        command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
+
+# Render each step's rollback inline as a jump-link to this consolidated plan,
+# instead of repeating the full rollback body per step.
+rollback:
+  automatic: false
+  link_step_rollbacks: true
+  conditions:
+    - health_check_failure
+  steps:
+    - name: Page the on-call SRE
+      instruction: Notify the on-call engineer before executing the rollback.
