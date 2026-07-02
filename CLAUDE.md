@@ -113,6 +113,9 @@ npm start -- generate manual examples/deployment.yaml --output /tmp/manual.md
 
 # Lint code
 npx @biomejs/biome check .
+
+# Generate the TypeDoc API reference site (output: ./docs-site, gitignored)
+npm run docs
 ```
 
 ---

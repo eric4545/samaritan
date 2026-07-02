@@ -1,0 +1,29 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src"],
+  "entryPointStrategy": "expand",
+  "exclude": ["**/*.test.ts", "tests/**/*", "dist/**/*", "node_modules/**/*"],
+  "out": "docs-site",
+  "name": "SAMARITAN API Reference",
+  "readme": "README.md",
+  "includeVersion": true,
+  "skipErrorChecking": true,
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "githubPages": true,
+  "navigationLinks": {
+    "GitHub": "https://github.com/eric4545/samaritan",
+    "README": "https://github.com/eric4545/samaritan#readme"
+  },
+  "categorizeByGroup": true,
+  "sort": ["source-order"],
+  "highlightLanguages": [
+    "typescript",
+    "javascript",
+    "json",
+    "yaml",
+    "bash",
+    "shell",
+    "markdown"
+  ]
+}

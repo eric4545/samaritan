@@ -35,6 +35,26 @@ npx github:eric4545/samaritan#branch-name validate my-operation.yaml
 - [Examples](#-examples)
 - [Roadmap](#-roadmap)
 - [Development](#-development)
+- [API Documentation](#-api-documentation)
+
+## 📖 API Documentation
+
+SAMARITAN's internal API reference is generated **from the JSDoc comments in the
+source** with [TypeDoc](https://typedoc.org/) and published as a static
+[GitHub Pages](https://pages.github.com/) site by
+[`.github/workflows/docs.yml`](.github/workflows/docs.yml) on every push to
+`main`.
+
+Build the same site locally:
+
+```bash
+npm run docs      # writes the static HTML site to ./docs-site
+```
+
+Open `docs-site/index.html` in a browser. The reference covers the operation
+model (`src/models`), parsers (`src/operations`), the manual/Mermaid generators
+(`src/manuals`), and the shared libraries (`src/lib`). Documentation quality
+tracks the JSDoc in the code, so keep public functions and interfaces commented.
 
 ## 🎯 Core Concepts
 

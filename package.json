@@ -16,6 +16,7 @@
     "build": "tsc && cp -r src/schemas dist/",
     "start": "tsx src/cli/index.ts",
     "prepare": "test -d dist || npm run build",
+    "docs": "typedoc",
     "lint": "npx @biomejs/biome check .",
     "lint:fix": "npx @biomejs/biome check --write ."
   },
@@ -53,7 +54,8 @@
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
     "@types/js-yaml": "^4.0.5",
-    "tsx": "^4.22.3"
+    "tsx": "^4.22.3",
+    "typedoc": "^0.28.19"
   },
   "overrides": {
     "linkify-it": "^5.0.1"

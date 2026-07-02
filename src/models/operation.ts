@@ -265,6 +265,19 @@ export interface OperationMetadata {
   execution_count?: number;
 }
 
+/**
+ * A parsed SAMARITAN operation: the top-level "operations-as-code" document that
+ * the parser produces and every generator, validator, and the interactive
+ * runner consume.
+ *
+ * An operation bundles metadata, one or more target {@link Environment}s, the
+ * ordered {@link Step}s to perform, and an optional operation-level
+ * {@link RollbackPlan}. The same object drives all output formats (Markdown
+ * multi-env + single-env manuals, Confluence ADF, and the experimental Mermaid
+ * diagrams) as well as `samaritan run`.
+ *
+ * @see parseOperation for how YAML is loaded into this shape.
+ */
 export interface Operation {
   id: string;
   name: string;

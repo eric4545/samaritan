@@ -151,3 +151,5 @@ evidence/
 .samaritan-runs/
 operations-cache/
 manuals/
+# TypeDoc API docs output (built in CI, published to GitHub Pages)
+docs-site/
