@@ -12,6 +12,10 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
 | `validate <file>` | JSON-Schema validation of an operation |
 | `generate manual <file>` | Render a Markdown runbook |
 | `generate confluence <file>` | Render Confluence ADF (JSON) |
+| `generate postmortem <file>` | Render a postmortem/incident report (RCA); `-f markdown\|confluence\|adf` |
+| `postmortem from-run <session\|jsonl>` | Seed a postmortem YAML from a captured run record |
+| `postmortem init` | Write a blank postmortem authoring template |
+| `report <jsonl>` | Render a Markdown evidence report from a run log |
 | `schema` | Export the JSON schema (IDE / tooling integration) |
 | `run <file>` | Drive an operation interactively |
 | `resume <session-id>` | Resume a paused session |
@@ -34,6 +38,19 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
 - `--output <path>` — write to file (defaults to stdout for Markdown).
 - `--resolve-vars` — substitute `${VAR}` against the selected env's variables at
   generation time.
+
+### generate postmortem / postmortem from-run
+- `generate postmortem <file>` renders a **postmortem / incident report (RCA)** —
+  a separate document type from operations (its own schema
+  `src/schemas/postmortem.schema.json`; see `reference/postmortem-yaml.md`).
+- `-f, --format markdown|confluence|adf` (default `markdown`); `-o` writes to a
+  file, otherwise stdout. Confluence output wraps the Mermaid timeline in the
+  `{markdown}` macro (same pattern as the operation Gantt).
+- `postmortem from-run <session-id|events.jsonl>` seeds a postmortem YAML from a
+  captured run record: timeline, participants, incident window, and
+  `operation`/`run` back-references are auto-filled; narrative fields are `TODO`.
+- `postmortem init` writes a blank template. This is a documentation feature —
+  it does NOT execute anything.
 
 ### run
 - Default mode is **sidecar**: SAMARITAN displays each resolved command but does

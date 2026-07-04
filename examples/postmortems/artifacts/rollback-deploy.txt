@@ -1,0 +1,7 @@
+$ kubectl rollout undo deployment/checkout --to-revision=42
+deployment.apps/checkout rolled back
+$ kubectl rollout status deployment/checkout
+Waiting for deployment "checkout" rollout to finish: 2 of 6 updated replicas are available...
+deployment "checkout" successfully rolled out
+$ curl -s https://checkout.example.com/health
+{"status":"ok","version":"2.3.0"}

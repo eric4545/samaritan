@@ -1,0 +1,191 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://samaritan.dev/schemas/postmortem.json",
+  "title": "SAMARITAN Postmortem",
+  "description": "Schema for SAMARITAN postmortem / incident report (RCA) documents",
+  "type": "object",
+  "required": ["title", "summary"],
+  "additionalProperties": true,
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Incident/postmortem title"
+    },
+    "id": {
+      "type": "string",
+      "description": "Incident id (e.g. INC-2026-0042)"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["SEV1", "SEV2", "SEV3", "SEV4"],
+      "description": "Incident severity"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "in-review", "final"],
+      "description": "Document lifecycle status"
+    },
+    "occurred_at": {
+      "type": "string",
+      "description": "Incident start time (ISO-8601)"
+    },
+    "resolved_at": {
+      "type": "string",
+      "description": "Incident end time (ISO-8601)"
+    },
+    "authors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Postmortem authors"
+    },
+    "reviewers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Postmortem reviewers"
+    },
+    "operation": {
+      "type": "string",
+      "description": "Path to the operation runbook that was executed"
+    },
+    "manual": {
+      "type": "string",
+      "description": "URL of the generated manual for the operation"
+    },
+    "run": {
+      "type": "string",
+      "description": "Path to the run record (events.jsonl) this was seeded from"
+    },
+    "qrh": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Related QRH procedure ids"
+    },
+    "tickets": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Related tickets"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-paragraph summary of what happened"
+    },
+    "impact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "detected_after": {
+          "type": "string",
+          "description": "Time to detect (MTTD)"
+        },
+        "resolved_after": {
+          "type": "string",
+          "description": "Time to resolve (MTTR)"
+        },
+        "scope": { "type": "string" },
+        "services": { "type": "array", "items": { "type": "string" } },
+        "customers_affected": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+    "detection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["alert", "customer", "monitoring", "manual"]
+        },
+        "source": { "type": "string" },
+        "detected_at": { "type": "string" }
+      }
+    },
+    "timeline": {
+      "type": "array",
+      "description": "Chronological incident events",
+      "items": {
+        "type": "object",
+        "required": ["at", "event"],
+        "additionalProperties": false,
+        "properties": {
+          "at": { "type": "string", "description": "Event timestamp" },
+          "event": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": ["cause", "detection", "action", "recovery", "note"]
+          },
+          "by": { "type": "string" },
+          "ref": { "type": "string" },
+          "image": { "type": "string" }
+        }
+      }
+    },
+    "root_cause": {
+      "type": "object",
+      "required": ["summary"],
+      "additionalProperties": false,
+      "properties": {
+        "summary": { "type": "string" },
+        "trigger": { "type": "string" },
+        "contributing_factors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "five_whys": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "resolution": {
+      "type": "string",
+      "description": "How the incident was resolved"
+    },
+    "action_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string" },
+          "owner": { "type": "string" },
+          "ticket": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["prevent", "mitigate", "detect", "process"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["open", "in-progress", "done"]
+          },
+          "due": { "type": "string" }
+        }
+      }
+    },
+    "lessons_learned": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "went_well": { "type": "array", "items": { "type": "string" } },
+        "went_wrong": { "type": "array", "items": { "type": "string" } },
+        "got_lucky": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "supporting_information": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["image", "link", "log", "file"]
+          },
+          "file": { "type": "string" },
+          "url": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

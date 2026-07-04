@@ -55,6 +55,17 @@ in this roadmap:
 - ✅ `script:` field on `StepContent` — embeds an external shell script's
   full content as a code block in generated manuals (mutually exclusive
   with `command:`)
+- ✅ Postmortem / incident report (RCA) document type — a standalone
+  `postmortem.yaml` (schema `src/schemas/postmortem.schema.json`) rendered to
+  Markdown, Confluence wiki markup, and ADF via `samaritan generate postmortem
+  <file> [-f markdown|confluence|adf]`. One blameless document (Google SRE /
+  Atlassian / PagerDuty aligned) with optional RCA, impact/MTTD/MTTR, a Mermaid
+  timeline (wrapped in the Confluence `{markdown}` macro), action items, and
+  lessons-learned sections; an "incident report" is the same schema with the
+  deeper sections omitted. `samaritan postmortem from-run <session|events.jsonl>`
+  seeds a postmortem's timeline, participants, incident window, and
+  operation/run back-references from a captured run record (`operation → run →
+  postmortem`); `samaritan postmortem init` writes a blank template
 
 ---
 

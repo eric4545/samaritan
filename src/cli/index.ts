@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { diffCommand } from './commands/diff';
 import { generateCommand } from './commands/generate';
+import { postmortemCommand } from './commands/postmortem';
 import { projectCommands } from './commands/project';
 import { qrhCommand } from './commands/qrh';
 import { reportCommand } from './commands/report';
@@ -39,6 +40,9 @@ program.addCommand(diffCommand);
 
 // Evidence report generation
 program.addCommand(reportCommand);
+
+// Postmortem / incident report authoring
+program.addCommand(postmortemCommand);
 
 // Emergency procedures
 program.addCommand(qrhCommand);
