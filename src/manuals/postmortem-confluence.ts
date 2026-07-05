@@ -1,18 +1,15 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
 import type { Postmortem, SupportingInfo } from '../models/postmortem';
 import {
   buildMermaidTimeline,
+  detectionRows,
   formatPostmortemTs,
+  impactRows,
   incidentDuration,
+  resolvePath,
   severityIcon,
   timelineKindIcon,
 } from './postmortem-shared';
-
-function resolvePath(pmDir: string | undefined, p: string): string {
-  if (!pmDir || isAbsolute(p)) return p;
-  return join(pmDir, p);
-}
 
 /** Escape Confluence macro braces in free text. */
 function esc(t: string): string {
@@ -82,31 +79,21 @@ export function generatePostmortemConfluence(
 
   // Impact
   if (pm.impact) {
-    const i = pm.impact;
     out.push('h2. Impact');
     out.push('');
-    if (i.detected_after)
-      out.push(`* *Time to detect (MTTD):* ${esc(i.detected_after)}`);
-    if (i.resolved_after)
-      out.push(`* *Time to resolve (MTTR):* ${esc(i.resolved_after)}`);
-    if (i.scope) out.push(`* *Scope:* ${esc(i.scope)}`);
-    if (i.services?.length)
-      out.push(`* *Services:* ${esc(i.services.join(', '))}`);
-    if (i.customers_affected)
-      out.push(`* *Customers affected:* ${esc(i.customers_affected)}`);
-    if (i.notes) out.push(`* *Notes:* ${esc(i.notes)}`);
+    for (const { label, value } of impactRows(pm.impact)) {
+      out.push(`* *${label}:* ${esc(value)}`);
+    }
     out.push('');
   }
 
   // Detection
   if (pm.detection) {
-    const d = pm.detection;
     out.push('h2. Detection');
     out.push('');
-    if (d.method) out.push(`* *Method:* ${esc(d.method)}`);
-    if (d.source) out.push(`* *Source:* ${esc(d.source)}`);
-    if (d.detected_at)
-      out.push(`* *Detected at:* ${esc(formatPostmortemTs(d.detected_at))}`);
+    for (const { label, value } of detectionRows(pm.detection)) {
+      out.push(`* *${label}:* ${esc(value)}`);
+    }
     out.push('');
   }
 

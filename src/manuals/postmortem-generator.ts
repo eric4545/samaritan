@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
 import type {
   ActionItem,
   Postmortem,
@@ -9,17 +8,14 @@ import type {
 import { evidenceLang } from './generator';
 import {
   buildMermaidTimeline,
+  detectionRows,
   formatPostmortemTs,
+  impactRows,
   incidentDuration,
+  resolvePath,
   severityIcon,
   timelineKindIcon,
 } from './postmortem-shared';
-
-/** Resolve a postmortem-relative path against the document directory. */
-function resolvePath(pmDir: string | undefined, p: string): string {
-  if (!pmDir || isAbsolute(p)) return p;
-  return join(pmDir, p);
-}
 
 const ACTION_STATUS_ICON: Record<string, string> = {
   open: '⬜',
@@ -86,31 +82,21 @@ export function generatePostmortemMarkdown(
 
   // --- Impact ---
   if (pm.impact) {
-    const i = pm.impact;
     lines.push('## Impact');
     lines.push('');
-    if (i.detected_after)
-      lines.push(`- **Time to detect (MTTD)**: ${i.detected_after}`);
-    if (i.resolved_after)
-      lines.push(`- **Time to resolve (MTTR)**: ${i.resolved_after}`);
-    if (i.scope) lines.push(`- **Scope**: ${i.scope}`);
-    if (i.services?.length)
-      lines.push(`- **Services**: ${i.services.join(', ')}`);
-    if (i.customers_affected)
-      lines.push(`- **Customers affected**: ${i.customers_affected}`);
-    if (i.notes) lines.push(`- **Notes**: ${i.notes}`);
+    for (const { label, value } of impactRows(pm.impact)) {
+      lines.push(`- **${label}**: ${value}`);
+    }
     lines.push('');
   }
 
   // --- Detection ---
   if (pm.detection) {
-    const d = pm.detection;
     lines.push('## Detection');
     lines.push('');
-    if (d.method) lines.push(`- **Method**: ${d.method}`);
-    if (d.source) lines.push(`- **Source**: ${d.source}`);
-    if (d.detected_at)
-      lines.push(`- **Detected at**: ${formatPostmortemTs(d.detected_at)}`);
+    for (const { label, value } of detectionRows(pm.detection)) {
+      lines.push(`- **${label}**: ${value}`);
+    }
     lines.push('');
   }
 

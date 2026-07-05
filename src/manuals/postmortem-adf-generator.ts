@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
 import {
   bulletList,
   codeBlock,
@@ -18,16 +17,14 @@ import {
 import type { Postmortem, SupportingInfo } from '../models/postmortem';
 import {
   buildMermaidTimeline,
+  detectionRows,
   formatPostmortemTs,
+  impactRows,
   incidentDuration,
+  resolvePath,
   severityIcon,
   timelineKindIcon,
 } from './postmortem-shared';
-
-function resolvePath(pmDir: string | undefined, p: string): string {
-  if (!pmDir || isAbsolute(p)) return p;
-  return join(pmDir, p);
-}
 
 /** `**key**: value` paragraph. */
 function kv(key: string, value: string): any {
@@ -85,30 +82,17 @@ export function generatePostmortemADF(
 
   // --- Impact ---
   if (pm.impact) {
-    const i = pm.impact;
     content.push(h2('Impact'));
-    const items: string[] = [];
-    if (i.detected_after)
-      items.push(`Time to detect (MTTD): ${i.detected_after}`);
-    if (i.resolved_after)
-      items.push(`Time to resolve (MTTR): ${i.resolved_after}`);
-    if (i.scope) items.push(`Scope: ${i.scope}`);
-    if (i.services?.length) items.push(`Services: ${i.services.join(', ')}`);
-    if (i.customers_affected)
-      items.push(`Customers affected: ${i.customers_affected}`);
-    if (i.notes) items.push(`Notes: ${i.notes}`);
+    const items = impactRows(pm.impact).map((r) => `${r.label}: ${r.value}`);
     if (items.length) content.push(bullets(items));
   }
 
   // --- Detection ---
   if (pm.detection) {
-    const d = pm.detection;
     content.push(h2('Detection'));
-    const items: string[] = [];
-    if (d.method) items.push(`Method: ${d.method}`);
-    if (d.source) items.push(`Source: ${d.source}`);
-    if (d.detected_at)
-      items.push(`Detected at: ${formatPostmortemTs(d.detected_at)}`);
+    const items = detectionRows(pm.detection).map(
+      (r) => `${r.label}: ${r.value}`,
+    );
     if (items.length) content.push(bullets(items));
   }
 

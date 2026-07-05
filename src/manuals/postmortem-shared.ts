@@ -1,4 +1,21 @@
-import type { Postmortem, TimelineEntry } from '../models/postmortem';
+import { isAbsolute, join } from 'node:path';
+import type {
+  Detection,
+  Postmortem,
+  PostmortemImpact,
+} from '../models/postmortem';
+
+/** A labelled value pair, formatted per-renderer. */
+export interface LabelledValue {
+  label: string;
+  value: string;
+}
+
+/** Resolve a postmortem-relative path against the document directory. */
+export function resolvePath(pmDir: string | undefined, p: string): string {
+  if (!pmDir || isAbsolute(p)) return p;
+  return join(pmDir, p);
+}
 
 /** Format an ISO-8601 (or free-form) timestamp to a compact UTC display. */
 export function formatPostmortemTs(ts: string): string {
@@ -90,7 +107,44 @@ export function buildMermaidTimeline(pm: Postmortem): string | undefined {
   return lines.join('\n');
 }
 
-/** Ordered list of populated timeline entries (pure passthrough for renderers). */
-export function timelineEntries(pm: Postmortem): TimelineEntry[] {
-  return pm.timeline ?? [];
+/**
+ * Impact fields as ordered label/value rows (MTTD, MTTR, scope, services,
+ * customers, notes). Shared by all renderers so the field selection, order, and
+ * labels live in one place; each format styles the returned pairs itself.
+ */
+export function impactRows(impact: PostmortemImpact): LabelledValue[] {
+  const rows: LabelledValue[] = [];
+  if (impact.detected_after)
+    rows.push({ label: 'Time to detect (MTTD)', value: impact.detected_after });
+  if (impact.resolved_after)
+    rows.push({
+      label: 'Time to resolve (MTTR)',
+      value: impact.resolved_after,
+    });
+  if (impact.scope) rows.push({ label: 'Scope', value: impact.scope });
+  if (impact.services?.length)
+    rows.push({ label: 'Services', value: impact.services.join(', ') });
+  if (impact.customers_affected)
+    rows.push({
+      label: 'Customers affected',
+      value: impact.customers_affected,
+    });
+  if (impact.notes) rows.push({ label: 'Notes', value: impact.notes });
+  return rows;
+}
+
+/**
+ * Detection fields as ordered label/value rows. `detected_at` is passed through
+ * `formatPostmortemTs` so callers get display-ready values.
+ */
+export function detectionRows(detection: Detection): LabelledValue[] {
+  const rows: LabelledValue[] = [];
+  if (detection.method) rows.push({ label: 'Method', value: detection.method });
+  if (detection.source) rows.push({ label: 'Source', value: detection.source });
+  if (detection.detected_at)
+    rows.push({
+      label: 'Detected at',
+      value: formatPostmortemTs(detection.detected_at),
+    });
+  return rows;
 }

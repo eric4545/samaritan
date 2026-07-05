@@ -1,10 +1,6 @@
 import { existsSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
-import type {
-  Postmortem,
-  TimelineEntry,
-  TimelineKind,
-} from '../models/postmortem';
+import type { Postmortem, TimelineEntry } from '../models/postmortem';
 import { foldEvents, readEvents, type SessionEvent } from './session-log';
 import { getRunLogPath, loadSession } from './session-persistence';
 
@@ -39,15 +35,6 @@ export function resolveRunLog(arg: string): {
   return { jsonlPath: getRunLogPath(operationFile, arg), operationFile };
 }
 
-const EVENT_KIND: Record<string, TimelineKind> = {
-  step_start: 'action',
-  step_failed: 'cause',
-  step_timeout: 'cause',
-  rollback_start: 'action',
-  rollback_complete: 'recovery',
-  session_end: 'recovery',
-};
-
 /** Build a chronological timeline from the raw event stream (uses event `ts`). */
 function buildTimelineFromEvents(events: SessionEvent[]): TimelineEntry[] {
   const timeline: TimelineEntry[] = [];
@@ -66,7 +53,7 @@ function buildTimelineFromEvents(events: SessionEvent[]): TimelineEntry[] {
         timeline.push({
           at: e.ts,
           event: `Failed: ${e.name ?? `step ${e.step}`}${e.reason ? ` — ${e.reason}` : ''}`,
-          kind: EVENT_KIND[e.type],
+          kind: 'cause',
         });
         break;
       case 'rollback_start':
@@ -113,8 +100,7 @@ export function postmortemFromRun(arg: string): Postmortem {
   const sessionStart = events.find((e) => e.type === 'session_start');
   const sessionEnd = events.find((e) => e.type === 'session_end');
 
-  const opRef =
-    operationFile ?? (sessionStart?.op as string | undefined) ?? undefined;
+  const opRef = operationFile ?? (sessionStart?.op as string | undefined);
   const opName = opRef ? basename(opRef, '.yaml') : 'operation';
 
   const firstTs = events[0]?.ts;
