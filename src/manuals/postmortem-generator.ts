@@ -81,10 +81,11 @@ export function generatePostmortemMarkdown(
   lines.push('');
 
   // --- Impact ---
-  if (pm.impact) {
+  const impact = impactRows(pm);
+  if (impact.length) {
     lines.push('## Impact');
     lines.push('');
-    for (const { label, value } of impactRows(pm.impact)) {
+    for (const { label, value } of impact) {
       lines.push(`- **${label}**: ${value}`);
     }
     lines.push('');

@@ -44,6 +44,22 @@ describe('generatePostmortemConfluence', () => {
     assert.ok(c.includes('{code}'), 'code macro present');
     assert.ok(c.includes('kubectl rollout undo'), 'log content embedded');
   });
+
+  it('renders a timeline-entry image with the ! ! macro', () => {
+    const c = generatePostmortemConfluence(pm(), dir);
+    assert.ok(
+      c.includes(
+        '!https://grafana.example.com/render/d/checkout/error-rate.png!',
+      ),
+      'timeline image as Confluence image markup',
+    );
+  });
+
+  it('derives MTTD/MTTR when not authored', () => {
+    const c = generatePostmortemConfluence(pm(), dir);
+    assert.ok(c.includes('* *Time to detect (MTTD):* 4m'));
+    assert.ok(c.includes('* *Time to resolve (MTTR):* 1h 16m'));
+  });
 });
 
 describe('generatePostmortemADF', () => {
@@ -68,5 +84,17 @@ describe('generatePostmortemADF', () => {
     const json = generatePostmortemADFString(pm(), dir);
     assert.ok(json.includes('Checkout Service Outage'));
     assert.ok(json.includes('🔴'), 'severity badge in title');
+  });
+
+  it('references a timeline-entry image and derives MTTD/MTTR', () => {
+    const json = generatePostmortemADFString(pm(), dir);
+    assert.ok(
+      json.includes(
+        'https://grafana.example.com/render/d/checkout/error-rate.png',
+      ),
+      'timeline image referenced in ADF',
+    );
+    assert.ok(json.includes('Time to detect (MTTD): 4m'), 'derived MTTD');
+    assert.ok(json.includes('Time to resolve (MTTR): 1h 16m'), 'derived MTTR');
   });
 });

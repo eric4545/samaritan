@@ -81,10 +81,10 @@ export function generatePostmortemADF(
   content.push(paragraph(text(pm.summary.trim())));
 
   // --- Impact ---
-  if (pm.impact) {
+  const impactItems = impactRows(pm).map((r) => `${r.label}: ${r.value}`);
+  if (impactItems.length) {
     content.push(h2('Impact'));
-    const items = impactRows(pm.impact).map((r) => `${r.label}: ${r.value}`);
-    if (items.length) content.push(bullets(items));
+    content.push(bullets(impactItems));
   }
 
   // --- Detection ---
@@ -123,6 +123,18 @@ export function generatePostmortemADF(
       );
     }
     content.push(table(...rows));
+    // Timeline-entry images (ADF can't embed external images without an
+    // attachment id, so render the reference as a labelled paragraph — parity
+    // with the supporting-info image handling below).
+    for (const entry of pm.timeline) {
+      if (entry.image) {
+        const isUrl = /^https?:\/\//.test(entry.image);
+        const target = isUrl
+          ? entry.image
+          : resolvePath(postmortemDir, entry.image);
+        content.push(paragraph(strong(text(`${entry.event}: `)), text(target)));
+      }
+    }
   }
 
   // --- Root Cause Analysis ---

@@ -31,7 +31,7 @@ report" — only `title` and `summary` are required; every other section is opti
 | `run` | string | path to the run record (`events.jsonl`) it was seeded from |
 | `qrh` | string[] | related QRH ids (rendered as `qrh show <id>` hints) |
 | `tickets` | string[] | related tickets |
-| `impact` | object | `detected_after` (MTTD), `resolved_after` (MTTR), `scope`, `services[]`, `customers_affected`, `notes` |
+| `impact` | object | `scope`, `services[]`, `customers_affected`, `notes`, plus `detected_after` (MTTD) / `resolved_after` (MTTR) — auto-derived from `occurred_at`→`detected_at` / `occurred_at`→`resolved_at` when omitted; set explicitly to override |
 | `detection` | object | `method` (`alert`\|`customer`\|`monitoring`\|`manual`), `source`, `detected_at` |
 | `timeline` | array | `{ at, event, kind?, by?, ref?, image? }`; `kind` = `cause`\|`detection`\|`action`\|`recovery`\|`note`. Rendered as a Mermaid `timeline` diagram + table |
 | `root_cause` | object | `summary` (required within), `trigger`, `contributing_factors[]`, `five_whys[]` |

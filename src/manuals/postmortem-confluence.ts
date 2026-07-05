@@ -78,10 +78,11 @@ export function generatePostmortemConfluence(
   out.push('');
 
   // Impact
-  if (pm.impact) {
+  const impact = impactRows(pm);
+  if (impact.length) {
     out.push('h2. Impact');
     out.push('');
-    for (const { label, value } of impactRows(pm.impact)) {
+    for (const { label, value } of impact) {
       out.push(`* *${label}:* ${esc(value)}`);
     }
     out.push('');
@@ -118,6 +119,16 @@ export function generatePostmortemConfluence(
       );
     }
     out.push('');
+    // Inline any timeline-entry images beneath the table.
+    for (const entry of pm.timeline) {
+      if (entry.image) {
+        const isUrl = /^https?:\/\//.test(entry.image);
+        out.push(
+          `!${isUrl ? entry.image : resolvePath(postmortemDir, entry.image)}!`,
+        );
+        out.push('');
+      }
+    }
   }
 
   // Root Cause Analysis

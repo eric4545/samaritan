@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { parsePostmortem } from '../../src/operations/postmortem-parser';
 
 const CLI = 'npx tsx src/cli/index.ts';
 const EXAMPLE = 'examples/postmortems/checkout-outage.yaml';
@@ -52,5 +53,14 @@ describe('generate postmortem CLI', () => {
 
   it('exits non-zero with a schema error on an invalid document', () => {
     assert.throws(() => run(`generate postmortem ${INVALID}`));
+  });
+
+  it('postmortem init emits a schema-valid template', () => {
+    const out = run('postmortem init');
+    // The template ships as a file, not an inlined string; it must parse and
+    // validate against the postmortem schema.
+    const pm = parsePostmortem(out);
+    assert.equal(pm.title, 'Incident title');
+    assert.ok(pm.summary.length > 0);
   });
 });

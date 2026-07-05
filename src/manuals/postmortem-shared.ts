@@ -1,9 +1,5 @@
 import { isAbsolute, join } from 'node:path';
-import type {
-  Detection,
-  Postmortem,
-  PostmortemImpact,
-} from '../models/postmortem';
+import type { Detection, Postmortem } from '../models/postmortem';
 
 /** A labelled value pair, formatted per-renderer. */
 export interface LabelledValue {
@@ -33,17 +29,28 @@ export function timelineLabel(ts: string): string {
   return `${hh}:${mm}`;
 }
 
-/** Human duration between two timestamps, e.g. "1h 16m". `undefined` if unknown. */
-export function incidentDuration(pm: Postmortem): string | undefined {
-  if (!pm.occurred_at || !pm.resolved_at) return undefined;
-  const start = new Date(pm.occurred_at).getTime();
-  const end = new Date(pm.resolved_at).getTime();
+/**
+ * Human duration between two ISO timestamps, e.g. "1h 16m" / "4m". `undefined`
+ * if either is missing/unparseable or the range is negative.
+ */
+export function formatDurationBetween(
+  startTs?: string,
+  endTs?: string,
+): string | undefined {
+  if (!startTs || !endTs) return undefined;
+  const start = new Date(startTs).getTime();
+  const end = new Date(endTs).getTime();
   if (Number.isNaN(start) || Number.isNaN(end) || end < start) return undefined;
   const totalMin = Math.round((end - start) / 60000);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
+}
+
+/** Overall incident duration (occurred → resolved). */
+export function incidentDuration(pm: Postmortem): string | undefined {
+  return formatDurationBetween(pm.occurred_at, pm.resolved_at);
 }
 
 /** Severity → emoji badge for headers. */
@@ -111,16 +118,22 @@ export function buildMermaidTimeline(pm: Postmortem): string | undefined {
  * Impact fields as ordered label/value rows (MTTD, MTTR, scope, services,
  * customers, notes). Shared by all renderers so the field selection, order, and
  * labels live in one place; each format styles the returned pairs itself.
+ *
+ * MTTD/MTTR are DERIVED from the incident timestamps when not authored
+ * explicitly: MTTD = occurred → detected, MTTR = occurred → resolved. An explicit
+ * `impact.detected_after`/`resolved_after` always wins as an override.
  */
-export function impactRows(impact: PostmortemImpact): LabelledValue[] {
+export function impactRows(pm: Postmortem): LabelledValue[] {
+  const impact = pm.impact ?? {};
   const rows: LabelledValue[] = [];
-  if (impact.detected_after)
-    rows.push({ label: 'Time to detect (MTTD)', value: impact.detected_after });
-  if (impact.resolved_after)
-    rows.push({
-      label: 'Time to resolve (MTTR)',
-      value: impact.resolved_after,
-    });
+  const mttd =
+    impact.detected_after ??
+    formatDurationBetween(pm.occurred_at, pm.detection?.detected_at);
+  if (mttd) rows.push({ label: 'Time to detect (MTTD)', value: mttd });
+  const mttr =
+    impact.resolved_after ??
+    formatDurationBetween(pm.occurred_at, pm.resolved_at);
+  if (mttr) rows.push({ label: 'Time to resolve (MTTR)', value: mttr });
   if (impact.scope) rows.push({ label: 'Scope', value: impact.scope });
   if (impact.services?.length)
     rows.push({ label: 'Services', value: impact.services.join(', ') });

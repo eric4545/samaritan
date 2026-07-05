@@ -29,8 +29,9 @@ summary: |
   76 minutes until we rolled back to v2.3.0.
 
 impact:
-  detected_after: 4m
-  resolved_after: 76m
+  # detected_after (MTTD) and resolved_after (MTTR) are derived automatically
+  # from occurred_at -> detection.detected_at (4m) and occurred_at -> resolved_at
+  # (1h 16m). Set them explicitly only to override the computed values.
   scope: Checkout unavailable for ~30% of users
   services: [checkout, payments]
   customers_affected: "~12,000 users"
@@ -58,6 +59,7 @@ timeline:
     event: Rolled back to v2.3.0
     kind: action
     by: alice@example.com
+    image: https://grafana.example.com/render/d/checkout/error-rate.png
   - at: 2026-07-01T15:48:00Z
     event: Error rate back to baseline; incident resolved
     kind: recovery

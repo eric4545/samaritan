@@ -48,11 +48,42 @@ describe('generatePostmortemMarkdown', () => {
     );
   });
 
-  it('renders MTTD/MTTR and computed duration', () => {
+  it('derives MTTD/MTTR from timestamps when not authored', () => {
+    // The example omits detected_after/resolved_after; they come from the
+    // occurred_at -> detected_at (4m) and occurred_at -> resolved_at (76m) gaps.
     const md = renderExample();
-    assert.ok(md.includes('Time to detect (MTTD)'), 'MTTD');
-    assert.ok(md.includes('Time to resolve (MTTR)'), 'MTTR');
+    assert.ok(md.includes('**Time to detect (MTTD)**: 4m'), 'derived MTTD');
+    assert.ok(
+      md.includes('**Time to resolve (MTTR)**: 1h 16m'),
+      'derived MTTR',
+    );
     assert.ok(md.includes('**Duration**: 1h 16m'), 'computed duration');
+  });
+
+  it('lets an explicit impact value override the derived one', () => {
+    const pm: Postmortem = {
+      title: 'X',
+      summary: 'Y',
+      occurred_at: '2026-07-01T14:32:00Z',
+      resolved_at: '2026-07-01T15:48:00Z',
+      impact: { resolved_after: 'about an hour' },
+    };
+    const md = generatePostmortemMarkdown(pm);
+    assert.ok(md.includes('**Time to resolve (MTTR)**: about an hour'));
+    assert.ok(
+      !md.includes('**Time to resolve (MTTR)**: 1h 16m'),
+      'explicit MTTR value wins over the derived one',
+    );
+  });
+
+  it('renders a timeline-entry image', () => {
+    const md = renderExample();
+    assert.ok(
+      md.includes(
+        '![Rolled back to v2.3.0](https://grafana.example.com/render/d/checkout/error-rate.png)',
+      ),
+      'timeline image embedded as Markdown image',
+    );
   });
 
   it('renders 5-whys and contributing factors', () => {
