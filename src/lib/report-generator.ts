@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+import { dirname } from 'node:path';
 import { evidenceLang } from '../manuals/generator';
 import type {
   RollbackRecord,
@@ -5,11 +7,16 @@ import type {
   StepEvidenceRef,
   StepRecord,
 } from '../models/step-record';
+import { cleanTerminalOutput } from './assertions';
+import { redactLocalPaths } from './path-redact';
 import { foldEvents, readEvents, type SessionEvent } from './session-log';
+
+/** Redacts operator-local path prefixes; identity when no bases are known. */
+type Redact = (text: string) => string;
 
 export function generateReport(jsonlPath: string): string {
   const events = readEvents(jsonlPath);
-  return renderReport(events, foldEvents(events));
+  return renderReport(events, foldEvents(events), dirname(jsonlPath));
 }
 
 /**
@@ -20,12 +27,22 @@ export function generateReport(jsonlPath: string): string {
 export function renderReport(
   events: SessionEvent[],
   folded: { steps: StepRecord[]; rollbacks: RollbackRecord[] },
+  runDir?: string,
 ): string {
   const sessionStart = events.find((e) => e.type === 'session_start');
   const sessionEnd = events.find((e) => e.type === 'session_end');
 
   const sessionId = events[0]?.session_id ?? 'unknown';
   const opFile = (sessionStart?.op as string) ?? 'unknown';
+
+  // Strip operator-local path prefixes (home, run dir, operation dir) so a
+  // shared report doesn't leak machine-specific locations.
+  const redact: Redact = (text) =>
+    redactLocalPaths(text, {
+      home: homedir(),
+      runDir,
+      opDir: opFile !== 'unknown' ? dirname(opFile) : undefined,
+    });
   const status = (sessionEnd?.status as string) ?? 'unknown';
   const startTs = events[0]?.ts ? formatTs(events[0].ts) : 'unknown';
 
@@ -62,7 +79,7 @@ export function renderReport(
   lines.push('');
 
   for (const step of steps) {
-    lines.push(...renderStep(step));
+    lines.push(...renderStep(step, redact));
   }
 
   // Approval Trail — aggregates every step-level approve/reject decision so
@@ -99,10 +116,12 @@ export function renderReport(
       lines.push(`**Triggered by**: ${rb.triggeredBy}`);
       lines.push('');
       for (const cmd of rb.commands) {
-        lines.push(`**Command**: \`${cmd.command}\` (session: ${cmd.session})`);
+        lines.push(
+          `**Command**: \`${redact(cmd.command)}\` (session: ${cmd.session})`,
+        );
         if (cmd.output) {
           lines.push('```');
-          lines.push(cmd.output.trim());
+          lines.push(redact(cleanTerminalOutput(cmd.output)).trim());
           lines.push('```');
         }
       }
@@ -114,7 +133,7 @@ export function renderReport(
   return lines.join('\n');
 }
 
-function renderStep(step: StepRecord): string[] {
+function renderStep(step: StepRecord, redact: Redact): string[] {
   const lines: string[] = [];
   const stepNum = step.index + 1;
   const firstCmd = step.commands[0];
@@ -130,16 +149,16 @@ function renderStep(step: StepRecord): string[] {
   for (const cmd of step.commands) {
     lines.push('');
     if (cmd.displayed) {
-      lines.push(`**Command (run by operator)**: \`${cmd.command}\``);
+      lines.push(`**Command (run by operator)**: \`${redact(cmd.command)}\``);
     } else {
-      lines.push(`**Command sent**: \`${cmd.command}\``);
+      lines.push(`**Command sent**: \`${redact(cmd.command)}\``);
     }
     if (cmd.output) {
       lines.push('');
       lines.push('Output');
       lines.push('');
       lines.push('```');
-      lines.push(cmd.output.trim());
+      lines.push(redact(cleanTerminalOutput(cmd.output)).trim());
       lines.push('```');
     }
   }
@@ -167,7 +186,7 @@ function renderStep(step: StepRecord): string[] {
 
   for (const evidence of step.evidence) {
     lines.push('');
-    lines.push(...renderEvidenceBlock(evidence));
+    lines.push(...renderEvidenceBlock(evidence, redact));
   }
 
   lines.push('');
@@ -207,7 +226,10 @@ function renderApproval(approval: StepApproval): string[] {
   return lines;
 }
 
-function renderEvidenceBlock(evidence: StepEvidenceRef): string[] {
+function renderEvidenceBlock(
+  evidence: StepEvidenceRef,
+  redact: Redact,
+): string[] {
   const lines: string[] = [];
   const label = evidence.description
     ? `**Evidence**: ${evidence.type} — ${evidence.description}`
@@ -217,15 +239,17 @@ function renderEvidenceBlock(evidence: StepEvidenceRef): string[] {
 
   if (evidence.path) {
     if (evidence.type === 'screenshot' || evidence.type === 'photo') {
-      lines.push(`![Evidence](${evidence.path})`);
+      lines.push(`![Evidence](${redact(evidence.path)})`);
     } else {
-      lines.push(`[View ${evidence.type}](${evidence.path})`);
+      lines.push(`[View ${evidence.type}](${redact(evidence.path)})`);
     }
   } else if (evidence.content) {
     // Reuse evidenceLang() so captured-evidence code blocks fence
     // consistently with evidence.results rendering in the manual generator.
+    // Clean terminal noise then redact local paths so auto-captured verify
+    // output reads well and doesn't leak the operator's filesystem.
     lines.push(`\`\`\`${evidenceLang(evidence.type)}`);
-    lines.push(evidence.content.trim());
+    lines.push(redact(cleanTerminalOutput(evidence.content)).trim());
     lines.push('```');
   }
 

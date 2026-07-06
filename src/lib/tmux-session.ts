@@ -10,25 +10,72 @@ export function isLocalSession(config: SessionConfig | undefined): boolean {
 }
 
 /**
- * Paste a command into a tmux pane WITHOUT executing it (no Enter), via a named
- * paste buffer so the operator's own buffers are untouched (`-d` deletes ours
- * after pasting). Used by the sidecar `[p]` action — the operator reviews the
- * command at their prompt and presses Enter themselves. Never throws: when tmux
- * is unavailable spawnSync returns an error status and this is a no-op.
+ * Build the two tmux argv arrays used to paste a command into a pane.
+ *
+ * `set-buffer -- <command>` stores the WHOLE command (including any embedded
+ * newlines) as a single argv element — never split line-by-line. `paste-buffer`
+ * uses `-p` so tmux wraps the paste in bracketed-paste markers: a multi-line
+ * command lands at the prompt as ONE atomic block and does NOT execute
+ * (bracketed paste suppresses the intermediate newlines' Enter behavior),
+ * matching the sidecar `[p]` contract — the operator reviews then runs it. `-d`
+ * deletes samaritan's own buffer afterwards so operator buffers are untouched.
  */
-function pasteBufferTo(target: string, command: string): void {
-  try {
-    spawnSync('tmux', ['set-buffer', '-b', 'samaritan-send', '--', command]);
-    spawnSync('tmux', [
+export function buildPasteBufferArgs(
+  target: string,
+  command: string,
+): { setArgs: string[]; pasteArgs: string[] } {
+  return {
+    setArgs: ['set-buffer', '-b', 'samaritan-send', '--', command],
+    pasteArgs: [
       'paste-buffer',
       '-d',
+      '-p',
       '-b',
       'samaritan-send',
       '-t',
       target,
-    ]);
+    ],
+  };
+}
+
+/**
+ * Paste a command into a tmux pane WITHOUT executing it (no Enter), via a named
+ * paste buffer so the operator's own buffers are untouched. Used by the sidecar
+ * `[p]` action — the operator reviews the command at their prompt and presses
+ * Enter themselves. Never throws: when tmux is unavailable spawnSync returns an
+ * error status and this is a no-op.
+ */
+function pasteBufferTo(target: string, command: string): void {
+  try {
+    const { setArgs, pasteArgs } = buildPasteBufferArgs(target, command);
+    spawnSync('tmux', setArgs);
+    spawnSync('tmux', pasteArgs);
   } catch {
     // tmux missing or pane gone — best effort, operator can copy/paste instead
+  }
+}
+
+/**
+ * Capture the rendered screen of a tmux pane as clean text — `-p` prints to
+ * stdout, `-J` joins wrapped lines and trims trailing whitespace, and the
+ * absence of `-e` means NO escape sequences are emitted. Returns undefined when
+ * tmux is unavailable or the target is gone. Used for the auto-captured verify
+ * evidence so the report shows readable output instead of the raw pipe-pane
+ * byte stream (ANSI/cursor-move/redraw noise).
+ */
+export function capturePaneScreen(target: string): string | undefined {
+  try {
+    const result = spawnSync('tmux', [
+      'capture-pane',
+      '-p',
+      '-J',
+      '-t',
+      target,
+    ]);
+    if (result.status !== 0) return undefined;
+    return result.stdout?.toString('utf-8');
+  } catch {
+    return undefined;
   }
 }
 
@@ -134,6 +181,12 @@ export class TmuxSession implements CaptureBackend {
   pasteCommand(sessionName: string, command: string): void {
     const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
     pasteBufferTo(pane, command);
+  }
+
+  /** Capture the pane's rendered screen as clean text (no escape sequences). */
+  captureScreen(sessionName: string): string | undefined {
+    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    return capturePaneScreen(pane);
   }
 
   hasTarget(sessionName: string): boolean {
@@ -285,6 +338,11 @@ export class TmuxPaneCapture implements CaptureBackend {
   /** Paste a command into the attached pane without executing it (no Enter). */
   pasteCommand(_sessionName: string, command: string): void {
     pasteBufferTo(this.target, command);
+  }
+
+  /** Capture the attached pane's rendered screen as clean text. */
+  captureScreen(_sessionName: string): string | undefined {
+    return capturePaneScreen(this.target);
   }
 
   /**

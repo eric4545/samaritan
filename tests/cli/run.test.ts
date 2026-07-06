@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdtempSync,
@@ -996,6 +996,60 @@ describe('run command: abort persists a resumable session', () => {
       session.status,
       'paused',
       'aborted session must be persisted as paused (resumable)',
+    );
+  });
+
+  it('Ctrl+C (SIGINT) saves the session as paused and prints a resume hint', async () => {
+    const fixture = fixturePath('manualStepActions');
+    // Run node directly with the tsx loader so SIGINT hits OUR process (a
+    // wrapper shim might not forward the signal). Keep stdin open (pipe, no
+    // input) so the run parks at the first step prompt.
+    const child = spawn(
+      process.execPath,
+      ['--import', 'tsx', INDEX, 'run', fixture, '--env', 'default'],
+      { stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+
+    let out = '';
+    let signalled = false;
+    await new Promise<void>((done, fail) => {
+      const kill = setTimeout(() => {
+        child.kill('SIGKILL');
+        fail(new Error(`timed out; output was:\n${out}`));
+      }, 25_000);
+
+      const onData = (d: Buffer) => {
+        out += d.toString();
+        // The per-step divider/banner only prints once the loop is running, by
+        // which point the SIGINT handler is registered — safe to interrupt.
+        if (
+          !signalled &&
+          /Session: [0-9a-f-]{36}/.test(out) &&
+          out.includes('─')
+        ) {
+          signalled = true;
+          setTimeout(() => child.kill('SIGINT'), 200);
+        }
+      };
+      child.stdout.on('data', onData);
+      child.stderr.on('data', onData);
+      child.on('error', fail);
+      child.on('close', () => {
+        clearTimeout(kill);
+        done();
+      });
+    });
+
+    const sessionId = extractSessionId(out);
+    assert.ok(
+      out.includes(`samaritan resume ${sessionId}`),
+      `Ctrl+C must print a resume hint; output was:\n${out.slice(-1500)}`,
+    );
+    const session = readSessionFile(sessionId);
+    assert.strictEqual(
+      session.status,
+      'paused',
+      'Ctrl+C-aborted session must be persisted as paused (resumable)',
     );
   });
 

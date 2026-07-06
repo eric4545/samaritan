@@ -16,7 +16,10 @@ import {
 } from 'node:readline';
 import { Command } from 'commander';
 import { detectMimeType } from '../../evidence/collector';
-import { renderExpectDescription } from '../../lib/assertions';
+import {
+  cleanTerminalOutput,
+  renderExpectDescription,
+} from '../../lib/assertions';
 import type { CaptureBackend } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
@@ -605,9 +608,13 @@ class OperationRunner {
 
         const handler = (ch: string | undefined, key: any) => {
           if (key?.ctrl && key.name === 'c') {
+            // Restore the terminal, then route through the single SIGINT
+            // handler so Ctrl+C SAVES (pauses + resume hint) instead of
+            // hard-quitting unsaved. Raw mode swallows the terminal's own
+            // SIGINT, so re-raise it explicitly.
             cleanup();
-            process.stdout.write('^C\n');
-            process.exit(130);
+            process.kill(process.pid, 'SIGINT');
+            return;
           }
           if (key?.name === 'return' || key?.name === 'enter') {
             cleanup();
@@ -1175,13 +1182,22 @@ class OperationRunner {
     const captureVerifiedEvidence = (
       stepIndex: number,
       output: string,
+      captureScreen?: () => string | undefined,
     ): void => {
       if (autoVerifiedSteps.has(stepIndex) || !output.trim()) return;
       autoVerifiedSteps.add(stepIndex);
 
+      // Prefer the pane's rendered SCREEN (capture-pane -p -J) over the raw
+      // pipe-pane slice used for assertion: the screen is clean text with no
+      // ANSI/cursor-move/redraw noise, so the report reads well. Fall back to a
+      // cleaned copy of the raw slice when the backend can't produce a screen.
+      const screen = captureScreen?.();
+      const evidenceOutput = (screen ?? cleanTerminalOutput(output)).trim();
+      if (!evidenceOutput) return;
+
       const item = buildVerifiedEvidenceItem(
         stepIndex,
-        output,
+        evidenceOutput,
         state.context.operator,
       );
 
@@ -1193,7 +1209,7 @@ class OperationRunner {
         evidence_type: 'command_output',
         automatic: true,
         description: item.description,
-        content: output,
+        content: evidenceOutput,
       });
       console.log('    📎 Verified output captured as evidence.');
     };
@@ -1209,6 +1225,9 @@ class OperationRunner {
       // ${VAR}-resolved command, offered as `c=copy command` on a failed check
       // so the operator can re-copy and re-run it.
       commandToCopy?: string,
+      // Captures the pane's rendered screen for the auto-recorded evidence, so
+      // the report keeps clean output instead of the raw pipe-pane slice.
+      captureScreen?: () => string | undefined,
     ): Promise<void> => {
       if (!step.expect) return;
 
@@ -1239,7 +1258,7 @@ class OperationRunner {
         );
 
         if (assertResult.pass) {
-          captureVerifiedEvidence(stepIndex, output);
+          captureVerifiedEvidence(stepIndex, output, captureScreen);
           console.log(
             '    ✅ Verify passed — press [v] again any time to re-check.',
           );
@@ -1267,6 +1286,79 @@ class OperationRunner {
         return;
       }
     };
+
+    // Finalize the run exactly once: close readline + logger, write the
+    // structured step log and the human-readable report. Shared by the normal
+    // `finally` and the Ctrl+C handler (which process.exit()s, bypassing the
+    // finally) so both paths leave the same durable record.
+    let finalized = false;
+    const finalizeRun = (): void => {
+      if (finalized) return;
+      finalized = true;
+      rl.close();
+      if (!process.stdin.destroyed) process.stdin.unref();
+      const finalState = executor.getState();
+      const endStatus =
+        finalState.status === 'cancelled'
+          ? 'cancelled'
+          : finalState.failedSteps > 0
+            ? 'failed'
+            : finalState.waitingSteps > 0
+              ? 'paused'
+              : 'completed';
+      logger.close({
+        status: endStatus,
+        steps_completed: finalState.completedSteps,
+      });
+      try {
+        const events = readEvents(logger.path);
+        const folded = foldEvents(events);
+        sessionManager.updateStepLog(state.context.sessionId, folded.steps);
+        const reportPath = getRunReportPath(
+          operationFile,
+          state.context.sessionId,
+        );
+        writeFileSync(
+          reportPath,
+          renderReport(events, folded, dirname(reportPath)),
+          'utf-8',
+        );
+        console.log(`📄 Report: ${reportPath}`);
+      } catch {
+        // reporting is best-effort
+      }
+    };
+
+    // Ctrl+C must SAVE like `abort`/`[q]`, not hard-quit unsaved. Cancel the
+    // executor, finalize the run record, persist the session as `paused`, and
+    // print the resume hint — the same outcome as the cancelled→pause bridge in
+    // execute(). Registered on both process (raw-mode reader re-raises SIGINT)
+    // and the readline interface (Ctrl+C at a question() prompt). Guarded so a
+    // double-signal doesn't double-print.
+    let aborting = false;
+    const onAbortSignal = (): void => {
+      if (aborting) return;
+      aborting = true;
+      if (process.stdin.isTTY) {
+        try {
+          process.stdin.setRawMode(false);
+        } catch {
+          // best effort — terminal may already be restored
+        }
+      }
+      process.stdout.write('^C\n');
+      executor.cancel();
+      finalizeRun();
+      sessionManager.pauseSession(state.context.sessionId);
+      console.log('\n⏸️  Run aborted — progress saved.');
+      console.log(
+        `\n💡 Resume this session:\n   samaritan resume ${state.context.sessionId}`,
+      );
+      console.log('   List saved sessions:   samaritan sessions');
+      process.exit(130);
+    };
+    process.on('SIGINT', onAbortSignal);
+    rl.on('SIGINT', onAbortSignal);
 
     try {
       const steps = executor.getState().steps;
@@ -1566,6 +1658,7 @@ class OperationRunner {
                 captureSinceStepStart,
                 resolvedExpect,
                 resolvedCommand,
+                () => captureRef.backend?.captureScreen?.(sessionName),
               );
               continue;
             }
@@ -1803,38 +1896,12 @@ class OperationRunner {
 
       console.log(`\n${DIVIDER}`);
     } finally {
-      rl.close();
-      if (!process.stdin.destroyed) process.stdin.unref();
-      const finalState = executor.getState();
-      const endStatus =
-        finalState.status === 'cancelled'
-          ? 'cancelled'
-          : finalState.failedSteps > 0
-            ? 'failed'
-            : finalState.waitingSteps > 0
-              ? 'paused'
-              : 'completed';
-      logger.close({
-        status: endStatus,
-        steps_completed: finalState.completedSteps,
-      });
+      process.removeListener('SIGINT', onAbortSignal);
+      rl.removeListener('SIGINT', onAbortSignal);
       // Always write the structured step log and a human-readable Markdown
       // report beside the operation — the durable run record, available even
-      // without --report. Read + fold the event log once and reuse it for
-      // both. Best-effort: never fail the run on reporting.
-      try {
-        const events = readEvents(logger.path);
-        const folded = foldEvents(events);
-        sessionManager.updateStepLog(state.context.sessionId, folded.steps);
-        const reportPath = getRunReportPath(
-          operationFile,
-          state.context.sessionId,
-        );
-        writeFileSync(reportPath, renderReport(events, folded), 'utf-8');
-        console.log(`📄 Report: ${reportPath}`);
-      } catch {
-        // reporting is best-effort
-      }
+      // without --report. Best-effort: never fail the run on reporting.
+      finalizeRun();
     }
 
     return logger.path;

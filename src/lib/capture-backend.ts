@@ -24,6 +24,13 @@ export interface CaptureBackend {
    */
   pasteCommand?(sessionName: string, command: string): void;
   /**
+   * Optional: capture the pane's rendered screen as clean text (no escape
+   * sequences). Used for the auto-captured verify evidence so the report shows
+   * readable output rather than the raw pipe-pane byte stream. Returns undefined
+   * when the backend cannot produce a screen (e.g. tmux unavailable).
+   */
+  captureScreen?(sessionName: string): string | undefined;
+  /**
    * Tear down this backend (close pipe, unlink temp files, etc.).
    * MUST NOT kill-session when the pane belongs to the operator (TmuxPaneCapture).
    */
