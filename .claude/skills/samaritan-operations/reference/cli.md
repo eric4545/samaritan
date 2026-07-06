@@ -72,18 +72,18 @@ Per manual/sidecar step:
 - `[x]` remove evidence — only shown once evidence exists
 - `[v]` verify — run `step.expect` against captured pane output
 - `[t]` attach pane — (sidecar) attach/swap a tmux capture backend mid-run
-- `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it); only when the step has a command and a pane is attached. Re-run during verify = `[p]` then `[v]`
+- `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command and a pane is attached. Re-run during verify = `[p]` then `[v]`
 - `[b]` back — go back to an earlier step and re-run from there (resets it + later steps to pending; audit log keeps the prior attempt); not offered on the first step
 - `[r]` rollback — run *this step's* `rollback`, stay on the step
 - `[g]` global rollback — only when the operation declares a top-level `rollback:`. Previews + runs the consolidated recovery (explicit `rollback.steps` + every **completed** step's rollback in reverse order when `aggregate_step_rollbacks: true`), then aborts the operation
-- `q` / `quit` — **aborts** the operation, persists session as `paused` (resumable)
+- `q` / `quit` / `Ctrl+C` — **aborts** the operation, persists session as `paused` (resumable) and prints a resume hint (`Ctrl+C` saves too — it no longer hard-quits without saving)
 
 ## Run artifacts
 
 Each `run`/`resume` writes a black box beside the operation at
 `<op-dir>/.samaritan-runs/<id>/`:
 - `events.jsonl` — append-only event stream
-- `report.md` — always-on per-step verification ledger + approval trail
+- `report.md` — always-on per-step verification ledger + approval trail; terminal-escape noise is cleaned from captured output and operator-local path prefixes (home `→ ~`, run dir, operation dir) are stripped so it's safe to share
 
 `.samaritan-runs/` is gitignored (force-add to commit a run). Sessions also
 persist to `~/.samaritan/sessions/<id>.json` for `resume`.

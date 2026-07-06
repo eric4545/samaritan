@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import {
+  buildPasteBufferArgs,
   isLocalSession,
   listTmuxPanes,
   sanitizeSessionName,
@@ -102,6 +103,37 @@ describe('TmuxSession (issue #6)', () => {
     assert.doesNotThrow(() => {
       session.pasteCommand('execution', 'echo "review me"');
     });
+  });
+
+  it('buildPasteBufferArgs pastes with bracketed paste (-p) so multiline lands atomically', () => {
+    const { pasteArgs } = buildPasteBufferArgs('mysession:0.0', 'echo hi');
+    // -p makes tmux wrap the paste in bracketed-paste markers; without it a
+    // multi-line command's newlines are injected as Enter keypresses and each
+    // line executes on arrival.
+    assert.ok(pasteArgs.includes('-p'), 'paste-buffer must use -p');
+    assert.deepStrictEqual(pasteArgs, [
+      'paste-buffer',
+      '-d',
+      '-p',
+      '-b',
+      'samaritan-send',
+      '-t',
+      'mysession:0.0',
+    ]);
+  });
+
+  it('buildPasteBufferArgs keeps a multi-line command as one --terminated argument', () => {
+    const multiline = 'cat <<EOF\nline one\nline two\nEOF';
+    const { setArgs } = buildPasteBufferArgs('%1', multiline);
+    // The command must be a single argv element after `--` — never split on
+    // newlines — so the whole block is stored in the buffer intact.
+    assert.strictEqual(setArgs[setArgs.length - 1], multiline);
+    assert.deepStrictEqual(setArgs.slice(0, -1), [
+      'set-buffer',
+      '-b',
+      'samaritan-send',
+      '--',
+    ]);
   });
 
   it('getPaneMap returns registered panes as a ReadonlyMap', () => {
