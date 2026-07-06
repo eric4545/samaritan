@@ -1,0 +1,117 @@
+# SAMARITAN Postmortem / Incident Report (RCA)
+#
+# A backward-looking incident record — the counterpart to a forward-looking
+# operation runbook. Author it as YAML, then render with:
+#   samaritan generate postmortem examples/postmortems/checkout-outage.yaml -o postmortem.md
+#   samaritan generate postmortem examples/postmortems/checkout-outage.yaml -f confluence -o postmortem.confluence
+#
+# Blameless: describe systems and processes, not people. Only `title` and
+# `summary` are required — omit deeper sections for a lightweight incident report.
+
+title: Checkout Service Outage
+id: INC-2026-0042
+severity: SEV1
+status: final
+occurred_at: 2026-07-01T14:32:00Z
+resolved_at: 2026-07-01T15:48:00Z
+authors: [alice@example.com]
+reviewers: [bob@example.com]
+
+# Linkage: point back to what was run (operation → run → postmortem)
+operation: ../deployment.yaml
+manual: https://confluence.example.com/display/SRE/Checkout+Restart+Manual
+qrh: [db-failover]
+tickets: [JIRA-1234, PD-5678]
+
+summary: |
+  A deploy of checkout v2.3.1 introduced retry logic that exhausted the
+  database connection pool, making checkout unavailable for ~30% of users for
+  76 minutes until we rolled back to v2.3.0.
+
+impact:
+  # detected_after (MTTD) and resolved_after (MTTR) are derived automatically
+  # from occurred_at -> detection.detected_at (4m) and occurred_at -> resolved_at
+  # (1h 16m). Set them explicitly only to override the computed values.
+  scope: Checkout unavailable for ~30% of users
+  services: [checkout, payments]
+  customers_affected: "~12,000 users"
+  notes: Estimated revenue impact ~$45k during peak window.
+
+detection:
+  method: alert
+  source: PagerDuty CheckoutHighErrorRate
+  detected_at: 2026-07-01T14:36:00Z
+
+timeline:
+  - at: 2026-07-01T14:32:00Z
+    event: Deploy checkout v2.3.1 rolled out to production
+    kind: cause
+    by: ci-bot
+  - at: 2026-07-01T14:36:00Z
+    event: Error-rate alert fired
+    kind: detection
+    ref: PD-5678
+  - at: 2026-07-01T14:41:00Z
+    event: Incident declared, responders paged
+    kind: note
+    by: alice@example.com
+  - at: 2026-07-01T14:50:00Z
+    event: Rolled back to v2.3.0
+    kind: action
+    by: alice@example.com
+    image: https://grafana.example.com/render/d/checkout/error-rate.png
+  - at: 2026-07-01T15:48:00Z
+    event: Error rate back to baseline; incident resolved
+    kind: recovery
+
+root_cause:
+  summary: Connection-pool exhaustion under the new client retry logic.
+  trigger: Deploy of checkout v2.3.1
+  contributing_factors:
+    - No alert on database connection-pool saturation
+    - Retry storm amplified load on an already-degraded pool
+  five_whys:
+    - Why did checkout fail? The service could not acquire DB connections.
+    - Why couldn't it acquire connections? The pool was exhausted.
+    - Why was the pool exhausted? Retries multiplied in-flight connections.
+    - Why did retries multiply? v2.3.1 retried on timeout without backoff.
+    - Why wasn't this caught? No load test covered the retry path.
+
+resolution: |
+  Rolled back to v2.3.0. The connection pool drained and recovered within
+  ~5 minutes of the rollback completing.
+
+action_items:
+  - title: Add a connection-pool saturation alert
+    owner: bob@example.com
+    ticket: JIRA-1300
+    type: detect
+    status: open
+    due: 2026-07-15
+  - title: Add exponential backoff to the checkout client retry path
+    owner: alice@example.com
+    ticket: JIRA-1301
+    type: prevent
+    status: in-progress
+  - title: Add a load test covering the retry path
+    owner: alice@example.com
+    type: prevent
+    status: open
+
+lessons_learned:
+  went_well:
+    - Rollback was fast once the cause was diagnosed
+    - On-call escalation worked as designed
+  went_wrong:
+    - No alert on pool saturation delayed detection of the true cause
+    - The retry change shipped without a load test
+  got_lucky:
+    - The deploy landed just before peak, limiting blast radius
+
+supporting_information:
+  - type: link
+    url: https://grafana.example.com/d/checkout
+    description: Checkout service dashboard (error rate and latency)
+  - type: log
+    file: ./artifacts/rollback-deploy.txt
+    description: Rollback deploy output

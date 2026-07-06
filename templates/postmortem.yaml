@@ -1,0 +1,48 @@
+# SAMARITAN Postmortem / Incident Report (RCA)
+# Only 'title' and 'summary' are required. Render with:
+#   samaritan generate postmortem <this-file> -o postmortem.md
+#   samaritan generate postmortem <this-file> -f confluence -o postmortem.confluence
+
+title: Incident title
+id: INC-YYYY-NNNN
+severity: SEV2            # SEV1 | SEV2 | SEV3 | SEV4
+status: draft            # draft | in-review | final
+occurred_at: 2026-01-01T00:00:00Z
+resolved_at: 2026-01-01T00:00:00Z
+authors: [you@example.com]
+
+# Linkage (operation -> run -> postmortem)
+operation: ./path/to/operation.yaml
+# run: ./.samaritan-runs/<session-id>/events.jsonl
+
+summary: |
+  One paragraph: what happened.
+
+impact:
+  # detected_after / resolved_after (MTTD/MTTR) are derived from the timestamps
+  # above when omitted; set them here only to override.
+  scope: Who/what was affected
+
+timeline:
+  - at: 2026-01-01T00:00:00Z
+    event: What happened
+    kind: cause          # cause | detection | action | recovery | note
+    # image: ./artifacts/graph.png   # optional per-entry image (path or URL)
+
+root_cause:
+  summary: The underlying cause (blameless).
+  contributing_factors: []
+
+resolution: |
+  How it was resolved.
+
+action_items:
+  - title: Follow-up action
+    owner: you@example.com
+    type: prevent        # prevent | mitigate | detect | process
+    status: open         # open | in-progress | done
+
+lessons_learned:
+  went_well: []
+  went_wrong: []
+  got_lucky: []

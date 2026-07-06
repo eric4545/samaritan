@@ -18,8 +18,12 @@ import {
   generateManualWithMetadata,
   generateSingleEnvManual,
 } from '../../manuals/generator';
+import { generatePostmortemADFString } from '../../manuals/postmortem-adf-generator';
+import { generatePostmortemConfluence } from '../../manuals/postmortem-confluence';
+import { generatePostmortemMarkdown } from '../../manuals/postmortem-generator';
 import type { Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
+import { parsePostmortemFile } from '../../operations/postmortem-parser';
 import { parseRunManifest } from '../../operations/run-manifest-parser';
 
 /**
@@ -105,6 +109,49 @@ class DocumentationGenerator {
 
     const operation = await parseOperation(operationFile);
     await this.renderManual(operation, operationFile, options);
+  }
+
+  /**
+   * Render a postmortem / incident report document (Markdown, Confluence wiki,
+   * or ADF). Writes to `--output` or prints to stdout.
+   */
+  async generatePostmortem(
+    postmortemFile: string,
+    options: GenerateOptions,
+  ): Promise<void> {
+    const format = options.format || 'markdown';
+    const pm = parsePostmortemFile(postmortemFile);
+    const postmortemDir = dirname(postmortemFile);
+
+    let content: string;
+    switch (format) {
+      case 'confluence':
+        content = generatePostmortemConfluence(pm, postmortemDir);
+        break;
+      case 'adf':
+        content = generatePostmortemADFString(pm, postmortemDir);
+        break;
+      case 'markdown':
+        content = generatePostmortemMarkdown(pm, postmortemDir);
+        break;
+      default:
+        throw new Error(
+          `Unsupported postmortem format '${format}'. Supported: markdown, confluence, adf`,
+        );
+    }
+
+    if (options.output) {
+      await mkdir(dirname(options.output), { recursive: true });
+      await writeFile(options.output, content);
+      console.log(
+        `✅ Postmortem generated: ${options.output} (format: ${format})`,
+      );
+      if (format === 'confluence') {
+        console.log('💡 Upload this content to your Confluence space');
+      }
+    } else {
+      console.log(content);
+    }
   }
 
   /**
@@ -2184,6 +2231,25 @@ generateCommand
       await generator.generateDocs(operation, options);
     } catch (error: any) {
       console.error(`❌ Failed to generate docs: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
+generateCommand
+  .command('postmortem <postmortem>')
+  .description('Generate a postmortem / incident report (RCA) document')
+  .option('-o, --output <file>', 'Output file path (default: stdout)')
+  .option(
+    '-f, --format <format>',
+    'Output format (markdown, confluence, adf)',
+    'markdown',
+  )
+  .action(async (postmortem: string, options: GenerateOptions) => {
+    try {
+      const generator = new DocumentationGenerator();
+      await generator.generatePostmortem(postmortem, options);
+    } catch (error: any) {
+      console.error(`❌ Failed to generate postmortem: ${error.message}`);
       process.exit(1);
     }
   });

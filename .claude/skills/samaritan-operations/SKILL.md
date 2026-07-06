@@ -74,9 +74,10 @@ steps:
 SAMARITAN's roadmap matters. **Do not** assume execution features exist.
 Implemented: parsing, manual/Confluence generation, JSON-schema validation,
 shellcheck lint, interactive `run`/`resume`/`sessions`, `run --mock`, templates,
-`foreach`/matrix, evidence embedding. NOT implemented: non-interactive command
-execution, automatic evidence collection, QRH, external integrations (Jira/Slack),
-AI assistant. When unsure, check `ROADMAP.md`.
+`foreach`/matrix, evidence embedding, **postmortem / incident report (RCA)
+documents** (`generate postmortem`, `postmortem from-run`/`init`). NOT implemented:
+non-interactive command execution, automatic evidence collection, QRH, external
+integrations (Jira/Slack), AI assistant. When unsure, check `ROADMAP.md`.
 
 ## When to load the reference files
 
@@ -84,6 +85,8 @@ AI assistant. When unsure, check `ROADMAP.md`.
   read `reference/operation-yaml.md`.
 - A `validate`/`generate`/`run` command, flag, or error needs explaining →
   read `reference/cli.md`.
+- Writing a postmortem / incident report (RCA) document →
+  read `reference/postmortem-yaml.md`.
 
 Keep the schema authoritative: `src/schemas/operation.schema.json` is the source
 of truth, and `examples/*.yaml` are working, validated samples to copy from.

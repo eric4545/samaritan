@@ -57,6 +57,18 @@ npx github:eric4545/samaritan resume <session-id>
 npx github:eric4545/samaritan report examples/.samaritan-runs/<id>/events.jsonl --output evidence.md
 ```
 
+### Postmortems / Incident Reports (RCA)
+
+```bash
+# Render an authored postmortem (Markdown, Confluence, or ADF)
+npx github:eric4545/samaritan generate postmortem examples/postmortems/checkout-outage.yaml --output postmortem.md
+npx github:eric4545/samaritan generate postmortem examples/postmortems/checkout-outage.yaml -f confluence --output postmortem.confluence
+
+# Scaffold a blank one, or seed it from a captured run record (operation -> run -> postmortem)
+npx github:eric4545/samaritan postmortem init --output incident.yaml
+npx github:eric4545/samaritan postmortem from-run <session-id> --output incident.yaml
+```
+
 ### Real-World Workflow
 
 ```bash
@@ -74,6 +86,10 @@ npx github:eric4545/samaritan run my-deployment.yaml --env staging --report ./st
 
 # 5. Execute in production (report written to ./production-evidence/)
 npx github:eric4545/samaritan run my-deployment.yaml --env production --report ./production-evidence
+
+# 6. If something went wrong, seed a postmortem from that run and complete it
+npx github:eric4545/samaritan postmortem from-run <session-id> --output incident.yaml
+npx github:eric4545/samaritan generate postmortem incident.yaml --output incident.md
 ```
 
 

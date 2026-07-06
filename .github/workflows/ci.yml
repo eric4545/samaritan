@@ -120,6 +120,15 @@ jobs:
           npm start -- generate manual "$file" -o "/tmp/$(basename "$file" .yaml)-manual.md"
         done
 
+    - name: Test postmortem generation for all postmortem examples
+      run: |
+        for file in examples/postmortems/*.yaml; do
+          echo "Generating postmortem for $file"
+          npm start -- generate postmortem "$file" -o "/tmp/$(basename "$file" .yaml)-pm.md"
+          npm start -- generate postmortem "$file" -f confluence -o "/tmp/$(basename "$file" .yaml)-pm.confluence"
+          npm start -- generate postmortem "$file" -f adf -o "/tmp/$(basename "$file" .yaml)-pm.json"
+        done
+
   security:
     runs-on: ubuntu-latest
 

@@ -83,13 +83,22 @@ export function listTmuxPanes(): TmuxPaneInfo[] {
     );
     if (result.status !== 0) return [];
     const selfPane = process.env.TMUX_PANE;
-    return (result.stdout?.toString() ?? '')
-      .split('\n')
-      .filter((line) => line.trim() !== '')
-      .map((line) => {
-        const [id, target, currentCommand = '', title = ''] = line.split('\t');
-        return { id, target, currentCommand, title, isSelf: id === selfPane };
-      });
+    return (
+      (result.stdout?.toString() ?? '')
+        .split('\n')
+        .filter((line) => line.trim() !== '')
+        .map((line) => {
+          const [id, target, currentCommand = '', title = ''] =
+            line.split('\t');
+          return { id, target, currentCommand, title, isSelf: id === selfPane };
+        })
+        // Drop malformed rows (e.g. a partial line from `list-panes` racing a
+        // concurrent server teardown) so every returned pane has id + target.
+        .filter(
+          (pane): pane is TmuxPaneInfo =>
+            Boolean(pane.id) && Boolean(pane.target),
+        )
+    );
   } catch {
     return [];
   }

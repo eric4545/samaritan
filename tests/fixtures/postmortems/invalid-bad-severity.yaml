@@ -1,0 +1,3 @@
+title: Bad Severity
+summary: Severity is not one of the allowed values.
+severity: CRITICAL
