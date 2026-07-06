@@ -1,8 +1,14 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { Command } from 'commander';
 import { dump } from 'js-yaml';
 import { postmortemFromRun } from '../../lib/postmortem-from-run';
+
+/** Write a file, creating any missing parent directories first. */
+function writeFileEnsuringDir(filePath: string, content: string): void {
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, content, 'utf-8');
+}
 
 // In CommonJS, __dirname is available globally. The blank authoring template
 // ships as a file under templates/ (same convention as `create operation`,
@@ -33,7 +39,7 @@ postmortemCommand
       const yaml = header + dump(pm, { skipInvalid: true, lineWidth: 100 });
 
       if (options.output) {
-        writeFileSync(options.output, yaml, 'utf-8');
+        writeFileEnsuringDir(options.output, yaml);
         console.log(`✅ Postmortem seeded: ${options.output}`);
         console.log(
           '💡 Fill in the TODO fields, then: samaritan generate postmortem ' +
@@ -53,12 +59,17 @@ postmortemCommand
   .description('Write a blank postmortem authoring template')
   .option('-o, --output <file>', 'Output file path (default: stdout)')
   .action((options: { output?: string }) => {
-    const template = loadInitTemplate();
-    if (options.output) {
-      writeFileSync(options.output, template, 'utf-8');
-      console.log(`✅ Postmortem template written: ${options.output}`);
-    } else {
-      console.log(template);
+    try {
+      const template = loadInitTemplate();
+      if (options.output) {
+        writeFileEnsuringDir(options.output, template);
+        console.log(`✅ Postmortem template written: ${options.output}`);
+      } else {
+        console.log(template);
+      }
+    } catch (error: any) {
+      console.error(`❌ Failed to write postmortem template: ${error.message}`);
+      process.exit(1);
     }
   });
 

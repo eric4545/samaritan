@@ -68,6 +68,23 @@ export function getRunLogPath(
   return join(getRunDir(operationFile, sessionId), 'events.jsonl');
 }
 
+/**
+ * Candidate JSONL event-log paths for a session, in priority order, WITHOUT any
+ * filesystem side effects (unlike `getRunLogPath`, which creates directories).
+ * A run may have written to either the beside-the-operation location or the
+ * `~/.samaritan/sessions/<id>/` fallback, so readers (e.g. `postmortem
+ * from-run`) must check both rather than recomputing a single write-time path.
+ */
+export function candidateRunLogPaths(
+  operationFile: string,
+  sessionId: string,
+): string[] {
+  return [
+    join(dirname(operationFile), '.samaritan-runs', sessionId, 'events.jsonl'),
+    join(getSessionDir(), sessionId, 'events.jsonl'),
+  ];
+}
+
 /** Path to the Markdown report for a run (see `getRunDir`). */
 export function getRunReportPath(
   operationFile: string,

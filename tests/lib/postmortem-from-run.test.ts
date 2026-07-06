@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { postmortemFromRun } from '../../src/lib/postmortem-from-run';
+import {
+  deletePersistedSession,
+  getSessionSubdir,
+  saveSession,
+} from '../../src/lib/session-persistence';
 import { generatePostmortemMarkdown } from '../../src/manuals/postmortem-generator';
+import type { OperationSession } from '../../src/models/session';
 import { validatePostmortemSchema } from '../../src/operations/postmortem-parser';
 
 const EVENTS = [
@@ -140,5 +146,52 @@ describe('postmortemFromRun', () => {
     writeFileSync(empty, '', 'utf-8');
     assert.throws(() => postmortemFromRun(empty), /No events found/);
     assert.ok(existsSync(empty));
+  });
+
+  it('resolves a run log saved in the ~/.samaritan fallback location', () => {
+    // Simulate a run whose events.jsonl landed in the session fallback (not
+    // beside the operation). from-run <session-id> must still find it.
+    const sid = `pm-fallback-${Date.now()}`;
+    const opFile = join(dir, 'deployment.yaml');
+    writeFileSync(opFile, 'name: x\nversion: 1.0.0\nsteps: []\n', 'utf-8');
+    const sub = getSessionSubdir(sid);
+    writeFileSync(
+      join(sub, 'events.jsonl'),
+      `${EVENTS.map((e) => JSON.stringify({ session_id: sid, ...e })).join('\n')}\n`,
+      'utf-8',
+    );
+    const session = {
+      id: sid,
+      operation_id: 'x',
+      operation_file: opFile,
+      environment: 'prod',
+      status: 'completed',
+      current_step_index: 0,
+      started_at: new Date(),
+      updated_at: new Date(),
+      participants: [],
+      evidence: [],
+      retry_history: [],
+      approvals: [],
+      checkpoints: [],
+      mode: 'manual',
+    } as unknown as OperationSession;
+    saveSession(session);
+    try {
+      const pm = postmortemFromRun(sid);
+      assert.equal(pm.operation, opFile);
+      assert.ok(
+        (pm.timeline?.length ?? 0) > 0,
+        'timeline seeded from fallback log',
+      );
+      // and it did NOT create a stray .samaritan-runs dir beside the operation
+      assert.ok(
+        !existsSync(join(dir, '.samaritan-runs', sid)),
+        'read path must not create a run dir beside the operation',
+      );
+    } finally {
+      deletePersistedSession(sid);
+      rmSync(sub, { recursive: true, force: true });
+    }
   });
 });

@@ -2,7 +2,7 @@ import { existsSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
 import type { Postmortem, TimelineEntry } from '../models/postmortem';
 import { foldEvents, readEvents, type SessionEvent } from './session-log';
-import { getRunLogPath, loadSession } from './session-persistence';
+import { candidateRunLogPaths, loadSession } from './session-persistence';
 
 /**
  * Resolve a `from-run` argument to a JSONL events path. Accepts either a direct
@@ -32,7 +32,18 @@ export function resolveRunLog(arg: string): {
       `Session '${arg}' has no operation_file recorded; cannot locate its run log.`,
     );
   }
-  return { jsonlPath: getRunLogPath(operationFile, arg), operationFile };
+
+  // A run may have written beside the operation OR to the
+  // ~/.samaritan/sessions/<id>/ fallback; check both (read-only) and use
+  // whichever actually exists rather than recomputing a single write-time path.
+  const candidates = candidateRunLogPaths(operationFile, arg);
+  const found = candidates.find((p) => existsSync(p));
+  if (!found) {
+    throw new Error(
+      `No run log (events.jsonl) found for session '${arg}'. Looked in:\n  ${candidates.join('\n  ')}`,
+    );
+  }
+  return { jsonlPath: found, operationFile };
 }
 
 /** Build a chronological timeline from the raw event stream (uses event `ts`). */

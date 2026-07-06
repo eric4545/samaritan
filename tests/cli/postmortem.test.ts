@@ -1,6 +1,12 @@
 import assert from 'node:assert';
 import { execSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -62,5 +68,23 @@ describe('generate postmortem CLI', () => {
     const pm = parsePostmortem(out);
     assert.equal(pm.title, 'Incident title');
     assert.ok(pm.summary.length > 0);
+  });
+
+  it('creates missing parent directories for -o output paths', () => {
+    // init: previously threw an uncaught ENOENT; from-run: returned an error.
+    const initOut = join(dir, 'a', 'b', 'init.yaml');
+    run(`postmortem init -o ${initOut}`);
+    assert.ok(existsSync(initOut), 'init created nested output');
+
+    const jsonl = join(dir, 'events.jsonl');
+    writeFileSync(
+      jsonl,
+      '{"ts":"2026-07-01T14:32:00.000Z","type":"session_start","session_id":"x","op":"deployment.yaml"}\n' +
+        '{"ts":"2026-07-01T14:33:00.000Z","type":"session_end","session_id":"x","status":"completed"}\n',
+      'utf-8',
+    );
+    const seedOut = join(dir, 'c', 'd', 'seed.yaml');
+    run(`postmortem from-run ${jsonl} -o ${seedOut}`);
+    assert.ok(existsSync(seedOut), 'from-run created nested output');
   });
 });
