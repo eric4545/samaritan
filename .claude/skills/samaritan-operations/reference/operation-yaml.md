@@ -29,15 +29,21 @@ in every manual format (Markdown multi-env + single-env, Confluence ADF, and
 Confluence wiki). Per-step `rollback:` (under `Step-only structural fields`) is a
 separate, bare array of rollback steps.
 
-Rollback steps are structurally like normal steps: in addition to their
-`StepContent` body each may carry an optional `name` and nested `sub_steps`
-(a recursive list of rollback steps) for multi-part rollbacks. This applies to
-**both** the operation-level plan (`operation.rollback.steps[]`) and per-step
-rollback (`Step.rollback[]`). Nested sub-steps render recursively in every format
-— operation-level as **Rollback Step N**, **N.M**, …; step-level inline under the
-step's **🔄 Rollback** section. The operation-level rollback step schema is strict
+A rollback step **IS a normal step** — the `rollbackStep` schema is kept at full
+field parity with a normal step (enforced by `tests/schemas/rollback-parity.test.ts`),
+so anything you can author on a step you can author on a rollback step: its
+`StepContent` body plus `name`, nested `sub_steps` (a recursive list of rollback
+steps, for multi-part rollbacks), and **`foreach`/`matrix`**. A rollback step with
+`foreach` expands at parse time into one rollback step per combination — exactly
+like a normal step — in every format and for **both** the operation-level plan
+(`operation.rollback.steps[]`) and per-step rollback (`Step.rollback[]`). A step
+may carry **multiple** rollback entries (authored siblings or foreach-expanded);
+all of them render (not just the first). Nested sub-steps render recursively —
+operation-level as **Rollback Step N**, **N.M**, …; step-level inline under the
+step's **🔄 Rollback** section. The rollback step schema is strict
 (`additionalProperties: false`), so a typo'd key fails validation rather than
-being silently dropped. Example: `examples/rollback-with-substeps.yaml`.
+being silently dropped. Examples: `examples/rollback-with-substeps.yaml`,
+`examples/rollback-with-foreach.yaml`.
 
 Set `rollback.aggregate_step_rollbacks: true` to **group** every step's own
 `rollback` into the global plan: after the explicit `steps:`, each step's
@@ -60,6 +66,11 @@ Opt-in (default false). Example: `examples/global-rollback-aggregated.yaml`.
 `foreach`, `sub_steps`, `when`, `variants`, `approval`, `needs`,
 `template`/`with`, `variables`, `capture`, `retry`, `rollback`,
 `section_heading`, `timeline`, `ticket`, `estimated_duration`, `env`.
+
+> Rollback steps accept these too (full parity), except the composition
+> directives `uses`/`with` and nested `rollback` (use `sub_steps` for
+> multi-part rollbacks). In particular `foreach`/`matrix` expand on rollback
+> steps just like normal steps.
 
 ## command vs script
 

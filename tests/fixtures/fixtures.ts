@@ -117,6 +117,9 @@ export const FIXTURES = {
   aggregatedGlobalRollback:
     'tests/fixtures/operations/features/aggregated-global-rollback.yaml',
 
+  // Rollback steps with foreach/matrix (step-level + operation-level + nested)
+  rollbackForeach: 'tests/fixtures/operations/features/rollback-foreach.yaml',
+
   // Script file import
   withScript: 'tests/fixtures/operations/features/with-script.yaml',
   confluenceScriptAndExpect:

@@ -1,0 +1,57 @@
+name: Rollback Foreach
+version: 1.0.0
+description: Rollback steps expand foreach/matrix like normal steps
+
+environments:
+  - name: staging
+    description: Staging
+    variables:
+      NS: staging
+  - name: production
+    description: Production
+    variables:
+      NS: prod
+
+common_variables:
+  APP: web
+
+steps:
+  - name: Deploy
+    type: automatic
+    phase: flight
+    command: kubectl apply -f deploy.yaml
+    # Step-level rollback: single-var foreach expands into one entry per tier.
+    rollback:
+      - name: Undo tier
+        foreach:
+          var: TIER
+          values: [web, api]
+        command: kubectl rollout undo -l tier=${TIER}
+
+  - name: Configure
+    type: automatic
+    phase: flight
+    command: kubectl apply -f config.yaml
+    sub_steps:
+      - name: Apply setting
+        type: automatic
+        command: kubectl apply -f setting.yaml
+        # Sub-step rollback with foreach: expands per zone.
+        rollback:
+          - name: Revert setting
+            foreach:
+              var: ZONE
+              values: [a, b]
+            command: kubectl delete setting -l zone=${ZONE}
+
+# Operation-level rollback plan: matrix foreach expands into the cartesian
+# product (REGION × TIER = 4 rollback steps).
+rollback:
+  automatic: false
+  steps:
+    - name: Restart
+      foreach:
+        matrix:
+          REGION: [us, eu]
+          TIER: [web, api]
+      command: kubectl rollout restart -n ${REGION}-${TIER}

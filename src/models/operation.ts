@@ -160,13 +160,17 @@ export interface StepContent {
   expect?: ExpectConfig | ExpectConfig[] | string;
 }
 
-// A rollback step IS a step structurally — it reuses Step's field definitions
-// instead of re-declaring them. Every inherited field is optional (rollback
-// steps don't require `name`/`type` the way normal steps do), and `sub_steps`
-// is overridden to nest RollbackSteps. The strict schema definition
-// `#/definitions/rollbackStep` remains the runtime contract: it permits only the
-// subset the rollback renderers actually support, so authoring an unsupported
-// Step field (e.g. `foreach`) fails validation rather than being silently dropped.
+// A rollback step IS a step — it reuses Step's field definitions instead of
+// re-declaring them. Every inherited field is optional (rollback steps don't
+// require `name`/`type` the way normal steps do), and `sub_steps` is overridden
+// to nest RollbackSteps. The schema definition `#/definitions/rollbackStep` is
+// kept at FULL field parity with a normal step (enforced by the guardrail test
+// tests/schemas/rollback-parity.test.ts), so anything you can author on a step
+// you can author on a rollback step. In particular `foreach`/`matrix` expand at
+// parse time exactly like a normal step (see expandRollbackForeach in the
+// parser) — they are no longer rejected. The parser normalizer is a spread
+// pass-through, so new StepContent fields reach the renderers automatically
+// instead of being silently dropped by a hand-maintained allowlist.
 export interface RollbackStep extends Omit<Partial<Step>, 'sub_steps'> {
   sub_steps?: RollbackStep[];
 }

@@ -39,6 +39,28 @@ import type {
 } from '../models/operation';
 
 /**
+ * Label for one entry in a MULTI-entry step-level rollback (foreach-expanded or
+ * hand-authored siblings). Uses the rollback step's own name (already carries the
+ * foreach suffix), resolving any remaining `${VAR}`; falls back to `Rollback N`.
+ * Only emitted for multi-entry rollbacks so single-entry output is unchanged.
+ */
+function rollbackEntryLabel(
+  rb: RollbackStep,
+  index: number,
+  commonVariables: Record<string, any>,
+  stepVariables: Record<string, any> | undefined,
+  resolveVariables: boolean | undefined,
+): string {
+  if (!rb.name) return `Rollback ${index + 1}`;
+  return resolveVariables
+    ? substituteVariables(rb.name, commonVariables, {
+        ...stepVariables,
+        ...rb.variables,
+      })
+    : rb.name;
+}
+
+/**
  * Build the ADF nodes for one rollback step's cell, shared by step-level,
  * sub-step, and operation-level rollback rendering. When `includeSubsteps` is
  * set, nested sub_steps render inline within the same cell (step-level/sub-step
@@ -318,12 +340,29 @@ export function generateADF(
     );
 
     stepsWithRollback.forEach((step) => {
-      const rb = step.rollback?.[0];
-      if (!rb) return;
+      const rollbacks = (step.rollback ?? []).filter(hasRollbackContent);
+      if (rollbacks.length === 0) return;
 
       content.push(heading({ level: 3 })(text(`Rollback for: ${step.name}`)));
 
-      if (hasRollbackContent(rb)) {
+      rollbacks.forEach((rb, rbIndex) => {
+        if (rollbacks.length > 1) {
+          content.push(
+            paragraph(
+              strong(
+                text(
+                  rollbackEntryLabel(
+                    rb,
+                    rbIndex,
+                    operation.common_variables ?? {},
+                    step.variables,
+                    resolveVariables,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
         const rollbackRows = environments.map((env) =>
           tableRow([
             tableCell()(paragraph(text(env.name))),
@@ -349,7 +388,7 @@ export function generateADF(
             ...rollbackRows,
           ),
         );
-      }
+      });
     });
   }
 
@@ -1131,20 +1170,26 @@ function addSubStepRows(
     }
   });
 
-  // Second loop: render all rollback rows
+  // Second loop: render all rollback rows (every entry, not just [0])
   subSteps.forEach((subStep, subIndex) => {
-    const rb = subStep.rollback?.[0];
-    if (hasRollbackContent(rb)) {
-      // Determine numbering based on depth
-      let subStepId: string;
-      if (depth % 2 === 1) {
-        const letter = indexToLetters(subIndex);
-        subStepId = `${stepPrefix}${letter}`;
-      } else {
-        subStepId = `${stepPrefix}${subIndex + 1}`;
-      }
+    const rollbacks = (subStep.rollback ?? []).filter(hasRollbackContent);
+    if (rollbacks.length === 0) return;
 
-      const rollbackLabel = `🔄 Rollback for Step ${subStepId}: ${subStep.name}`;
+    // Determine numbering based on depth
+    let subStepId: string;
+    if (depth % 2 === 1) {
+      const letter = indexToLetters(subIndex);
+      subStepId = `${stepPrefix}${letter}`;
+    } else {
+      subStepId = `${stepPrefix}${subIndex + 1}`;
+    }
+
+    rollbacks.forEach((rb, rbIndex) => {
+      const baseLabel = `🔄 Rollback for Step ${subStepId}: ${subStep.name}`;
+      const rollbackLabel =
+        rollbacks.length > 1
+          ? `${baseLabel} — ${rollbackEntryLabel(rb, rbIndex, commonVariables ?? {}, subStep.variables, resolveVariables)}`
+          : baseLabel;
       const rollbackCells = [
         tableCell()(paragraph(strong(text(rollbackLabel)))),
         ...environments.map((env) =>
@@ -1162,7 +1207,7 @@ function addSubStepRows(
       ];
 
       dataRows.push(tableRow(rollbackCells));
-    }
+    });
   });
 }
 

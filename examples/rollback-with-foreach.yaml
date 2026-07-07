@@ -1,0 +1,56 @@
+name: Rollback With Foreach
+version: 1.0.0
+description: |
+  Demonstrates that a rollback step IS a normal step: it supports foreach/matrix
+  expansion exactly like a regular step. A single rollback definition with a
+  `foreach` (single-var or matrix) expands at parse time into one rollback step
+  per combination — in every manual format and for both rollback concepts:
+  step-level `rollback:` AND the operation-level `rollback.steps:` plan.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      CLUSTER: staging-cluster
+  - name: production
+    description: Production environment
+    variables:
+      CLUSTER: prod-cluster
+
+common_variables:
+  APP: web-server
+
+steps:
+  - name: Roll out ${APP}
+    type: automatic
+    phase: flight
+    command: kubectl rollout restart deployment/${APP}
+    expect:
+      contains: restarted
+    # Step-level rollback with a single-variable foreach: expands into one
+    # rollback step per tier (web, api), each rendered after the step.
+    rollback:
+      - name: Undo ${APP} rollout
+        foreach:
+          var: TIER
+          values: [web, api]
+        command: kubectl rollout undo deployment/${APP} -l tier=${TIER}
+        expect:
+          contains: rolled back
+
+# Operation-level rollback plan with a MATRIX foreach: the cartesian product of
+# REGION × TIER expands into one rollback step per combination. This is the case
+# that previously forced operators to model matrix rollbacks as normal steps.
+rollback:
+  automatic: false
+  conditions:
+    - health_check_failure
+  steps:
+    - name: Restart ${APP}
+      foreach:
+        matrix:
+          REGION: [us-east-1, eu-west-1]
+          TIER: [web, api]
+      command: kubectl rollout restart deployment/${APP} -n ${REGION}-${TIER}
+      expect:
+        contains: restarted

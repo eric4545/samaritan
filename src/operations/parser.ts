@@ -15,6 +15,7 @@ import type {
   OperationMetadata,
   RollbackStep,
   Step,
+  StepForeach,
   StepPhase,
   StepType,
   VariableMatrix,
@@ -270,6 +271,70 @@ function injectComboVariables(step: Step, combo: Record<string, any>): Step {
   }
 
   return result;
+}
+
+/**
+ * Expand a `foreach` loop (single-var or matrix) on any step-like item into one
+ * clone per combination — the SINGLE expansion path shared by normal steps AND
+ * rollback steps (both concepts). A rollback step IS a normal step, so it must
+ * expand the same way; keeping this in one helper is what stops the two from
+ * drifting apart again.
+ *
+ * `contextVars` resolves `${VAR}` inside the foreach block before combinations
+ * are generated (so include/exclude comparisons and name suffixes see resolved
+ * values). Each clone gets the combo injected into `variables`/`sub_steps`/
+ * `variants` (via `injectComboVariables`), a per-combo name suffix (bare suffix
+ * when the item is nameless, as rollback steps may be), and `foreach` cleared.
+ * Items without a `foreach` pass through unchanged.
+ */
+function expandForeachItem<
+  T extends {
+    foreach?: StepForeach;
+    variables?: Record<string, any>;
+    sub_steps?: unknown;
+    variants?: unknown;
+    id?: string;
+    name?: string;
+  },
+>(item: T, contextVars: Record<string, any>, label: string): T[] {
+  if (!item.foreach) return [item];
+
+  const foreach = substituteVariables(item.foreach, contextVars) as StepForeach;
+
+  let combinations: Array<Record<string, any>> = [];
+  if (foreach.matrix) {
+    combinations = filterMatrixCombinations(
+      generateMatrixCombinations(foreach.matrix),
+      foreach.include,
+      foreach.exclude,
+    );
+  } else if (foreach.var && foreach.values) {
+    const foreachVar = foreach.var;
+    combinations = foreach.values.map((value) => ({ [foreachVar]: value }));
+  } else {
+    throw new OperationParseError(`Invalid foreach syntax in ${label}`, [
+      {
+        field: `${label}.foreach`,
+        message: 'foreach must have either (var + values) or (matrix)',
+      },
+    ]);
+  }
+
+  return combinations.map((combo, j) => {
+    const varSuffix = formatVariableCombination(combo);
+    // injectComboVariables is typed to Step; rollback steps are structurally
+    // compatible (variables/sub_steps/variants), so cast through.
+    const injected = injectComboVariables(
+      item as unknown as Step,
+      combo,
+    ) as unknown as T;
+    return {
+      ...injected,
+      id: item.id ? `${item.id}-${j}` : undefined,
+      name: item.name ? `${item.name} (${varSuffix})` : varSuffix,
+      foreach: undefined,
+    };
+  });
 }
 
 /**
@@ -600,68 +665,18 @@ async function resolveStepReferences(
           step.phase = 'flight';
         }
 
-        // Expand foreach loops (supports both single var and matrix)
+        // Expand foreach loops (supports both single var and matrix) via the
+        // shared helper — resolves ${VAR} in the foreach block against
+        // common_variables + step.variables BEFORE generating combinations, so
+        // include/exclude comparisons and name suffixes see resolved values.
         if (step.foreach) {
-          // Resolve ${VAR} references in the foreach block (values, matrix,
-          // include, exclude) against common_variables + step.variables BEFORE
-          // generating/filtering combinations, so include/exclude comparisons
-          // and step name suffixes see resolved values. Whole-string matches
-          // preserve type (e.g. "${RETRY_COUNT}" -> 3); unknown vars stay literal.
-          step.foreach = substituteVariables(step.foreach, {
-            ...importContext.commonVariables,
-            ...(step.variables ?? {}),
-          });
-
-          let combinations: Array<Record<string, any>> = [];
-
-          // Check which syntax is used
-          if (step.foreach.matrix) {
-            // Matrix expansion: cartesian product of multiple variables
-            combinations = generateMatrixCombinations(step.foreach.matrix);
-
-            // Apply include/exclude filters if present
-            combinations = filterMatrixCombinations(
-              combinations,
-              step.foreach.include,
-              step.foreach.exclude,
-            );
-          } else if (step.foreach.var && step.foreach.values) {
-            // Single variable syntax (backward compatible)
-            const foreachVar = step.foreach.var;
-            const foreachValues = step.foreach.values;
-            combinations = foreachValues.map((value) => ({
-              [foreachVar]: value,
-            }));
-          } else {
-            throw new OperationParseError(
-              `Invalid foreach syntax in step "${step.name}"`,
-              [
-                {
-                  field: `steps[${i}].foreach`,
-                  message:
-                    'foreach must have either (var + values) or (matrix)',
-                },
-              ],
-            );
-          }
-
-          // Create an expanded step for each combination
-          for (let j = 0; j < combinations.length; j++) {
-            const combo = combinations[j];
-            const varSuffix = formatVariableCombination(combo);
-
-            // Clone step for this combination, recursively injecting the
-            // combo into variables, sub_steps, and variants so all render
-            // paths resolve ${VAR} placeholders consistently.
-            const expandedStep: Step = {
-              ...injectComboVariables(step, combo),
-              id: step.id ? `${step.id}-${j}` : undefined,
-              name: `${step.name} (${varSuffix})`,
-              foreach: undefined, // Remove foreach from expanded step
-            };
-
-            resolvedSteps.push(expandedStep);
-          }
+          resolvedSteps.push(
+            ...expandForeachItem(
+              step,
+              { ...importContext.commonVariables, ...(step.variables ?? {}) },
+              `step "${step.name}"`,
+            ),
+          );
         } else {
           resolvedSteps.push(step);
         }
@@ -690,21 +705,18 @@ function extractExpect(stepData: any): any {
 }
 
 // Normalize one rollback step (array or object YAML form) into a RollbackStep.
-// Rollback steps are structurally like normal steps, so this also carries the
-// optional `name` and recursively normalizes nested `sub_steps` — the parser
-// used to drop both, which is why a step-level rollback with sub_steps rendered
-// as a heading with no body.
+// A rollback step IS a normal step, so this is a SPREAD pass-through: it carries
+// EVERY authored field (name, sub_steps, foreach, variables, if, ...) and only
+// reshapes the few that need it (evidence/expect/options/sub_steps). The old
+// field-by-field allowlist silently dropped anything not explicitly listed —
+// which is exactly how name, then sub_steps, then foreach kept vanishing before
+// they reached the renderers. The schema (#/definitions/rollbackStep,
+// additionalProperties:false) remains the gate on what is authorable, so the
+// spread cannot smuggle in junk. `verify` is folded into `expect` and dropped.
 function normalizeRollbackStep(r: any): RollbackStep {
+  const { verify: _verify, ...rest } = r ?? {};
   return {
-    name: r.name,
-    command: r.command,
-    script: r.script,
-    session: r.session,
-    instruction: r.instruction,
-    description: r.description,
-    timeout: r.timeout,
-    pic: r.pic,
-    reviewer: r.reviewer,
+    ...rest,
     evidence: r.evidence ? parseEvidence(r) : undefined,
     expect: extractExpect(r),
     options: r.options
@@ -717,6 +729,34 @@ function normalizeRollbackStep(r: any): RollbackStep {
       ? r.sub_steps.map(normalizeRollbackStep)
       : undefined,
   };
+}
+
+// Expand `foreach`/`matrix` on a list of already-normalized rollback steps,
+// recursing into `sub_steps` — the SAME expansion a normal step gets, via the
+// shared `expandForeachItem`. Runs after normalization so every rollback step
+// (step-level and operation-level) is a flat, pre-expanded RollbackStep[] by the
+// time the renderers and the run loop see it — they need no foreach awareness.
+function expandRollbackForeach(
+  steps: RollbackStep[],
+  contextVars: Record<string, any>,
+): RollbackStep[] {
+  const expanded: RollbackStep[] = [];
+  for (const step of steps) {
+    const withExpandedSubs: RollbackStep = step.sub_steps
+      ? {
+          ...step,
+          sub_steps: expandRollbackForeach(step.sub_steps, contextVars),
+        }
+      : step;
+    expanded.push(
+      ...expandForeachItem(
+        withExpandedSubs,
+        contextVars,
+        `rollback step "${step.name ?? '(unnamed)'}"`,
+      ),
+    );
+  }
+  return expanded;
 }
 
 function assertNoDeprecatedEvidenceFields(data: any, stepName?: string): void {
@@ -777,14 +817,19 @@ async function parseStep(
       }
     : undefined;
 
-  // Parse rollback: normalize both object and array YAML formats to RollbackStep[]
+  // Parse rollback: normalize both object and array YAML formats to
+  // RollbackStep[], then expand any foreach/matrix — a rollback step IS a step,
+  // so it loops the same way. Resolve ${VAR} in the foreach block against the
+  // owning step's variables plus common variables.
   let rollback: RollbackStep[] | undefined;
   if (stepData.rollback) {
-    if (Array.isArray(stepData.rollback)) {
-      rollback = stepData.rollback.map(normalizeRollbackStep);
-    } else {
-      rollback = [normalizeRollbackStep(stepData.rollback)];
-    }
+    const normalized = Array.isArray(stepData.rollback)
+      ? stepData.rollback.map(normalizeRollbackStep)
+      : [normalizeRollbackStep(stepData.rollback)];
+    rollback = expandRollbackForeach(normalized, {
+      ...(importContext?.commonVariables ?? {}),
+      ...(stepData.variables ?? {}),
+    });
   }
 
   return {
@@ -1216,13 +1261,17 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     env_file: rawOperation.env_file,
     steps,
     // Normalize the operation-level rollback plan's steps through the same
-    // recursive normalizer as step-level rollback, so name/sub_steps/expect
-    // shorthand are handled identically in both (no raw-vs-normalized split).
+    // recursive normalizer as step-level rollback, then expand foreach/matrix
+    // the same way normal steps do — so name/sub_steps/expect shorthand AND
+    // loops are handled identically in both (no raw-vs-normalized split).
     rollback: rawOperation.rollback
       ? {
           ...rawOperation.rollback,
           steps: Array.isArray(rawOperation.rollback.steps)
-            ? rawOperation.rollback.steps.map(normalizeRollbackStep)
+            ? expandRollbackForeach(
+                rawOperation.rollback.steps.map(normalizeRollbackStep),
+                commonVariables,
+              )
             : [],
         }
       : undefined,

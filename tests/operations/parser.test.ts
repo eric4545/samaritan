@@ -1374,3 +1374,67 @@ steps:
     );
   });
 });
+
+describe('Rollback foreach/matrix expansion (parity with normal steps)', () => {
+  it('expands operation-level matrix rollback into the cartesian product', async () => {
+    const operation = await parseFixture('rollbackForeach');
+    const steps = operation.rollback?.steps ?? [];
+
+    // REGION(us,eu) × TIER(web,api) = 4 rollback steps
+    assert.strictEqual(steps.length, 4);
+    assert.deepStrictEqual(
+      steps.map((s) => s.name),
+      [
+        'Restart (us, web)',
+        'Restart (us, api)',
+        'Restart (eu, web)',
+        'Restart (eu, api)',
+      ],
+    );
+    // Combo injected into each expanded rollback step's variables
+    assert.strictEqual(steps[0].variables?.REGION, 'us');
+    assert.strictEqual(steps[0].variables?.TIER, 'web');
+    assert.strictEqual(steps[3].variables?.REGION, 'eu');
+    assert.strictEqual(steps[3].variables?.TIER, 'api');
+    // foreach cleared post-expansion
+    for (const s of steps) assert.strictEqual(s.foreach, undefined);
+  });
+
+  it('expands step-level single-var rollback foreach into siblings', async () => {
+    const operation = await parseFixture('rollbackForeach');
+    const rb = operation.steps[0].rollback ?? [];
+
+    assert.strictEqual(rb.length, 2);
+    assert.deepStrictEqual(
+      rb.map((r) => r.name),
+      ['Undo tier (web)', 'Undo tier (api)'],
+    );
+    assert.strictEqual(rb[0].variables?.TIER, 'web');
+    assert.strictEqual(rb[1].variables?.TIER, 'api');
+    assert.strictEqual(rb[0].foreach, undefined);
+  });
+
+  it('expands foreach on a sub-step rollback', async () => {
+    const operation = await parseFixture('rollbackForeach');
+    const subRb = operation.steps[1].sub_steps?.[0].rollback ?? [];
+
+    assert.strictEqual(subRb.length, 2);
+    assert.deepStrictEqual(
+      subRb.map((r) => r.name),
+      ['Revert setting (a)', 'Revert setting (b)'],
+    );
+    assert.strictEqual(subRb[1].variables?.ZONE, 'b');
+  });
+
+  it('carries non-allowlisted fields through the spread normalizer', async () => {
+    // `variables` is injected by foreach; before the spread pass-through the
+    // field-by-field normalizer would have dropped it. This guards the parser
+    // change that stops rollback fields from silently vanishing.
+    const operation = await parseFixture('rollbackForeach');
+    const rb = operation.steps[0].rollback ?? [];
+    assert.ok(
+      rb[0].variables,
+      'expanded rollback step keeps injected variables',
+    );
+  });
+});

@@ -334,58 +334,7 @@
                 "description": "Bug/issue ticket references"
               },
               "foreach": {
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "required": ["var", "values"],
-                    "properties": {
-                      "var": {
-                        "type": "string",
-                        "minLength": 1,
-                        "description": "Variable name to use in iteration"
-                      },
-                      "values": {
-                        "type": "array",
-                        "minItems": 1,
-                        "description": "Array of values to iterate over"
-                      }
-                    },
-                    "additionalProperties": false,
-                    "description": "Single variable foreach loop"
-                  },
-                  {
-                    "type": "object",
-                    "required": ["matrix"],
-                    "properties": {
-                      "matrix": {
-                        "type": "object",
-                        "minProperties": 1,
-                        "additionalProperties": {
-                          "type": "array",
-                          "minItems": 1
-                        },
-                        "description": "Matrix of variables for cartesian product expansion"
-                      },
-                      "include": {
-                        "type": "array",
-                        "items": {
-                          "type": "object"
-                        },
-                        "description": "Additional specific variable combinations to include"
-                      },
-                      "exclude": {
-                        "type": "array",
-                        "items": {
-                          "type": "object"
-                        },
-                        "description": "Specific variable combinations to exclude"
-                      }
-                    },
-                    "additionalProperties": false,
-                    "description": "Matrix expansion with multiple variables (cartesian product)"
-                  }
-                ],
-                "description": "Loop/matrix support for repeatable steps"
+                "$ref": "#/definitions/foreach"
               },
               "section_heading": {
                 "type": "boolean",
@@ -542,119 +491,14 @@
                 "description": "Environment-specific step overrides (can override any step field except 'when' and 'variants')"
               },
               "rollback": {
-                "description": "Rollback steps for this step. Array format preferred; object format accepted for backward compatibility (parser normalizes to array).",
+                "description": "Rollback steps for this step. A rollback step is a full step (see #/definitions/rollbackStep). Array format preferred; object format accepted for backward compatibility (parser normalizes to array).",
                 "oneOf": [
                   {
                     "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "name": { "type": "string" },
-                        "command": { "type": "string" },
-                        "script": {
-                          "type": "string",
-                          "description": "Path to an external shell script (relative to operation file). Content is read and embedded in generated manuals."
-                        },
-                        "instruction": { "type": "string" },
-                        "timeout": { "type": "number", "minimum": 0 },
-                        "session": {
-                          "type": "string",
-                          "description": "Session to run rollback in (defaults to step session)"
-                        },
-                        "description": { "type": "string" },
-                        "pic": { "type": "string" },
-                        "reviewer": { "type": "string" },
-                        "type": { "type": "string" },
-                        "expect": {
-                          "description": "Assert this rollback step's output. String shorthand = expect contains.",
-                          "oneOf": [
-                            { "type": "string" },
-                            { "$ref": "#/definitions/expectConfig" },
-                            {
-                              "type": "array",
-                              "items": { "$ref": "#/definitions/expectConfig" },
-                              "minItems": 1
-                            }
-                          ]
-                        },
-                        "sub_steps": {
-                          "type": "array",
-                          "description": "Nested rollback sub-steps, rendered recursively under this rollback step",
-                          "items": { "$ref": "#/definitions/rollbackStep" }
-                        },
-                        "options": {
-                          "type": "object",
-                          "properties": {
-                            "substitute_vars": {
-                              "type": "boolean",
-                              "default": true
-                            },
-                            "show_command_separately": {
-                              "type": "boolean",
-                              "default": false
-                            }
-                          },
-                          "additionalProperties": false
-                        }
-                      },
-                      "not": {
-                        "required": ["command", "script"]
-                      }
-                    },
+                    "items": { "$ref": "#/definitions/rollbackStep" },
                     "description": "Rollback steps (preferred format)"
                   },
-                  {
-                    "type": "object",
-                    "description": "Single rollback step (backward-compatible object format)",
-                    "properties": {
-                      "name": { "type": "string" },
-                      "command": { "type": "string" },
-                      "script": {
-                        "type": "string",
-                        "description": "Path to an external shell script (relative to operation file). Content is read and embedded in generated manuals."
-                      },
-                      "instruction": { "type": "string" },
-                      "timeout": { "type": "number", "minimum": 0 },
-                      "description": { "type": "string" },
-                      "pic": { "type": "string" },
-                      "reviewer": { "type": "string" },
-                      "type": { "type": "string" },
-                      "expect": {
-                        "description": "Assert this rollback step's output. String shorthand = expect contains.",
-                        "oneOf": [
-                          { "type": "string" },
-                          { "$ref": "#/definitions/expectConfig" },
-                          {
-                            "type": "array",
-                            "items": { "$ref": "#/definitions/expectConfig" },
-                            "minItems": 1
-                          }
-                        ]
-                      },
-                      "sub_steps": {
-                        "type": "array",
-                        "description": "Nested rollback sub-steps, rendered recursively under this rollback step",
-                        "items": { "$ref": "#/definitions/rollbackStep" }
-                      },
-                      "options": {
-                        "type": "object",
-                        "properties": {
-                          "substitute_vars": {
-                            "type": "boolean",
-                            "default": true
-                          },
-                          "show_command_separately": {
-                            "type": "boolean",
-                            "default": false
-                          }
-                        },
-                        "additionalProperties": false
-                      }
-                    },
-                    "not": {
-                      "required": ["command", "script"]
-                    }
-                  }
+                  { "$ref": "#/definitions/rollbackStep" }
                 ]
               },
               "retry": {
@@ -743,12 +587,81 @@
     }
   },
   "definitions": {
+    "foreach": {
+      "description": "Loop/matrix support for repeatable steps",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["var", "values"],
+          "properties": {
+            "var": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Variable name to use in iteration"
+            },
+            "values": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Array of values to iterate over"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Single variable foreach loop"
+        },
+        {
+          "type": "object",
+          "required": ["matrix"],
+          "properties": {
+            "matrix": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "array",
+                "minItems": 1
+              },
+              "description": "Matrix of variables for cartesian product expansion"
+            },
+            "include": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "description": "Additional specific variable combinations to include"
+            },
+            "exclude": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "description": "Specific variable combinations to exclude"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Matrix expansion with multiple variables (cartesian product)"
+        }
+      ]
+    },
     "rollbackStep": {
       "type": "object",
-      "description": "A rollback step. Structurally like a normal step: it may carry an optional name and nest sub_steps (rendered recursively in the rollback plan).",
+      "description": "A rollback step IS a normal step (structurally). It accepts the full step field surface — `name`/`type` are optional, `sub_steps` nest rollbackSteps, and `foreach`/`matrix` expand at parse time just like a normal step. Kept at full parity with the normal-step definition by the guardrail test tests/schemas/rollback-parity.test.ts.",
       "properties": {
+        "id": {
+          "type": "string"
+        },
         "name": {
           "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string",
+          "enum": ["preflight", "flight", "postflight"],
+          "description": "Execution phase of the step"
+        },
+        "if": {
+          "type": "string",
+          "description": "Condition for conditional steps"
         },
         "description": {
           "type": "string"
@@ -767,12 +680,20 @@
           "type": "number",
           "minimum": 0
         },
+        "estimated_duration": {
+          "type": "number",
+          "minimum": 0
+        },
+        "env": {
+          "type": "object"
+        },
+        "variables": {
+          "type": "object",
+          "description": "Step-scoped variables that override environment and common variables"
+        },
         "session": {
           "type": "string",
           "description": "Session to run rollback in (defaults to step session)"
-        },
-        "type": {
-          "type": "string"
         },
         "pic": {
           "type": "string",
@@ -781,6 +702,47 @@
         "reviewer": {
           "type": "string",
           "description": "Reviewer/buddy who verifies this rollback step"
+        },
+        "continue_on_error": {
+          "type": "boolean"
+        },
+        "needs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "manual_override": {
+          "type": "boolean"
+        },
+        "manual_instructions": {
+          "type": "string"
+        },
+        "section_heading": {
+          "type": "boolean",
+          "description": "If true, render as a new markdown heading instead of table row"
+        },
+        "foreach": {
+          "$ref": "#/definitions/foreach"
+        },
+        "capture": {
+          "$ref": "#/properties/steps/items/oneOf/1/properties/capture"
+        },
+        "ticket": {
+          "$ref": "#/properties/steps/items/oneOf/1/properties/ticket"
+        },
+        "timeline": {
+          "$ref": "#/properties/steps/items/oneOf/1/properties/timeline"
+        },
+        "when": {
+          "$ref": "#/properties/steps/items/oneOf/1/properties/when"
+        },
+        "variants": {
+          "$ref": "#/properties/steps/items/oneOf/1/properties/variants"
+        },
+        "retry": {
+          "$ref": "#/properties/steps/items/oneOf/1/properties/retry"
+        },
+        "approval": {
+          "$ref": "#/properties/steps/items/oneOf/1/properties/approval"
         },
         "evidence": {
           "$ref": "#/properties/steps/items/oneOf/1/properties/evidence"
@@ -803,23 +765,13 @@
           "items": { "$ref": "#/definitions/rollbackStep" }
         },
         "options": {
-          "type": "object",
-          "properties": {
-            "substitute_vars": {
-              "type": "boolean",
-              "default": true,
-              "description": "Substitute ${VAR} in instruction and command (default: true)"
-            },
-            "show_command_separately": {
-              "type": "boolean",
-              "default": false,
-              "description": "Show command in separate section from instruction (default: false)"
-            }
-          },
-          "additionalProperties": false
+          "$ref": "#/properties/steps/items/oneOf/1/properties/options"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "not": {
+        "required": ["command", "script"]
+      }
     },
     "expectConfig": {
       "type": "object",

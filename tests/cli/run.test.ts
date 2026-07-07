@@ -27,6 +27,7 @@ function fixturePath(name: string): string {
     foreachLoop: 'tests/fixtures/operations/features/foreach-loop.yaml',
     aggregatedGlobalRollback:
       'tests/fixtures/operations/features/aggregated-global-rollback.yaml',
+    rollbackForeach: 'tests/fixtures/operations/features/rollback-foreach.yaml',
   };
   return resolve(map[name]);
 }
@@ -909,6 +910,32 @@ describe('run command: ${VAR} rendering in step display', () => {
       combined.includes('Notify on-call'),
       'preview must include the explicit operation-level rollback step',
     );
+  });
+
+  it('[g] global rollback previews every matrix-expanded rollback step', () => {
+    // The operation-level rollback plan uses a matrix foreach (2×2). The run
+    // loop consumes the flat, pre-expanded RollbackStep[], so the preview must
+    // list all four combinations — not a single un-expanded step.
+    const fixture = fixturePath('rollbackForeach');
+    const result = runCli(['run', fixture, '--env', 'production'], {
+      input: 'g\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Global rollback will run the following'),
+      'g must preview the consolidated rollback',
+    );
+    for (const combo of [
+      'Restart (us, web)',
+      'Restart (us, api)',
+      'Restart (eu, web)',
+      'Restart (eu, api)',
+    ]) {
+      assert.ok(
+        combined.includes(combo),
+        `preview must include expanded rollback step "${combo}"; output:\n${combined.slice(-1500)}`,
+      );
+    }
   });
 
   it('warns about unresolved variables instead of failing silently', () => {
