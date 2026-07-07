@@ -446,6 +446,29 @@ function renderTableInstruction(
 }
 
 /**
+ * Label for one entry in a MULTI-entry step-level rollback (foreach-expanded or
+ * hand-authored siblings). Uses the rollback step's own `name` (already carries
+ * the foreach suffix, e.g. `Undo tier (web)`), resolving any remaining `${VAR}`
+ * against common + step variables; falls back to `Rollback N` when unnamed.
+ * Not emitted for single-entry rollbacks, so their output is unchanged.
+ */
+function rollbackEntryLabel(
+  rb: RollbackStep,
+  index: number,
+  commonVariables: Record<string, any>,
+  stepVariables: Record<string, any> | undefined,
+  resolveVariables: boolean,
+): string {
+  if (!rb.name) return `Rollback ${index + 1}`;
+  return resolveVariables
+    ? substituteVariables(rb.name, commonVariables, {
+        ...stepVariables,
+        ...rb.variables,
+      })
+    : rb.name;
+}
+
+/**
  * Render a single rollback step's content as a Markdown table cell (the `<br>`
  * inline style used by the multi-env tables). Shared by step-level and
  * operation-level (global) rollback rendering.
@@ -877,24 +900,29 @@ function generateStepRow(
 
     // Render rollbacks for all sub-steps AFTER all sub-steps are rendered
     step.sub_steps.forEach((subStep, subIndex) => {
-      const rb = subStep.rollback?.[0];
-      if (hasRollbackContent(rb)) {
-        const subStepLetter = indexToLetters(subIndex);
-        const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
+      const subRollbacks = (subStep.rollback ?? []).filter(hasRollbackContent);
+      if (subRollbacks.length === 0) return;
 
-        // Close current table (the next step row reopens lazily)
-        rows += closeStepTable(tableState);
+      const subStepLetter = indexToLetters(subIndex);
+      const subStepPrefix = `${prefix}${stepNumber}${subStepLetter}`;
 
-        // Add rollback heading (h4 level for sub-step rollbacks)
-        const subStepRollbackName = resolveVariables
-          ? substituteVariables(
-              subStep.name,
-              commonVariables ?? {},
-              subStep.variables,
-            )
-          : subStep.name;
-        rows += `#### 🔄 Rollback for Step ${subStepPrefix}: ${subStepRollbackName}\n\n`;
+      // Close current table (the next step row reopens lazily)
+      rows += closeStepTable(tableState);
 
+      // Add rollback heading (h4 level for sub-step rollbacks)
+      const subStepRollbackName = resolveVariables
+        ? substituteVariables(
+            subStep.name,
+            commonVariables ?? {},
+            subStep.variables,
+          )
+        : subStep.name;
+      rows += `#### 🔄 Rollback for Step ${subStepPrefix}: ${subStepRollbackName}\n\n`;
+
+      subRollbacks.forEach((rb, rbIndex) => {
+        if (subRollbacks.length > 1) {
+          rows += `**${rollbackEntryLabel(rb, rbIndex, commonVariables ?? {}, subStep.variables, resolveVariables)}**\n\n`;
+        }
         // Render rollback table (shared cell renderer; sub_steps inline)
         rows += '| Environment | Rollback Action |\n';
         rows += '|-------------|----------------|\n';
@@ -914,7 +942,7 @@ function generateStepRow(
         // Blank line after the rollback table; the next step row reopens the
         // step table lazily, so no dangling empty header is emitted here.
         rows += '\n';
-      }
+      });
     });
   }
 
@@ -1184,30 +1212,37 @@ function generateSubStepRow(
 
     // Render rollbacks for all nested sub-steps AFTER all nested sub-steps are rendered
     step.sub_steps.forEach((nestedSubStep, nestedIndex) => {
-      const rb = nestedSubStep.rollback?.[0];
-      if (hasRollbackContent(rb)) {
-        let nestedStepId: string;
-        if (depth % 2 === 1) {
-          nestedStepId = `${stepId}${nestedIndex + 1}`;
-        } else {
-          const letter = indexToLetters(nestedIndex);
-          nestedStepId = `${stepId}${letter}`;
+      const nestedRollbacks = (nestedSubStep.rollback ?? []).filter(
+        hasRollbackContent,
+      );
+      if (nestedRollbacks.length === 0) return;
+
+      let nestedStepId: string;
+      if (depth % 2 === 1) {
+        nestedStepId = `${stepId}${nestedIndex + 1}`;
+      } else {
+        const letter = indexToLetters(nestedIndex);
+        nestedStepId = `${stepId}${letter}`;
+      }
+
+      // Close current table (the next step row reopens lazily)
+      rows += closeStepTable(tableState);
+
+      // Determine heading level based on depth
+      const headingLevel = '#'.repeat(Math.min(3 + depth, 6));
+      const nestedRollbackName = resolveVariables
+        ? substituteVariables(
+            nestedSubStep.name,
+            commonVariables ?? {},
+            nestedSubStep.variables,
+          )
+        : nestedSubStep.name;
+      rows += `${headingLevel} 🔄 Rollback for Step ${nestedStepId}: ${nestedRollbackName}\n\n`;
+
+      nestedRollbacks.forEach((rb, rbIndex) => {
+        if (nestedRollbacks.length > 1) {
+          rows += `**${rollbackEntryLabel(rb, rbIndex, commonVariables ?? {}, nestedSubStep.variables, resolveVariables)}**\n\n`;
         }
-
-        // Close current table (the next step row reopens lazily)
-        rows += closeStepTable(tableState);
-
-        // Determine heading level based on depth
-        const headingLevel = '#'.repeat(Math.min(3 + depth, 6));
-        const nestedRollbackName = resolveVariables
-          ? substituteVariables(
-              nestedSubStep.name,
-              commonVariables ?? {},
-              nestedSubStep.variables,
-            )
-          : nestedSubStep.name;
-        rows += `${headingLevel} 🔄 Rollback for Step ${nestedStepId}: ${nestedRollbackName}\n\n`;
-
         // Render rollback table (shared cell renderer; sub_steps inline)
         rows += '| Environment | Rollback Action |\n';
         rows += '|-------------|----------------|\n';
@@ -1227,7 +1262,7 @@ function generateSubStepRow(
         // Blank line after the rollback table; the next step row reopens the
         // step table lazily, so no dangling empty header is emitted here.
         rows += '\n';
-      }
+      });
     });
   }
 
@@ -1495,9 +1530,13 @@ function generateManualContent(
           tableState,
         );
 
-        // Inline rollback rendering - render immediately after step if present
-        const rb = step.rollback?.[0];
-        if (hasRollbackContent(rb)) {
+        // Inline rollback rendering - render immediately after step if present.
+        // A step may have MULTIPLE rollback entries (e.g. foreach-expanded, or
+        // hand-authored siblings); render every one, not just [0].
+        const inlineRollbacks = (step.rollback ?? []).filter(
+          hasRollbackContent,
+        );
+        if (inlineRollbacks.length > 0) {
           // Close current table (next step row reopens lazily)
           markdown += closeStepTable(tableState);
 
@@ -1511,25 +1550,33 @@ function generateManualContent(
             : step.name;
           markdown += `### 🔄 Rollback for Step ${globalStepNumber}: ${rollbackHeadingName}\n\n`;
 
-          // Render rollback table (shared cell renderer; sub_steps inline)
-          markdown += '| Environment | Rollback Action |\n';
-          markdown += '|-------------|----------------|\n';
+          inlineRollbacks.forEach((rb, rbIndex) => {
+            // Only multi-entry rollbacks get a per-entry label; single-entry
+            // output is unchanged (one table, no label).
+            if (inlineRollbacks.length > 1) {
+              markdown += `**${rollbackEntryLabel(rb, rbIndex, operation.common_variables ?? {}, step.variables, resolveVariables)}**\n\n`;
+            }
 
-          operation.environments.forEach((env) => {
-            const cellContent = renderRollbackCellMarkdown(
-              rb,
-              env,
-              resolveVariables,
-              operationDir,
-              step.variables,
-              true,
-            );
-            markdown += `| ${env.name} | ${cellContent} |\n`;
+            // Render rollback table (shared cell renderer; sub_steps inline)
+            markdown += '| Environment | Rollback Action |\n';
+            markdown += '|-------------|----------------|\n';
+
+            operation.environments.forEach((env) => {
+              const cellContent = renderRollbackCellMarkdown(
+                rb,
+                env,
+                resolveVariables,
+                operationDir,
+                step.variables,
+                true,
+              );
+              markdown += `| ${env.name} | ${cellContent} |\n`;
+            });
+
+            // Blank line after the rollback table; the next step row reopens the
+            // step table lazily, so no dangling empty header is emitted here.
+            markdown += '\n';
           });
-
-          // Blank line after the rollback table; the next step row reopens the
-          // step table lazily, so no dangling empty header is emitted here.
-          markdown += '\n';
         }
 
         globalStepNumber++; // Increment for next step
@@ -1549,8 +1596,8 @@ function generateManualContent(
       'If deployment fails, execute the following rollback steps:\n\n';
 
     stepsWithRollback.forEach((step, _index) => {
-      const rb = step.rollback?.[0];
-      if (!rb) return;
+      const sectionRollbacks = (step.rollback ?? []).filter(hasRollbackContent);
+      if (sectionRollbacks.length === 0) return;
 
       const rollbackSectionName = resolveVariables
         ? substituteVariables(
@@ -1561,7 +1608,10 @@ function generateManualContent(
         : step.name;
       markdown += `### Rollback for: ${rollbackSectionName}\n\n`;
 
-      if (hasRollbackContent(rb)) {
+      sectionRollbacks.forEach((rb, rbIndex) => {
+        if (sectionRollbacks.length > 1) {
+          markdown += `**${rollbackEntryLabel(rb, rbIndex, operation.common_variables ?? {}, step.variables, resolveVariables)}**\n\n`;
+        }
         markdown += '| Environment | Rollback Action |\n';
         markdown += '|-------------|----------------|\n';
 
@@ -1578,7 +1628,7 @@ function generateManualContent(
         });
 
         markdown += '\n';
-      }
+      });
     });
   }
 
@@ -1823,15 +1873,16 @@ export function generateSingleEnvManual(
     // Render step-level rollback AFTER sub_steps (mirrors multi-env inline
     // rollback position). Reuses the same recursive renderer as the
     // operation-level plan, so a step-level rollback's own sub_steps render too.
-    const rb = effectiveStep.rollback?.[0];
-    if (hasRollbackContent(rb)) {
+    // Renders EVERY entry (foreach-expanded or hand-authored siblings); the
+    // renderer puts each rollback step's own name in its heading.
+    (effectiveStep.rollback ?? []).filter(hasRollbackContent).forEach((rb) => {
       renderRollbackStepSingleEnv(
         rb,
         '🔄 Rollback',
         Math.min(headingLevel + 1, 6),
         effectiveStep.variables ?? {},
       );
-    }
+    });
   }
 
   // Render one rollback step (and its nested sub_steps) recursively. Shared by

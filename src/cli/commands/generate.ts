@@ -624,10 +624,14 @@ ${step.evidence?.required ? `**Evidence Required**: ${step.evidence.types?.join(
 ${step.continue_on_error ? `**Continue on Error**: Yes` : ''}
 
 ${(() => {
-  const rb = step.rollback?.[0];
-  return rb
-    ? `**Rollback**:\n${rb.command ? `\`${rb.command}\`` : rb.instruction || 'See rollback instructions'}`
-    : '';
+  const rbs = (step.rollback ?? []).filter(hasRollbackContent);
+  if (rbs.length === 0) return '';
+  return `**Rollback**:\n${rbs
+    .map(
+      (rb: any) =>
+        `${rb.command ? `\`${rb.command}\`` : rb.instruction || 'See rollback instructions'}`,
+    )
+    .join('\n')}`;
 })()}
 `,
   )
@@ -1516,15 +1520,22 @@ ${filteredOperation.environments
           );
         }
 
-        // Render rollback for step AFTER all content (inline rendering)
-        // For parent steps with sub_steps, this renders after sub-steps
-        // For regular steps, this renders after the step row
-        const rb = step.rollback?.[0];
-        if (hasRollbackContent(rb)) {
+        // Render rollback for step AFTER all content (inline rendering).
+        // For parent steps with sub_steps, this renders after sub-steps; for
+        // regular steps, after the step row. Renders EVERY entry (foreach-
+        // expanded or hand-authored siblings), not just [0].
+        const stepRollbacks = (step.rollback ?? []).filter(hasRollbackContent);
+        stepRollbacks.forEach((rb: any, rbIndex: number) => {
+          // Disambiguate multiple entries in the heading via the rollback
+          // step's own (foreach-suffixed) name; single-entry output unchanged.
+          const rbHeadingName =
+            stepRollbacks.length > 1
+              ? `${resolveStepName(step.name, step.variables)} — ${rb.name ? resolveStepName(rb.name, { ...step.variables, ...rb.variables }) : `Rollback ${rbIndex + 1}`}`
+              : resolveStepName(step.name, step.variables);
           content += renderInlineRollback(
             rb,
             `${stepNumber}`,
-            resolveStepName(step.name, step.variables),
+            rbHeadingName,
             3, // h3 for parent steps
             filteredOperation.environments,
             resolveVars,
@@ -1536,7 +1547,7 @@ ${filteredOperation.environments
           );
           // Rollback closes the table, so mark it as closed
           tableOpen = false;
-        }
+        });
       },
     );
 
@@ -2140,15 +2151,20 @@ function addConfluenceSubStepRows(
         commonVariables,
       );
 
-      // Render rollback for sub-step AFTER all nested sub-steps (inline rendering)
-      const subRb = subStep.rollback?.[0];
-      if (hasRollbackContent(subRb)) {
+      // Render rollback for sub-step AFTER all nested sub-steps (inline
+      // rendering). Renders EVERY entry, not just [0].
+      const subRollbacks = (subStep.rollback ?? []).filter(hasRollbackContent);
+      subRollbacks.forEach((subRb: any, subRbIndex: number) => {
         // Calculate parent heading level (same formula as section heading)
         const parentHeadingLevel = Math.min(4 + Math.ceil((depth - 1) / 2), 6);
+        const subRbHeadingName =
+          subRollbacks.length > 1
+            ? `${resolveSubStepName(subStep.name, subStep.variables)} — ${subRb.name ? resolveSubStepName(subRb.name, { ...subStep.variables, ...subRb.variables }) : `Rollback ${subRbIndex + 1}`}`
+            : resolveSubStepName(subStep.name, subStep.variables);
         content += renderInlineRollback(
           subRb,
           subStepId,
-          resolveSubStepName(subStep.name, subStep.variables),
+          subRbHeadingName,
           parentHeadingLevel,
           environments,
           resolveVars,
@@ -2158,7 +2174,7 @@ function addConfluenceSubStepRows(
           formatEvidenceArea,
           operationDir,
         );
-      }
+      });
     }
   });
 

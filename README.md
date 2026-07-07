@@ -1905,7 +1905,7 @@ steps:
         session: execution
 ```
 
-A step-level rollback step is structurally **just like a normal step**: it may also carry an optional `name` and nested `sub_steps` for a multi-part rollback, which render recursively in every manual format:
+A step-level rollback step is structurally **just like a normal step**: it may also carry an optional `name`, nested `sub_steps` for a multi-part rollback, and even `foreach`/`matrix` (see [below](#loop-a-rollback-step-with-foreachmatrix)) — all of which render recursively in every manual format. Both entries above render (not just the first):
 
 ```yaml
     rollback:
@@ -1951,6 +1951,23 @@ rollback:
 ```
 
 This renders as a **🔄 Rollback Plan** section in every generated manual — Markdown (multi-env table and single-env headings), Confluence ADF/JSON, and Confluence wiki markup — showing the `automatic` flag, `conditions`, and each rollback step per environment. Nested `sub_steps` render recursively as **Rollback Step N**, **N.M**, **N.M.K**, … (see `examples/rollback-with-substeps.yaml`).
+
+#### Loop a rollback step with `foreach`/`matrix`
+
+Because a rollback step **is** a normal step, it supports the same [`foreach`/`matrix`](#foreach-loops) expansion. One rollback definition expands at parse time into one rollback step per combination — for both the operation-level plan and per-step `rollback:`:
+
+```yaml
+rollback:
+  steps:
+    - name: Restart web
+      foreach:
+        matrix:
+          REGION: [us-east-1, eu-west-1]
+          TIER: [web, api]
+      command: kubectl rollout restart deployment/web -n ${REGION}-${TIER}
+```
+
+This yields four rollback steps (`Restart web (us-east-1, web)`, …), each rendered in every format. A step may also carry **multiple** rollback entries (authored or foreach-expanded); all of them render. See `examples/rollback-with-foreach.yaml`.
 
 #### Group per-step rollbacks into the global rollback (`aggregate_step_rollbacks`)
 
