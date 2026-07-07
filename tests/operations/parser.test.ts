@@ -159,10 +159,13 @@ describe('Enhanced Operation Parser', () => {
     );
 
     // Verify each expanded step
+    // The foreach loop value is a parse-time constant, so it is baked into the
+    // expanded step's command (not left as a literal ${SERVICE}); the loop var
+    // is still retained in `variables` for generation-time resolution.
     assert.strictEqual(operation.steps[0].name, 'Deploy Service (backend)');
     assert.strictEqual(
       operation.steps[0].command,
-      'kubectl apply -f ${SERVICE}.yaml -n production',
+      'kubectl apply -f backend.yaml -n production',
     );
     assert.strictEqual(operation.steps[0].variables?.SERVICE, 'backend');
     assert.strictEqual(
@@ -174,14 +177,14 @@ describe('Enhanced Operation Parser', () => {
     assert.strictEqual(operation.steps[1].name, 'Deploy Service (frontend)');
     assert.strictEqual(
       operation.steps[1].command,
-      'kubectl apply -f ${SERVICE}.yaml -n production',
+      'kubectl apply -f frontend.yaml -n production',
     );
     assert.strictEqual(operation.steps[1].variables?.SERVICE, 'frontend');
 
     assert.strictEqual(operation.steps[2].name, 'Deploy Service (worker)');
     assert.strictEqual(
       operation.steps[2].command,
-      'kubectl apply -f ${SERVICE}.yaml -n production',
+      'kubectl apply -f worker.yaml -n production',
     );
     assert.strictEqual(operation.steps[2].variables?.SERVICE, 'worker');
 
