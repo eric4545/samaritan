@@ -172,7 +172,11 @@ vars → `step.variables`. Examples: `examples/reuse-envs-a.yaml`,
 ```
 `${VAR}` inside `foreach` resolves at parse time against
 `common_variables` + `variables`; env-specific vars resolve later via
-`--resolve-vars`. See `examples/foreach-variable-values.yaml`.
+`--resolve-vars`. The loop value itself is a parse-time constant, so it is
+baked into the expanded step's **content** (command/script/instruction/expect/
+sub_steps) as well as its title — the manual shows the resolved value even
+without `--resolve-vars`. Only env-specific `${VAR}`s stay deferred. See
+`examples/foreach-variable-values.yaml`.
 
 ## Phase grouping is block-aware
 

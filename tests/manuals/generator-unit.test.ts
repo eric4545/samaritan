@@ -1670,6 +1670,50 @@ kubectl apply -f worker.yaml`,
     );
   });
 
+  it('bakes matrix foreach loop values into commands without --resolve-vars', async () => {
+    // Regression: the expanded step TITLE showed the resolved combo
+    // (e.g. "(us-east-1, web)") but the command kept a literal ${REGION}/${TIER}
+    // unless the user passed --resolve-vars. A foreach loop value is a parse-time
+    // constant, so it must render in the command everywhere the title does.
+    const operation = await parseFixture('matrixForeach');
+
+    // The unresolved command that must NOT appear once the loop value is baked in
+    const literalCommand =
+      'kubectl apply -f ${TIER}-service.yaml --context ${REGION}';
+
+    // Multi-env markdown (no --resolve-vars)
+    const multiEnv = generateManual(operation);
+    assert(
+      multiEnv.includes(
+        'kubectl apply -f web-service.yaml --context us-east-1',
+      ),
+      'multi-env: us-east-1/web command should be resolved',
+    );
+    assert(
+      multiEnv.includes(
+        'kubectl apply -f api-service.yaml --context eu-west-1',
+      ),
+      'multi-env: eu-west-1/api command should be resolved',
+    );
+    assert(
+      !multiEnv.includes(literalCommand),
+      'multi-env: no literal ${REGION}/${TIER} command should remain',
+    );
+
+    // Single-env markdown (separate code path, also no --resolve-vars)
+    const singleEnv = generateSingleEnvManual(operation, 'production');
+    assert(
+      singleEnv.includes(
+        'kubectl apply -f web-service.yaml --context us-east-1',
+      ),
+      'single-env: us-east-1/web command should be resolved',
+    );
+    assert(
+      !singleEnv.includes(literalCommand),
+      'single-env: no literal ${REGION}/${TIER} command should remain',
+    );
+  });
+
   it('should include Gantt chart when requested with timeline data', (_t) => {
     const testOperation: Operation = {
       id: 'test-gantt',

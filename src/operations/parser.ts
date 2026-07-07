@@ -328,8 +328,24 @@ function expandForeachItem<
       item as unknown as Step,
       combo,
     ) as unknown as T;
+    // A foreach loop value is a parse-time constant, so it must render in the
+    // expanded step's CONTENT (command/script/instruction/expect/sub_steps),
+    // not just its title — otherwise the manual shows "Step: … (build-check)"
+    // next to a literal `${SPEC_DIR}` command unless the user passes
+    // `--resolve-vars`. Only bake in combo values that are themselves literals;
+    // values still holding a `${VAR}` reference (e.g. a matrix value pulled from
+    // an env var) stay deferred to generation-time `--resolve-vars` (unchanged
+    // behaviour). The full combo is still injected into `variables` above, so
+    // `--resolve-vars` and the run loop keep working. Unmatched `${VAR}`s pass
+    // through untouched (partial substitution).
+    const literalCombo = Object.fromEntries(
+      Object.entries(combo).filter(
+        ([, value]) => typeof value !== 'string' || !value.includes('${'),
+      ),
+    );
+    const resolved = substituteVariables(injected, literalCombo) as T;
     return {
-      ...injected,
+      ...resolved,
       id: item.id ? `${item.id}-${j}` : undefined,
       name: item.name ? `${item.name} (${varSuffix})` : varSuffix,
       foreach: undefined,
