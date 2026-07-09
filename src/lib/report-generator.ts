@@ -67,7 +67,12 @@ export function renderReport(
   lines.push('');
   lines.push('## Summary');
   lines.push('');
-  lines.push(`- Steps completed: ${stepsCompleted}/${steps.length}`);
+  const declaredTotal =
+    typeof sessionStart?.total_steps === 'number'
+      ? sessionStart.total_steps
+      : 0;
+  const totalSteps = Math.max(declaredTotal, steps.length);
+  lines.push(`- Steps completed: ${stepsCompleted}/${totalSteps}`);
   if (stepsSkipped > 0) {
     lines.push(`- Steps skipped: ${stepsSkipped}`);
   }

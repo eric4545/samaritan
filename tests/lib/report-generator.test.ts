@@ -58,6 +58,45 @@ describe('renderReport — terminal-noise cleaning', () => {
   });
 });
 
+describe('renderReport — steps-completed count', () => {
+  it('aborted run counts only completed steps against the true total', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml', total_steps: 5 }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_complete', step: 1 }),
+      ev({ type: 'step_start', step: 2, name: 'C (aborted)' }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(md.includes('Steps completed: 2/5'), `expected 2/5, got:\n${md}`);
+  });
+
+  it('falls back to reached-step count when total_steps is absent', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml' }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_complete', step: 1 }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    assert.ok(md.includes('Steps completed: 2/2'), `expected 2/2, got:\n${md}`);
+  });
+
+  it('does not count a failed step as completed', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml', total_steps: 3 }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_failed', step: 1, reason: 'boom' }),
+      ev({ type: 'session_end', status: 'aborted' }),
+    ]);
+    assert.ok(md.includes('Steps completed: 1/3'), `expected 1/3, got:\n${md}`);
+  });
+});
+
 describe('renderReport — operator-local path redaction', () => {
   it('strips run-dir and op-dir prefixes and collapses home to ~', () => {
     const home = homedir();
