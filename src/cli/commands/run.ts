@@ -726,7 +726,11 @@ class OperationRunner {
       });
     };
 
-    logger.emit({ type: 'session_start', op: operationFile });
+    logger.emit({
+      type: 'session_start',
+      op: operationFile,
+      total_steps: state.totalSteps,
+    });
 
     if (tmuxSession && operation.sessions) {
       for (const [name, pane] of tmuxSession.getPaneMap().entries()) {
