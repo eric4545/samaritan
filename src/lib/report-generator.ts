@@ -54,7 +54,8 @@ export function renderReport(
   const duration =
     firstTs && lastTs ? calcDuration(firstTs, lastTs) : 'unknown';
 
-  const stepsCompleted = steps.filter((s) => s.status !== 'failed').length;
+  const stepsCompleted = steps.filter((s) => s.status === 'completed').length;
+  const stepsSkipped = steps.filter((s) => s.status === 'skipped').length;
 
   // Build Markdown
   const lines: string[] = [];
@@ -67,6 +68,9 @@ export function renderReport(
   lines.push('## Summary');
   lines.push('');
   lines.push(`- Steps completed: ${stepsCompleted}/${steps.length}`);
+  if (stepsSkipped > 0) {
+    lines.push(`- Steps skipped: ${stepsSkipped}`);
+  }
   lines.push(`- Duration: ${duration}`);
 
   const pics = [...new Set(steps.flatMap((s) => (s.pic ? [s.pic] : [])))];
@@ -137,7 +141,8 @@ function renderStep(step: StepRecord, redact: Redact): string[] {
   const lines: string[] = [];
   const stepNum = step.index + 1;
   const firstCmd = step.commands[0];
-  lines.push(`## Step ${stepNum}: ${step.name}`);
+  const skippedSuffix = step.status === 'skipped' ? ' ⏭ (skipped)' : '';
+  lines.push(`## Step ${stepNum}: ${step.name}${skippedSuffix}`);
   lines.push('');
 
   if (step.started_at) {

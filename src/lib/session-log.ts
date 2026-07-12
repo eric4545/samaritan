@@ -181,6 +181,30 @@ export function foldEvents(events: SessionEvent[]): {
         break;
       }
 
+      case 'step_skip': {
+        // A jumped-over or explicitly-skipped step. The step may never have
+        // emitted step_start (jumped steps are never visited by the loop), so
+        // create the record if absent, then mark it skipped.
+        const index = event.step as number;
+        let rec = stepsByIndex.get(index);
+        if (!rec) {
+          rec = {
+            index,
+            name: event.name as string,
+            status: 'skipped',
+            started_at: event.ts,
+            commands: [],
+            notes: [],
+            evidence: [],
+          };
+          stepsByIndex.set(index, rec);
+        } else {
+          rec.status = 'skipped';
+        }
+        rec.ended_at = event.ts;
+        break;
+      }
+
       case 'step_failed': {
         if (currentStep) {
           currentStep.status = 'failed';

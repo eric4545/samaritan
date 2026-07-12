@@ -14,6 +14,7 @@ export type EventType =
   | 'evidence_removed'
   | 'user_input'
   | 'step_complete'
+  | 'step_skip'
   | 'step_failed'
   | 'step_timeout'
   | 'rollback_start'
