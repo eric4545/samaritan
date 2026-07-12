@@ -94,6 +94,7 @@ interface RunOptions {
   verbose?: boolean;
   continueOnError?: boolean;
   report?: string;
+  fromStep?: number;
 }
 
 interface ResumeOptions {
@@ -321,6 +322,29 @@ class OperationRunner {
 
         console.log('▶️  Starting interactive operation execution...\n');
         executor.startInteractive();
+        if (options.fromStep !== undefined) {
+          const total = executor.getState().steps.length;
+          if (
+            !Number.isInteger(options.fromStep) ||
+            options.fromStep < 1 ||
+            options.fromStep > total
+          ) {
+            console.error(`❌ --from-step must be between 1 and ${total}`);
+            process.exit(1);
+          }
+          // Mark 1..N-1 as skipped and start the loop at step N. Persist the
+          // jumped index immediately so an abort/crash before completing the
+          // target step still resumes there (the loop's persistProgress only
+          // runs after a step is acted on).
+          executor.jumpToStep(options.fromStep - 1);
+          sessionManager.updateSessionFromExecutor(
+            session.id,
+            executor.getState(),
+          );
+          console.log(
+            `⏭  Starting at step ${options.fromStep} — earlier steps recorded as skipped.\n`,
+          );
+        }
         const logPath = await this.runInteractiveStepLoop(
           executor,
           operation,
@@ -575,6 +599,7 @@ class OperationRunner {
       't',
       'p',
       'b',
+      'j',
       's',
       'r',
       'g',
@@ -1363,11 +1388,26 @@ class OperationRunner {
     try {
       const steps = executor.getState().steps;
 
-      for (
-        let i = executor.getState().currentStepIndex;
-        i < steps.length;
-        i++
-      ) {
+      // Record a step as skipped in the black box so the report/step_log shows
+      // it (StepRecord.status 'skipped'). Used by [j] jump and run --from-step.
+      const logSkip = (k: number): void => {
+        logger.emit({
+          type: 'step_skip',
+          step: k,
+          name: flatSteps[k].step.name,
+        });
+      };
+
+      // run --from-step marks steps before the start index as skipped in the
+      // executor BEFORE this loop runs (which never visits them). Log those
+      // skips up front so they appear in the report. Resume marks prior steps
+      // 'completed' instead, so this only fires for a startup jump.
+      const startIndex = executor.getState().currentStepIndex;
+      for (let k = 0; k < startIndex; k++) {
+        if (steps[k].status === 'skipped') logSkip(k);
+      }
+
+      for (let i = startIndex; i < steps.length; i++) {
         const { step } = steps[i];
         const stepNum = `[${flatSteps[i].label}/${steps.length}]`;
         const typeLabel = step.type.toUpperCase();
@@ -1574,9 +1614,12 @@ class OperationRunner {
           };
 
           let manualNotes = '';
-          // Set by the [b] back action: the index to re-run from. Handled right
-          // after the inner loop so step execution is bypassed.
+          // Set by the [b] back / [j] jump actions: the index to navigate to.
+          // Handled right after the inner loop so step execution is bypassed.
+          // navIsJump distinguishes a forward jump (skip intermediate steps)
+          // from a backward rewind (reset later steps to pending).
           let navTarget: number | undefined;
+          let navIsJump = false;
           while (true) {
             const evidenceForStep = stepEvidence(i);
             if (step.expect) {
@@ -1602,6 +1645,9 @@ class OperationRunner {
                     ? [{ key: 'p', label: 'send to pane' }]
                     : []),
                   ...(i > 0 ? [{ key: 'b', label: 'back' }] : []),
+                  ...(i < steps.length - 1
+                    ? [{ key: 'j', label: 'jump' }]
+                    : []),
                   { key: 's', label: 'skip' },
                   { key: 'r', label: 'rollback' },
                   ...globalRollbackMenuItem,
@@ -1792,6 +1838,42 @@ class OperationRunner {
               navTarget = picked - 1;
               break;
             }
+            if (
+              i < steps.length - 1 &&
+              (inputChoice === 'j' || inputChoice === 'jump')
+            ) {
+              // [j] — jump forward to a later step. Steps in between are marked
+              // skipped (see executor.jumpToStep). Single sub-prompt (number)
+              // keeps within the readline batch-stdin constraint (Gotcha #3).
+              console.log(
+                '\n    Jump to which step? (steps in between are marked skipped)',
+              );
+              for (let k = i + 1; k < steps.length; k++) {
+                console.log(
+                  `      ${k + 1}) [${flatSteps[k].label}] ${steps[k].step.name} (${steps[k].status})`,
+                );
+              }
+              const ans = (
+                await question('    Step number [Enter to cancel]: ')
+              ).trim();
+              if (!ans) {
+                console.log('    ↩  Cancelled.');
+                continue;
+              }
+              const picked = Number.parseInt(ans, 10);
+              if (
+                !Number.isInteger(picked) ||
+                picked < i + 2 ||
+                picked > steps.length ||
+                String(picked) !== ans
+              ) {
+                console.log('    ⚠️  Invalid step.');
+                continue;
+              }
+              navTarget = picked - 1;
+              navIsJump = true;
+              break;
+            }
             if (hasGlobalRollback && isGlobalRollback(inputChoice)) {
               if (await doGlobalRollback(i)) {
                 manualNotes = '';
@@ -1806,21 +1888,33 @@ class OperationRunner {
           // If the loop exited via [q]/quit, executor was already cancelled.
           if (executor.getState().status === 'cancelled') break;
 
-          // [b] back: rewind to the chosen step and re-enter it, bypassing the
-          // step-execution block below. Setting i = t - 1 lets the outer for's
-          // i++ land exactly on the target.
+          // [b] back / [j] jump: navigate to the chosen step and re-enter it,
+          // bypassing the step-execution block below. Setting i = t - 1 lets the
+          // outer for's i++ land exactly on the target. jumpToStep skips ahead
+          // (marks intermediate steps skipped); goToStep rewinds.
           if (navTarget !== undefined) {
-            executor.goToStep(navTarget);
+            if (navIsJump) {
+              executor.jumpToStep(navTarget);
+              // Record the jumped-over steps (current step i through the target)
+              // as skipped in the black box, so the report reflects them.
+              for (let k = i; k < navTarget; k++) logSkip(k);
+            } else {
+              executor.goToStep(navTarget);
+            }
             persistProgress();
             logger.emit({
               type: 'user_input',
-              action: 'back',
+              action: navIsJump ? 'jump' : 'back',
               step: i,
               actor: state.context.operator,
-              notes: `re-running from step ${navTarget + 1}`,
+              notes: navIsJump
+                ? `jumped to step ${navTarget + 1}`
+                : `re-running from step ${navTarget + 1}`,
             });
             console.log(
-              `    ↩  Going back to step ${navTarget + 1} — re-running from there.`,
+              navIsJump
+                ? `    ⏭  Jumping to step ${navTarget + 1} — steps in between marked skipped.`
+                : `    ↩  Going back to step ${navTarget + 1} — re-running from there.`,
             );
             i = navTarget - 1;
             continue;
@@ -2065,6 +2159,11 @@ const runCommand = new Command('run')
   .option('-v, --verbose', 'Verbose output')
   .option('--continue-on-error', 'Continue execution even if steps fail')
   .option('--report <dir>', 'Write Markdown evidence report to directory')
+  .option(
+    '--from-step <number>',
+    'Start at a specific step number; earlier steps are recorded as skipped',
+    parseInt,
+  )
   .action(async (operation: string, options: RunOptions) => {
     try {
       if (

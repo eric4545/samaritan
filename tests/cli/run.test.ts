@@ -358,7 +358,9 @@ describe('run command: sidecar verify UX (--attach + tmux)', () => {
 
   it(
     '[v] verify PASS shows checklist, highlighted match, and re-verify hint',
-    { skip: !hasTmux },
+    {
+      skip: !hasTmux,
+    },
     () => {
       const fixture = fixturePath('manualStepActions');
       const { stdout, stderr } = withTmuxPane(
@@ -392,7 +394,9 @@ describe('run command: sidecar verify UX (--attach + tmux)', () => {
 
   it(
     '[v] verify FAIL shows missing-expected output and offers [m]/[v] re-verify',
-    { skip: !hasTmux },
+    {
+      skip: !hasTmux,
+    },
     () => {
       const fixture = fixturePath('manualStepActions');
       const { stdout, stderr } = withTmuxPane(
@@ -425,7 +429,9 @@ describe('run command: sidecar verify UX (--attach + tmux)', () => {
 
   it(
     '[c] at the verify-failure prompt copies the command and re-renders the menu',
-    { skip: !hasTmux },
+    {
+      skip: !hasTmux,
+    },
     () => {
       const fixture = fixturePath('manualStepActions');
       const { stdout, stderr } = withTmuxPane(
@@ -753,6 +759,28 @@ describe('run command: sidecar mode', () => {
     assert.ok(
       !/\bback\b/.test(firstStepBlock),
       'the [b] back action must not appear on the first step',
+    );
+  });
+
+  it('[j] jump hint is offered on an early step but not on the last step', () => {
+    // sidecar fixture has 2 steps. Complete step 1 (Enter), then abort on the
+    // last step (q). Jump must appear before the last step, not on it.
+    const fixture = fixturePath('sidecar');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: '\nq\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    const [firstStepBlock, lastStepBlock] = combined.split('Verify Health');
+    // Note: labels are wrapped in ANSI codes (e.g. \x1b[2mjump\x1b[0m), so a
+    // \bjump\b regex would fail on the leading boundary — use includes().
+    assert.ok(
+      firstStepBlock.includes('jump'),
+      'the [j] jump action must appear on a step that has later steps',
+    );
+    assert.ok(
+      lastStepBlock !== undefined && !lastStepBlock.includes('jump'),
+      'the [j] jump action must not appear on the last step',
     );
   });
 });
@@ -1096,6 +1124,71 @@ describe('run command: abort persists a resumable session', () => {
       1,
       'after completing step 1, the persisted index must point at step 2 — ' +
         'not back at the already-completed step',
+    );
+  });
+});
+
+// ─── run --from-step: jump ahead at startup ─────────────────────────────────
+
+describe('run command: --from-step starts at a later step', () => {
+  function extractSessionId(output: string): string {
+    const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
+    assert.ok(m, `run output must include the session id; got:\n${output}`);
+    return (m as RegExpMatchArray)[1];
+  }
+
+  function readSessionFile(sessionId: string): any {
+    const path = join(homedir(), '.samaritan', 'sessions', `${sessionId}.json`);
+    assert.ok(existsSync(path), `session file must exist at ${path}`);
+    return JSON.parse(readFileSync(path, 'utf-8'));
+  }
+
+  it('opens at the requested step and records earlier steps as skipped', () => {
+    // sidecar fixture has 2 steps; start at step 2.
+    const fixture = fixturePath('sidecar');
+    const result = runCli(
+      ['run', fixture, '--env', 'staging', '--from-step', '2'],
+      {
+        input: 'q\n',
+        timeout: 15_000,
+      },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Starting at step 2'),
+      'must announce the jumped-to start step',
+    );
+    // The first per-step banner shown must be [2/2], not [1/2].
+    const firstBanner = combined.match(/\[\d+\/\d+\]/);
+    assert.ok(
+      firstBanner && firstBanner[0] === '[2/2]',
+      `first step banner must be [2/2]; got ${firstBanner?.[0]}`,
+    );
+
+    const sessionId = extractSessionId(combined);
+    const session = readSessionFile(sessionId);
+    assert.strictEqual(
+      session.current_step_index,
+      1,
+      '--from-step 2 must persist current_step_index at 1 (0-based)',
+    );
+  });
+
+  it('exits non-zero for an out-of-range --from-step', () => {
+    const fixture = fixturePath('sidecar');
+    const result = runCli(
+      ['run', fixture, '--env', 'staging', '--from-step', '9'],
+      { input: 'q\n', timeout: 15_000 },
+    );
+    assert.notStrictEqual(
+      result.status,
+      0,
+      'out-of-range --from-step must fail',
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      /--from-step must be between 1 and \d+/.test(combined),
+      'must print the valid range error',
     );
   });
 });

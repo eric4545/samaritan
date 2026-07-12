@@ -377,6 +377,10 @@ npx github:eric4545/samaritan run <operation.yaml> [options]
                             (does NOT execute commands non-interactively; see note below)
   -m, --mode <mode>         Execution mode: sidecar | manual | automatic | hybrid (default: sidecar)
   --attach <tmux-target>    Attach to an existing tmux pane for sidecar capture
+  --from-step <number>      Start at a specific step number; earlier steps are
+                            recorded as skipped (⏭). Unlike `resume --from-step`
+                            (which treats earlier steps as already completed),
+                            this is a fresh run that deliberately jumps ahead.
   --report <dir>            Write an EXTRA copy of the Markdown report to <dir>
                             (a report is always written beside the operation — see below)
   --continue-on-error       Continue execution even if a step fails
@@ -1594,10 +1598,10 @@ At each step, SAMARITAN pauses and shows the step details, then prompts based on
 
 | Step type / mode | Prompt | Keys |
 |---|---|---|
-| `automatic` in **sidecar** | `Run this command in your terminal:` | `Enter`=done, `c`=copy, `n`=note, `e`=evidence, `v`=verify, `t`=attach, `p`=send to pane, `b`=back, `s`=skip, `r`=rollback, `g`=global rollback, `q`/`abort`=quit |
+| `automatic` in **sidecar** | `Run this command in your terminal:` | `Enter`=done, `c`=copy, `n`=note, `e`=evidence, `v`=verify, `t`=attach, `p`=send to pane, `b`=back, `j`=jump, `s`=skip, `r`=rollback, `g`=global rollback, `q`/`abort`=quit |
 | `automatic` (tmux-backed, non-sidecar) | `▶  Send to tmux?` | `Enter`=send, `s`=skip, `r`=rollback, `g`=global rollback, `q`=quit |
 | `automatic` (prompt-only, non-sidecar) | `▶  Execute?` | `Enter`=confirm, `s`=skip, `r`=rollback, `g`=global rollback, `q`=quit |
-| `manual` | `✋ Mark done` | `Enter`/notes=confirm, `n`=note, `e`=evidence, `v`=verify, `t`=attach (sidecar), `p`=send to pane (sidecar), `b`=back, `r`=rollback, `g`=global rollback, `s`=skip, `q`/`abort`=quit |
+| `manual` | `✋ Mark done` | `Enter`/notes=confirm, `n`=note, `e`=evidence, `v`=verify, `t`=attach (sidecar), `p`=send to pane (sidecar), `b`=back, `j`=jump, `r`=rollback, `g`=global rollback, `s`=skip, `q`/`abort`=quit |
 | `approval` | `⚡ approve/reject` | `approve`, `reject`, `r`=rollback, `g`=global rollback, `skip` |
 
 `g`=global rollback is only offered when the operation declares a top-level `rollback:` block. It runs the consolidated recovery (see [Group per-step rollbacks into the global rollback](#group-per-step-rollbacks-into-the-global-rollback-aggregate_step_rollbacks)) and then aborts.
@@ -1659,7 +1663,7 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 `manual` steps offer extra operator actions while you're working the step — they don't complete the step, so you can use any of them as many times as you like before pressing Enter to mark the step done:
 
 ```
-[↵] done  ·  [c] copy  ·  [n] note  ·  [e] evidence  ·  [x] remove evidence  ·  [v] verify  ·  [p] send to pane  ·  [b] back  ·  [s] skip  ·  [r] rollback  ·  [g] global rollback  ·  [abort] abort
+[↵] done  ·  [c] copy  ·  [n] note  ·  [e] evidence  ·  [x] remove evidence  ·  [v] verify  ·  [p] send to pane  ·  [b] back  ·  [j] jump  ·  [s] skip  ·  [r] rollback  ·  [g] global rollback  ·  [abort] abort
 ```
 
 - **`[n]` note** — record a free-text annotation (e.g. "restarted pod manually, confirmed with on-call"). Stored in the JSONL audit log as a `user_input`/`note` event and rendered as a bullet list under the step in the `--report` Markdown.
@@ -1678,6 +1682,7 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 - **`[g]` global rollback** — only offered when the operation declares a top-level `rollback:` block. Previews the **consolidated** recovery — the explicit `rollback.steps` plus, when `aggregate_step_rollbacks` is on, every **completed** step's own rollback in reverse order — asks for confirmation, runs it, then aborts the operation (the session stays resumable). Use it when a failure means abandoning forward progress and unwinding what's been done so far.
 - **`[p]` send to pane** (sidecar only) — **pastes** the step's `${VAR}`-resolved command into the attached tmux pane **without** pressing Enter, so you review it at your own prompt and run it yourself. The command is delivered via a tmux paste buffer with **bracketed paste** (`paste-buffer -p`), so a multi-line command (e.g. a heredoc script) lands as **one atomic block** at your prompt and does **not** execute line-by-line — you press Enter once yourself to run it. Only offered when the step has a command and a pane is attached (a spawn-own `sessions:` pane, or one attached via `[t]`/`--attach`); with nothing attached it tells you to `[t]` attach first. To re-run a command during verify, just press `[p]` again, then `[v]`. Logged as a `user_input`/`send_to_pane` breadcrumb in the JSONL audit log — sidecar still never executes anything on your behalf.
 - **`[b]` back** — go back to an earlier, already-processed step to re-run it (e.g. an external dependency was fixed and you want to retry from there). Shows a numbered picker of the prior steps; the chosen step **and every step after it** are reset to pending and execution resumes from there. The append-only JSONL audit log keeps the full history of the earlier attempt, and the rewound step index is persisted so `resume` stays consistent. Not offered on the first step.
+- **`[j]` jump** — jump **forward** to a later step (e.g. steps 3–5 are irrelevant this run and you want to go straight to step 6). Shows a numbered picker of the steps after the current one; the current step and every step up to (but not including) the target are recorded as **skipped** (⏭) in the run report, and execution resumes at the target. The append-only JSONL audit log keeps the full history. Not offered on the last step. To start a fresh run partway through instead, use `run --from-step <N>` (see below).
 
 ### Mock run (`--mock`): replay `expect` against captured evidence
 

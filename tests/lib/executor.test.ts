@@ -605,3 +605,81 @@ describe('goToStep (back-to-previous-step navigation)', () => {
     assert.strictEqual(state.completedSteps, 2);
   });
 });
+
+describe('jumpToStep (forward jump / skip-ahead navigation)', () => {
+  const threeStepOperation: Operation = {
+    id: 'jump-op',
+    name: 'Jump To Step Op',
+    version: '1.0.0',
+    description: 'Three-step op for jumpToStep tests',
+    environments: [
+      {
+        name: 'test',
+        description: 'Test env',
+        variables: {},
+        restrictions: [],
+        approval_required: false,
+        validation_required: false,
+      },
+    ],
+    variables: { test: {} },
+    steps: [
+      { name: 'Step A', type: 'manual', description: 'First step' },
+      { name: 'Step B', type: 'manual', description: 'Second step' },
+      { name: 'Step C', type: 'manual', description: 'Third step' },
+    ],
+    metadata: {
+      created_at: new Date(),
+      updated_at: new Date(),
+      execution_count: 0,
+    },
+  };
+
+  const newExecutor = () =>
+    createExecutor(
+      threeStepOperation,
+      ExecutorUtils.createContext('jump-op', 'test', {}, 'tester'),
+    );
+
+  it('marks jumped-over pending steps skipped and sets currentStepIndex', () => {
+    const executor = newExecutor();
+    executor.startInteractive();
+    const skipped: string[] = [];
+    executor.on('step_skipped', (e) => {
+      if (e.message) skipped.push(e.message);
+    });
+
+    executor.jumpToStep(2); // from step 0 -> step 2, skip 0 and 1
+    const state = executor.getState();
+    assert.strictEqual(state.currentStepIndex, 2);
+    assert.strictEqual(state.skippedSteps, 2);
+    assert.strictEqual(state.steps[0].status, 'skipped');
+    assert.strictEqual(state.steps[1].status, 'skipped');
+    assert.strictEqual(state.steps[2].status, 'pending');
+    assert.strictEqual(skipped.length, 2);
+  });
+
+  it('does not re-count already-completed intermediate steps', () => {
+    const executor = newExecutor();
+    executor.resumeFromIndex(1); // step 0 completed, at step 1
+    executor.jumpToStep(2); // skip only step 1
+    const state = executor.getState();
+    assert.strictEqual(state.currentStepIndex, 2);
+    assert.strictEqual(state.completedSteps, 1);
+    assert.strictEqual(state.skippedSteps, 1);
+    assert.strictEqual(state.steps[0].status, 'completed');
+    assert.strictEqual(state.steps[1].status, 'skipped');
+    assert.strictEqual(state.steps[2].status, 'pending');
+  });
+
+  it('is a no-op for an out-of-range index', () => {
+    const executor = newExecutor();
+    executor.startInteractive();
+    executor.jumpToStep(99);
+    executor.jumpToStep(-1);
+    const state = executor.getState();
+    assert.strictEqual(state.currentStepIndex, 0);
+    assert.strictEqual(state.skippedSteps, 0);
+    assert.strictEqual(state.steps[0].status, 'pending');
+  });
+});

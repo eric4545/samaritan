@@ -60,6 +60,8 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
 - `--mock` — replay each step's `expect` against `evidence.results[<env>]` output;
   prints PASS/FAIL/SKIP, exits non-zero on failure. No tmux/execution.
 - `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning.
+- `--from-step <N>` — start at step N; earlier steps are recorded as **skipped**
+  (distinct from `resume --from-step`, which marks earlier steps completed).
 - `--report <dir>` — write an extra copy of the run report.
 - `--auto-approve` — note: `automatic` context marks steps complete WITHOUT
   running commands (non-interactive execution is a roadmap item, not real).
@@ -74,6 +76,7 @@ Per manual/sidecar step:
 - `[t]` attach pane — (sidecar) attach/swap a tmux capture backend mid-run
 - `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command and a pane is attached. Re-run during verify = `[p]` then `[v]`
 - `[b]` back — go back to an earlier step and re-run from there (resets it + later steps to pending; audit log keeps the prior attempt); not offered on the first step
+- `[j]` jump — jump **forward** to a later step; the current step through the target are recorded as **skipped** (⏭) in the report, execution resumes at the target; not offered on the last step. Startup equivalent: `run --from-step <N>`
 - `[r]` rollback — run *this step's* `rollback`, stay on the step
 - `[g]` global rollback — only when the operation declares a top-level `rollback:`. Previews + runs the consolidated recovery (explicit `rollback.steps` + every **completed** step's rollback in reverse order when `aggregate_step_rollbacks: true`), then aborts the operation
 - `q` / `quit` / `Ctrl+C` — **aborts** the operation, persists session as `paused` (resumable) and prints a resume hint (`Ctrl+C` saves too — it no longer hard-quits without saving)

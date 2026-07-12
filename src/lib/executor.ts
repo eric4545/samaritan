@@ -414,6 +414,39 @@ export class OperationExecutor {
   }
 
   /**
+   * Jump forward to a later step (the `[j]` action / `run --from-step`). Every
+   * still-'pending' step between the current index and the target is marked
+   * 'skipped' (counters + step_skipped events), then currentStepIndex points at
+   * the target so the loop re-enters there. The append-only JSONL audit log is
+   * NOT touched — the skips are recorded as fresh events. Counterpart to
+   * goToStep, which rewinds instead of skipping ahead.
+   */
+  jumpToStep(targetIndex: number): void {
+    if (targetIndex < 0 || targetIndex >= this.state.steps.length) return;
+    for (let k = this.state.currentStepIndex; k < targetIndex; k++) {
+      const s = this.state.steps[k];
+      if (s.status === 'pending') {
+        s.status = 'skipped';
+        this.state.skippedSteps++;
+        this.emitEvent({
+          type: 'step_skipped',
+          timestamp: new Date(),
+          operationId: this.state.operation.id,
+          stepId: s.step.id ?? `step-${k}`,
+          message: `Step skipped (jumped over): ${s.step.name}`,
+        });
+      }
+    }
+    this.state.currentStepIndex = targetIndex;
+    this.emitEvent({
+      type: 'operation_started',
+      timestamp: new Date(),
+      operationId: this.state.operation.id,
+      message: `Jumped to step ${targetIndex + 1}: ${this.state.operation.name}`,
+    });
+  }
+
+  /**
    * Finalize operation status after all steps have been processed.
    * Must be called after an interactive loop completes.
    */

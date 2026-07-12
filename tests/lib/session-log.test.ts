@@ -39,6 +39,27 @@ describe('foldEvents', () => {
     assert.strictEqual(step.commands[0].output, 'created');
   });
 
+  it('marks a jumped-over step skipped even without a step_start', () => {
+    const { steps } = foldEvents([
+      // step 0 is jumped over: only a step_skip event, no step_start
+      ev({ type: 'step_skip', step: 0, name: 'Deploy' }),
+      ev({ type: 'step_start', step: 1, name: 'Verify' }),
+      ev({ type: 'step_complete', step: 1 }),
+    ]);
+    assert.strictEqual(steps.length, 2);
+    assert.strictEqual(steps[0].name, 'Deploy');
+    assert.strictEqual(steps[0].status, 'skipped');
+    assert.strictEqual(steps[1].status, 'completed');
+  });
+
+  it('marks an already-started step skipped (mid-run jump)', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({ type: 'step_skip', step: 0, name: 'Deploy' }),
+    ]);
+    assert.strictEqual(steps[0].status, 'skipped');
+  });
+
   it('evaluates all verification checks (no short-circuit) with actual/expected', () => {
     const { steps } = foldEvents([
       ev({ type: 'step_start', step: 0, name: 'Verify' }),
