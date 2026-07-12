@@ -117,33 +117,24 @@
       "description": "Path to .env file for loading variables (lowest priority in variable lookup)"
     },
     "sessions": {
-      "description": "Named tmux sessions for execution engine. Either a map of session name -> config, or a shorthand list of session names (each becomes a local labelled pane the operator connects manually). ${VAR} in names/keys is resolved against common variables.",
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": {
+      "type": "object",
+      "description": "Named tmux sessions for execution engine (map of session name -> config). ${VAR} in a session name/key is resolved against common variables, so sessions can be derived from e.g. a ticket id.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "SSH host (omit for local)"
+          },
+          "user": { "type": "string", "description": "SSH user" },
+          "env": {
             "type": "object",
-            "properties": {
-              "host": {
-                "type": "string",
-                "description": "SSH host (omit for local)"
-              },
-              "user": { "type": "string", "description": "SSH user" },
-              "env": {
-                "type": "object",
-                "additionalProperties": { "type": "string" },
-                "description": "Environment variables to set on connect"
-              }
-            },
-            "additionalProperties": false
+            "additionalProperties": { "type": "string" },
+            "description": "Environment variables to set on connect"
           }
         },
-        {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Shorthand: list of local session names (labelled panes; operator connects manually)"
-        }
-      ]
+        "additionalProperties": false
+      }
     },
     "run": {
       "type": "object",

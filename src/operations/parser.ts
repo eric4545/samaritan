@@ -532,40 +532,24 @@ function substituteVariables(obj: any, context: Record<string, any>): any {
 }
 
 /**
- * Normalize the top-level `sessions:` block into the runtime map form.
- *
- * Accepts either the map form (`{ name: { host, user, env } }`) or the
- * shorthand list form (`[ name, name-local ]`) where each entry becomes a
- * local labelled pane (empty config — the operator connects/SSHes manually).
- * `${VAR}` in session names/keys is resolved against `commonVariables` so a
- * session can be derived from e.g. a ticket id. Names that don't reference a
- * known variable pass through untouched.
+ * Normalize the top-level `sessions:` block, resolving `${VAR}` in each session
+ * name/key against `commonVariables` so a session can be derived from e.g. a
+ * ticket id. Names that don't reference a known variable pass through untouched.
  */
 function normalizeSessions(
   raw: unknown,
   commonVariables: Record<string, any>,
 ): Record<string, SessionConfig> | undefined {
-  if (raw === undefined || raw === null) return undefined;
+  if (raw === undefined || raw === null || typeof raw !== 'object') {
+    return undefined;
+  }
 
   const result: Record<string, SessionConfig> = {};
-
-  if (Array.isArray(raw)) {
-    for (const entry of raw) {
-      const name = String(substituteVariables(entry, commonVariables));
-      result[name] = {};
-    }
-    return result;
+  for (const [key, config] of Object.entries(raw as Record<string, any>)) {
+    const name = String(substituteVariables(key, commonVariables));
+    result[name] = config ?? {};
   }
-
-  if (typeof raw === 'object') {
-    for (const [key, config] of Object.entries(raw as Record<string, any>)) {
-      const name = String(substituteVariables(key, commonVariables));
-      result[name] = config ?? {};
-    }
-    return result;
-  }
-
-  return undefined;
+  return result;
 }
 
 /**

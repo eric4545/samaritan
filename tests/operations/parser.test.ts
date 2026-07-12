@@ -483,31 +483,31 @@ describe('Enhanced Operation Parser', () => {
     });
   });
 
-  describe('sessions: shorthand list + ${VAR} interpolation', () => {
-    it('normalizes the list shorthand to a map of empty (local) configs, resolving ${VAR} in names', async () => {
+  describe('sessions: ${VAR} name interpolation', () => {
+    it('resolves ${VAR} in session names (map keys) against common variables', async () => {
       const operation = await parseOperation(
-        'examples/sessions-shorthand.yaml',
+        'examples/sessions-with-vars.yaml',
       );
 
-      // ticket: JIRA-1234 (common_variables) → both names resolved
+      // ticket: JIRA-1234 (common_variables) → both names resolved; config kept
       assert.deepStrictEqual(operation.sessions, {
-        'JIRA-1234': {},
+        'JIRA-1234': { host: 'staging-box.internal', user: 'deploy' },
         'JIRA-1234-local': {},
       });
     });
 
     it('resolves ${VAR} in step.session references so they match the resolved session keys', async () => {
       const operation = await parseOperation(
-        'examples/sessions-shorthand.yaml',
+        'examples/sessions-with-vars.yaml',
       );
 
       assert.deepStrictEqual(
         operation.steps.map((s) => s.session),
-        ['JIRA-1234', 'JIRA-1234', 'JIRA-1234-local'],
+        ['JIRA-1234', 'JIRA-1234-local'],
       );
     });
 
-    it('keeps the object/map form unchanged and leaves unmatched ${VAR} literal', async () => {
+    it('keeps plain (non-interpolated) session names unchanged and leaves unmatched ${VAR} literal', async () => {
       const { writeFileSync, unlinkSync } = await import('node:fs');
       const yamlContent = `
 name: Sessions map form
