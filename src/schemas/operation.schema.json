@@ -118,7 +118,7 @@
     },
     "sessions": {
       "type": "object",
-      "description": "Named tmux sessions for execution engine",
+      "description": "Named tmux sessions for execution engine (map of session name -> config). ${VAR} in a session name/key is resolved against common variables, so sessions can be derived from e.g. a ticket id.",
       "additionalProperties": {
         "type": "object",
         "properties": {

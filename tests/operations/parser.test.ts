@@ -483,6 +483,74 @@ describe('Enhanced Operation Parser', () => {
     });
   });
 
+  describe('sessions: ${VAR} name interpolation', () => {
+    it('resolves ${VAR} in session names (map keys) against common variables', async () => {
+      const operation = await parseOperation(
+        'examples/sessions-with-vars.yaml',
+      );
+
+      // ticket: JIRA-1234 (common_variables) → both names resolved; config kept
+      assert.deepStrictEqual(operation.sessions, {
+        'JIRA-1234': { host: 'staging-box.internal', user: 'deploy' },
+        'JIRA-1234-local': {},
+      });
+    });
+
+    it('resolves ${VAR} in step.session references so they match the resolved session keys', async () => {
+      const operation = await parseOperation(
+        'examples/sessions-with-vars.yaml',
+      );
+
+      assert.deepStrictEqual(
+        operation.steps.map((s) => s.session),
+        ['JIRA-1234', 'JIRA-1234-local'],
+      );
+    });
+
+    it('keeps plain (non-interpolated) session names unchanged and leaves unmatched ${VAR} literal', async () => {
+      const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+      const { tmpdir } = await import('node:os');
+      const { join } = await import('node:path');
+      const yamlContent = `
+name: Sessions map form
+version: 1.0.0
+description: map form regression
+common_variables:
+  ticket: OPS-9
+sessions:
+  execution:
+    host: bastion.example.com
+    user: deploy
+  "\${ticket}": {}
+  "\${MISSING}-pane": {}
+environments:
+  - name: staging
+    variables:
+      NAMESPACE: staging
+steps:
+  - name: Do a thing
+    type: manual
+    session: execution
+    command: echo hi
+`;
+      const tmpDir = mkdtempSync(join(tmpdir(), 'samaritan-sessions-'));
+      const tmpPath = join(tmpDir, 'op.yaml');
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        const operation = await parseOperation(tmpPath);
+        assert.deepStrictEqual(operation.sessions, {
+          execution: { host: 'bastion.example.com', user: 'deploy' },
+          'OPS-9': {},
+          // MISSING is not defined anywhere → left literal
+          '${MISSING}-pane': {},
+        });
+        assert.strictEqual(operation.steps[0].session, 'execution');
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('top-level variables: merging into common_variables', () => {
     it('merges top-level variables into common_variables, with common_variables winning on conflict', async () => {
       const operation = await parseFixture('topLevelVariables');

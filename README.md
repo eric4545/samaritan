@@ -1761,6 +1761,24 @@ sessions:
     user: sre-readonly         # read-only verification host
 ```
 
+**Variable names.** `${VAR}` in a session name is resolved against common variables, so sessions can be
+derived from, say, a ticket id instead of hardcoding. Quote keys that start with `${`:
+
+```yaml
+common_variables:
+  ticket: JIRA-1234
+
+sessions:
+  "${ticket}":                  # → session "JIRA-1234"
+    host: prod-bastion.example.com
+    user: deploy
+  "${ticket}-local": {}         # → session "JIRA-1234-local" (local pane)
+```
+
+`${VAR}` in a step's `session:` reference resolves the same way, so `session: ${ticket}` lines up with
+the resolved session key. Remote-vs-local stays **config-driven** — a config with `host:` makes Samaritan
+auto-run `ssh`; an empty `{}` is a local pane. See `examples/sessions-with-vars.yaml`.
+
 Assign a step to a session with `session: <name>`. Verification can run in a *different* session than execution:
 
 ```yaml

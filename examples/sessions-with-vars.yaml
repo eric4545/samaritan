@@ -1,0 +1,63 @@
+# Sessions with Variable Names Example
+#
+# Demonstrates ${VAR} interpolation in the `sessions:` map — session names can
+# be derived from common variables (e.g. a ticket id) instead of hardcoding.
+#
+#   common_variables: { ticket: JIRA-1234 }
+#   sessions:
+#     "${ticket}":       {}   # → session "JIRA-1234"
+#     "${ticket}-local": {}   # → session "JIRA-1234-local"
+#
+# ${VAR} in a step's `session:` reference resolves the same way, so
+# `session: ${ticket}` lines up with the resolved session key.
+#
+# Sessions are the tmux panes steps run in. A config with `host:` makes samaritan
+# auto-run `ssh user@host`; an empty config `{}` is a local pane (the operator
+# connects/SSHes into it themselves). Remote-vs-local is config-driven, not
+# name-driven — the `-local` suffix below is just a human label.
+#
+# Usage:
+#   samaritan run examples/sessions-with-vars.yaml -e staging
+
+name: Sessions with Variable Names Example
+version: 1.0.0
+description: |
+  Shows ${VAR} interpolation in session names. Two panes are derived from a
+  ticket id: a remote pane on the target host, and a local pane for commands on
+  the operator's own shell.
+
+common_variables:
+  ticket: JIRA-1234
+
+sessions:
+  # Remote pane — samaritan auto-runs `ssh deploy@<HOST>` on connect.
+  '${ticket}':
+    host: staging-box.internal
+    user: deploy
+  # Local pane — commands run on the operator's own shell.
+  '${ticket}-local': {}
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+
+steps:
+  - name: Check deployment status
+    type: manual
+    phase: flight
+    description: Inspect the running deployment on the target host
+    session: ${ticket}
+    command: kubectl get pods -n ${NAMESPACE}
+    expect:
+      contains: Running
+
+  - name: Record local audit note
+    type: manual
+    phase: postflight
+    description: Capture a local timestamped audit line
+    session: ${ticket}-local
+    command: date -u +"%Y-%m-%dT%H:%M:%SZ audit ${ticket}"
+    instruction: |
+      Runs on your LOCAL shell (the `${ticket}-local` pane), not the target host.

@@ -184,9 +184,29 @@ Generators group by effective phase via `groupByPhase`. Steps expanded from one
 `uses:`/template block stay contiguous (shared `usesGroup`) rather than being
 hoisted by raw `phase`. See `examples/scoped-preflight.yaml`.
 
+## Sessions (execution engine)
+
+Top-level `sessions:` is a **map** of session name → config naming the tmux panes
+steps run in. `host:` present ⇒ Samaritan auto-runs `ssh user@host`; empty `{}` ⇒
+local pane.
+
+```yaml
+common_variables: { ticket: JIRA-1234 }
+sessions:
+  "${ticket}": { host: prod-bastion.example.com, user: deploy }  # → "JIRA-1234"
+  "${ticket}-local": {}                                          # → "JIRA-1234-local" (local)
+```
+
+`${VAR}` in session names/keys AND in a step's `session:` reference is resolved
+against **common variables** at parse time (same scope as `foreach`; unmatched
+`${VAR}` stay literal), so a session can be derived from e.g. a ticket id. Quote
+keys that start with `${`. Remote-vs-local is **config-driven, not name-driven**.
+Example: `examples/sessions-with-vars.yaml`.
+
 ## Examples to copy from
 
 - `examples/deployment.yaml` — canonical baseline
+- `examples/sessions-with-vars.yaml` — `sessions:` map + `${VAR}` names
 - `examples/deployment-with-scripts.yaml` — `script:` import
 - `examples/deployment-with-templates.yaml` — templates
 - `examples/multi-env-deployment.yaml` — environment matrix
