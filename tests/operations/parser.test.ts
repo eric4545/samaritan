@@ -508,7 +508,9 @@ describe('Enhanced Operation Parser', () => {
     });
 
     it('keeps plain (non-interpolated) session names unchanged and leaves unmatched ${VAR} literal', async () => {
-      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+      const { tmpdir } = await import('node:os');
+      const { join } = await import('node:path');
       const yamlContent = `
 name: Sessions map form
 version: 1.0.0
@@ -531,7 +533,8 @@ steps:
     session: execution
     command: echo hi
 `;
-      const tmpPath = '/tmp/samaritan-sessions-map-test.yaml';
+      const tmpDir = mkdtempSync(join(tmpdir(), 'samaritan-sessions-'));
+      const tmpPath = join(tmpDir, 'op.yaml');
       writeFileSync(tmpPath, yamlContent);
       try {
         const operation = await parseOperation(tmpPath);
@@ -543,7 +546,7 @@ steps:
         });
         assert.strictEqual(operation.steps[0].session, 'execution');
       } finally {
-        unlinkSync(tmpPath);
+        rmSync(tmpDir, { recursive: true, force: true });
       }
     });
   });
