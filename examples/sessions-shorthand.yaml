@@ -1,0 +1,72 @@
+# Sessions Shorthand Example
+#
+# Demonstrates the `sessions:` LIST shorthand with ${VAR} interpolation.
+#
+# Instead of the full map form:
+#
+#   sessions:
+#     JIRA-1234:       {}
+#     JIRA-1234-local: {}
+#
+# you can write a plain list of names. Each entry becomes a LOCAL labelled
+# tmux pane (no SSH is auto-run) — the operator connects/SSHes into whichever
+# pane they want themselves. `${VAR}` in a name is resolved against common
+# variables, so the session names can be derived from e.g. a ticket id.
+#
+# Remote-vs-local is config-driven, not name-driven: `${ticket}` and
+# `${ticket}-local` here are both local labelled panes — the `-local` suffix
+# is just a human label. If you need auto-ssh, use the map form with `host:`.
+#
+# Usage:
+#   samaritan run examples/sessions-shorthand.yaml -e staging
+
+name: Sessions Shorthand Example
+version: 1.0.0
+description: |
+  Shows the `sessions:` list shorthand. Two labelled panes are created from a
+  ticket id: one where the operator SSHes into the target host themselves, and
+  one for local commands on the operator's own shell.
+
+common_variables:
+  ticket: JIRA-1234
+
+sessions:
+  - ${ticket} # remote pane — operator SSHes in manually
+  - ${ticket}-local # local pane — commands run on the operator's shell
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+      HOST: staging-box.internal
+
+steps:
+  - name: Connect to target host
+    type: manual
+    phase: preflight
+    description: SSH into the target host in the ticket pane
+    session: ${ticket}
+    instruction: |
+      In the `${ticket}` pane, connect to the target host yourself:
+      ```bash
+      ssh deploy@${HOST}
+      ```
+
+  - name: Check deployment status
+    type: manual
+    phase: flight
+    description: Inspect the running deployment on the target host
+    session: ${ticket}
+    command: kubectl get pods -n ${NAMESPACE}
+    expect:
+      contains: Running
+
+  - name: Record local audit note
+    type: manual
+    phase: postflight
+    description: Capture a local timestamped audit line
+    session: ${ticket}-local
+    command: date -u +"%Y-%m-%dT%H:%M:%SZ audit ${ticket}"
+    instruction: |
+      Runs on your LOCAL shell (the `${ticket}-local` pane), not the target host.

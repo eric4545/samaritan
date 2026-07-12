@@ -14,6 +14,7 @@ import type {
   Operation,
   OperationMetadata,
   RollbackStep,
+  SessionConfig,
   Step,
   StepForeach,
   StepPhase,
@@ -528,6 +529,70 @@ function substituteVariables(obj: any, context: Record<string, any>): any {
     return result;
   }
   return obj;
+}
+
+/**
+ * Normalize the top-level `sessions:` block into the runtime map form.
+ *
+ * Accepts either the map form (`{ name: { host, user, env } }`) or the
+ * shorthand list form (`[ name, name-local ]`) where each entry becomes a
+ * local labelled pane (empty config — the operator connects/SSHes manually).
+ * `${VAR}` in session names/keys is resolved against `commonVariables` so a
+ * session can be derived from e.g. a ticket id. Names that don't reference a
+ * known variable pass through untouched.
+ */
+function normalizeSessions(
+  raw: unknown,
+  commonVariables: Record<string, any>,
+): Record<string, SessionConfig> | undefined {
+  if (raw === undefined || raw === null) return undefined;
+
+  const result: Record<string, SessionConfig> = {};
+
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const name = String(substituteVariables(entry, commonVariables));
+      result[name] = {};
+    }
+    return result;
+  }
+
+  if (typeof raw === 'object') {
+    for (const [key, config] of Object.entries(raw as Record<string, any>)) {
+      const name = String(substituteVariables(key, commonVariables));
+      result[name] = config ?? {};
+    }
+    return result;
+  }
+
+  return undefined;
+}
+
+/**
+ * Resolve `${VAR}` in every step's `session` reference (recursing into
+ * `sub_steps` and `rollback`) against `commonVariables`, so a step's
+ * `session: ${ticket}` lines up with the resolved `sessions:` key. Mirrors the
+ * name resolution done in `normalizeSessions`; unmatched `${VAR}` pass through.
+ */
+function resolveSessionReferences(
+  steps: Array<{
+    session?: string;
+    sub_steps?: any[];
+    rollback?: any[];
+  }>,
+  commonVariables: Record<string, any>,
+): void {
+  for (const step of steps) {
+    if (typeof step.session === 'string') {
+      step.session = String(substituteVariables(step.session, commonVariables));
+    }
+    if (Array.isArray(step.sub_steps)) {
+      resolveSessionReferences(step.sub_steps, commonVariables);
+    }
+    if (Array.isArray(step.rollback)) {
+      resolveSessionReferences(step.rollback, commonVariables);
+    }
+  }
 }
 
 /**
@@ -1258,6 +1323,10 @@ export async function parseOperation(filePath: string): Promise<Operation> {
       : undefined,
   };
 
+  // Resolve ${VAR} in every step's `session` reference so it lines up with the
+  // resolved `sessions:` keys (same commonVariables scope as normalizeSessions).
+  resolveSessionReferences(steps, commonVariables);
+
   // Construct full operation
   const operation: Operation = {
     id: rawOperation.id || randomUUID(),
@@ -1269,7 +1338,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     tags: rawOperation.tags || [],
     emergency: Boolean(rawOperation.emergency),
     overview: rawOperation.overview,
-    sessions: rawOperation.sessions,
+    sessions: normalizeSessions(rawOperation.sessions, commonVariables),
     run: rawOperation.run,
     environments,
     variables,

@@ -117,24 +117,33 @@
       "description": "Path to .env file for loading variables (lowest priority in variable lookup)"
     },
     "sessions": {
-      "type": "object",
-      "description": "Named tmux sessions for execution engine",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "host": {
-            "type": "string",
-            "description": "SSH host (omit for local)"
-          },
-          "user": { "type": "string", "description": "SSH user" },
-          "env": {
+      "description": "Named tmux sessions for execution engine. Either a map of session name -> config, or a shorthand list of session names (each becomes a local labelled pane the operator connects manually). ${VAR} in names/keys is resolved against common variables.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": {
             "type": "object",
-            "additionalProperties": { "type": "string" },
-            "description": "Environment variables to set on connect"
+            "properties": {
+              "host": {
+                "type": "string",
+                "description": "SSH host (omit for local)"
+              },
+              "user": { "type": "string", "description": "SSH user" },
+              "env": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "description": "Environment variables to set on connect"
+              }
+            },
+            "additionalProperties": false
           }
         },
-        "additionalProperties": false
-      }
+        {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Shorthand: list of local session names (labelled panes; operator connects manually)"
+        }
+      ]
     },
     "run": {
       "type": "object",

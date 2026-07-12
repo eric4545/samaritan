@@ -483,6 +483,71 @@ describe('Enhanced Operation Parser', () => {
     });
   });
 
+  describe('sessions: shorthand list + ${VAR} interpolation', () => {
+    it('normalizes the list shorthand to a map of empty (local) configs, resolving ${VAR} in names', async () => {
+      const operation = await parseOperation(
+        'examples/sessions-shorthand.yaml',
+      );
+
+      // ticket: JIRA-1234 (common_variables) → both names resolved
+      assert.deepStrictEqual(operation.sessions, {
+        'JIRA-1234': {},
+        'JIRA-1234-local': {},
+      });
+    });
+
+    it('resolves ${VAR} in step.session references so they match the resolved session keys', async () => {
+      const operation = await parseOperation(
+        'examples/sessions-shorthand.yaml',
+      );
+
+      assert.deepStrictEqual(
+        operation.steps.map((s) => s.session),
+        ['JIRA-1234', 'JIRA-1234', 'JIRA-1234-local'],
+      );
+    });
+
+    it('keeps the object/map form unchanged and leaves unmatched ${VAR} literal', async () => {
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const yamlContent = `
+name: Sessions map form
+version: 1.0.0
+description: map form regression
+common_variables:
+  ticket: OPS-9
+sessions:
+  execution:
+    host: bastion.example.com
+    user: deploy
+  "\${ticket}": {}
+  "\${MISSING}-pane": {}
+environments:
+  - name: staging
+    variables:
+      NAMESPACE: staging
+steps:
+  - name: Do a thing
+    type: manual
+    session: execution
+    command: echo hi
+`;
+      const tmpPath = '/tmp/samaritan-sessions-map-test.yaml';
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        const operation = await parseOperation(tmpPath);
+        assert.deepStrictEqual(operation.sessions, {
+          execution: { host: 'bastion.example.com', user: 'deploy' },
+          'OPS-9': {},
+          // MISSING is not defined anywhere → left literal
+          '${MISSING}-pane': {},
+        });
+        assert.strictEqual(operation.steps[0].session, 'execution');
+      } finally {
+        unlinkSync(tmpPath);
+      }
+    });
+  });
+
   describe('top-level variables: merging into common_variables', () => {
     it('merges top-level variables into common_variables, with common_variables winning on conflict', async () => {
       const operation = await parseFixture('topLevelVariables');

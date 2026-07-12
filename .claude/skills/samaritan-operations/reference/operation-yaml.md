@@ -184,9 +184,33 @@ Generators group by effective phase via `groupByPhase`. Steps expanded from one
 `uses:`/template block stay contiguous (shared `usesGroup`) rather than being
 hoisted by raw `phase`. See `examples/scoped-preflight.yaml`.
 
+## Sessions (execution engine)
+
+Top-level `sessions:` names the tmux panes steps run in. Two forms:
+
+```yaml
+# Map form — full config; `host:` present ⇒ Samaritan auto-runs `ssh user@host`.
+sessions:
+  execution: { host: prod-bastion.example.com, user: deploy }
+  monitoring: {}                 # no host ⇒ local pane
+
+# List shorthand — labelled LOCAL panes only; operator connects/SSHes themselves.
+common_variables: { ticket: JIRA-1234 }
+sessions:
+  - ${ticket}                    # → "JIRA-1234"
+  - ${ticket}-local              # → "JIRA-1234-local"
+```
+
+`${VAR}` in session names/keys AND in a step's `session:` reference is resolved
+against **common variables** at parse time (same scope as `foreach`; unmatched
+`${VAR}` stay literal). Remote-vs-local is **config-driven, not name-driven** —
+list entries are always local panes; use the map form's `host:` for auto-ssh.
+Example: `examples/sessions-shorthand.yaml`.
+
 ## Examples to copy from
 
 - `examples/deployment.yaml` — canonical baseline
+- `examples/sessions-shorthand.yaml` — `sessions:` list shorthand + `${VAR}` names
 - `examples/deployment-with-scripts.yaml` — `script:` import
 - `examples/deployment-with-templates.yaml` — templates
 - `examples/multi-env-deployment.yaml` — environment matrix

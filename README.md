@@ -1756,6 +1756,25 @@ sessions:
     user: sre-readonly         # read-only verification host
 ```
 
+**Shorthand list form.** When you just need a few labelled *local* panes (no SSH config), list the
+names instead of writing a map. Each entry becomes a local pane — the operator connects/SSHes into it
+themselves. `${VAR}` in a name is resolved against common variables, so sessions can be derived from,
+say, a ticket id:
+
+```yaml
+common_variables:
+  ticket: JIRA-1234
+
+sessions:
+  - ${ticket}         # → session "JIRA-1234"  (local pane; operator SSHes in themselves)
+  - ${ticket}-local   # → session "JIRA-1234-local" (local pane for commands on your own shell)
+```
+
+Remote-vs-local is **config-driven, not name-driven**: both entries above are local labelled panes —
+the `-local` suffix is just a human label. Use the map form with `host:` when you want Samaritan to
+auto-run `ssh`. `${VAR}` in a step's `session:` reference resolves the same way, so `session: ${ticket}`
+lines up with the resolved session key. See `examples/sessions-shorthand.yaml`.
+
 Assign a step to a session with `session: <name>`. Verification can run in a *different* session than execution:
 
 ```yaml
