@@ -122,6 +122,9 @@ expect:
     while: "Pending"                        # only retry transient-matching failures
 ```
 
+The `retry` policy is also rendered in generated manuals (all formats) as an
+extra Expected criterion, e.g. `retry up to 5× every 5s while "Pending"`.
+
 Regex fields (`matches`, `all_lines_match`, `any_line_matches`, `no_line_matches`)
 use Node's default `new RegExp(pattern)` — case-sensitive, unanchored partial
 match (anchor with `^...$` for full-line). `samaritan validate` regex-lints

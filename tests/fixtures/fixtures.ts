@@ -147,6 +147,7 @@ export const FIXTURES = {
   withCaptureExpect:
     'tests/fixtures/operations/features/with-capture-expect.yaml',
   withArrayExpect: 'tests/fixtures/operations/features/with-array-expect.yaml',
+  withRetryExpect: 'tests/fixtures/operations/features/with-retry-expect.yaml',
   withNumericExpect:
     'tests/fixtures/operations/features/with-numeric-expect.yaml',
   withNumericContains:

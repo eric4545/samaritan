@@ -461,6 +461,19 @@ export function renderExpectParts(
     parts.push(`value ≥ ${expect.numeric_gte}`);
   if (expect.numeric_lte !== undefined)
     parts.push(`value ≤ ${expect.numeric_lte}`);
+  if (
+    expect.retry !== undefined &&
+    expect.retry !== null &&
+    expect.retry.interval !== undefined &&
+    expect.retry.max !== undefined
+  ) {
+    const { interval, max, while: whileGuard } = expect.retry;
+    parts.push(
+      whileGuard
+        ? `retry up to ${max}× every ${interval} while "${whileGuard}"`
+        : `retry up to ${max}× every ${interval}`,
+    );
+  }
   return parts;
 }
 

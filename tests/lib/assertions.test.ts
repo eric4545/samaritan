@@ -362,6 +362,50 @@ describe('renderExpectDescription — array expect', () => {
   });
 });
 
+describe('renderExpectParts — expect.retry', () => {
+  it('renders a retry line with a while guard', () => {
+    const parts = renderExpectParts({
+      contains: 'NLB_SWITCH_OK=true',
+      retry: {
+        interval: '30s',
+        max: 6,
+        while: 'draining|NLB_SWITCH_OK=false',
+      },
+    });
+    assert.deepStrictEqual(parts, [
+      'contains: NLB_SWITCH_OK=true',
+      'retry up to 6× every 30s while "draining|NLB_SWITCH_OK=false"',
+    ]);
+  });
+
+  it('renders a retry line without a while guard', () => {
+    const parts = renderExpectParts({
+      contains: 'ready',
+      retry: { interval: '5s', max: 3 },
+    });
+    assert.deepStrictEqual(parts, [
+      'contains: ready',
+      'retry up to 3× every 5s',
+    ]);
+  });
+
+  it('leaves a plain expect (no retry) unchanged', () => {
+    const parts = renderExpectParts({ contains: 'ready' });
+    assert.deepStrictEqual(parts, ['contains: ready']);
+  });
+
+  it('renderExpectDescription includes the retry criterion', () => {
+    const desc = renderExpectDescription({
+      contains: 'ok',
+      retry: { interval: '2m', max: 4, while: 'timeout' },
+    });
+    assert.strictEqual(
+      desc,
+      'contains: ok; retry up to 4× every 2m while "timeout"',
+    );
+  });
+});
+
 describe('assertOutput — equals_captured fallback (bug fix)', () => {
   it('returns pass:false when equals_captured key was not resolved', () => {
     const result = assertOutput('some output', {

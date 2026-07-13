@@ -1,0 +1,25 @@
+name: Retry Expect Test
+version: 1.0.0
+description: Tests that expect.retry (interval/max/while) is rendered in manuals
+environments:
+  - name: staging
+
+steps:
+  - name: Switch NLB traffic
+    type: manual
+    command: ./switch-nlb.sh
+    expect:
+      contains: NLB_SWITCH_OK=true
+      retry:
+        interval: 30s
+        max: 6
+        while: "draining|NLB_SWITCH_OK=false"
+
+  - name: Wait for pods ready
+    type: manual
+    command: kubectl get pods
+    expect:
+      contains: Running
+      retry:
+        interval: 5s
+        max: 3
