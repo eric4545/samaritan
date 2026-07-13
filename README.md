@@ -1886,6 +1886,10 @@ pane and re-asserts up to `max` times, `interval` apart:
   "retryable code / retryable message" guard.
 - Polling applies to the automatic-step verify path; manual `[v]` verify stays
   operator-driven (press `[v]` again to re-check).
+- The retry policy is also **rendered in generated manuals** (Markdown,
+  Confluence, and ADF) as an extra Expected criterion, e.g. `retry up to 10×
+  every 5s` (or `… while "<guard>"` when a `while` guard is set), so the runbook
+  documents the polling behaviour alongside the assertion.
 
 See [examples/expect-retry.yaml](examples/expect-retry.yaml).
 

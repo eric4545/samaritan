@@ -8,6 +8,10 @@
 # Add a `while` guard to mark which failures are *retryable*: keep polling only
 # while the output matches a transient marker (e.g. "connection refused"); any
 # other failure fails fast instead of burning all the attempts.
+#
+# The retry policy is also rendered in generated manuals as an extra Expected
+# criterion, e.g. `retry up to 10× every 5s` (or `… while "<guard>"`), so the
+# runbook documents the polling behaviour alongside the assertion.
 name: Expect Retry Demo
 version: 1.0.0
 description: Demonstrate retryable verification with expect.retry
