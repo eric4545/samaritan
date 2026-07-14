@@ -331,15 +331,22 @@ describe('run command: evidence-required gate', () => {
   // chunk get dropped after the first pending question() — stagger delivery
   // with sleeps so each question() gets its own read event (same technique
   // used by the sidecar verify UX tests below).
+  // Single-quote a value for safe interpolation into the constructed shell
+  // command below (args include filesystem paths, so quote rather than trust).
+  function shQuote(value: string): string {
+    return `'${value.replace(/'/g, "'\\''")}'`;
+  }
+
   function runSequenced(
     args: string[],
     inputs: string[],
     timeoutMs = 15_000,
   ): { stdout: string; stderr: string } {
     const piped = inputs
-      .map((line) => `printf '${line.replace(/'/g, "'\\''")}\\n'`)
+      .map((line) => `printf ${shQuote(`${line}\\n`)}`)
       .join('; sleep 1; ');
-    const cmd = `(sleep 1; ${piped}) | timeout ${Math.ceil(timeoutMs / 1000)} ${CLI} ${INDEX} ${args.join(' ')}`;
+    const quotedArgs = args.map(shQuote).join(' ');
+    const cmd = `(sleep 1; ${piped}) | timeout ${Math.ceil(timeoutMs / 1000)} ${shQuote(CLI)} ${shQuote(INDEX)} ${quotedArgs}`;
     const result = spawnSync('bash', ['-c', cmd], {
       encoding: 'utf8',
       timeout: timeoutMs + 5_000,
@@ -427,12 +434,11 @@ describe('run command: evidence-required gate', () => {
     );
 
     try {
-      const cmd = `(sleep 1; printf '\\n'; sleep 1; printf 'o\\n'; sleep 1; printf 'demo reason\\n') | timeout 15 ${CLI} ${INDEX} run ${opFile} --env default`;
-      const result = spawnSync('bash', ['-c', cmd], {
-        encoding: 'utf8',
-        timeout: 20_000,
-      });
-      const combined = (result.stdout ?? '') + (result.stderr ?? '');
+      const { stdout, stderr } = runSequenced(
+        ['run', opFile, '--env', 'default'],
+        ['', 'o', 'demo reason'],
+      );
+      const combined = stdout + stderr;
       const m = combined.match(/📋 Session: ([0-9a-f-]{36})/);
       assert.ok(m, `run output must include the session id; got:\n${combined}`);
       const sessionId = (m as RegExpMatchArray)[1];
