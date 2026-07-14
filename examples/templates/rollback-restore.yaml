@@ -1,0 +1,14 @@
+# Reusable rollback procedure imported into a `rollback:` block via `uses:`.
+#
+# A rollback step IS a normal step, so this file is just a step array — exactly
+# like a normal-step template. Every `${VAR}` must be supplied by the caller's
+# `with:` (the same required-variable rule as normal-step `uses:`).
+- name: Restore ${SERVICE} to the previous revision
+  command: kubectl rollout undo deployment/${SERVICE}
+  instruction: |
+    Roll ${SERVICE} back to the last known-good revision, then wait for the
+    rollout to settle.
+- name: Verify ${SERVICE} is healthy
+  command: curl -f https://${SERVICE}.internal/health
+  expect:
+    contains: healthy

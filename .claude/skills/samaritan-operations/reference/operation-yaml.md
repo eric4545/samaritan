@@ -33,17 +33,21 @@ A rollback step **IS a normal step** — the `rollbackStep` schema is kept at fu
 field parity with a normal step (enforced by `tests/schemas/rollback-parity.test.ts`),
 so anything you can author on a step you can author on a rollback step: its
 `StepContent` body plus `name`, nested `sub_steps` (a recursive list of rollback
-steps, for multi-part rollbacks), and **`foreach`/`matrix`**. A rollback step with
-`foreach` expands at parse time into one rollback step per combination — exactly
-like a normal step — in every format and for **both** the operation-level plan
+steps, for multi-part rollbacks), **`foreach`/`matrix`**, and **`uses`/`with`**
+file composition. A rollback step with `foreach` expands at parse time into one
+rollback step per combination, and a rollback entry with `uses:` expands into the
+imported file's steps (with `${VAR}`s filled from `with:`) — exactly like a normal
+step — in every format and for **both** the operation-level plan
 (`operation.rollback.steps[]`) and per-step rollback (`Step.rollback[]`). A step
-may carry **multiple** rollback entries (authored siblings or foreach-expanded);
-all of them render (not just the first). Nested sub-steps render recursively —
-operation-level as **Rollback Step N**, **N.M**, …; step-level inline under the
-step's **🔄 Rollback** section. The rollback step schema is strict
-(`additionalProperties: false`), so a typo'd key fails validation rather than
-being silently dropped. Examples: `examples/rollback-with-substeps.yaml`,
-`examples/rollback-with-foreach.yaml`.
+may carry **multiple** rollback entries (authored siblings, foreach-expanded, or
+imported via `uses:`); all of them render (not just the first). Nested sub-steps
+render recursively — operation-level as **Rollback Step N**, **N.M**, …;
+step-level inline under the step's **🔄 Rollback** section. The rollback step
+schema is strict (`additionalProperties: false`), so a typo'd key fails validation
+rather than being silently dropped. The ONLY excluded field is `rollback` itself
+(no rollback-of-a-rollback; nest via `sub_steps`). Examples:
+`examples/rollback-with-substeps.yaml`, `examples/rollback-with-foreach.yaml`,
+`examples/rollback-with-uses.yaml`.
 
 Set `rollback.aggregate_step_rollbacks: true` to **group** every step's own
 `rollback` into the global plan: after the explicit `steps:`, each step's
@@ -67,10 +71,10 @@ Opt-in (default false). Example: `examples/global-rollback-aggregated.yaml`.
 `template`/`with`, `variables`, `capture`, `retry`, `rollback`,
 `section_heading`, `timeline`, `ticket`, `estimated_duration`, `env`.
 
-> Rollback steps accept these too (full parity), except the composition
-> directives `uses`/`with` and nested `rollback` (use `sub_steps` for
-> multi-part rollbacks). In particular `foreach`/`matrix` expand on rollback
-> steps just like normal steps.
+> Rollback steps accept these too (full parity), except nested `rollback`
+> (use `sub_steps` for multi-part rollbacks). In particular `foreach`/`matrix`
+> AND `uses`/`with` file composition expand on rollback steps at parse time
+> just like normal steps.
 
 ## command vs script
 

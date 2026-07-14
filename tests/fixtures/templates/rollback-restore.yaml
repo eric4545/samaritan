@@ -1,0 +1,11 @@
+# Reusable rollback steps imported into a rollback: block via `uses:`.
+# A rollback step IS a normal step, so this is just a step array — the parser
+# expands it inline as flat RollbackStep[] at parse time. Every ${VAR} must be
+# supplied by the caller's `with:` (same rule as normal-step uses).
+- name: Restore ${SERVICE} to previous revision
+  command: kubectl rollout undo deployment/${SERVICE}
+  instruction: Roll ${SERVICE} back to the last known-good revision.
+- name: Verify ${SERVICE} health
+  command: curl -f https://${SERVICE}.internal/health
+  expect:
+    contains: healthy

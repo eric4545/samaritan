@@ -1996,6 +1996,31 @@ rollback:
 
 This yields four rollback steps (`Restart web (us-east-1, web)`, …), each rendered in every format. A step may also carry **multiple** rollback entries (authored or foreach-expanded); all of them render. See `examples/rollback-with-foreach.yaml`.
 
+#### Compose a rollback from a reusable file with `uses:`/`with:`
+
+Because a rollback step **is** a normal step, it also supports [`uses:`/`with:`](#step-composition-uses) file composition. A rollback entry that references a file with `uses:` is expanded at parse time into that file's steps (with every `${VAR}` filled from `with:`), producing a flat list of rollback steps. This works for **both** the operation-level `rollback.steps[]` plan and per-step `Step.rollback[]`, so you can keep one canonical "restore service" procedure in a shared file and reuse it as the rollback for many operations:
+
+```yaml
+steps:
+  - name: Deploy web service
+    command: kubectl apply -f web.yaml
+    rollback:
+      - uses: ./templates/rollback-restore.yaml   # expands into the file's steps
+        with:
+          SERVICE: web
+
+rollback:
+  automatic: false
+  steps:
+    - name: Announce rollback
+      instruction: Post in #incidents that a rollback is starting.
+    - uses: ./templates/rollback-restore.yaml     # plain + imported steps coexist
+      with:
+        SERVICE: api
+```
+
+The same required-variable rule as normal-step `uses:` applies: every `${VAR}` in the imported file must be supplied via `with:` (or a template default). A `uses:`-imported rollback step can itself contain `foreach`/`matrix`, which expands after import. See `examples/rollback-with-uses.yaml` (and `examples/templates/rollback-restore.yaml`).
+
 #### Group per-step rollbacks into the global rollback (`aggregate_step_rollbacks`)
 
 Set `aggregate_step_rollbacks: true` on the operation-level `rollback:` to **group every step's own `rollback` into the global plan**. After the explicit `steps:` above, SAMARITAN appends each step's rollback in **reverse step order** (most-recently-completed step first), each labelled with the step it undoes (`↩ Rollback for "Deploy app"`). This lets you author each undo next to the step it reverses *and* still see — or run — one consolidated recovery:

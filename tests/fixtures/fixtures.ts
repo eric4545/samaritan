@@ -120,6 +120,10 @@ export const FIXTURES = {
   // Rollback steps with foreach/matrix (step-level + operation-level + nested)
   rollbackForeach: 'tests/fixtures/operations/features/rollback-foreach.yaml',
 
+  // Rollback steps composed from a reusable file via uses:/with: (both sites)
+  rollbackWithUses:
+    'tests/fixtures/operations/features/rollback-with-uses.yaml',
+
   // Script file import
   withScript: 'tests/fixtures/operations/features/with-script.yaml',
   confluenceScriptAndExpect:
