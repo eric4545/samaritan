@@ -255,6 +255,15 @@ describe('SessionState (issue #12)', () => {
     assert.strictEqual(result, '$HOME and $USER');
   });
 
+  it('leaves shell parameter expansions like ${X:?} untouched instead of throwing', () => {
+    const state = new SessionState();
+    state.capture('IMAGE_ID', 'sha256:abc');
+    const result = state.interpolate(
+      'push ${IMAGE_ID} || echo "${ERR:?failed}"',
+    );
+    assert.strictEqual(result, 'push sha256:abc || echo "${ERR:?failed}"');
+  });
+
   it('resolves bare $VAR in expect equals while leaving unknown shell vars', () => {
     const state = new SessionState();
     state.capture('STATUS', 'Running');

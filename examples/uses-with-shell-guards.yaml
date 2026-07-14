@@ -1,0 +1,25 @@
+# Shell parameter-expansion guards inside a reused step file.
+#
+# Only plain ${VAR} names are SAMARITAN template variables. Bash guards for
+# shell-local variables — ${POD:?fail fast}, ${REGION:-default},
+# ${FLAG:+--verbose} — are NOT template variables: they are never required
+# in `with:` and pass through to the generated manual (and the shell)
+# untouched. This keeps fail-fast bash conventions working inside files
+# meant to be imported via `uses:`.
+name: Deploy With Fail-Fast Shell Guards
+version: 1.0.0
+description: Reuse a step file whose bash uses ${VAR:?} fail-fast guards for shell-local variables
+author: SRE Team
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment
+  - name: production
+    description: Production environment
+    approval_required: true
+
+steps:
+  - uses: ./templates/fail-fast-restart.yaml
+    with:
+      SERVICE: web

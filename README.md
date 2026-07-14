@@ -327,7 +327,8 @@ steps:
 5. Generated manuals show the fully expanded, substituted steps
 
 **Variable substitution:**
-- All `${VAR}` placeholders must be satisfied by `with:` or `common_variables` defaults
+- All plain `${VAR}` placeholders must be satisfied by `with:` or `common_variables` defaults
+- Shell parameter expansions (`${POD:?}`, `${REGION:-us-east-1}`, `${PATH##*/}`, … — any name that isn't a plain identifier) are **not** template variables: they're never required in `with:` and pass through to the shell untouched, so fail-fast bash guards for shell-local variables keep working inside reused files
 - Type-preserving: `timeout: ${TIMEOUT}` with `TIMEOUT: 60` → `timeout: 60` (number, not string)
 - Omit `with:` entirely if the file has no `${VAR}` placeholders
 
@@ -350,8 +351,11 @@ See `examples/scoped-preflight.yaml` (+ `examples/templates/db-migration.yaml`).
 - `examples/templates/kubernetes-deployment.yaml` — K8s deployment workflow
 - `examples/templates/notifications.yaml` — team notification steps
 - `examples/templates/db-migration.yaml` — migration block with local pre-flight
+- `examples/templates/fail-fast-restart.yaml` — shell `${VAR:?}` guards inside a reused file
 
-See `examples/deployment-with-templates.yaml` for a complete example.
+See `examples/deployment-with-templates.yaml` for a complete example, and
+`examples/uses-with-shell-guards.yaml` for mixing template variables with
+shell parameter-expansion guards.
 
 ## 🛠 CLI Commands
 

@@ -265,8 +265,9 @@ class OperationValidator {
     const usedVariables = new Set<string>();
 
     for (const step of operation.steps) {
-      // Simple regex to find ${variable} patterns
-      const variableRegex = /\$\{([^}]+)\}/g;
+      // Plain ${variable} references only — shell parameter expansions
+      // (${X:?}, ${X:-default}, …) are shell constructs, not operation vars.
+      const variableRegex = /\$\{(\w+)\}/g;
 
       [step.command, step.instruction, JSON.stringify(step.env || {})]
         .filter(Boolean)

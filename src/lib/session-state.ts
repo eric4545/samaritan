@@ -12,8 +12,10 @@ export class SessionState {
   }
 
   interpolate(template: string): string {
-    // ${VAR} → strict: throw if not captured
-    const step1 = template.replace(/\$\{([^}]+)\}/g, (_match, name) => {
+    // ${VAR} (plain identifier name) → strict: throw if not captured.
+    // Shell parameter expansions (${X:?}, ${X:-default}, …) never match and
+    // are left for the shell to evaluate.
+    const step1 = template.replace(/\$\{(\w+)\}/g, (_match, name) => {
       const value = this.vars.get(name);
       if (value === undefined) {
         throw new Error(`Undefined captured variable: ${name}`);

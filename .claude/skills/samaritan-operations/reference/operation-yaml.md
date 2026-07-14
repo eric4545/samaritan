@@ -144,7 +144,11 @@ steps:
       ENDPOINT: https://api.example.com
       TIMEOUT: 60          # type-preserving: stays a number
 ```
-All `${VAR}` in the template must be supplied in `with:` or the parser errors.
+All plain `${VAR}` in the template must be supplied in `with:` or the parser
+errors. Shell parameter expansions (`${X:?}`, `${X:-default}`, `${X##*/}` —
+any name that isn't a plain identifier) are NOT template variables: never
+required in `with:`, always passed through to the shell untouched. See
+`examples/uses-with-shell-guards.yaml`.
 
 ## Environment reuse (DRY)
 

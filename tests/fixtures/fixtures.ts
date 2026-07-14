@@ -124,6 +124,11 @@ export const FIXTURES = {
   rollbackWithUses:
     'tests/fixtures/operations/features/rollback-with-uses.yaml',
 
+  // Shell ${X:?}/${X:-…} parameter-expansion guards inside a uses:-imported
+  // file — shell constructs, not required template variables
+  usesWithShellGuards:
+    'tests/fixtures/operations/features/uses-with-shell-guards.yaml',
+
   // Script file import
   withScript: 'tests/fixtures/operations/features/with-script.yaml',
   confluenceScriptAndExpect:

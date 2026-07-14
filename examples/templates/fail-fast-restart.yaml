@@ -1,0 +1,13 @@
+# Restart a service's pod with fail-fast bash guards.
+#
+# ${SERVICE} is a template variable (plain identifier name) — supplied via
+# with: at the import site. ${POD:?…} and ${REGION:-…} are shell
+# parameter expansions guarding shell-LOCAL variables — SAMARITAN leaves
+# them for the shell, so an unset POD aborts the command instead of
+# running `kubectl delete ""`.
+- name: Restart ${SERVICE} pod
+  type: manual
+  command: |
+    POD=$(kubectl get pods -l app=${SERVICE} -o name | head -1)
+    kubectl delete "${POD:?no pod found for ${SERVICE}}"
+    kubectl get pods -l app=${SERVICE} --context "${KUBE_CONTEXT:-default}"

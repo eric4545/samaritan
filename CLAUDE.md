@@ -481,6 +481,7 @@ steps:
 **Key Features:**
 - ✅ Supports both step array and operation file formats
 - ✅ Type-preserving variable substitution (numbers stay numbers, booleans stay booleans)
+- ✅ Shell parameter expansions (`${X:?}`, `${X:-default}`, `${X##*/}` — any name that isn't a plain `\w+` identifier) are NOT template variables: `extractVariables`/`substituteVariables` match only `${\w+}`, so shell guards are never required in `with:` and pass through untouched (same rule in `variable-resolver.ts`, `session-state.ts` `interpolate`, and `validate.ts` variable warnings)
 - ✅ Relative path resolution (template paths relative to importing operation)
 - ✅ Validation of required variables (errors if any ${VAR} not provided)
 - ✅ Environment variable integration (can pass ${ENV_VAR} from parent to template)
