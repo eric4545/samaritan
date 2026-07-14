@@ -57,6 +57,16 @@ export function renderReport(
   const stepsCompleted = steps.filter((s) => s.status === 'completed').length;
   const stepsSkipped = steps.filter((s) => s.status === 'skipped').length;
 
+  // Identify where an aborted/cancelled run actually stopped. A step that
+  // emitted step_start but never completed (or failed/skipped) is left
+  // `pending` with a `started_at` — that's the in-progress step at abort time.
+  // Take the highest-index such step so the report can flag the stop point.
+  const isAborted = status === 'cancelled' || status === 'aborted';
+  const abortedStep = isAborted
+    ? [...steps].reverse().find((s) => s.status === 'pending' && s.started_at)
+    : undefined;
+  const abortedIndex = abortedStep?.index;
+
   // Build Markdown
   const lines: string[] = [];
 
@@ -76,6 +86,11 @@ export function renderReport(
   if (stepsSkipped > 0) {
     lines.push(`- Steps skipped: ${stepsSkipped}`);
   }
+  if (abortedStep) {
+    lines.push(
+      `- Aborted at step ${abortedStep.index + 1}: ${abortedStep.name}`,
+    );
+  }
   lines.push(`- Duration: ${duration}`);
 
   const pics = [...new Set(steps.flatMap((s) => (s.pic ? [s.pic] : [])))];
@@ -88,7 +103,7 @@ export function renderReport(
   lines.push('');
 
   for (const step of steps) {
-    lines.push(...renderStep(step, redact));
+    lines.push(...renderStep(step, redact, abortedIndex));
   }
 
   // Approval Trail — aggregates every step-level approve/reject decision so
@@ -142,12 +157,22 @@ export function renderReport(
   return lines.join('\n');
 }
 
-function renderStep(step: StepRecord, redact: Redact): string[] {
+function renderStep(
+  step: StepRecord,
+  redact: Redact,
+  abortedIndex?: number,
+): string[] {
   const lines: string[] = [];
   const stepNum = step.index + 1;
   const firstCmd = step.commands[0];
   const skippedSuffix = step.status === 'skipped' ? ' ⏭ (skipped)' : '';
-  lines.push(`## Step ${stepNum}: ${step.name}${skippedSuffix}`);
+  // The step that was in progress when the operator aborted — flag it so the
+  // report makes the stop point obvious instead of looking like a clean step.
+  const abortedSuffix =
+    step.index === abortedIndex ? ' 🛑 (aborted here — in progress)' : '';
+  lines.push(
+    `## Step ${stepNum}: ${step.name}${skippedSuffix}${abortedSuffix}`,
+  );
   lines.push('');
 
   if (step.started_at) {
@@ -292,6 +317,7 @@ function calcDuration(start: string, end: string): string {
 function statusIcon(status: string): string {
   if (status === 'completed') return '✅';
   if (status === 'rolled_back') return '↩️';
-  if (status === 'aborted') return '🛑';
+  if (status === 'aborted' || status === 'cancelled') return '🛑';
+  if (status === 'paused') return '⏸️';
   return '❓';
 }
