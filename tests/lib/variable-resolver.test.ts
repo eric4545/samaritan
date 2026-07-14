@@ -1,10 +1,12 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
+  collectUnresolvedVars,
   hasUnresolvedVars,
   resolveVars,
   resolveVarsSafe,
 } from '../../src/lib/variable-resolver';
+import type { Operation, RollbackPlan, Step } from '../../src/models/operation';
 
 describe('resolveVars', () => {
   it('replaces ${VAR} from context', () => {
@@ -94,5 +96,79 @@ describe('hasUnresolvedVars', () => {
 
   it('returns false for shell parameter expansions like ${X:?}', () => {
     assert.strictEqual(hasUnresolvedVars('echo "${X:?unset}"', {}), false);
+  });
+});
+
+describe('collectUnresolvedVars', () => {
+  const step = (overrides: Partial<Step>): Step => ({
+    name: 'step',
+    type: 'manual',
+    ...overrides,
+  });
+
+  it('returns [] when every ${VAR} in steps/rollback is already resolved', () => {
+    const operation: Pick<Operation, 'steps' | 'rollback'> = {
+      steps: [step({ command: 'echo ${ENV}' })],
+      rollback: { steps: [step({ command: 'echo ${ENV}' })] } as RollbackPlan,
+    };
+    assert.deepStrictEqual(
+      collectUnresolvedVars(operation, { ENV: 'prod' }),
+      [],
+    );
+  });
+
+  it('finds a var referenced only in command/instruction/expect', () => {
+    const operation: Pick<Operation, 'steps' | 'rollback'> = {
+      steps: [
+        step({
+          command: 'echo ${CMD_VAR}',
+          instruction: 'Do ${INSTR_VAR}',
+          expect: { contains: '${EXPECT_VAR}' },
+        }),
+      ],
+    };
+    const missing = collectUnresolvedVars(operation, {});
+    assert.ok(missing.includes('CMD_VAR'));
+    assert.ok(missing.includes('INSTR_VAR'));
+    assert.ok(missing.includes('EXPECT_VAR'));
+  });
+
+  it('finds a var referenced only inside nested sub_steps and operation-level rollback (incl. nested rollback sub_steps)', () => {
+    const operation: Pick<Operation, 'steps' | 'rollback'> = {
+      steps: [
+        step({
+          sub_steps: [step({ command: 'echo ${SUB_STEP_VAR}' })],
+        }),
+      ],
+      rollback: {
+        steps: [
+          {
+            name: 'rollback',
+            command: 'echo ${ROLLBACK_VAR}',
+            sub_steps: [
+              { name: 'nested', command: 'echo ${NESTED_ROLLBACK_VAR}' },
+            ],
+          },
+        ],
+      },
+    };
+    const missing = collectUnresolvedVars(operation, {});
+    assert.ok(missing.includes('SUB_STEP_VAR'));
+    assert.ok(missing.includes('ROLLBACK_VAR'));
+    assert.ok(missing.includes('NESTED_ROLLBACK_VAR'));
+  });
+
+  it('dedups repeats and preserves order of first appearance', () => {
+    const operation: Pick<Operation, 'steps' | 'rollback'> = {
+      steps: [
+        step({ command: 'echo ${B} and ${A}' }),
+        step({ command: 'echo ${A} and ${C}' }),
+      ],
+    };
+    assert.deepStrictEqual(collectUnresolvedVars(operation, {}), [
+      'B',
+      'A',
+      'C',
+    ]);
   });
 });

@@ -1,3 +1,5 @@
+import type { Operation } from '../models/operation';
+
 /**
  * Resolves ${VAR} placeholders from operation context variables.
  *
@@ -62,6 +64,26 @@ export function listUnresolvedVars(
     }
   }
   return unresolved;
+}
+
+/**
+ * Lists every ${VAR} placeholder referenced anywhere in an operation's steps
+ * or rollback plan that has no value in `vars` (deduplicated, in order of
+ * first appearance). Scans via JSON.stringify rather than enumerating fields
+ * individually, so it picks up command/script/instruction/description/expect/
+ * name/rollback (incl. nested sub_steps) in one pass — any new StepContent
+ * field is covered automatically. Used to pre-flight-prompt for run-time-only
+ * variables (e.g. a report date) before an interactive run starts.
+ */
+export function collectUnresolvedVars(
+  operation: Pick<Operation, 'steps' | 'rollback'>,
+  vars: Record<string, any>,
+): string[] {
+  const haystack = JSON.stringify({
+    steps: operation.steps,
+    rollback: operation.rollback,
+  });
+  return listUnresolvedVars(haystack, vars);
 }
 
 /**

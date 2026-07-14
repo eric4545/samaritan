@@ -1190,6 +1190,60 @@ describe('run command: ${VAR} rendering in step display', () => {
   });
 });
 
+// ─── Interactive prompt for missing run-time variables ───────────────────────
+//
+// The prompt only fires when process.stdin.isTTY is truthy (see
+// promptForMissingVariables in src/cli/commands/run.ts) — spawnSync's piped
+// `input` option is never a TTY, so these tests exercise the "prompt is
+// skipped" side of the gate, not the prompt itself. That's intentional and
+// matches this repo's precedent for other TTY-only behaviors ([t] attach
+// pane, Ctrl+C, paste-buffer): the enabled path isn't integration-testable
+// via spawnSync and is smoke-tested manually instead:
+//
+//   samaritan run examples/report-with-runtime-date.yaml -e production
+//   # expect: "📝 This operation references variable(s)..." then a
+//   # "   REPORT_DATE = " prompt; typing a value and pressing Enter lets the
+//   # step render with that value substituted.
+describe('run command: interactive prompt for missing variables', () => {
+  it('--no-prompt fully disables the fallback and preserves the warn-and-continue behavior', () => {
+    const fixture = fixturePath('varRendering');
+    const result = runCli(['run', fixture, '--env', 'staging', '--no-prompt'], {
+      input: 's\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Unresolved variable(s): NOT_DEFINED'),
+      '--no-prompt must still warn about the unresolved variable',
+    );
+    assert.ok(
+      combined.includes('${NOT_DEFINED}'),
+      '--no-prompt must still leave the unresolved placeholder visible',
+    );
+  });
+
+  it('non-TTY runs (CI/automation) are unaffected and never hang waiting on a prompt', () => {
+    const fixture = fixturePath('varRendering');
+    // Same fixture/flow as the no-flag warn-and-continue test above, but the
+    // point here is completion within the timeout: since spawnSync stdin is
+    // never a TTY, promptForMissingVariables must return immediately instead
+    // of blocking on a question() that nothing will ever answer.
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 's\n',
+      timeout: 5_000,
+    });
+    assert.notStrictEqual(
+      result.status,
+      null,
+      'run must complete (not time out) when stdin is not a TTY',
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Unresolved variable(s): NOT_DEFINED'),
+      'non-interactive run must fall back to the existing warning',
+    );
+  });
+});
+
 // ─── TTY raw-mode action prompt (regression: silent exit at first prompt) ────
 
 describe('run command: TTY raw-mode action prompt', () => {
