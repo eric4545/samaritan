@@ -1,0 +1,55 @@
+name: Evidence Required Gate
+version: 1.0.0
+description: |
+  Demonstrates the evidence-required gate in `samaritan run`: a step marked
+  `evidence: { required: true }` cannot be completed (or approved) with plain
+  Enter until evidence has actually been captured.
+
+  Run interactively:
+    samaritan run evidence-required-step.yaml --env production
+
+  At either step below, pressing Enter (or "approve") with no evidence
+  captured yet shows:
+    ⚠️  This step requires evidence and none has been captured yet.
+    [e=capture evidence / o=override with reason / Enter=back]:
+
+  Options at the gate:
+    [e] capture evidence — same [e] flow as any manual step (terminal output,
+                            a file/screenshot, or pasted text); once at least
+                            one item is captured the step can complete
+    [o] override         — type a reason and proceed anyway; logged as a
+                            user_input/override event in the run's audit
+                            log (events.jsonl), same as an overridden failed
+                            [v] verify assertion
+    Enter                — decline and return to the step's own menu
+
+  This enforcement is ON by default whenever evidence.required is true. To
+  disable it (e.g. for a CI dry-run rehearsal), pass:
+    samaritan run evidence-required-step.yaml --env production --no-require-evidence
+
+  Note: the gate only applies to `manual`/sidecar step completion and to
+  `approval` steps' "approve" path — it does not gate plain (non-sidecar)
+  `type: automatic` steps.
+
+environments:
+  - name: production
+
+steps:
+  - name: Confirm rollout health
+    type: manual
+    instruction: |
+      Check the deployment dashboard and confirm all pods are healthy before
+      continuing. Capture the dashboard screenshot or `kubectl get pods`
+      output as evidence.
+    evidence:
+      required: true
+      types: [screenshot, command_output]
+
+  - name: Sign off on rollout
+    type: approval
+    instruction: |
+      Sign off that the rollout is safe to leave running unattended. Capture
+      a final health-check output as evidence before approving.
+    evidence:
+      required: true
+      types: [command_output]

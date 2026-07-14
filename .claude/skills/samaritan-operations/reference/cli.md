@@ -65,6 +65,8 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
 - `--report <dir>` — write an extra copy of the run report.
 - `--auto-approve` — note: `automatic` context marks steps complete WITHOUT
   running commands (non-interactive execution is a roadmap item, not real).
+- `--no-require-evidence` — disable the evidence-required gate (see below);
+  also available on `resume`.
 
 ## Interactive run loop actions
 
@@ -80,6 +82,16 @@ Per manual/sidecar step:
 - `[r]` rollback — run *this step's* `rollback`, stay on the step
 - `[g]` global rollback — only when the operation declares a top-level `rollback:`. Previews + runs the consolidated recovery (explicit `rollback.steps` + every **completed** step's rollback in reverse order when `aggregate_step_rollbacks: true`), then aborts the operation
 - `q` / `quit` / `Ctrl+C` — **aborts** the operation, persists session as `paused` (resumable) and prints a resume hint (`Ctrl+C` saves too — it no longer hard-quits without saving)
+
+## Evidence-required gate
+
+When a step has `evidence: { required: true }`, completing it (`manual`/sidecar
+`Enter`, or `approval`'s `approve`) is **blocked** by default until either `[e]`
+captures at least one evidence item, or the operator types `o` + a reason to
+override (logged as a `user_input`/`override` event, same shape as an
+overridden failed `[v]` assertion). Enter alone declines and returns to the
+step's menu without completing it. Disable with `--no-require-evidence`. Does
+NOT gate plain (non-sidecar) `type: automatic` steps.
 
 ## Run artifacts
 
