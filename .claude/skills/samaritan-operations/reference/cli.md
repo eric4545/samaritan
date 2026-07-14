@@ -57,6 +57,18 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
   NOT send it to tmux — the operator runs it, then presses `[v]` to verify
   `step.expect`.
 - Other modes: `manual`, `automatic` (tmux-backed send/verify), `hybrid`.
+- `--var KEY=VALUE` (repeatable) — supply a variable's value only at run time
+  (e.g. reuse one manual for different report dates: `--var REPORT_DATE=...`).
+  Precedence (low→high): `common_variables` → `operation.variables[env]` →
+  `--var` → `step.variables`.
+- If a `${VAR}` has no value from `--var`/env config and `run`/sidecar is
+  attached to a real terminal (`process.stdin.isTTY`), you're prompted for it
+  once at the start of the run (mutates the resolved vars in place, so the
+  answer flows into the session/report). `--no-prompt` disables this and
+  falls back to the old warn-and-continue behavior; the prompt is also
+  automatically skipped for `--auto-approve`, `--dry-run`, and any
+  non-interactive/CI run (no TTY) — those never block. See
+  `examples/report-with-runtime-date.yaml`.
 - `--mock` — replay each step's `expect` against `evidence.results[<env>]` output;
   prints PASS/FAIL/SKIP, exits non-zero on failure. No tmux/execution.
 - `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning.

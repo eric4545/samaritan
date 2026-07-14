@@ -1,0 +1,32 @@
+name: Daily Report Generation
+version: 1.0.0
+description: >
+  Reuses one manual for any report date/range — REPORT_DATE has no default
+  anywhere in this file, so it must come from --var or the interactive
+  prompt at run time. See the --var section in README.md.
+
+environments:
+  - name: production
+    description: Production reporting environment.
+    variables: {}
+
+steps:
+  - name: Generate report for ${REPORT_DATE}
+    type: manual
+    description: Generate the daily report for the given date.
+    instruction: |
+      Run the report script for the target date:
+      ```bash
+      ./scripts/report.sh --date ${REPORT_DATE}
+      ```
+    expect:
+      contains: "Report generated for ${REPORT_DATE}"
+
+  - name: Archive report for ${REPORT_DATE}
+    type: manual
+    description: Upload the generated report to the shared archive.
+    instruction: |
+      Upload the report to the archive bucket:
+      ```bash
+      aws s3 cp ./reports/${REPORT_DATE}.pdf s3://reports-archive/${REPORT_DATE}.pdf
+      ```

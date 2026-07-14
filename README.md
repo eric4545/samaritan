@@ -373,6 +373,8 @@ npx github:eric4545/samaritan validate <operation.yaml> [options]
 npx github:eric4545/samaritan run <operation.yaml> [options]
   --env <environment>       Target environment (required)
   --var KEY=VALUE           Override a variable (repeatable)
+  --no-prompt               Do not interactively prompt for missing variables
+                            (warn instead; see note below)
   --dry-run                 Preview full plan without executing
   --mock                    Replay each step's expect against its
                             evidence.results output (no tmux); exits non-zero
@@ -391,7 +393,18 @@ npx github:eric4545/samaritan run <operation.yaml> [options]
   --no-require-evidence     Allow completing a step whose evidence.required is
                             true without capturing evidence (see "Evidence-required
                             gate" below; enforcement is ON by default)
+```
 
+**Run-time-only variables (e.g. a report date):** the same operation manual can be reused
+across runs by leaving a variable undefined in the YAML and supplying it only via `--var`, e.g.
+`samaritan run report.yaml -e prod --var REPORT_DATE=2026-07-14`. If you forget `--var` and
+`run`/sidecar mode is attached to a real terminal, you'll be prompted once at the start of the
+run for each missing variable — skip this with `--no-prompt` to get the old warn-and-continue
+behavior instead. The prompt is automatically skipped (never blocks) for `--auto-approve`,
+`--dry-run`, and any non-interactive/CI invocation (no TTY) — those always fall back to the
+warning. See `examples/report-with-runtime-date.yaml`.
+
+```bash
 # List saved run sessions (resumable by default)
 npx github:eric4545/samaritan sessions [options]
   -a, --all             Include completed and cancelled sessions

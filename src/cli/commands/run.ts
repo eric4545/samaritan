@@ -59,6 +59,7 @@ import {
   StepController,
 } from '../../lib/tui';
 import {
+  collectUnresolvedVars,
   listUnresolvedVars,
   resolveVars,
   resolveVarsSafe,
@@ -96,6 +97,7 @@ interface RunOptions {
   report?: string;
   fromStep?: number;
   requireEvidence?: boolean;
+  prompt?: boolean;
 }
 
 interface ResumeOptions {
@@ -217,6 +219,15 @@ class OperationRunner {
     const executionMode: ExecutionMode =
       options.mode ?? (options.autoApprove ? 'automatic' : 'sidecar');
 
+    const { flatSteps, execOperation } = this.prepareFlatOperation(operation);
+
+    await this.promptForMissingVariables(
+      execOperation,
+      resolvedVars,
+      executionMode,
+      options,
+    );
+
     const operator = process.env.USER || 'unknown';
 
     // Create session first so its ID can serve as the JSONL log identifier
@@ -238,8 +249,6 @@ class OperationRunner {
       dryRun: options.dryRun || false,
       autoMode: executionMode === 'automatic' || options.autoApprove || false,
     };
-
-    const { flatSteps, execOperation } = this.prepareFlatOperation(operation);
 
     this.displayOperationSummary(
       execOperation,
@@ -571,6 +580,47 @@ class OperationRunner {
       flatSteps,
       execOperation: { ...operation, steps: flatSteps.map((f) => f.step) },
     };
+  }
+
+  /**
+   * Fallback for run-time-only variables (e.g. a report date) that weren't
+   * supplied via --var or the environment config: prompt for each once, up
+   * front, when attached to a real terminal. Gated on process.stdin.isTTY
+   * (not just "interactive mode") so an unattended/CI run that forgot a
+   * --var still gets the old warn-and-continue behavior instead of hanging
+   * on a prompt nobody can answer. Mutates `vars` in place so the answers
+   * flow into the session, report, and step rendering with no other changes.
+   */
+  private async promptForMissingVariables(
+    execOperation: Operation,
+    vars: Record<string, any>,
+    mode: ExecutionMode,
+    options: RunOptions,
+  ): Promise<void> {
+    const isInteractive =
+      mode !== 'automatic' && !options.autoApprove && !options.dryRun;
+    if (!isInteractive || !process.stdin.isTTY || options.prompt === false) {
+      return;
+    }
+
+    const missing = collectUnresolvedVars(execOperation, vars);
+    if (missing.length === 0) return;
+
+    console.log(
+      '📝 This operation references variable(s) not supplied via --var or environment config:',
+    );
+    const rl = createReadlineInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    const question = (prompt: string): Promise<string> =>
+      new Promise((resolve) => rl.question(prompt, resolve));
+    for (const name of missing) {
+      const answer = (await question(`   ${name} = `)).trim();
+      if (answer !== '') vars[name] = answer;
+    }
+    rl.close();
+    console.log('');
   }
 
   private async runInteractiveStepLoop(
@@ -2236,6 +2286,10 @@ const runCommand = new Command('run')
     '--var <key=value>',
     'Override variable values',
     (value, previous: string[] = []) => [...previous, value],
+  )
+  .option(
+    '--no-prompt',
+    'Do not interactively prompt for missing variables (warn instead)',
   )
   .option('-v, --verbose', 'Verbose output')
   .option('--continue-on-error', 'Continue execution even if steps fail')
