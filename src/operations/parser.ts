@@ -580,6 +580,120 @@ function resolveSessionReferences(
 }
 
 /**
+ * Shared `uses:`-expansion core for BOTH normal steps and rollback steps.
+ *
+ * Handles everything that is identical between the two composition paths:
+ * circular-import detection, per-file baseDirectory scoping (so relative paths
+ * inside an imported file resolve against its own location), loading the
+ * template steps, merging `with:` over the template defaults, validating that
+ * every required `${VAR}` is provided (foreach loop vars excepted), and
+ * substituting the merged variables into the loaded steps.
+ *
+ * The ONLY thing that differs between call sites is how the substituted steps
+ * are recursively resolved — normal steps run back through
+ * `resolveStepReferences`, rollback steps through `resolveRollbackReferences`.
+ * That recursion is injected via `resolveNested`, which runs INSIDE the guarded
+ * baseDirectory/circular region so nested imports resolve correctly. Keeping
+ * this single core is what prevents the duplicated uses-loading logic the
+ * rollback field-parity trap warns about.
+ */
+async function expandUsesEntry<T>(
+  stepData: any,
+  fieldPath: string,
+  importContext: ImportContext,
+  resolveNested: (
+    substitutedSteps: any[],
+    importContext: ImportContext,
+  ) => Promise<T[]>,
+): Promise<T[]> {
+  try {
+    const templatePath = stepData.uses;
+    const withVars: Record<string, any> = stepData.with || {};
+
+    // Resolve canonical key for circular detection (URL or absolute path)
+    const resolvedKey = isRemoteTemplate(templatePath)
+      ? templatePath.startsWith('github:')
+        ? resolveGithubUrl(templatePath)
+        : templatePath
+      : resolve(importContext.baseDirectory, templatePath);
+
+    if (importContext.templateFiles.has(resolvedKey)) {
+      throw new OperationParseError(
+        `Circular uses: detected: ${templatePath}`,
+        [
+          {
+            field: `${fieldPath}.uses`,
+            message: `File "${templatePath}" is already being expanded (circular dependency)`,
+          },
+        ],
+      );
+    }
+
+    importContext.templateFiles.add(resolvedKey);
+    // For local files, update baseDirectory so nested relative paths
+    // inside the file resolve relative to its own location.
+    // Remote files keep the parent baseDirectory.
+    const prevBaseDir = importContext.baseDirectory;
+    if (!isRemoteTemplate(templatePath)) {
+      importContext.baseDirectory = resolve(resolvedKey, '..');
+    }
+    try {
+      // Load template steps + default variable values
+      const { steps: templateSteps, defaultVars } = await loadTemplateSteps(
+        templatePath,
+        prevBaseDir,
+      );
+
+      // Composition: template defaults are the base; with: overrides them
+      const mergedVars = { ...defaultVars, ...withVars };
+
+      // Validate — only vars absent from BOTH defaults and with: are errors.
+      // Foreach loop variables are self-declared and injected at expansion time;
+      // they must NOT be required in with:.
+      const templateVars = extractVariables(templateSteps);
+      const foreachVars = extractForeachVars(templateSteps);
+      const missingVars = [...templateVars].filter(
+        (v) => !(v in mergedVars) && !foreachVars.has(v),
+      );
+
+      if (missingVars.length > 0) {
+        throw new OperationParseError(
+          `Missing variables for ${templatePath}: ${missingVars.join(', ')}`,
+          [
+            {
+              field: `${fieldPath}.with`,
+              message: `Required variables not provided: ${missingVars.join(', ')}`,
+            },
+          ],
+        );
+      }
+
+      // Substitute merged variables in template steps
+      const substitutedSteps = substituteVariables(templateSteps, mergedVars);
+
+      // Recursively resolve nested uses:, foreach, etc. through the caller's
+      // pipeline — circular-detection guard above prevents infinite loops.
+      // importContext.baseDirectory is now the file's own directory so any
+      // relative paths inside it resolve correctly.
+      return await resolveNested(substitutedSteps, importContext);
+    } finally {
+      importContext.baseDirectory = prevBaseDir;
+      importContext.templateFiles.delete(resolvedKey);
+    }
+  } catch (error) {
+    if (error instanceof OperationParseError) {
+      throw error;
+    }
+    throw new OperationParseError(`Failed to load file: ${stepData.uses}`, [
+      {
+        field: `${fieldPath}.uses`,
+        message: (error as Error).message,
+      },
+    ]);
+  }
+}
+
+/**
  * Resolve step references (use: step-name) to actual step definitions
  */
 async function resolveStepReferences(
@@ -612,113 +726,32 @@ async function resolveStepReferences(
         ],
       );
     } else if (stepData.uses !== undefined) {
-      // Inline step composition — expand all steps from the referenced file here
-      try {
-        const templatePath = stepData.uses;
-        const withVars: Record<string, any> = stepData.with || {};
+      // Inline step composition — expand all steps from the referenced file here.
+      // The uses-loading core (circular guard, baseDirectory scoping, template
+      // load + with: merge + required-var validation + substitution) is shared
+      // with the rollback path via expandUsesEntry(); only the recursion callback
+      // differs (normal steps here, rollback steps in resolveRollbackReferences).
+      const expandedSteps = await expandUsesEntry<Step>(
+        stepData,
+        `steps[${i}]`,
+        importContext,
+        (substitutedSteps, ctx) => resolveStepReferences(substitutedSteps, ctx),
+      );
 
-        // Resolve canonical key for circular detection (URL or absolute path)
-        const resolvedKey = isRemoteTemplate(templatePath)
-          ? templatePath.startsWith('github:')
-            ? resolveGithubUrl(templatePath)
-            : templatePath
-          : resolve(importContext.baseDirectory, templatePath);
-
-        if (importContext.templateFiles.has(resolvedKey)) {
-          throw new OperationParseError(
-            `Circular uses: detected: ${templatePath}`,
-            [
-              {
-                field: `steps[${i}].uses`,
-                message: `File "${templatePath}" is already being expanded (circular dependency)`,
-              },
-            ],
-          );
+      // Tag every expanded step with one group id for this `uses:` block so
+      // generators keep the block contiguous during phase grouping. Stamp
+      // unconditionally so the OUTERMOST `uses:` wins for nested templates
+      // (recursion expands inner blocks first, then this overwrites).
+      const usesGroup = {
+        id: randomUUID(),
+        name: typeof stepData.name === 'string' ? stepData.name : undefined,
+      };
+      for (const templateStep of expandedSteps) {
+        if (!templateStep.phase) {
+          templateStep.phase = 'flight';
         }
-
-        importContext.templateFiles.add(resolvedKey);
-        // For local files, update baseDirectory so nested relative paths
-        // inside the file resolve relative to its own location.
-        // Remote files keep the parent baseDirectory.
-        const prevBaseDir = importContext.baseDirectory;
-        if (!isRemoteTemplate(templatePath)) {
-          importContext.baseDirectory = resolve(resolvedKey, '..');
-        }
-        try {
-          // Load template steps + default variable values
-          const { steps: templateSteps, defaultVars } = await loadTemplateSteps(
-            templatePath,
-            prevBaseDir,
-          );
-
-          // Composition: template defaults are the base; with: overrides them
-          const mergedVars = { ...defaultVars, ...withVars };
-
-          // Validate — only vars absent from BOTH defaults and with: are errors.
-          // Foreach loop variables are self-declared and injected at expansion time;
-          // they must NOT be required in with:.
-          const templateVars = extractVariables(templateSteps);
-          const foreachVars = extractForeachVars(templateSteps);
-          const missingVars = [...templateVars].filter(
-            (v) => !(v in mergedVars) && !foreachVars.has(v),
-          );
-
-          if (missingVars.length > 0) {
-            throw new OperationParseError(
-              `Missing variables for ${templatePath}: ${missingVars.join(', ')}`,
-              [
-                {
-                  field: `steps[${i}].with`,
-                  message: `Required variables not provided: ${missingVars.join(', ')}`,
-                },
-              ],
-            );
-          }
-
-          // Substitute merged variables in template steps
-          const substitutedSteps = substituteVariables(
-            templateSteps,
-            mergedVars,
-          );
-
-          // Recursively resolve nested uses:, foreach, etc. through the
-          // full pipeline — circular-detection guard above prevents infinite loops.
-          // importContext.baseDirectory is now the file's own directory so any
-          // relative paths inside it resolve correctly.
-          const expandedSteps = await resolveStepReferences(
-            substitutedSteps,
-            importContext,
-          );
-
-          // Tag every expanded step with one group id for this `uses:` block so
-          // generators keep the block contiguous during phase grouping. Stamp
-          // unconditionally so the OUTERMOST `uses:` wins for nested templates
-          // (recursion expands inner blocks first, then this overwrites).
-          const usesGroup = {
-            id: randomUUID(),
-            name: typeof stepData.name === 'string' ? stepData.name : undefined,
-          };
-          for (const templateStep of expandedSteps) {
-            if (!templateStep.phase) {
-              templateStep.phase = 'flight';
-            }
-            templateStep.usesGroup = usesGroup;
-            resolvedSteps.push(templateStep);
-          }
-        } finally {
-          importContext.baseDirectory = prevBaseDir;
-          importContext.templateFiles.delete(resolvedKey);
-        }
-      } catch (error) {
-        if (error instanceof OperationParseError) {
-          throw error;
-        }
-        throw new OperationParseError(`Failed to load file: ${stepData.uses}`, [
-          {
-            field: `steps[${i}].uses`,
-            message: (error as Error).message,
-          },
-        ]);
+        templateStep.usesGroup = usesGroup;
+        resolvedSteps.push(templateStep);
       }
     } else {
       // This is a regular step definition
@@ -824,6 +857,63 @@ function expandRollbackForeach(
   return expanded;
 }
 
+/**
+ * Resolve a raw rollback-step list into flat, fully-expanded RollbackStep[] —
+ * the rollback counterpart to `resolveStepReferences`. A `uses:` entry is
+ * expanded inline (via the SHARED `expandUsesEntry` core) into the imported
+ * file's steps, then those imported steps are normalized to RollbackSteps and
+ * foreach-expanded; a regular entry is just normalized + foreach-expanded. So a
+ * `uses:` rollback entry becomes a flat RollbackStep[] at parse time exactly
+ * like foreach — renderers and the run loop stay foreach/uses-unaware.
+ *
+ * Note: unlike normal steps, imported rollback steps are NOT stamped with
+ * `usesGroup` (a Step-only phase-grouping concept). Rollback plans group by
+ * reverse step order via buildGlobalRollback, not by phase, so a usesGroup
+ * stamp would be meaningless — and normalizeRollbackStep only carries authored
+ * fields, so the stamp would not survive normalization anyway.
+ */
+async function resolveRollbackReferences(
+  rollbackData: any[],
+  importContext: ImportContext,
+  contextVars: Record<string, any>,
+): Promise<RollbackStep[]> {
+  const resolved: RollbackStep[] = [];
+  for (let i = 0; i < rollbackData.length; i++) {
+    const entry = rollbackData[i];
+    if (entry?.use !== undefined || entry?.template !== undefined) {
+      const bad = entry.use !== undefined ? 'use' : 'template';
+      throw new OperationParseError(
+        `'${bad}:' is not supported on rollback steps — use 'uses: ./path/to/file.yaml'`,
+        [
+          {
+            field: `rollback.steps[${i}].${bad}`,
+            message: `Replace '${bad}:' with 'uses: ./path/to/file.yaml'`,
+          },
+        ],
+      );
+    }
+
+    if (entry?.uses !== undefined) {
+      // Expand the referenced file, then run its steps back through THIS
+      // resolver so they become normalized, foreach-expanded RollbackSteps
+      // (and nested uses: inside the imported file are handled recursively).
+      const imported = await expandUsesEntry<RollbackStep>(
+        entry,
+        `rollback.steps[${i}]`,
+        importContext,
+        (substitutedSteps, ctx) =>
+          resolveRollbackReferences(substitutedSteps, ctx, contextVars),
+      );
+      resolved.push(...imported);
+    } else {
+      resolved.push(
+        ...expandRollbackForeach([normalizeRollbackStep(entry)], contextVars),
+      );
+    }
+  }
+  return resolved;
+}
+
 function assertNoDeprecatedEvidenceFields(data: any, stepName?: string): void {
   if (!data || typeof data !== 'object') return;
   const removed = ['evidence_required', 'evidence_types'].filter(
@@ -888,13 +978,27 @@ async function parseStep(
   // owning step's variables plus common variables.
   let rollback: RollbackStep[] | undefined;
   if (stepData.rollback) {
-    const normalized = Array.isArray(stepData.rollback)
-      ? stepData.rollback.map(normalizeRollbackStep)
-      : [normalizeRollbackStep(stepData.rollback)];
-    rollback = expandRollbackForeach(normalized, {
+    const rollbackArray = Array.isArray(stepData.rollback)
+      ? stepData.rollback
+      : [stepData.rollback];
+    const contextVars = {
       ...(importContext?.commonVariables ?? {}),
       ...(stepData.variables ?? {}),
-    });
+    };
+    // With an import context, `uses:`/`with:` file composition works on rollback
+    // steps exactly like normal steps (expanded at parse time to flat
+    // RollbackStep[]). Without one (rare fallback path), skip uses expansion and
+    // just normalize + foreach-expand.
+    rollback = importContext
+      ? await resolveRollbackReferences(
+          rollbackArray,
+          importContext,
+          contextVars,
+        )
+      : expandRollbackForeach(
+          rollbackArray.map(normalizeRollbackStep),
+          contextVars,
+        );
   }
 
   return {
@@ -1253,6 +1357,32 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     }
   }
 
+  // Resolve the operation-level rollback plan through the SAME pipeline as
+  // step-level rollback so `uses:`/`with:` file composition (and foreach)
+  // expand at parse time into a flat RollbackStep[]. Threads the full
+  // importContext (baseDirectory for relative template paths, templateFiles
+  // circular guard, commonVariables for foreach) into this site, which
+  // previously only had commonVariables and never supported uses:.
+  let operationRollbackSteps: RollbackStep[] = [];
+  if (rawOperation.rollback && Array.isArray(rawOperation.rollback.steps)) {
+    try {
+      operationRollbackSteps = await resolveRollbackReferences(
+        rawOperation.rollback.steps,
+        importContext,
+        commonVariables,
+      );
+    } catch (error) {
+      if (error instanceof OperationParseError) {
+        errors.push(...error.errors);
+      } else {
+        errors.push({
+          field: 'rollback.steps',
+          message: (error as Error).message,
+        });
+      }
+    }
+  }
+
   // Process operation dependencies if present
   if (rawOperation.needs && Array.isArray(rawOperation.needs)) {
     // For now, just validate that dependencies are strings
@@ -1329,19 +1459,14 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     common_variables: commonVariables,
     env_file: rawOperation.env_file,
     steps,
-    // Normalize the operation-level rollback plan's steps through the same
-    // recursive normalizer as step-level rollback, then expand foreach/matrix
-    // the same way normal steps do — so name/sub_steps/expect shorthand AND
-    // loops are handled identically in both (no raw-vs-normalized split).
+    // Operation-level rollback plan: resolved above via resolveRollbackReferences
+    // (same pipeline as step-level rollback) so name/sub_steps/expect shorthand,
+    // foreach/matrix loops AND `uses:`/`with:` file composition are handled
+    // identically in both — expanded at parse time into a flat RollbackStep[].
     rollback: rawOperation.rollback
       ? {
           ...rawOperation.rollback,
-          steps: Array.isArray(rawOperation.rollback.steps)
-            ? expandRollbackForeach(
-                rawOperation.rollback.steps.map(normalizeRollbackStep),
-                commonVariables,
-              )
-            : [],
+          steps: operationRollbackSteps,
         }
       : undefined,
     metadata,

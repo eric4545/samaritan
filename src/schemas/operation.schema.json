@@ -687,6 +687,14 @@
         "env": {
           "type": "object"
         },
+        "uses": {
+          "type": "string",
+          "description": "Path to a file whose steps are expanded inline here as rollback steps (relative to operation file). Same file composition as normal-step `uses:` — expanded at parse time into a flat list of rollback steps."
+        },
+        "with": {
+          "type": "object",
+          "description": "Variables to pass to the included file (all ${VAR} placeholders must be provided)"
+        },
         "variables": {
           "type": "object",
           "description": "Step-scoped variables that override environment and common variables"

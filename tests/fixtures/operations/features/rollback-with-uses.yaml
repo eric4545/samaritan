@@ -1,0 +1,36 @@
+name: Rollback With Uses
+version: 1.0.0
+description: Rollback steps compose reusable files via uses/with, at both sites
+
+environments:
+  - name: staging
+    description: Staging
+    variables:
+      NAMESPACE: staging
+  - name: production
+    description: Production
+    variables:
+      NAMESPACE: prod
+
+steps:
+  - name: Deploy web
+    type: automatic
+    phase: flight
+    command: kubectl apply -f web.yaml
+    # Step-level rollback composed from a reusable file. Expands at parse time
+    # into the imported steps with ${SERVICE} substituted from with:.
+    rollback:
+      - uses: ../../templates/rollback-restore.yaml
+        with:
+          SERVICE: web
+
+# Operation-level rollback plan also composed via uses:. Mixes a plain rollback
+# step with an imported block to prove both coexist.
+rollback:
+  automatic: false
+  steps:
+    - name: Announce rollback
+      command: echo "Rolling back deployment"
+    - uses: ../../templates/rollback-restore.yaml
+      with:
+        SERVICE: api

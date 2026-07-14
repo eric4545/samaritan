@@ -1509,3 +1509,86 @@ describe('Rollback foreach/matrix expansion (parity with normal steps)', () => {
     );
   });
 });
+
+describe('Rollback uses:/with: file composition (parity with normal steps)', () => {
+  it('expands a step-level rollback uses: into the imported steps with with: vars', async () => {
+    const operation = await parseFixture('rollbackWithUses');
+    const rb = operation.steps[0].rollback ?? [];
+
+    // The imported file has two steps; both land as flat RollbackSteps with
+    // ${SERVICE} substituted from with: SERVICE=web.
+    assert.strictEqual(rb.length, 2);
+    assert.deepStrictEqual(
+      rb.map((r) => r.name),
+      ['Restore web to previous revision', 'Verify web health'],
+    );
+    assert.strictEqual(rb[0].command, 'kubectl rollout undo deployment/web');
+    assert.strictEqual(rb[1].command, 'curl -f https://web.internal/health');
+    // uses:/with: are consumed at parse time, not left on the expanded step.
+    assert.strictEqual((rb[0] as { uses?: string }).uses, undefined);
+    assert.strictEqual((rb[0] as { with?: unknown }).with, undefined);
+    // usesGroup (a Step-only phase-grouping concept) must NOT leak onto rollback.
+    assert.strictEqual((rb[0] as { usesGroup?: unknown }).usesGroup, undefined);
+  });
+
+  it('expands an operation-level rollback uses: alongside a plain rollback step', async () => {
+    const operation = await parseFixture('rollbackWithUses');
+    const steps = operation.rollback?.steps ?? [];
+
+    // 1 plain step + 2 imported steps (SERVICE=api).
+    assert.strictEqual(steps.length, 3);
+    assert.deepStrictEqual(
+      steps.map((s) => s.name),
+      [
+        'Announce rollback',
+        'Restore api to previous revision',
+        'Verify api health',
+      ],
+    );
+    assert.strictEqual(steps[1].command, 'kubectl rollout undo deployment/api');
+  });
+
+  it('errors when a required with: variable is missing on a rollback uses:', async () => {
+    const { resolve } = await import('node:path');
+    const templateAbsPath = resolve(
+      'tests/fixtures/templates/rollback-restore.yaml',
+    );
+    const yamlContent = `name: Missing Rollback With Var
+version: 1.0.0
+description: rollback uses without required with var
+environments:
+  - name: staging
+    description: staging
+steps:
+  - name: Deploy
+    type: manual
+    command: echo deploy
+rollback:
+  steps:
+    - uses: ${templateAbsPath}
+`;
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const tmpDir = mkdtempSync(
+      join(tmpdir(), 'samaritan-rollback-missing-var-'),
+    );
+    const tmpPath = join(tmpDir, 'op.yaml');
+    writeFileSync(tmpPath, yamlContent);
+    try {
+      await assert.rejects(
+        () => parseOperation(tmpPath),
+        (err: any) => {
+          // Detail is collected into err.errors under the generic wrapper.
+          if (/Missing variables|SERVICE/i.test(err.message)) return true;
+          return (err.errors ?? []).some((e: any) =>
+            /Missing variables|SERVICE/i.test(e.message || ''),
+          );
+        },
+        'Should throw when a required rollback with: var is missing',
+      );
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});

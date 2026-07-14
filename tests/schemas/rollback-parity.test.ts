@@ -12,12 +12,12 @@ import { describe, it } from 'node:test';
 // runtime data loss. When you ADD a field to a normal step, either add it to
 // rollbackStep too, or add it to ROLLBACK_EXCLUDED_FIELDS with a reason.
 const ROLLBACK_EXCLUDED_FIELDS = new Set<string>([
-  // Composition directives: a rollback list is not expanded through
-  // resolveStepReferences, so `uses:`/`with:` file inclusion is out of scope.
-  'uses',
-  'with',
   // No rollback-of-a-rollback: nesting is expressed via `sub_steps`, which
   // rollbackStep already supports (recursively → rollbackStep).
+  // NOTE: `uses:`/`with:` file composition IS now supported on rollback steps —
+  // the rollback pipeline runs through resolveRollbackReferences, which shares
+  // the uses-expansion core (expandUsesEntry) with normal steps — so they are
+  // deliberately NOT excluded here.
   'rollback',
 ]);
 

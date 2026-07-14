@@ -1,0 +1,51 @@
+name: Rollback With Uses
+version: 1.0.0
+description: |
+  Demonstrates that a rollback step IS a normal step: it supports `uses:`/`with:`
+  file composition exactly like a regular step. A rollback entry that references
+  a file with `uses:` is expanded at parse time into that file's steps (with
+  `${VAR}` placeholders filled from `with:`), producing a flat list of rollback
+  steps — in every manual format and for BOTH rollback concepts: step-level
+  `rollback:` AND the operation-level `rollback.steps:` plan.
+
+  This lets teams keep one canonical "restore service" procedure in a shared
+  file and reuse it as the rollback for many operations, instead of copy-pasting
+  the same kubectl/curl steps into every runbook.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      CLUSTER: staging-cluster
+  - name: production
+    description: Production environment
+    variables:
+      CLUSTER: prod-cluster
+
+steps:
+  - name: Deploy web service
+    type: automatic
+    phase: flight
+    command: kubectl apply -f web.yaml
+    expect:
+      contains: configured
+    # Step-level rollback composed from a reusable file. Expands at parse time
+    # into the imported steps with ${SERVICE} substituted from with:.
+    rollback:
+      - uses: ./templates/rollback-restore.yaml
+        with:
+          SERVICE: web
+
+# Operation-level rollback plan also composed via `uses:`. A plain rollback step
+# and an imported block coexist — the imported block expands inline where it is
+# declared, keeping the announce-then-restore ordering.
+rollback:
+  automatic: false
+  conditions:
+    - health_check_failure
+  steps:
+    - name: Announce rollback in the incident channel
+      instruction: Post in #incidents that a rollback is starting.
+    - uses: ./templates/rollback-restore.yaml
+      with:
+        SERVICE: api
