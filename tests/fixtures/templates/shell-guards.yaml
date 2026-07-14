@@ -1,0 +1,13 @@
+# Reusable step that mixes a real template variable (${SERVICE}) with
+# shell-local variables protected by parameter-expansion guards. The guards
+# (:?, :-, :+, :=, ##) are shell constructs, NOT template variables — the
+# parser must not require them in with: and must pass them through untouched.
+- name: Fail-fast restart
+  type: manual
+  command: |
+    POD=$(kubectl get pods -l app=${SERVICE} -o name | head -1)
+    kubectl delete "${POD:?no pod found}"
+    echo "region ${REGION:-us-east-1}"
+    echo "flags ${VERBOSE:+--verbose}"
+    : "${CACHE_DIR:=/tmp/samaritan-cache}"
+    echo "script ${SCRIPT_PATH##*/}"

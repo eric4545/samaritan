@@ -453,8 +453,11 @@ function extractVariables(
   vars: Set<string> = new Set(),
 ): Set<string> {
   if (typeof obj === 'string') {
-    // Match ${VAR} pattern
-    const matches = obj.matchAll(/\$\{([^}]+)\}/g);
+    // Match plain ${VAR} template references only. Names containing shell
+    // parameter-expansion syntax (${X:?}, ${X:-default}, ${X##*/}, …) are
+    // shell constructs — substituteVariables leaves them untouched, so they
+    // must not be demanded from with: either.
+    const matches = obj.matchAll(/\$\{(\w+)\}/g);
     for (const match of matches) {
       vars.add(match[1]);
     }
@@ -501,8 +504,10 @@ function extractForeachVars(
  */
 function substituteVariables(obj: any, context: Record<string, any>): any {
   if (typeof obj === 'string') {
+    // Only plain-identifier names are template variables; shell parameter
+    // expansions (${X:?}, ${X:-default}, …) never match and pass through.
     // Check if the entire string is just a single variable reference
-    const singleVarMatch = obj.match(/^\$\{([^}]+)\}$/);
+    const singleVarMatch = obj.match(/^\$\{(\w+)\}$/);
     if (singleVarMatch) {
       const varName = singleVarMatch[1];
       if (varName in context) {
@@ -512,7 +517,7 @@ function substituteVariables(obj: any, context: Record<string, any>): any {
     }
 
     // Replace all ${VAR} with values (for strings with multiple vars or mixed content)
-    return obj.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+    return obj.replace(/\$\{(\w+)\}/g, (match, varName) => {
       if (varName in context) {
         return String(context[varName]);
       }

@@ -59,6 +59,16 @@ describe('resolveVars', () => {
     const input = 'kubectl get pods -n staging';
     assert.strictEqual(resolveVars(input, {}), input);
   });
+
+  it('leaves shell parameter expansions (${X:?}, ${X:-…}) untouched without throwing', () => {
+    const result = resolveVars(
+      'kubectl delete "${POD:?no pod}" --region ${REGION:-us-east-1} in ${ENV}',
+      { ENV: 'prod' },
+    );
+    assert.ok(result.includes('${POD:?no pod}'), '${POD:?} is a shell guard');
+    assert.ok(result.includes('${REGION:-us-east-1}'), '${REGION:-} is shell');
+    assert.ok(result.includes('in prod'), '${ENV} must still resolve');
+  });
 });
 
 describe('resolveVarsSafe', () => {
@@ -80,5 +90,9 @@ describe('hasUnresolvedVars', () => {
 
   it('returns false for plain strings with no vars', () => {
     assert.strictEqual(hasUnresolvedVars('kubectl get pods', {}), false);
+  });
+
+  it('returns false for shell parameter expansions like ${X:?}', () => {
+    assert.strictEqual(hasUnresolvedVars('echo "${X:?unset}"', {}), false);
   });
 });

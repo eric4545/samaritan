@@ -1592,3 +1592,66 @@ rollback:
     }
   });
 });
+
+describe('Shell parameter-expansion guards in uses:/template imports', () => {
+  it('does not require shell-guarded names (${X:?}, ${X:-…}, ${X:+…}, ${X:=…}) in with:', async () => {
+    const operation = await parseFixture('usesWithShellGuards');
+
+    assert.strictEqual(operation.steps.length, 1);
+    const cmd = operation.steps[0].command ?? '';
+    // The real template variable IS substituted from with:
+    assert.ok(cmd.includes('app=web'), '${SERVICE} should resolve from with:');
+    // Shell parameter expansions pass through to the shell untouched
+    assert.ok(cmd.includes('${POD:?no pod found}'));
+    assert.ok(cmd.includes('${REGION:-us-east-1}'));
+    assert.ok(cmd.includes('${VERBOSE:+--verbose}'));
+    assert.ok(cmd.includes('${CACHE_DIR:=/tmp/samaritan-cache}'));
+    assert.ok(cmd.includes('${SCRIPT_PATH##*/}'));
+  });
+
+  it('still requires plain ${VAR} references alongside shell guards', async () => {
+    // Same template, but with: omits SERVICE — the plain reference must
+    // still be demanded, while the guarded names must not be.
+    const { resolve } = await import('node:path');
+    const templateAbsPath = resolve(
+      'tests/fixtures/templates/shell-guards.yaml',
+    );
+    const yamlContent = `name: Missing Plain Var
+version: 1.0.0
+description: guards must not mask a genuinely missing template variable
+environments:
+  - name: staging
+steps:
+  - uses: ${templateAbsPath}
+    with: {}
+`;
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const tmpDir = mkdtempSync(join(tmpdir(), 'samaritan-shell-guards-'));
+    const tmpPath = join(tmpDir, 'op.yaml');
+    writeFileSync(tmpPath, yamlContent);
+    try {
+      await assert.rejects(
+        () => parseOperation(tmpPath),
+        (err: any) => {
+          const messages = [
+            err.message,
+            ...(err.errors ?? []).map((e: any) => e.message || ''),
+          ].join('\n');
+          assert.ok(
+            /SERVICE/.test(messages),
+            `plain \${SERVICE} must still be required, got: ${messages}`,
+          );
+          assert.ok(
+            !/POD|REGION|VERBOSE|CACHE_DIR|SCRIPT_PATH/.test(messages),
+            `shell-guarded names must not be required, got: ${messages}`,
+          );
+          return true;
+        },
+      );
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});

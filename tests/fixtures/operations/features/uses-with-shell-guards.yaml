@@ -1,0 +1,12 @@
+name: Uses With Shell Guards
+version: 1.0.0
+description: Shell parameter-expansion guards inside a uses:-imported file are not template variables
+
+environments:
+  - name: staging
+    description: Staging environment
+
+steps:
+  - uses: ../../templates/shell-guards.yaml
+    with:
+      SERVICE: web

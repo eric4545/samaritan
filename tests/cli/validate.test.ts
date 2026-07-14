@@ -48,6 +48,35 @@ describe('validate --lint', () => {
   });
 });
 
+describe('validate variable warnings', () => {
+  it('does not warn about shell parameter-expansion guards like ${X:?}', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-shell-guard-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(
+      file,
+      `name: Shell Guard Test
+version: 1.0.0
+environments:
+  - name: staging
+    variables:
+      SERVICE: web
+steps:
+  - name: Restart
+    type: manual
+    command: |
+      POD=$(kubectl get pods -l app=\${SERVICE} -o name | head -1)
+      kubectl delete "\${POD:?no pod found}"
+`,
+    );
+    const result = runCli(['validate', file]);
+    assert.strictEqual(result.status, 0, result.stdout + result.stderr);
+    assert.ok(
+      !result.stdout.includes('POD'),
+      `must not warn about \${POD:?}, got: ${result.stdout}`,
+    );
+  });
+});
+
 describe('validate regex-lint', () => {
   function writeOp(expectYaml: string): string {
     const dir = mkdtempSync(join(tmpdir(), 'samaritan-regex-lint-'));

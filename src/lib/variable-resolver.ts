@@ -2,14 +2,17 @@
  * Resolves ${VAR} placeholders from operation context variables.
  *
  * Rules:
- *  - ${VAR} with curly braces → operation variable; resolved from `vars`.
+ *  - ${VAR} with curly braces and a plain identifier name → operation
+ *    variable; resolved from `vars`.
  *  - $VAR without curly braces → shell runtime variable; left untouched.
+ *  - Shell parameter expansions (${X:?}, ${X:-default}, ${X#pattern}, …) →
+ *    shell constructs; left untouched for the shell to evaluate.
  *  - Throws with a clear error listing every unresolved ${VAR} so operators
  *    know exactly which variables are missing from the environment definition.
  */
 export function resolveVars(text: string, vars: Record<string, any>): string {
   const unresolved: string[] = [];
-  const result = text.replace(/\$\{([^}]+)\}/g, (match, name) => {
+  const result = text.replace(/\$\{(\w+)\}/g, (match, name) => {
     if (Object.hasOwn(vars, name)) {
       return String(vars[name]);
     }
@@ -35,7 +38,7 @@ export function resolveVarsSafe(
   text: string,
   vars: Record<string, any>,
 ): string {
-  return text.replace(/\$\{([^}]+)\}/g, (match, name) => {
+  return text.replace(/\$\{(\w+)\}/g, (match, name) => {
     if (Object.hasOwn(vars, name)) {
       return String(vars[name]);
     }
@@ -52,7 +55,7 @@ export function listUnresolvedVars(
   vars: Record<string, any>,
 ): string[] {
   const unresolved: string[] = [];
-  for (const match of text.matchAll(/\$\{([^}]+)\}/g)) {
+  for (const match of text.matchAll(/\$\{(\w+)\}/g)) {
     const name = match[1];
     if (!Object.hasOwn(vars, name) && !unresolved.includes(name)) {
       unresolved.push(name);
@@ -68,8 +71,8 @@ export function hasUnresolvedVars(
   text: string,
   vars: Record<string, any>,
 ): boolean {
-  return /\$\{([^}]+)\}/.test(
-    text.replace(/\$\{([^}]+)\}/g, (match, name) =>
+  return /\$\{(\w+)\}/.test(
+    text.replace(/\$\{(\w+)\}/g, (match, name) =>
       Object.hasOwn(vars, name) ? '' : match,
     ),
   );
