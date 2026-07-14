@@ -388,6 +388,9 @@ npx github:eric4545/samaritan run <operation.yaml> [options]
   --report <dir>            Write an EXTRA copy of the Markdown report to <dir>
                             (a report is always written beside the operation — see below)
   --continue-on-error       Continue execution even if a step fails
+  --no-require-evidence     Allow completing a step whose evidence.required is
+                            true without capturing evidence (see "Evidence-required
+                            gate" below; enforcement is ON by default)
 
 # List saved run sessions (resumable by default)
 npx github:eric4545/samaritan sessions [options]
@@ -395,8 +398,10 @@ npx github:eric4545/samaritan sessions [options]
 
 # Resume a paused or aborted run
 npx github:eric4545/samaritan resume <session-id> [options]
-  --from-step <number>  Resume from a specific step number
-  --auto-approve        Auto-approve remaining manual steps
+  --from-step <number>       Resume from a specific step number
+  --auto-approve             Auto-approve remaining manual steps
+  --no-require-evidence      Allow completing a step whose evidence.required is
+                            true without capturing evidence
 
 # Generate documentation
 npx github:eric4545/samaritan generate manual <operation.yaml> [options]
@@ -1687,6 +1692,21 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 - **`[p]` send to pane** (sidecar only) — **pastes** the step's `${VAR}`-resolved command into the attached tmux pane **without** pressing Enter, so you review it at your own prompt and run it yourself. The command is delivered via a tmux paste buffer with **bracketed paste** (`paste-buffer -p`), so a multi-line command (e.g. a heredoc script) lands as **one atomic block** at your prompt and does **not** execute line-by-line — you press Enter once yourself to run it. Only offered when the step has a command and a pane is attached (a spawn-own `sessions:` pane, or one attached via `[t]`/`--attach`); with nothing attached it tells you to `[t]` attach first. To re-run a command during verify, just press `[p]` again, then `[v]`. Logged as a `user_input`/`send_to_pane` breadcrumb in the JSONL audit log — sidecar still never executes anything on your behalf.
 - **`[b]` back** — go back to an earlier, already-processed step to re-run it (e.g. an external dependency was fixed and you want to retry from there). Shows a numbered picker of the prior steps; the chosen step **and every step after it** are reset to pending and execution resumes from there. The append-only JSONL audit log keeps the full history of the earlier attempt, and the rewound step index is persisted so `resume` stays consistent. Not offered on the first step.
 - **`[j]` jump** — jump **forward** to a later step (e.g. steps 3–5 are irrelevant this run and you want to go straight to step 6). Shows a numbered picker of the steps after the current one; the current step and every step up to (but not including) the target are recorded as **skipped** (⏭) in the run report, and execution resumes at the target. The append-only JSONL audit log keeps the full history. Not offered on the last step. To start a fresh run partway through instead, use `run --from-step <N>` (see below).
+
+### Evidence-required gate
+
+When a step declares `evidence: { required: true }`, completing it (pressing `Enter`/notes on a `manual`/sidecar step, or `approve` on an `approval` step) is **blocked** until either at least one item has been captured via `[e]`, or you explicitly override:
+
+```
+    ⚠️  This step requires evidence and none has been captured yet.
+    [e=capture evidence / o=override with reason / Enter=back]:
+```
+
+- **`e`** — runs the same `[e]` capture flow described above; once an item is captured, the step completes immediately.
+- **`o`** — type a reason and proceed without evidence. Logged as a `user_input`/`override` event in the JSONL audit log (same shape as an overridden failed `[v]` assertion), so the audit trail always shows *why* a required-evidence step went through empty.
+- **Enter** — decline and return to the step's own menu; nothing is recorded and the step remains incomplete.
+
+This is **on by default** — declaring `evidence.required: true` is enough, no flag needed. To disable enforcement (e.g. a CI rehearsal or dry-run walk-through), pass `--no-require-evidence` to `run` or `resume`. The gate applies to `manual`/sidecar step completion and to `approval` steps' `approve` path; it does **not** gate plain (non-sidecar) `type: automatic` steps. See `examples/evidence-required-step.yaml`.
 
 ### Mock run (`--mock`): replay `expect` against captured evidence
 

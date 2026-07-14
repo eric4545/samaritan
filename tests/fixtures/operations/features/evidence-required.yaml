@@ -1,0 +1,19 @@
+name: Evidence Required Gate
+version: 1.0.0
+description: Manual + approval steps with evidence.required, used to test the evidence-required gate in `samaritan run`
+
+environments:
+  - name: default
+
+steps:
+  - name: Confirm rollout
+    type: manual
+    instruction: Confirm the rollout looks healthy.
+    evidence:
+      required: true
+
+  - name: Sign off on rollout
+    type: approval
+    instruction: Sign off that the rollout is safe to keep.
+    evidence:
+      required: true

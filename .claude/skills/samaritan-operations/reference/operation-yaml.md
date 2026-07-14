@@ -108,6 +108,13 @@ When `results` are absent for an environment, every manual format (Markdown, sin
 Markdown, Confluence markup, ADF) renders a `# Paste command output here` code block for
 `command_output` evidence. Other evidence types show only the metadata, with no placeholder.
 
+`evidence.required: true` is also **enforced live** in `samaritan run`: a step can't be
+completed (or, for `type: approval`, approved) until at least one evidence item is
+captured via `[e]`, or the operator explicitly overrides with a logged reason. See
+"Evidence-required gate" in `reference/cli.md`. `types`/`results` above remain
+documentation/embedding only — this enforcement is purely about whether *any*
+evidence was captured, not which types.
+
 ## Verification (`expect`)
 
 ```yaml

@@ -95,12 +95,14 @@ interface RunOptions {
   continueOnError?: boolean;
   report?: string;
   fromStep?: number;
+  requireEvidence?: boolean;
 }
 
 interface ResumeOptions {
   verbose?: boolean;
   autoApprove?: boolean;
   fromStep?: number;
+  requireEvidence?: boolean;
 }
 
 function flattenStepsForExecution(steps: Step[], prefix = ''): FlatStep[] {
@@ -354,6 +356,7 @@ class OperationRunner {
           tmuxSession,
           captureBackend,
           flatSteps,
+          options.requireEvidence !== false,
         );
         executor.finalizeOperation();
 
@@ -543,6 +546,7 @@ class OperationRunner {
       tmuxSession,
       tmuxSession,
       flatSteps,
+      options.requireEvidence !== false,
     );
     executor.finalizeOperation();
     tmuxSession?.teardown();
@@ -578,6 +582,7 @@ class OperationRunner {
     tmuxSession: TmuxSession | undefined,
     captureBackend: CaptureBackend | undefined,
     flatSteps: FlatStep[],
+    requireEvidence: boolean,
   ): Promise<string> {
     const rl = createReadlineInterface({
       input: process.stdin,
@@ -1128,6 +1133,58 @@ class OperationRunner {
       (
         sessionManager.getSession(state.context.sessionId)?.evidence ?? []
       ).filter((e) => e.step_id === String(stepIndex));
+
+    // Whether step i requires evidence, none has been captured yet, and
+    // enforcement is enabled (default on; --no-require-evidence disables it).
+    const needsEvidenceGate = (stepIndex: number, s: Step): boolean =>
+      requireEvidence &&
+      !!s.evidence?.required &&
+      stepEvidence(stepIndex).length === 0;
+
+    // Block completing a step whose evidence.required is true but has no
+    // captured evidence: offer inline [e] capture (reusing captureEvidence)
+    // or [o] override-with-reason, logged the same way as the failed-assertion
+    // override in promptAssertFailureAction so both appear identically in the
+    // audit log/report. Returns true when the caller may proceed with
+    // completion; false when the operator backed out (Enter) — the caller
+    // must not complete the step.
+    const confirmEvidenceGate = async (
+      stepIndex: number,
+      captureSinceStepStart: () => string | undefined = () => undefined,
+    ): Promise<boolean> => {
+      while (true) {
+        console.log(
+          '\n    ⚠️  This step requires evidence and none has been captured yet.',
+        );
+        const ans = (
+          await question(
+            '    [e=capture evidence / o=override with reason / Enter=back]: ',
+          )
+        )
+          .trim()
+          .toLowerCase();
+        if (ans === 'e' || ans === 'evidence') {
+          await captureEvidence(stepIndex, captureSinceStepStart);
+          if (stepEvidence(stepIndex).length > 0) return true;
+          continue;
+        }
+        if (ans === 'o' || ans === 'override') {
+          const reason = await question('    Reason for override: ');
+          logger.emit({
+            type: 'user_input',
+            action: 'override',
+            step: stepIndex,
+            actor: state.context.operator,
+            reason: reason.trim(),
+          });
+          console.log(
+            '    ⚠️  Override accepted — proceeding without evidence.',
+          );
+          return true;
+        }
+        return false;
+      }
+    };
 
     // Remove a previously captured evidence item from the current step — lists
     // the step's evidence, lets the operator pick one, and deletes any copied
@@ -1939,6 +1996,16 @@ class OperationRunner {
             console.log('    ⏭  Skipped.');
             continue;
           }
+          if (needsEvidenceGate(i, step)) {
+            const proceed = await confirmEvidenceGate(i, captureSinceStepStart);
+            if (!proceed) {
+              console.log(
+                '    ↩  Step not completed — capture evidence or override to proceed.',
+              );
+              i--;
+              continue;
+            }
+          }
           await executor.executeStepManually(
             i,
             manualNotes.trim() || 'confirmed',
@@ -1971,6 +2038,16 @@ class OperationRunner {
             continue;
           }
           if (choice === 'approve') {
+            if (needsEvidenceGate(i, step)) {
+              const proceed = await confirmEvidenceGate(i);
+              if (!proceed) {
+                console.log(
+                  '    ↩  Approval withheld — capture evidence or override to proceed.',
+                );
+                i--;
+                continue;
+              }
+            }
             await recordApprovalDecision(i, step, true);
             await executor.executeStepManually(i, 'approved');
             persistProgress();
@@ -2168,6 +2245,10 @@ const runCommand = new Command('run')
     'Start at a specific step number; earlier steps are recorded as skipped',
     parseInt,
   )
+  .option(
+    '--no-require-evidence',
+    'Allow completing a step whose evidence.required is true without capturing evidence',
+  )
   .action(async (operation: string, options: RunOptions) => {
     try {
       if (
@@ -2197,6 +2278,10 @@ const resumeCommand = new Command('resume')
   .option('-v, --verbose', 'Verbose output')
   .option('--auto-approve', 'Auto-approve remaining manual steps')
   .option('--from-step <number>', 'Resume from specific step number', parseInt)
+  .option(
+    '--no-require-evidence',
+    'Allow completing a step whose evidence.required is true without capturing evidence',
+  )
   .action(async (sessionId: string, options: ResumeOptions) => {
     try {
       const runner = new OperationRunner();
