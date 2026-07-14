@@ -1567,8 +1567,13 @@ rollback:
   steps:
     - uses: ${templateAbsPath}
 `;
-    const { writeFileSync, unlinkSync } = await import('node:fs');
-    const tmpPath = '/tmp/samaritan-rollback-missing-var-test.yaml';
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const tmpDir = mkdtempSync(
+      join(tmpdir(), 'samaritan-rollback-missing-var-'),
+    );
+    const tmpPath = join(tmpDir, 'op.yaml');
     writeFileSync(tmpPath, yamlContent);
     try {
       await assert.rejects(
@@ -1583,7 +1588,7 @@ rollback:
         'Should throw when a required rollback with: var is missing',
       );
     } finally {
-      unlinkSync(tmpPath);
+      rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 });
