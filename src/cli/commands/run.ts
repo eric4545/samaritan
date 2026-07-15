@@ -1347,6 +1347,7 @@ class OperationRunner {
           step,
           stepIndex,
           output,
+          commandToCopy,
         );
 
         if (!assertResult || !detailed) return;

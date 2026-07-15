@@ -415,6 +415,73 @@ describe('StepController.verifyOutput', () => {
 
     cleanLogger(logger);
   });
+
+  // "wrong cap": the captured pane slice starts with the operator's echoed
+  // command, so a check must assert against the command's OUTPUT, not the
+  // command text. Passing the resolved command strips the echo first.
+  describe('strips the echoed command before asserting', () => {
+    const command = [
+      'aws ec2 describe-instances --no-cli-pager --region us-east-1 \\',
+      '  --filters "Name=tag:Name,Values=web-server-1" "Name=instance-state-name,Values=stopped" \\',
+      "  --query 'Reservations[].Instances[].{Name:Tags[?Key==`Name`].Value|[0],State:State.Name,InstanceId:InstanceId}' | jq",
+    ].join('\n');
+    const echo = `[demo|user@host]$ ${command.split('\n')[0]}\n${command
+      .split('\n')
+      .slice(1)
+      .join('\n')}`;
+
+    it('fails when the needle only appears in the echoed command', () => {
+      const logger = makeLogger('verify-echo-1');
+      const ctrl = makeController(logger);
+      const step = { name: 'Check', expect: { contains: 'stopped' } } as any;
+      // Instance is actually running — "stopped" lives only in the command.
+      const captured = [echo, '', '{', '  "State": "running"', '}'].join('\n');
+
+      // Without the command, today's behavior wrongly passes on the echo.
+      assert.strictEqual(
+        ctrl.verifyOutput(step, 0, captured).assertResult?.pass,
+        true,
+      );
+      // With the resolved command, the echo is stripped and the check fails.
+      const { assertResult, detailed } = ctrl.verifyOutput(
+        step,
+        0,
+        captured,
+        command,
+      );
+      assert.strictEqual(assertResult?.pass, false);
+      assert.ok(!detailed?.actual.includes('describe-instances'));
+
+      cleanLogger(logger);
+    });
+
+    it('passes on the real output, not the echo (redraw-duplicated)', () => {
+      const logger = makeLogger('verify-echo-2');
+      const ctrl = makeController(logger);
+      const step = { name: 'Check', expect: { contains: 'stopped' } } as any;
+      const captured = [
+        echo,
+        echo, // redraw duplicate
+        '',
+        '{',
+        '  "State": "stopped"',
+        '}',
+      ].join('\n');
+
+      const { assertResult, detailed } = ctrl.verifyOutput(
+        step,
+        0,
+        captured,
+        command,
+      );
+      assert.strictEqual(assertResult?.pass, true);
+      // The asserted/rendered text is the output only — no command echo.
+      assert.ok(!detailed?.actual.includes('describe-instances'));
+      assert.ok(detailed?.actual.includes('"State": "stopped"'));
+
+      cleanLogger(logger);
+    });
+  });
 });
 
 describe('StepController.verifyOutput — raw terminal capture cleaning', () => {

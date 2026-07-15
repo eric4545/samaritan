@@ -201,10 +201,20 @@ describe('sidecar e2e (real tmux)', () => {
           `bootstrap must spawn a samaritan-* session; saw: ${during.join(', ')}`,
         );
 
-        // Send the command to the spawned pane; wait until it lands there (no
-        // fixed sleep), then verify and complete.
+        // Paste the command into the spawned pane; wait until it lands there
+        // (no fixed sleep). [p] pastes WITHOUT a trailing newline, so it is not
+        // executed yet — the string that appears here is the echoed command.
         d.key('p');
         await d.waitFor('built v1 E2E_BUILD_OK', {
+          pane: spawned,
+          timeoutMs: 15_000,
+        });
+        // Run it: press Enter in the spawned pane, then wait for the command's
+        // OUTPUT line on its own (not the echoed `echo "..."`). Verify asserts
+        // against the command output — the echoed command is stripped — so the
+        // command must actually execute before [v].
+        d.enter(spawned);
+        await d.waitFor(/^built v1 E2E_BUILD_OK$/m, {
           pane: spawned,
           timeoutMs: 15_000,
         });

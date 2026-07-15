@@ -6,6 +6,7 @@ import {
   cleanTerminalOutput,
   renderExpectDescription,
   renderExpectParts,
+  stripCommandEcho,
 } from '../../src/lib/assertions';
 import { SessionState } from '../../src/lib/session-state';
 
@@ -533,6 +534,63 @@ describe('cleanTerminalOutput — raw tmux pipe-pane capture normalization', () 
   it('leaves plain text untouched', () => {
     const raw = 'deployment.apps/web created\npod/web-0 Running';
     assert.strictEqual(cleanTerminalOutput(raw), raw);
+  });
+});
+
+describe('stripCommandEcho — drop the echoed command from a pane capture', () => {
+  const command = [
+    'aws ec2 describe-instances --no-cli-pager --region us-east-1 \\',
+    '  --filters "Name=tag:Name,Values=web-server-1" "Name=instance-state-name,Values=stopped" \\',
+    "  --query 'Reservations[].Instances[].{Name:Tags[?Key==`Name`].Value|[0],State:State.Name,InstanceId:InstanceId}' | jq",
+  ].join('\n');
+
+  it('returns output unchanged when no command is given', () => {
+    const out = 'pod/web-0 Running\npod/web-1 Running';
+    assert.strictEqual(stripCommandEcho(out), out);
+    assert.strictEqual(stripCommandEcho(out, ''), out);
+    assert.strictEqual(stripCommandEcho(out, '   \n  '), out);
+  });
+
+  it('strips the prompt-prefixed multi-line command, keeping the output', () => {
+    const captured = [
+      `[demo|user@host]$ ${command.split('\n')[0]}`,
+      command.split('\n')[1],
+      command.split('\n')[2],
+      '',
+      '{',
+      '  "State": "stopped"',
+      '}',
+    ].join('\n');
+    const stripped = stripCommandEcho(captured, command);
+    assert.ok(!stripped.includes('describe-instances'), 'echo removed');
+    assert.ok(stripped.includes('"State": "stopped"'), 'output kept');
+  });
+
+  it('skips redraw-duplicated echoes by matching the LAST command block', () => {
+    const echo = `[demo|user@host]$ ${command.split('\n')[0]}\n${command
+      .split('\n')
+      .slice(1)
+      .join('\n')}`;
+    // The command block appears twice (readline/SSH redraw), then the output.
+    const captured = [echo, echo, '', '{', '  "State": "stopped"', '}'].join(
+      '\n',
+    );
+    const stripped = stripCommandEcho(captured, command);
+    assert.ok(!stripped.includes('describe-instances'), 'both echoes removed');
+    assert.ok(stripped.includes('"State": "stopped"'), 'output kept');
+  });
+
+  it('strips a single-line command echoed after the prompt', () => {
+    const captured = 'user@host:~$ kubectl get pods\npod/web-0 Running';
+    assert.strictEqual(
+      stripCommandEcho(captured, 'kubectl get pods'),
+      'pod/web-0 Running',
+    );
+  });
+
+  it('returns output unchanged when the command is not found (safe fallback)', () => {
+    const out = 'pod/web-0 Running\npod/web-1 Running';
+    assert.strictEqual(stripCommandEcho(out, 'kubectl get svc'), out);
   });
 });
 
