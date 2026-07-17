@@ -34,6 +34,8 @@ function fixturePath(name: string): string {
     globalRollbackForeachVars:
       'tests/fixtures/operations/features/global-rollback-foreach-vars.yaml',
     scriptOnlyStep: 'tests/fixtures/operations/features/script-only-step.yaml',
+    builtinVariables:
+      'tests/fixtures/operations/features/builtin-variables.yaml',
   };
   return resolve(map[name]);
 }
@@ -1202,6 +1204,29 @@ describe('run command: ${VAR} rendering in step display', () => {
     assert.ok(
       combined.includes('${NOT_DEFINED}'),
       'unresolved placeholder stays visible as a marker',
+    );
+  });
+
+  it('resolves built-in run-time variables without declaring them', () => {
+    const fixture = fixturePath('builtinVariables');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
+    const combined = result.stdout + result.stderr;
+    // ${CURRENT_DATE}-${RUN_START_TIME} → a real timestamped command; no literals
+    assert.match(
+      combined,
+      /backup-\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}/,
+      `built-ins must resolve to a timestamp; output:\n${combined.slice(-800)}`,
+    );
+    assert.ok(
+      !combined.includes('${CURRENT_DATE}') &&
+        !combined.includes('${RUN_START_TIME}'),
+      'no literal built-in placeholders should remain',
+    );
+    assert.ok(
+      !combined.includes('Unresolved variable(s)'),
+      'built-ins must not trigger unresolved-variable warnings',
     );
   });
 });

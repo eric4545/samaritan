@@ -119,3 +119,53 @@ ${expectYaml}
     assert.match(result.stdout, /regex-lint:.*catastrophic/);
   });
 });
+
+describe('validate built-in variable shadowing', () => {
+  function writeOp(body: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-builtin-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(file, body);
+    return file;
+  }
+
+  it('warns when a user variable shadows a built-in run-time variable', () => {
+    const file = writeOp(`name: Shadow Test
+version: 1.0.0
+common_variables:
+  CURRENT_DATE: not-a-date
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+steps:
+  - name: Step
+    type: manual
+    command: echo hi
+`);
+    const result = runCli(['validate', file]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.match(result.stdout, /CURRENT_DATE.*shadows a built-in/);
+  });
+
+  it('does not warn "not defined" for built-ins used but not declared', () => {
+    const file = writeOp(`name: Builtin Use
+version: 1.0.0
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+steps:
+  - name: Step
+    type: manual
+    command: echo \${CURRENT_DATE}
+`);
+    const result = runCli(['validate', file]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.ok(
+      !result.stdout.includes(
+        "Variable 'CURRENT_DATE' used in steps but not defined",
+      ),
+      'built-in use must not trigger an undefined-variable warning',
+    );
+  });
+});

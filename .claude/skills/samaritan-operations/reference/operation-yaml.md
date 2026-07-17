@@ -232,6 +232,19 @@ against **common variables** at parse time (same scope as `foreach`; unmatched
 keys that start with `${`. Remote-vs-local is **config-driven, not name-driven**.
 Example: `examples/sessions-with-vars.yaml`.
 
+## Built-in run-time variables
+
+Resolve **late** (run time per step, or generation time with `--resolve-vars`);
+never declared; user vars of the same name win (built-ins are lowest-priority
+defaults). `validate` warns on shadowing.
+
+- `${RUN_START_DATE}` / `${RUN_START_TIME}` — fixed at run/session start (resume-safe)
+- `${CURRENT_DATE}` / `${CURRENT_TIME}` / `${CURRENT_DATETIME}` — per-step fresh
+- `${ELAPSED_TIME}` — humanized time since run start (time-to-recover), e.g. `1h 16m`;
+  left literal in generated manuals (run-only)
+
+Example: `examples/builtin-variables.yaml`.
+
 ## Examples to copy from
 
 - `examples/deployment.yaml` — canonical baseline

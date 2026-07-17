@@ -20,6 +20,7 @@ import {
   cleanTerminalOutput,
   renderExpectDescription,
 } from '../../lib/assertions';
+import { getBuiltinVariables } from '../../lib/builtin-variables';
 import type { CaptureBackend } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
@@ -745,6 +746,14 @@ class OperationRunner {
     console.log(`📝 Audit log: ${logger.path}`);
     const sessionState = new SessionState();
 
+    // Fixed run-start time for RUN_START_* / ELAPSED_TIME built-in variables.
+    // Sourced from the persisted session so `resume` reports the ORIGINAL start
+    // (guarded new Date(...) for older session files); falls back to now.
+    const persistedStart = sessionManager.getSession(
+      state.context.sessionId,
+    )?.started_at;
+    const runStartedAt = persistedStart ? new Date(persistedStart) : new Date();
+
     // Persist progress after each interactive step action. The executor emits
     // step_completed BEFORE it advances currentStepIndex, so the event-driven
     // save in SessionManager records a stale index — this explicit sync
@@ -874,7 +883,13 @@ class OperationRunner {
       stepVars?: Record<string, any>,
     ): string | undefined => {
       if (!text) return text;
-      const scope = mergeStepVariables(vars, stepVars);
+      // Merge built-in run-time variables (CURRENT_*, ELAPSED_TIME, …) UNDER the
+      // user's vars each call, so they resolve fresh per step and user-defined
+      // variables of the same name win.
+      const scope = mergeStepVariables(
+        { ...getBuiltinVariables({ startTime: runStartedAt }), ...vars },
+        stepVars,
+      );
       try {
         return resolveVars(text, scope);
       } catch {
@@ -1543,7 +1558,11 @@ class OperationRunner {
         // instead of leaking raw ${VAR}. The assertion path interpolates
         // separately (sessionState) inside controller.verifyOutput.
         const resolvedExpect = step.expect
-          ? substituteExpectVars(step.expect, vars, step.variables)
+          ? substituteExpectVars(
+              step.expect,
+              { ...getBuiltinVariables({ startTime: runStartedAt }), ...vars },
+              step.variables,
+            )
           : undefined;
 
         // Emit step_start for every step so the report can reconstruct the timeline

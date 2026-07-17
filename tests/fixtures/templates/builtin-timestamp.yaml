@@ -1,0 +1,5 @@
+# Template referencing a built-in run-time variable (${CURRENT_TIME}).
+# Built-ins resolve LATE, so importing this must not require `with:` to provide them.
+- name: Log a timestamped marker
+  type: manual
+  command: echo "checkpoint at ${CURRENT_TIME}"

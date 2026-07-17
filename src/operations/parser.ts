@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import yaml from 'js-yaml';
+import { BUILTIN_VARIABLE_NAMES } from '../lib/builtin-variables';
 import {
   fetchRemoteTemplate,
   isRemoteTemplate,
@@ -658,7 +659,12 @@ async function expandUsesEntry<T>(
       const templateVars = extractVariables(templateSteps);
       const foreachVars = extractForeachVars(templateSteps);
       const missingVars = [...templateVars].filter(
-        (v) => !(v in mergedVars) && !foreachVars.has(v),
+        (v) =>
+          !(v in mergedVars) &&
+          !foreachVars.has(v) &&
+          // Built-in run-time variables (CURRENT_DATE, ELAPSED_TIME, …) are
+          // resolved late (run/generation time), not required in with:.
+          !(BUILTIN_VARIABLE_NAMES as readonly string[]).includes(v),
       );
 
       if (missingVars.length > 0) {

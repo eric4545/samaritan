@@ -901,6 +901,27 @@ common_variables > variables: > env_file
 
 If the same key appears in both `variables:` and `common_variables:`, `common_variables:` wins. See `examples/top-level-variables.yaml`.
 
+#### Built-in run-time variables
+
+SAMARITAN provides built-in variables that resolve **late** — at run time (in the
+interactive loop, re-evaluated each step), or at generation time with
+`--resolve-vars`. They never need to be declared, and a user-defined variable of
+the same name always wins (built-ins are the lowest-priority defaults).
+
+| Variable | Value | Notes |
+|---|---|---|
+| `${RUN_START_DATE}` | `YYYY-MM-DD` | Fixed at run/session start; **resume-safe** (from the original `started_at`) |
+| `${RUN_START_TIME}` | `HH:MM:SS` | Fixed at run/session start |
+| `${CURRENT_DATE}` | `YYYY-MM-DD` | Re-evaluated per step |
+| `${CURRENT_TIME}` | `HH:MM:SS` | Re-evaluated per step |
+| `${CURRENT_DATETIME}` | `YYYY-MM-DD HH:MM:SS` | Re-evaluated per step |
+| `${ELAPSED_TIME}` | e.g. `1h 16m` | Humanized time since run start — your live **time-to-recover** |
+
+At **generation time** (`--resolve-vars`), `CURRENT_*`/`RUN_START_*` resolve to the
+generation clock; `${ELAPSED_TIME}` is a run-only value and is left literal in the
+manual. `validate` warns if you define a variable that shadows a built-in name.
+See `examples/builtin-variables.yaml`.
+
 **Benefits:**
 - **Audit Trail**: Know exactly which code version generated each manual
 - **Environment Focus**: Production manuals show only production procedures

@@ -75,8 +75,10 @@ steps:
 SAMARITAN's roadmap matters. **Do not** assume execution features exist.
 Implemented: parsing, manual/Confluence generation, JSON-schema validation,
 shellcheck lint, interactive `run`/`resume`/`sessions`, `run --mock`, templates,
-`foreach`/matrix, evidence embedding, **postmortem / incident report (RCA)
-documents** (`generate postmortem`, `postmortem from-run`/`init`). NOT implemented:
+`foreach`/matrix, evidence embedding, **built-in run-time variables**
+(`${CURRENT_DATE}`, `${RUN_START_TIME}`, `${ELAPSED_TIME}`, …), **postmortem /
+incident report (RCA) documents** (`generate postmortem`, `postmortem
+from-run`/`init`). NOT implemented:
 non-interactive command execution, automatic evidence collection, QRH, external
 integrations (Jira/Slack), AI assistant. When unsure, check `ROADMAP.md`.
 

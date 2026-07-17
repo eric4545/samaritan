@@ -6,6 +6,7 @@ import {
   assertOutputDetailed,
   cleanTerminalOutput,
 } from './assertions';
+import { getBuiltinVariables } from './builtin-variables';
 import { substituteExpectVars } from './step-resolution';
 
 /**
@@ -74,8 +75,11 @@ export function runMockExpect(
   environmentName: string,
   operationDir: string,
 ): MockRunResult {
-  // Mirror `run`'s variable layering: common variables + env-specific overrides.
+  // Mirror `run`'s variable layering: built-in run-time variables (as low
+  // priority defaults) + common variables + env-specific overrides.
+  const now = new Date();
   const envVars: Record<string, any> = {
+    ...getBuiltinVariables({ startTime: now, now }),
     ...(operation.common_variables ?? {}),
     ...(operation.variables?.[environmentName] ?? {}),
   };

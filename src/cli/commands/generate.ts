@@ -3,6 +3,7 @@ import { basename, dirname, join } from 'node:path';
 import { Command } from 'commander';
 import { stepRollbackAnchor } from '../../lib/anchor';
 import { renderExpectParts } from '../../lib/assertions';
+import { getBuiltinVariables } from '../../lib/builtin-variables';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
@@ -161,11 +162,51 @@ class DocumentationGenerator {
    * single-file path and the per-environment --all-envs loop so the operation
    * is parsed only once per invocation.
    */
+  /**
+   * When --resolve-vars is set, inject the built-in run-time variables
+   * (CURRENT_*, RUN_START_*) as low-priority defaults under common_variables and
+   * every environment's variables, using the generation clock. ELAPSED_TIME is
+   * deliberately omitted (a run-only duration; it stays literal in manuals).
+   * User-defined variables of the same name win (built-ins are merged UNDER).
+   */
+  private injectBuiltinVariables(operation: any): any {
+    const now = new Date();
+    const builtins = getBuiltinVariables({
+      startTime: now,
+      now,
+      includeElapsed: false,
+    });
+    const mergeUnder = (userVars: Record<string, any> | undefined) => ({
+      ...builtins,
+      ...(userVars ?? {}),
+    });
+
+    const variables: Record<string, any> = {};
+    for (const [envName, envVars] of Object.entries(
+      operation.variables ?? {},
+    )) {
+      variables[envName] = mergeUnder(envVars as Record<string, any>);
+    }
+
+    return {
+      ...operation,
+      common_variables: mergeUnder(operation.common_variables),
+      variables,
+      environments: (operation.environments ?? []).map((env: any) => ({
+        ...env,
+        variables: mergeUnder(env.variables),
+      })),
+    };
+  }
+
   private async renderManual(
     operation: any,
     operationFile: string,
     options: GenerateOptions,
   ): Promise<void> {
+    if (options.resolveVars) {
+      operation = this.injectBuiltinVariables(operation);
+    }
     const targetEnv = getTargetEnvironment(options);
     const envSuffix = targetEnv ? ` (${targetEnv})` : '';
     const format = options.format || 'markdown';

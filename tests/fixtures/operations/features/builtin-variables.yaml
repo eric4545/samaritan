@@ -1,0 +1,13 @@
+name: Builtin Variables Fixture
+version: 1.0.0
+description: Built-in run-time variables resolve without being declared
+
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+
+steps:
+  - name: Snapshot
+    type: manual
+    command: echo backup-${CURRENT_DATE}-${RUN_START_TIME}
