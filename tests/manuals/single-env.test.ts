@@ -599,3 +599,31 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     );
   });
 });
+
+describe('Single-env manual honors options.substitute_vars', () => {
+  it('keeps ${VAR} literal when substitute_vars is false, but resolves other steps', async () => {
+    const op = await parseFixture('substituteVarsOff');
+    const md = generateSingleEnvManual(op, 'staging', true);
+
+    // Literal step: substitute_vars false → ${TARGET_HOST} preserved in
+    // command, instruction, and expect.
+    assert.ok(
+      md.includes('ssh ${TARGET_HOST}'),
+      'command keeps ${VAR} literal when substitute_vars is false',
+    );
+    assert.ok(
+      md.includes('Connect to ${TARGET_HOST}'),
+      'instruction keeps ${VAR} literal when substitute_vars is false',
+    );
+    assert.ok(
+      md.includes('connected to ${TARGET_HOST}'),
+      'expect keeps ${VAR} literal when substitute_vars is false',
+    );
+
+    // The other step (default substitute_vars: true) still resolves.
+    assert.ok(
+      md.includes('ssh staging.example.com'),
+      'a normal step still resolves ${VAR} with --resolve-vars',
+    );
+  });
+});

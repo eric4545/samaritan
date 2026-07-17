@@ -76,6 +76,10 @@ export const FIXTURES = {
   structuredTimeline:
     'tests/fixtures/operations/features/structured-timeline.yaml',
 
+  // options.substitute_vars: false keeps ${VAR} literal even with --resolve-vars
+  substituteVarsOff:
+    'tests/fixtures/operations/features/substitute-vars-off.yaml',
+
   // Nested sub-steps
   nestedSubSteps2Levels:
     'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',

@@ -1771,8 +1771,16 @@ export function generateSingleEnvManual(
 
     // Resolve ${VAR} placeholders (e.g. in foreach-expanded step names) against
     // env variables + this step's own variables when --resolve-vars is set.
+    // Name/description resolve regardless of substitute_vars (parity with the
+    // multi-env table's name cell).
     const resolveText = (s: string): string =>
       resolveCmd(s, effectiveStep.variables);
+
+    // Content fields (instruction/command/expect) additionally honor the step's
+    // options.substitute_vars flag, matching the multi-env/ADF/Confluence paths.
+    const substituteVars = effectiveStep.options?.substitute_vars ?? true;
+    const resolveContent = (s: string): string =>
+      substituteVars ? resolveCmd(s, effectiveStep.variables) : s;
 
     const hashes = '#'.repeat(headingLevel);
     lines.push(`${hashes} ${prefix}: ${resolveText(effectiveStep.name)}`);
@@ -1812,12 +1820,12 @@ export function generateSingleEnvManual(
     if (effectiveStep.instruction) {
       lines.push('**Instructions**');
       lines.push('');
-      lines.push(preserveLineBreaks(resolveText(effectiveStep.instruction)));
+      lines.push(preserveLineBreaks(resolveContent(effectiveStep.instruction)));
       lines.push('');
     }
 
     if (effectiveStep.command) {
-      const resolvedCmd = resolveText(effectiveStep.command);
+      const resolvedCmd = resolveContent(effectiveStep.command);
       lines.push('**Command**');
       lines.push('');
       if (/^\s*```/.test(resolvedCmd)) {
@@ -1848,13 +1856,14 @@ export function generateSingleEnvManual(
     }
 
     if (effectiveStep.expect != null) {
-      const resolvedExpect = resolveVariables
-        ? substituteExpectVars(
-            effectiveStep.expect,
-            envVars,
-            effectiveStep.variables,
-          )
-        : effectiveStep.expect;
+      const resolvedExpect =
+        resolveVariables && substituteVars
+          ? substituteExpectVars(
+              effectiveStep.expect,
+              envVars,
+              effectiveStep.variables,
+            )
+          : effectiveStep.expect;
       const parts = renderExpectParts(resolvedExpect);
       if (parts.length > 0) {
         lines.push('**Expected:**');
