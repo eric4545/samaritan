@@ -42,6 +42,12 @@ export interface StepRecord {
   phase?: string;
   pic?: string;
   reviewer?: string;
+  /**
+   * Who actually executed this step. Set when merging several operators'
+   * partial runs of the same operation (`report merge`) so each step is
+   * attributed to the session that ran it; left unset for a single-session run.
+   */
+  executed_by?: string;
   status: 'completed' | 'failed' | 'skipped' | 'pending';
   started_at?: string;
   ended_at?: string;

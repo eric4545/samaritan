@@ -391,6 +391,12 @@ npx github:eric4545/samaritan run <operation.yaml> [options]
   --no-require-evidence     Allow completing a step whose evidence.required is
                             true without capturing evidence (see "Evidence-required
                             gate" below; enforcement is ON by default)
+  --pic [name]              Focus mode (multi-operator): only walk steps whose
+                            `pic` matches <name> (bare --pic defaults to $USER);
+                            steps for a DIFFERENT pic are auto-skipped, steps
+                            with NO pic are shared. See "Multi-operator focus mode"
+  --no-skip-others          In --pic focus mode, keep other operators' steps
+                            visible/runnable instead of auto-skipping them
 
 # List saved run sessions (resumable by default)
 npx github:eric4545/samaritan sessions [options]
@@ -402,6 +408,9 @@ npx github:eric4545/samaritan resume <session-id> [options]
   --auto-approve             Auto-approve remaining manual steps
   --no-require-evidence      Allow completing a step whose evidence.required is
                             true without capturing evidence
+  --pic [name]               Focus on steps assigned to this PIC (not persisted —
+                            re-supply on resume)
+  --no-skip-others           Keep other operators' steps visible in focus mode
 
 # Generate documentation
 npx github:eric4545/samaritan generate manual <operation.yaml> [options]
@@ -427,6 +436,10 @@ npx github:eric4545/samaritan diff <operation.yaml> <envA> <envB> [options]
 # Generate evidence report from a session log
 npx github:eric4545/samaritan report <session.jsonl> [options]
   --output <file>       Output Markdown file (default: stdout)
+
+# Merge several operators' partial runs of one operation into one report
+npx github:eric4545/samaritan report merge <sessionA> <sessionB> [...] [options]
+  -o, --output <file>   Output Markdown file (default: stdout)
 
 # Generate a postmortem / incident report (RCA) document
 npx github:eric4545/samaritan generate postmortem <postmortem.yaml> [options]
@@ -1023,6 +1036,39 @@ steps:
 ```
 
 The `pic` and `reviewer` fields can also be set per-environment using `variants` (see [Environment-Specific Steps](#environment-specific-steps-when-and-variants) above).
+
+##### Multi-operator focus mode (`run --pic`)
+
+When one operation is split across several operators — e.g. Alice owns the app
+tier, Bob owns the data tier — each operator can run `samaritan run` in **focus
+mode** so they only walk their own steps:
+
+```bash
+# Alice runs only her steps; Bob's steps are auto-skipped (recorded as skipped)
+samaritan run deploy.yaml --env prod --pic alice@example.com
+
+# Bob does the same for his half (bare --pic defaults to $USER)
+samaritan run deploy.yaml --env prod --pic bob@example.com
+```
+
+- **Steps assigned to a different `pic` are auto-skipped** and recorded as
+  `⏭ (skipped)` in that operator's run report — the audit trail stays honest.
+- **Steps with no `pic` are shared** and shown to every operator.
+- The focused PIC becomes the run's operator, so each step in the report is
+  attributed to whoever ran it.
+- A central operator can run the whole thing by omitting `--pic` (everyone's
+  steps), or keep the ownership labels without skipping via `--no-skip-others`.
+- Focus is **not persisted** — re-supply `--pic` when you `resume`.
+
+Each operator's run produces its own partial report. **Merge them** into one
+consolidated report (each step attributed to the operator who executed it) with
+`report merge`:
+
+```bash
+samaritan report merge <alice-session-id> <bob-session-id> -o merged-report.md
+```
+
+See `examples/multi-operator.yaml` for a complete runnable example.
 
 #### External Script Files (`script`)
 
@@ -2101,6 +2147,14 @@ samaritan report /tmp/samaritan-f3a9b2.jsonl --output evidence-report.md
 ```
 
 The report includes a summary (steps, duration, PIC/reviewer), per-step command + output, verification sign-offs, and a dedicated rollback events section. Attach it directly to a change ticket.
+
+When several operators each ran their own slice of one operation with
+`run --pic`, merge their partial runs into a single consolidated report — each
+step attributed to the operator who actually ran it (see [Multi-operator focus mode](#multi-operator-focus-mode-run---pic)):
+
+```bash
+samaritan report merge <alice-session-id> <bob-session-id> --output merged-report.md
+```
 
 ### Postmortem / incident report (RCA)
 

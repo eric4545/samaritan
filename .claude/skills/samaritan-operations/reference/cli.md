@@ -16,6 +16,7 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
 | `postmortem from-run <session\|jsonl>` | Seed a postmortem YAML from a captured run record |
 | `postmortem init` | Write a blank postmortem authoring template |
 | `report <jsonl>` | Render a Markdown evidence report from a run log |
+| `report merge <session...>` | Merge several operators' partial runs of one operation into a consolidated report |
 | `schema` | Export the JSON schema (IDE / tooling integration) |
 | `run <file>` | Drive an operation interactively |
 | `resume <session-id>` | Resume a paused session |
@@ -67,6 +68,23 @@ Run `samaritan <command> --help` for authoritative flags. Locally use
   running commands (non-interactive execution is a roadmap item, not real).
 - `--no-require-evidence` — disable the evidence-required gate (see below);
   also available on `resume`.
+- `--pic [name]` — **focus mode** (multi-operator). Focus on steps whose `pic`
+  matches `name` (case-insensitive); bare `--pic` defaults to `$USER`. Steps
+  assigned to a *different* PIC are **auto-skipped and recorded** as skipped;
+  steps with **no `pic` are shared** and shown to everyone. The focused PIC also
+  becomes the session's operator (so `report merge` attributes each step). Not
+  persisted — re-supply on `resume`. Absent flag = focus off (every step shown).
+- `--no-skip-others` — in `--pic` focus mode, keep other operators' steps
+  visible/runnable (annotated "assigned elsewhere") instead of auto-skipping.
+
+### report merge
+- `report merge <sessionA> <sessionB> [...]` — combine several saved run
+  sessions of the **same operation** (typically one per operator, each run with
+  `--pic`) into one consolidated Markdown report. For each step the
+  most-complete record wins (completed > failed > skipped) and is attributed to
+  the operator who ran it (`**Operator**:` line + a summary `- Operators:` list).
+  `-o, --output <file>` writes to a file (default: stdout). Errors if the
+  sessions are from different operations.
 
 ## Interactive run loop actions
 

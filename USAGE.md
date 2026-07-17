@@ -33,6 +33,12 @@ npx github:eric4545/samaritan run examples/mock-run-expect.yaml --env staging --
 # Execute with sidecar mode (default): samaritan displays commands, you run them
 npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging
 
+# Multi-operator: each operator focuses on only THEIR steps (steps for another
+# pic are auto-skipped; no-pic steps are shared). Then merge the partial runs.
+npx github:eric4545/samaritan run examples/multi-operator.yaml --env staging --pic alice@example.com
+npx github:eric4545/samaritan run examples/multi-operator.yaml --env staging --pic bob@example.com
+npx github:eric4545/samaritan report merge <alice-session-id> <bob-session-id> --output merged.md
+
 # Attach to an existing tmux pane for [v] verify in sidecar mode
 npx github:eric4545/samaritan run examples/sidecar-deployment.yaml --env staging \
   --attach mysession:0.0
