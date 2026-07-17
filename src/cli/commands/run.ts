@@ -893,6 +893,18 @@ class OperationRunner {
       }
     };
 
+    // Read an external `script:` file relative to the operation file and return
+    // its content for display (mirrors the manual generators). Returns undefined
+    // on a missing/unreadable file so callers can show a graceful message.
+    const readScriptContent = (scriptPath: string): string | undefined => {
+      try {
+        const resolved = join(dirname(operationFile), scriptPath);
+        return readFileSync(resolved, 'utf-8').trimEnd();
+      } catch {
+        return undefined;
+      }
+    };
+
     const doRollback = async (step: Step, i: number): Promise<void> => {
       const hasRollbackSteps = step.rollback && step.rollback.length > 0;
       if (controller && tmuxSession) {
@@ -1514,6 +1526,13 @@ class OperationRunner {
         }
 
         const resolvedCommand = tryResolve(step.command, step.variables);
+        // A script-only step has no inline command; its runnable action is
+        // `bash <path>`. runnableCommand is what the operator can copy/paste
+        // ([c]/[p]) and defaults to the inline command when present.
+        const scriptRunHint = step.script
+          ? tryResolve(`bash ${step.script}`, step.variables)
+          : undefined;
+        const runnableCommand = resolvedCommand ?? scriptRunHint;
         const resolvedInstruction = tryResolve(
           step.instruction,
           step.variables,
@@ -1580,6 +1599,12 @@ class OperationRunner {
         if (step.type === 'automatic' && !isSidecarAutomatic) {
           if (resolvedCommand)
             console.log(`\n${renderCodeBlock(resolvedCommand)}`);
+          else if (step.script) {
+            console.log(`\n    Script: ${step.script}`);
+            const scriptBody = readScriptContent(step.script);
+            if (scriptBody) console.log(renderCodeBlock(scriptBody));
+            else console.log(`    ⚠️  Script file not found: ${step.script}`);
+          }
 
           if (controller && step.session && resolvedCommand) {
             // tmux-backed automatic step
@@ -1712,6 +1737,26 @@ class OperationRunner {
               console.log('\n    Command reference:');
               console.log(renderCodeBlock(resolvedCommand));
             }
+          } else if (step.script) {
+            // A script-only step: show the path + embedded content, and the
+            // `bash <path>` invocation the operator runs (or [c]/[p] to copy).
+            console.log(`\n    Script: ${step.script}`);
+            const scriptBody = readScriptContent(step.script);
+            if (scriptBody) console.log(renderCodeBlock(scriptBody));
+            else console.log(`    ⚠️  Script file not found: ${step.script}`);
+            if (isSidecarAutomatic)
+              console.log('\n    Run this in your terminal:');
+            else console.log('\n    Run:');
+            if (runnableCommand) console.log(renderCodeBlock(runnableCommand));
+            if (isSidecarAutomatic && runnableCommand) {
+              const sessionName = step.session ?? 'default';
+              logger.emit({
+                type: 'command_displayed',
+                step: i,
+                session: sessionName,
+                command: runnableCommand,
+              });
+            }
           }
 
           // Baseline the capture offset at the start of each step.
@@ -1744,7 +1789,7 @@ class OperationRunner {
               '\n' +
                 renderKeyHints([
                   { key: '↵', label: 'done' },
-                  ...(resolvedCommand ? [{ key: 'c', label: 'copy' }] : []),
+                  ...(runnableCommand ? [{ key: 'c', label: 'copy' }] : []),
                   { key: 'n', label: 'note' },
                   { key: 'e', label: 'evidence' },
                   ...(evidenceForStep.length
@@ -1754,7 +1799,7 @@ class OperationRunner {
                   ...(mode === 'sidecar'
                     ? [{ key: 't', label: 'attach pane' }]
                     : []),
-                  ...(mode === 'sidecar' && resolvedCommand
+                  ...(mode === 'sidecar' && runnableCommand
                     ? [{ key: 'p', label: 'send to pane' }]
                     : []),
                   ...(i > 0 ? [{ key: 'b', label: 'back' }] : []),
@@ -1776,10 +1821,10 @@ class OperationRunner {
               break;
             }
             if (
-              resolvedCommand &&
+              runnableCommand &&
               (inputChoice === 'c' || inputChoice === 'copy')
             ) {
-              await copyCommand(resolvedCommand);
+              await copyCommand(runnableCommand);
               continue;
             }
             if (inputChoice === 'n' || inputChoice === 'note') {
@@ -1816,7 +1861,7 @@ class OperationRunner {
                 i,
                 captureSinceStepStart,
                 resolvedExpect,
-                resolvedCommand,
+                runnableCommand,
                 () => captureRef.backend?.captureScreen?.(sessionName),
               );
               continue;
@@ -1890,13 +1935,14 @@ class OperationRunner {
             }
             if (
               mode === 'sidecar' &&
-              resolvedCommand &&
+              runnableCommand &&
               (inputChoice === 'p' || inputChoice === 'send')
             ) {
-              // [p] — paste the resolved command into the attached pane WITHOUT
-              // executing it (no Enter). Operator reviews it, presses Enter
-              // themselves, then [v] to verify. Only available once a pane is
-              // attached (spawn-own session or [t]/--attach).
+              // [p] — paste the resolved command (or `bash <script>` for a
+              // script-only step) into the attached pane WITHOUT executing it
+              // (no Enter). Operator reviews it, presses Enter themselves, then
+              // [v] to verify. Only available once a pane is attached (spawn-own
+              // session or [t]/--attach).
               const backend = captureRef.backend;
               if (!backend?.hasTarget(sessionName) || !backend.pasteCommand) {
                 console.log(
@@ -1904,7 +1950,7 @@ class OperationRunner {
                 );
                 continue;
               }
-              backend.pasteCommand(sessionName, resolvedCommand);
+              backend.pasteCommand(sessionName, runnableCommand);
               // Recorded as a user_input breadcrumb (not command_sent): sidecar
               // never executes, so folding it into the step's command list would
               // render a misleading duplicate "Command sent" row in the report.
@@ -1913,7 +1959,7 @@ class OperationRunner {
                 action: 'send_to_pane',
                 step: i,
                 session: sessionName,
-                command: resolvedCommand,
+                command: runnableCommand,
                 actor: state.context.operator,
               });
               console.log(

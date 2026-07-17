@@ -1632,7 +1632,8 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 **Step display in sidecar:**
 - `type: automatic` steps: Command is displayed prominently; the `command_displayed` event is written to the audit log (not `command_sent`). The report renders it as `**Command (run by operator)**`.
 - `type: manual` steps: Same prompt loop as always.
-- Both types offer `[v] verify` (when `expect` is defined), `[t] attach pane`, and `[p] send to pane` (when the step has a command and a pane is attached).
+- **Script-only steps** (`script:` with no inline `command`): the run loop shows `Script: <path>`, embeds the script file's content, and displays the `bash <path>` invocation to run. `[c] copy` and `[p] send to pane` operate on that `bash <path>` invocation.
+- Both types offer `[v] verify` (when `expect` is defined), `[t] attach pane`, and `[p] send to pane` (when the step has a command **or a `script`** and a pane is attached).
 
 ### Execution flow (spawn-own sessions)
 

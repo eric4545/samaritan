@@ -33,6 +33,7 @@ function fixturePath(name: string): string {
     multiOperator: 'tests/fixtures/operations/features/multi-operator.yaml',
     globalRollbackForeachVars:
       'tests/fixtures/operations/features/global-rollback-foreach-vars.yaml',
+    scriptOnlyStep: 'tests/fixtures/operations/features/script-only-step.yaml',
   };
   return resolve(map[name]);
 }
@@ -858,6 +859,33 @@ describe('run command: sidecar mode', () => {
         combined.includes('[t]') ||
         combined.includes('attach'),
       'sidecar mode should show [t] attach hint',
+    );
+  });
+
+  it('displays a script-only step with its content and a bash <path> runnable', () => {
+    // A step whose only action is `script:` (no inline command) previously
+    // rendered nothing runnable in the run loop.
+    const fixture = fixturePath('scriptOnlyStep');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Script: ./deploy.sh'),
+      'should show the script path',
+    );
+    assert.ok(
+      combined.includes('Deploying web server'),
+      'should embed the script file content',
+    );
+    assert.ok(
+      combined.includes('bash ./deploy.sh'),
+      'should show a bash <path> runnable for the operator',
+    );
+    assert.ok(
+      combined.includes('copy'),
+      'should offer [c] copy for the script invocation',
     );
   });
 
