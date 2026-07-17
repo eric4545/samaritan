@@ -29,6 +29,7 @@ import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { generateReport, renderReport } from '../../lib/report-generator';
+import { findNearestRollbackSource } from '../../lib/rollback';
 import {
   buildStepRecords,
   foldEvents,
@@ -40,6 +41,7 @@ import {
   getSessionEvidenceDir,
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
+import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
 import {
   mergeStepVariables,
   substituteExpectVars,
@@ -754,6 +756,20 @@ class OperationRunner {
     )?.started_at;
     const runStartedAt = persistedStart ? new Date(persistedStart) : new Date();
 
+    // Step dependency graph (from `needs`) over the flat step list the loop
+    // iterates. Drives forward-gating and dependents-aware [r] rollback. Built
+    // once; the topology never changes during a run. v1 honors `needs` on
+    // TOP-LEVEL steps only (matching validate), so sub-step entries (labels with
+    // a letter suffix, e.g. "1a") have their outgoing needs cleared here.
+    const depGraph = buildStepDepGraph(
+      executor.getState().steps.map((s, idx) => {
+        const isTopLevel = /^\d+$/.test(flatSteps[idx]?.label ?? '');
+        return isTopLevel ? s.step : { ...s.step, needs: undefined };
+      }),
+    );
+    const stepIsCompleted = (idx: number): boolean =>
+      executor.getState().steps[idx]?.status === 'completed';
+
     // Persist progress after each interactive step action. The executor emits
     // step_completed BEFORE it advances currentStepIndex, so the event-driven
     // save in SessionManager records a stale index — this explicit sync
@@ -922,6 +938,8 @@ class OperationRunner {
 
     const doRollback = async (step: Step, i: number): Promise<void> => {
       const hasRollbackSteps = step.rollback && step.rollback.length > 0;
+      const stateSteps = executor.getState().steps;
+
       if (controller && tmuxSession) {
         console.log('    🔄 Initiating rollback...');
         await controller.rollback(step, i, state.context.operator);
@@ -935,7 +953,45 @@ class OperationRunner {
         }
         await controller?.rollback(step, i, state.context.operator);
       } else {
-        console.log('    ℹ️  No rollback defined for this step.');
+        // This step has no rollback of its own — offer the nearest upstream
+        // step's rollback (needs chain first, else document order; only
+        // completed steps qualify).
+        const nearest = findNearestRollbackSource(
+          stateSteps.map((s) => s.step),
+          i,
+          { graph: depGraph, isCandidate: stepIsCompleted },
+        );
+        if (nearest) {
+          const sourceStep = stateSteps[nearest.stepIndex].step;
+          const label = flatSteps[nearest.stepIndex].label;
+          console.log('\n    This step has no rollback.');
+          for (const rb of flattenRollbackSteps(nearest.rollback)) {
+            if (rb.command)
+              console.log(
+                `      $ ${tryResolve(rb.command, sourceStep.variables)}`,
+              );
+          }
+          const ans = (
+            await question(
+              `    Nearest rollback comes from step [${label}] "${sourceStep.name}" — run it? [y/N]: `,
+            )
+          )
+            .trim()
+            .toLowerCase();
+          if (ans === 'y' || ans === 'yes') {
+            await controller?.runRollbackSteps(
+              nearest.rollback,
+              i,
+              state.context.operator,
+              'nearest',
+            );
+            console.log('    ↩  Nearest rollback complete.');
+            return;
+          }
+          console.log('    ↩  Skipped.');
+        } else {
+          console.log('    ℹ️  No rollback defined for this step.');
+        }
       }
     };
 
@@ -1512,6 +1568,10 @@ class OperationRunner {
         if (steps[k].status === 'skipped') logSkip(k);
       }
 
+      // Steps whose unmet-needs gate we've already bounced off once — prevents an
+      // infinite go-back loop under piped/EOF stdin (empty answer = go back).
+      const gatedBackOnce = new Set<number>();
+
       stepLoop: for (let i = startIndex; i < steps.length; i++) {
         const { step } = steps[i];
         const stepNum = `[${flatSteps[i].label}/${steps.length}]`;
@@ -1538,6 +1598,59 @@ class OperationRunner {
           logSkip(i);
           persistProgress();
           continue;
+        }
+
+        // Forward gating: if this step's `needs` aren't all completed (e.g. a
+        // dependency was skipped by [j] jump or --from-step), warn and offer to
+        // go back. Skipped ≠ completed. Operator agency: [y] proceeds anyway.
+        const missing = unmetNeeds(depGraph, i, stepIsCompleted);
+        if (missing.length > 0) {
+          const firstUnmet = missing[0];
+          const missingLabels = missing
+            .map((k) => `${steps[k].step.name} (${steps[k].status})`)
+            .join(', ');
+          console.log(`\n${DIVIDER}`);
+          console.log(`${stepNum} ${typeLabel}: ${step.name}`);
+          console.log(`    ⚠️  This step needs: ${missingLabels}`);
+          const proceed = (
+            await question(
+              `    Start anyway? [y=proceed / Enter=go back to "${steps[firstUnmet].step.name}"]: `,
+            )
+          )
+            .trim()
+            .toLowerCase();
+          if (proceed === 'y' || proceed === 'yes') {
+            logger.emit({
+              type: 'user_input',
+              action: 'needs_override',
+              step: i,
+              actor: state.context.operator,
+              notes: `unmet needs: ${missingLabels}`,
+            });
+          } else if (gatedBackOnce.has(i)) {
+            // Already went back from this gate once and returned unsatisfied —
+            // proceed to avoid an infinite bounce (piped/EOF stdin).
+            logger.emit({
+              type: 'user_input',
+              action: 'needs_override',
+              step: i,
+              actor: state.context.operator,
+              notes: `unmet needs (auto-proceed after go-back): ${missingLabels}`,
+            });
+          } else {
+            gatedBackOnce.add(i);
+            logger.emit({
+              type: 'user_input',
+              action: 'back',
+              step: i,
+              actor: state.context.operator,
+              notes: `go back to unmet dependency: ${steps[firstUnmet].step.name}`,
+            });
+            executor.goToStep(firstUnmet);
+            persistProgress();
+            i = firstUnmet - 1;
+            continue;
+          }
         }
 
         const resolvedCommand = tryResolve(step.command, step.variables);

@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import type { EventLogger } from '../../src/lib/event-logger';
 import { createEventLogger } from '../../src/lib/event-logger';
+import { findNearestRollbackSource } from '../../src/lib/rollback';
+import { buildStepDepGraph } from '../../src/lib/step-deps';
 import { StepController, type StepControllerOptions } from '../../src/lib/tui';
+import type { Step } from '../../src/models/operation';
 
 function makeLogger(id: string): EventLogger {
   return createEventLogger(id, join(tmpdir(), 'op.yaml'));
@@ -148,5 +151,73 @@ describe('Rollback support (issue #9)', () => {
       'function',
       'StepController must have waitForCompletion method',
     );
+  });
+});
+
+describe('findNearestRollbackSource', () => {
+  function step(
+    name: string,
+    opts: { id?: string; needs?: string[]; rollback?: boolean } = {},
+  ): Step {
+    return {
+      name,
+      type: 'manual',
+      id: opts.id,
+      needs: opts.needs,
+      rollback: opts.rollback ? [{ command: `undo ${name}` }] : undefined,
+    } as Step;
+  }
+
+  it('scans earlier steps in document order', () => {
+    const steps = [step('A', { rollback: true }), step('B'), step('C')];
+    const found = findNearestRollbackSource(steps, 2);
+    assert.strictEqual(found?.stepIndex, 0);
+    assert.strictEqual(found?.rollback[0].command, 'undo A');
+  });
+
+  it('prefers the needs chain over document order', () => {
+    // C needs A (has rollback); B (nearer in doc order) also has rollback,
+    // but the needs chain wins.
+    const steps = [
+      step('A', { id: 'a', rollback: true }),
+      step('B', { rollback: true }),
+      step('C', { needs: ['a'] }),
+    ];
+    const graph = buildStepDepGraph(steps);
+    const found = findNearestRollbackSource(steps, 2, { graph });
+    assert.strictEqual(
+      found?.stepIndex,
+      0,
+      'should follow the needs chain to A',
+    );
+  });
+
+  it('follows a transitive needs chain', () => {
+    const steps = [
+      step('A', { id: 'a', rollback: true }),
+      step('B', { id: 'b', needs: ['a'] }),
+      step('C', { needs: ['b'] }),
+    ];
+    const graph = buildStepDepGraph(steps);
+    const found = findNearestRollbackSource(steps, 2, { graph });
+    assert.strictEqual(found?.stepIndex, 0, 'B has no rollback → hop to A');
+  });
+
+  it('respects the isCandidate filter', () => {
+    const steps = [
+      step('A', { rollback: true }),
+      step('B', { rollback: true }),
+      step('C'),
+    ];
+    // Only step 1 (B) is a candidate.
+    const found = findNearestRollbackSource(steps, 2, {
+      isCandidate: (i) => i === 1,
+    });
+    assert.strictEqual(found?.stepIndex, 1);
+  });
+
+  it('returns undefined when nothing qualifies', () => {
+    const steps = [step('A'), step('B'), step('C')];
+    assert.strictEqual(findNearestRollbackSource(steps, 2), undefined);
   });
 });

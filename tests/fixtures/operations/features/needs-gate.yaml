@@ -1,0 +1,22 @@
+name: Needs Gate
+version: 1.0.0
+description: Forward-gating when a dependency is skipped
+
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+
+steps:
+  - name: Build
+    id: build
+    type: manual
+    command: echo build
+    rollback:
+      - command: echo undo-build
+  - name: Deploy
+    type: manual
+    needs: [build]
+    command: echo deploy
+    rollback:
+      - command: echo undo-deploy

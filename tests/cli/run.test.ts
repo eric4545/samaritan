@@ -36,6 +36,8 @@ function fixturePath(name: string): string {
     scriptOnlyStep: 'tests/fixtures/operations/features/script-only-step.yaml',
     builtinVariables:
       'tests/fixtures/operations/features/builtin-variables.yaml',
+    needsGate: 'tests/fixtures/operations/features/needs-gate.yaml',
+    nearestRollback: 'tests/fixtures/operations/features/nearest-rollback.yaml',
   };
   return resolve(map[name]);
 }
@@ -1438,6 +1440,92 @@ describe('run command: --from-step starts at a later step', () => {
       'must print the valid range error',
     );
   });
+});
+
+// ─── needs forward-gating in the run loop ────────────────────────────────────
+
+describe('run command: needs forward-gating', () => {
+  it('warns and lets the operator proceed when a dependency is skipped', () => {
+    // --from-step 2 skips Build (id: build); Deploy needs build → gate fires.
+    // Single prompt: 'y' proceeds, then EOF ends the run.
+    const fixture = fixturePath('needsGate');
+    const result = runCli(
+      ['run', fixture, '--env', 'staging', '--from-step', '2'],
+      { input: 'y\n', timeout: 15_000 },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('This step needs: Build (skipped)'),
+      `must warn that Build is unmet; output:\n${combined.slice(-800)}`,
+    );
+    assert.ok(
+      combined.includes('Start anyway?'),
+      'must offer to proceed or go back',
+    );
+    // After proceeding, the Deploy step banner is shown.
+    assert.match(combined, /\[2\/2\] MANUAL: Deploy/);
+  });
+
+  it('does not gate when the dependency was completed', () => {
+    // Normal start: Build (Enter=done) then Deploy — Build completed, no gate.
+    const fixture = fixturePath('needsGate');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: '\nq\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      !combined.includes('This step needs'),
+      'no gate warning when the dependency is completed',
+    );
+  });
+
+  it('does not loop forever on empty (EOF) stdin at the gate', () => {
+    const fixture = fixturePath('needsGate');
+    const result = runCli(
+      ['run', fixture, '--env', 'staging', '--from-step', '2'],
+      { input: '', timeout: 15_000 },
+    );
+    // Terminates (status not null via timeout kill) and shows the go-back offer.
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('go back to "Build"'),
+      'must offer to go back to the unmet dependency',
+    );
+  });
+});
+
+// ─── TTY: [r] on a step with no rollback offers the nearest upstream rollback ─
+
+describe('run command: TTY [r] nearest-upstream rollback', () => {
+  const hasScript =
+    process.platform === 'linux' &&
+    spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
+
+  it(
+    'offers the nearest upstream rollback when the current step has none',
+    { skip: !hasScript },
+    () => {
+      // nearest-rollback.yaml: Build (has rollback) → Deploy (needs build, NO
+      // rollback of its own). Complete Build (Enter), then on Deploy press r →
+      // the loop offers Build's rollback as the nearest upstream source.
+      const fixture = fixturePath('nearestRollback');
+      const cmd = `(sleep 3; printf '\\n'; sleep 3; printf 'r'; sleep 2; printf 'n\\n'; sleep 2; printf 'q'; sleep 2) | script -qec "${CLI} ${INDEX} run ${fixture} --env staging" /dev/null`;
+      const result = spawnSync('bash', ['-c', cmd], {
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+      const combined = (result.stdout ?? '') + (result.stderr ?? '');
+      assert.ok(
+        combined.includes('Nearest rollback comes from step'),
+        `[r] on a no-rollback step must offer the nearest upstream rollback; output:\n${combined.slice(-1800)}`,
+      );
+      assert.ok(
+        combined.includes('Build'),
+        'the nearest rollback source should be Build',
+      );
+    },
+  );
 });
 
 // ─── TTY raw-mode: [t] fires immediately and keys are not echoed twice ───────

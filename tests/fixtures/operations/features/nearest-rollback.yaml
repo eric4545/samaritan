@@ -1,0 +1,20 @@
+name: Nearest Rollback
+version: 1.0.0
+description: A step with no rollback should offer the nearest upstream rollback
+
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+
+steps:
+  - name: Build
+    id: build
+    type: manual
+    command: echo build
+    rollback:
+      - command: echo undo-build
+  - name: Deploy
+    type: manual
+    needs: [build]
+    command: echo deploy
