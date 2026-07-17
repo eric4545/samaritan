@@ -934,10 +934,12 @@ class OperationRunner {
         '\n    🔄 Global rollback will run the following (reverse order):',
       );
       for (const rb of flattenRollbackSteps(rbSteps)) {
+        // Pass the rollback entry's own variables so a foreach-expanded
+        // rollback's ${LOOP_VAR} resolves in the preview, not just env vars.
         const cmd = rb.command
-          ? `$ ${tryResolve(rb.command)}`
+          ? `$ ${tryResolve(rb.command, rb.variables)}`
           : rb.instruction
-            ? `(manual) ${tryResolve(rb.instruction)}`
+            ? `(manual) ${tryResolve(rb.instruction, rb.variables)}`
             : '';
         const label = rb.name ?? '';
         console.log(

@@ -31,6 +31,8 @@ function fixturePath(name: string): string {
     evidenceRequired:
       'tests/fixtures/operations/features/evidence-required.yaml',
     multiOperator: 'tests/fixtures/operations/features/multi-operator.yaml',
+    globalRollbackForeachVars:
+      'tests/fixtures/operations/features/global-rollback-foreach-vars.yaml',
   };
   return resolve(map[name]);
 }
@@ -1133,6 +1135,29 @@ describe('run command: ${VAR} rendering in step display', () => {
         `preview must include expanded rollback step "${combo}"; output:\n${combined.slice(-1500)}`,
       );
     }
+  });
+
+  it('[g] global rollback preview resolves foreach entry variables', () => {
+    // The foreach values are ${VAR} references (not baked at parse time), so
+    // each expanded rollback entry carries them in `variables`. The preview
+    // must pass those to tryResolve so ${HOST} resolves in the command.
+    const fixture = fixturePath('globalRollbackForeachVars');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'g\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('ssh web.staging.example.com systemctl restart app'),
+      `preview must resolve ${'${HOST}'} from the entry's variables; output:\n${combined.slice(-1200)}`,
+    );
+    assert.ok(
+      combined.includes('ssh api.staging.example.com systemctl restart app'),
+      'preview must resolve the second foreach entry command',
+    );
+    assert.ok(
+      !combined.includes('ssh ${HOST}'),
+      'preview must not leave literal ${HOST} in the command',
+    );
   });
 
   it('warns about unresolved variables instead of failing silently', () => {
