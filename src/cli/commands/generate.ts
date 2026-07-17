@@ -1353,23 +1353,29 @@ ${filteredOperation.environments
             return;
           }
 
+          // Apply environment-specific variant overrides (command, instruction,
+          // script, expect, evidence, pic/reviewer, options) for this env's
+          // cell. The shared name/description cell above stays on the base step,
+          // matching the markdown/ADF multi-env renderers.
+          const effectiveStep = mergeStepVariant(step, env.name);
+
           let cellContent = '';
 
           // Get step-level options (defaults)
-          const substituteVars = step.options?.substitute_vars ?? true;
+          const substituteVars = effectiveStep.options?.substitute_vars ?? true;
           const showCommandSeparately =
-            step.options?.show_command_separately ?? false;
+            effectiveStep.options?.show_command_separately ?? false;
 
           // Process instruction (always render as markdown)
-          if (step.instruction) {
-            let displayInstruction = step.instruction;
+          if (effectiveStep.instruction) {
+            let displayInstruction = effectiveStep.instruction;
 
             // Apply variable substitution if enabled
             if (resolveVars && substituteVars) {
               displayInstruction = substituteVariables(
                 displayInstruction,
                 env.variables || {},
-                step.variables,
+                effectiveStep.variables,
               );
             }
 
@@ -1378,25 +1384,25 @@ ${filteredOperation.environments
           }
 
           // Process command (always render as code block)
-          if (step.command) {
-            let displayCommand = step.command;
+          if (effectiveStep.command) {
+            let displayCommand = effectiveStep.command;
 
             // Apply variable substitution if enabled
             if (resolveVars && substituteVars) {
               displayCommand = substituteVariables(
                 displayCommand,
                 env.variables || {},
-                step.variables,
+                effectiveStep.variables,
               );
             }
 
             const trimmedCommand = displayCommand.replace(/\n+$/, '');
 
             // Show command separately or inline
-            if (showCommandSeparately && step.instruction) {
+            if (showCommandSeparately && effectiveStep.instruction) {
               // Show command in separate labeled section
               cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
-            } else if (!step.instruction) {
+            } else if (!effectiveStep.instruction) {
               // No instruction, just show command
               cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
             } else {
@@ -1406,15 +1412,18 @@ ${filteredOperation.environments
           }
 
           // Process script (external shell script file)
-          if (step.script) {
+          if (effectiveStep.script) {
             const sep = cellContent ? '\n' : '';
-            cellContent += `${sep}*Script:* \`${step.script}\``;
+            cellContent += `${sep}*Script:* \`${effectiveStep.script}\``;
             if (operationDir) {
               try {
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
                 const fs = require('node:fs');
                 const nodePath = require('node:path');
-                const scriptPath = nodePath.resolve(operationDir, step.script);
+                const scriptPath = nodePath.resolve(
+                  operationDir,
+                  effectiveStep.script,
+                );
                 const scriptContent = fs
                   .readFileSync(scriptPath, 'utf-8')
                   .trimEnd();
@@ -1426,15 +1435,15 @@ ${filteredOperation.environments
           }
 
           // Add expect assertions
-          if (step.expect != null) {
+          if (effectiveStep.expect != null) {
             const resolvedExpect =
               resolveVars && substituteVars
                 ? substituteExpectVars(
-                    step.expect,
+                    effectiveStep.expect,
                     env.variables || {},
-                    step.variables,
+                    effectiveStep.variables,
                   )
-                : step.expect;
+                : effectiveStep.expect;
             const parts = renderExpectParts(resolvedExpect);
             if (parts.length > 0) {
               const sep = cellContent ? '\n' : '';
@@ -1453,20 +1462,20 @@ ${filteredOperation.environments
           }
 
           // Add sign-off checkboxes if PIC or Reviewer is set (interactive checkboxes)
-          if (step.pic || step.reviewer) {
+          if (effectiveStep.pic || effectiveStep.reviewer) {
             cellContent += '\nSign-off:';
-            if (step.pic) {
+            if (effectiveStep.pic) {
               cellContent += '\n* [ ] PIC';
             }
-            if (step.reviewer) {
+            if (effectiveStep.reviewer) {
               cellContent += '\n* [ ] Reviewer';
             }
           }
 
           // Add evidence area with environment-specific results
-          if (step.evidence) {
+          if (effectiveStep.evidence) {
             cellContent += formatEvidenceArea(
-              step.evidence,
+              effectiveStep.evidence,
               env.name,
               operationDir,
             );
