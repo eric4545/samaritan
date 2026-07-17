@@ -2015,6 +2015,32 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
+    // Environment-specific evidence results (parity with renderStep and the
+    // multi-env/ADF/Confluence rollback renderers, which already embed
+    // rb.evidence).
+    if (rb.evidence) {
+      const evStatus = rb.evidence.required ? 'Required' : 'Optional';
+      const evTypes = rb.evidence.types ?? [];
+      const evTypesText = evTypes.length > 0 ? `: ${evTypes.join(', ')}` : '';
+      lines.push(`> Evidence ${evStatus}${evTypesText}`);
+      lines.push('');
+
+      const envResults = rb.evidence.results?.[targetEnv];
+      if (envResults && envResults.length > 0) {
+        lines.push('**Evidence Captured**');
+        lines.push('');
+        for (const item of envResults as RunEvidenceItem[]) {
+          lines.push(renderEvidenceItemMarkdown(item, operationDir).trimEnd());
+          lines.push('');
+        }
+      } else if (evTypes.includes('command_output')) {
+        lines.push('```bash');
+        lines.push('# Paste command output here');
+        lines.push('```');
+        lines.push('');
+      }
+    }
+
     rb.sub_steps?.forEach((sub, subIndex) => {
       renderRollbackStepSingleEnv(
         sub,

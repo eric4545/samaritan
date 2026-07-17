@@ -1,0 +1,42 @@
+name: Rollback With Evidence Test
+version: 1.0.0
+description: Rollback steps carry evidence that must render in every output format
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      TARGET_HOST: staging.example.com
+
+steps:
+  - name: Deploy application
+    type: manual
+    command: kubectl apply -f deployment.yaml --context=${TARGET_HOST}
+    rollback:
+      - name: Undo deployment
+        command: kubectl rollout undo deployment/web --context=${TARGET_HOST}
+        evidence:
+          required: true
+          types: [command_output]
+          results:
+            staging:
+              - type: command_output
+                content: |
+                  deployment.apps/web rolled back
+                description: Rollback output on staging
+
+# Operation-level (global) rollback plan whose step also carries evidence.
+rollback:
+  automatic: false
+  steps:
+    - name: Restore database snapshot
+      command: pg_restore --clean latest.dump
+      evidence:
+        required: true
+        types: [command_output]
+        results:
+          staging:
+            - type: command_output
+              content: |
+                pg_restore: restored 42 tables
+              description: Database restore output on staging

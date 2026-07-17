@@ -98,6 +98,10 @@ export const FIXTURES = {
   // Run manifest: operation with explicit step ids
   withStepIds: 'tests/fixtures/operations/features/with-step-ids.yaml',
 
+  // Rollback steps carrying evidence (both step-level and operation-level)
+  rollbackWithEvidence:
+    'tests/fixtures/operations/features/rollback-with-evidence.yaml',
+
   // Rollback for sub-steps
   substepRollback: 'tests/fixtures/operations/features/substep-rollback.yaml',
 

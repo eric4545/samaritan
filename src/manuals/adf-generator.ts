@@ -178,6 +178,23 @@ function buildRollbackCellNodes(
       cellContent.push(paragraph(text(`- [ ] Reviewer (${rb.reviewer})`)));
   }
 
+  // Environment-specific evidence results (parity with the markdown/Confluence
+  // rollback renderers, which already embed rb.evidence).
+  if (rb.evidence) {
+    const evidenceInfo = formatEvidenceInfo(
+      rb.evidence,
+      env.name,
+      operationDir,
+    );
+    if (evidenceInfo) {
+      if (Array.isArray(evidenceInfo)) {
+        cellContent.push(...evidenceInfo);
+      } else {
+        cellContent.push(evidenceInfo);
+      }
+    }
+  }
+
   if (includeSubsteps) {
     rb.sub_steps?.forEach((sub, i) => {
       const subNodes = buildRollbackCellNodes(
