@@ -1334,6 +1334,10 @@ ${filteredOperation.environments
           stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`;
         if (step.needs && step.needs.length > 0)
           stepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(step.needs.join(', '))}`;
+        if (step.timeout != null)
+          stepInfo += `\n(time) Timeout: ${step.timeout}s`;
+        if (step.session)
+          stepInfo += `\n(server) Session: ${escapeConfluenceMacros(step.session)}`;
         if (step.ticket)
           stepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket)}`;
         if (step.if)
@@ -1669,6 +1673,15 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
             cellContent += `\n- [ ] Reviewer (${rollbackStep.reviewer})`;
         }
 
+        if (rollbackStep.timeout != null) {
+          const sep = cellContent ? '\n' : '';
+          cellContent += `${sep}(time) Timeout: ${rollbackStep.timeout}s`;
+        }
+        if (rollbackStep.session) {
+          const sep = cellContent ? '\n' : '';
+          cellContent += `${sep}(server) Session: ${escapeConfluenceMacros(rollbackStep.session)}`;
+        }
+
         // Fallback
         if (!cellContent) {
           cellContent = '-';
@@ -1851,6 +1864,15 @@ function renderInlineRollback(
       if (rb.reviewer) cellContent += `\n- [ ] Reviewer (${rb.reviewer})`;
     }
 
+    if (rb?.timeout != null) {
+      const sep = cellContent ? '\n' : '';
+      cellContent += `${sep}(time) Timeout: ${rb.timeout}s`;
+    }
+    if (rb?.session) {
+      const sep = cellContent ? '\n' : '';
+      cellContent += `${sep}(server) Session: ${escapeConfluenceMacros(rb.session)}`;
+    }
+
     if (rb?.evidence) {
       cellContent += formatEvidenceArea(rb.evidence, env.name, operationDir);
     }
@@ -1995,6 +2017,10 @@ function addConfluenceSubStepRows(
       subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(subStep.timeline))}`;
     if (subStep.needs && subStep.needs.length > 0)
       subStepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(subStep.needs.join(', '))}`;
+    if (subStep.timeout != null)
+      subStepInfo += `\n(time) Timeout: ${subStep.timeout}s`;
+    if (subStep.session)
+      subStepInfo += `\n(server) Session: ${escapeConfluenceMacros(subStep.session)}`;
     if (subStep.ticket)
       subStepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket)}`;
     if (subStep.if)

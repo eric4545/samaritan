@@ -71,6 +71,10 @@ ADF). With the flag off, rendering is unchanged.
 > Rule: never author execution/content fields outside this set on a step;
 > they live on `StepContent` so steps and rollback steps both get them.
 
+`timeout` (seconds) and `session` (tmux pane name) both render in all four
+manual formats — for steps, sub-steps, and rollback steps — as `⏱ Timeout: Ns`
+and `🖥 Session: <name>`.
+
 ## Step-only structural fields
 
 `name`, `type`, `id`, `phase` (`preflight`/`flight`/`postflight`), `if`,

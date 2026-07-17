@@ -178,6 +178,13 @@ function buildRollbackCellNodes(
       cellContent.push(paragraph(text(`- [ ] Reviewer (${rb.reviewer})`)));
   }
 
+  if (rb.timeout != null) {
+    cellContent.push(paragraph(text(`⏱ Timeout: ${rb.timeout}s`)));
+  }
+  if (rb.session) {
+    cellContent.push(paragraph(text(`🖥 Session: ${rb.session}`)));
+  }
+
   // Environment-specific evidence results (parity with the markdown/Confluence
   // rollback renderers, which already embed rb.evidence).
   if (rb.evidence) {
@@ -787,6 +794,16 @@ function createStepsTable(
       );
     }
 
+    // Timeout
+    if (step.timeout != null) {
+      stepCellContent.push(paragraph(text(`⏱ Timeout: ${step.timeout}s`)));
+    }
+
+    // Execution session
+    if (step.session) {
+      stepCellContent.push(paragraph(text(`🖥 Session: ${step.session}`)));
+    }
+
     // Conditional expression
     if (step.if) {
       stepCellContent.push(paragraph(text(`🔀 Condition: ${step.if}`)));
@@ -1081,6 +1098,16 @@ function addSubStepRows(
           text(`⏱️ Timeline: ${formatTimelineForDisplay(subStep.timeline)}`),
         ),
       );
+    }
+
+    if (subStep.timeout != null) {
+      subStepCellContent.push(
+        paragraph(text(`⏱ Timeout: ${subStep.timeout}s`)),
+      );
+    }
+
+    if (subStep.session) {
+      subStepCellContent.push(paragraph(text(`🖥 Session: ${subStep.session}`)));
     }
 
     if (subStep.if) {

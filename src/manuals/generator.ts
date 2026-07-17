@@ -538,6 +538,15 @@ function renderRollbackCellMarkdown(
     if (rb.reviewer) cellContent += `<br>- [ ] Reviewer (${rb.reviewer})`;
   }
 
+  if (rb.timeout != null) {
+    const sep = cellContent ? '<br>' : '';
+    cellContent += `${sep}⏱ <em>Timeout: ${rb.timeout}s</em>`;
+  }
+  if (rb.session) {
+    const sep = cellContent ? '<br>' : '';
+    cellContent += `${sep}🖥 <em>Session: ${rb.session}</em>`;
+  }
+
   // Environment-specific evidence results
   if (rb.evidence) {
     cellContent += formatEvidenceInfo(rb.evidence, env.name, operationDir);
@@ -694,6 +703,16 @@ function generateStepRow(
   // Add timeline
   if (step.timeline) {
     stepCell += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
+  }
+
+  // Add timeout
+  if (step.timeout != null) {
+    stepCell += `<br>⏱ <em>Timeout: ${step.timeout}s</em>`;
+  }
+
+  // Add execution session
+  if (step.session) {
+    stepCell += `<br>🖥 <em>Session: ${step.session}</em>`;
   }
 
   // Add conditional expression if present
@@ -1009,6 +1028,16 @@ function generateSubStepRow(
   // Add timeline
   if (step.timeline) {
     stepCell += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
+  }
+
+  // Add timeout
+  if (step.timeout != null) {
+    stepCell += `<br>⏱ <em>Timeout: ${step.timeout}s</em>`;
+  }
+
+  // Add execution session
+  if (step.session) {
+    stepCell += `<br>🖥 <em>Session: ${step.session}</em>`;
   }
 
   // Add conditional expression if present (for sub-steps)
@@ -1812,6 +1841,16 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
+    if (effectiveStep.timeout != null) {
+      lines.push(`> Timeout: ${effectiveStep.timeout}s`);
+      lines.push('');
+    }
+
+    if (effectiveStep.session) {
+      lines.push(`> Session: ${effectiveStep.session}`);
+      lines.push('');
+    }
+
     if (effectiveStep.if) {
       lines.push(`> Condition: ${effectiveStep.if}`);
       lines.push('');
@@ -2021,6 +2060,15 @@ export function generateSingleEnvManual(
       lines.push('**Sign-off:**');
       if (rb.pic) lines.push(`- [ ] PIC (${rb.pic})`);
       if (rb.reviewer) lines.push(`- [ ] Reviewer (${rb.reviewer})`);
+      lines.push('');
+    }
+
+    if (rb.timeout != null) {
+      lines.push(`> Timeout: ${rb.timeout}s`);
+      lines.push('');
+    }
+    if (rb.session) {
+      lines.push(`> Session: ${rb.session}`);
       lines.push('');
     }
 

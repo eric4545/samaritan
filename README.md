@@ -1070,6 +1070,21 @@ samaritan report merge <alice-session-id> <bob-session-id> -o merged-report.md
 
 See `examples/multi-operator.yaml` for a complete runnable example.
 
+#### Timeout & Session metadata
+
+`timeout` (seconds) and `session` (the tmux pane a step runs in) render in every
+manual format — for steps, sub-steps, and rollback steps — as `⏱ Timeout: <N>s`
+and `🖥 Session: <name>`:
+
+```yaml
+steps:
+  - name: Deploy Application
+    type: manual
+    timeout: 300          # ⏱ Timeout: 300s in generated manuals
+    session: execution    # 🖥 Session: execution in generated manuals
+    command: kubectl apply -f deployment.yaml
+```
+
 #### External Script Files (`script`)
 
 Reference an external shell script file. The generator reads the file at manual-generation time and embeds the full script content as a `bash` code block — so the operator can review what will run before executing it.
