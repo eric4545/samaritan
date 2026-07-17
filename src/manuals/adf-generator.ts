@@ -37,6 +37,7 @@ import {
   substituteExpectVars,
   substituteVariables,
 } from '../lib/step-resolution';
+import { formatTimelineForDisplay } from '../lib/timeline-format';
 import type {
   Environment,
   Operation,
@@ -762,7 +763,11 @@ function createStepsTable(
 
     // Timeline
     if (step.timeline) {
-      stepCellContent.push(paragraph(text(`⏱️ Timeline: ${step.timeline}`)));
+      stepCellContent.push(
+        paragraph(
+          text(`⏱️ Timeline: ${formatTimelineForDisplay(step.timeline)}`),
+        ),
+      );
     }
 
     // Conditional expression
@@ -1055,7 +1060,9 @@ function addSubStepRows(
 
     if (subStep.timeline) {
       subStepCellContent.push(
-        paragraph(text(`⏱️ Timeline: ${subStep.timeline}`)),
+        paragraph(
+          text(`⏱️ Timeline: ${formatTimelineForDisplay(subStep.timeline)}`),
+        ),
       );
     }
 

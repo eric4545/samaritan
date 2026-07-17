@@ -72,6 +72,10 @@ export const FIXTURES = {
   sectionHeadingFirst:
     'tests/fixtures/operations/features/section-heading-first.yaml',
 
+  // Structured timeline objects (start/duration/after)
+  structuredTimeline:
+    'tests/fixtures/operations/features/structured-timeline.yaml',
+
   // Nested sub-steps
   nestedSubSteps2Levels:
     'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',

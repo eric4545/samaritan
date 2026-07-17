@@ -14,6 +14,7 @@ import {
   substituteExpectVars,
   substituteVariables,
 } from '../../lib/step-resolution';
+import { formatTimelineForDisplay } from '../../lib/timeline-format';
 import { generateADFString } from '../../manuals/adf-generator';
 import {
   generateManualWithMetadata,
@@ -855,36 +856,6 @@ function collectAllStepsWithTimelineForConfluence(steps: any[]): any[] {
 
   steps.forEach(traverse);
   return result;
-}
-
-/**
- * Format timeline data for display in documentation
- */
-function formatTimelineForDisplay(timeline: any): string {
-  if (typeof timeline === 'string') {
-    return timeline;
-  }
-
-  // Structured format - convert to natural, readable format
-  const parts: string[] = [];
-
-  // Start time or dependency
-  if (timeline.start) {
-    parts.push(timeline.start);
-  } else if (timeline.after) {
-    parts.push(`(after ${timeline.after})`);
-  }
-
-  // Duration with "for" prefix if we have a start time
-  if (timeline.duration) {
-    if (timeline.start) {
-      parts.push(`for ${timeline.duration}`);
-    } else {
-      parts.push(timeline.duration);
-    }
-  }
-
-  return parts.join(' ');
 }
 
 // Export as standalone function for testing

@@ -20,6 +20,7 @@ import {
   substituteExpectVars,
   substituteVariables,
 } from '../lib/step-resolution';
+import { formatTimelineForDisplay } from '../lib/timeline-format';
 import type {
   Environment,
   Operation,
@@ -177,33 +178,6 @@ function renderEvidenceItemMarkdown(
     md += `\`\`\`${evidenceLang(item.type)}\n${item.content.trimEnd()}\n\`\`\`\n\n`;
   }
   return md;
-}
-
-function formatTimelineForDisplay(timeline: any): string {
-  if (typeof timeline === 'string') {
-    return timeline;
-  }
-
-  // Structured format - convert to natural, readable format
-  const parts: string[] = [];
-
-  // Start time or dependency
-  if (timeline.start) {
-    parts.push(timeline.start);
-  } else if (timeline.after) {
-    parts.push(`(after ${timeline.after})`);
-  }
-
-  // Duration with "for" prefix if we have a start time
-  if (timeline.duration) {
-    if (timeline.start) {
-      parts.push(`for ${timeline.duration}`);
-    } else {
-      parts.push(timeline.duration);
-    }
-  }
-
-  return parts.join(' ');
 }
 
 function formatEvidenceInfo(
@@ -885,7 +859,9 @@ function generateStepRow(
           const metadata = [];
           if (subStep.pic) metadata.push(`👤 PIC: ${subStep.pic}`);
           if (subStep.timeline)
-            metadata.push(`⏱️ Timeline: ${subStep.timeline}`);
+            metadata.push(
+              `⏱️ Timeline: ${formatTimelineForDisplay(subStep.timeline)}`,
+            );
           rows += `_${metadata.join(' • ')}_\n\n`;
         }
       }
