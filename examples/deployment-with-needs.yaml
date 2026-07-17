@@ -1,0 +1,48 @@
+name: Deployment With Step Dependencies
+version: 1.0.0
+description: |
+  Demonstrates `needs` — step dependencies modelled after GitHub Actions
+  `jobs.<id>.needs`. A `needs` entry references another step by its `id` or
+  `name` (and, for a foreach step, its original authored name).
+
+  What `needs` drives in SAMARITAN:
+   - validate: unknown refs warn (error under --strict); cycles, self-refs, and
+     forward references (needing a LATER step) are always errors
+   - interactive run: before a step whose dependencies aren't complete, the run
+     loop warns and offers to go back (e.g. after a [j] jump or --from-step)
+   - rollback: rolling a step back via [r] offers to roll back the completed
+     steps that DEPEND on it too (reverse dependency order); the global rollback
+     plan is ordered by reverse-topological order
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      REGISTRY: registry.example.com
+
+steps:
+  - name: Build image
+    id: build
+    type: manual
+    command: docker build -t ${REGISTRY}/app:latest .
+    rollback:
+      - command: docker rmi ${REGISTRY}/app:latest
+
+  - name: Push image
+    id: push
+    type: manual
+    needs: [build]
+    command: docker push ${REGISTRY}/app:latest
+
+  - name: Deploy
+    id: deploy
+    type: manual
+    needs: [push]
+    command: kubectl set image deployment/app app=${REGISTRY}/app:latest
+    rollback:
+      - command: kubectl rollout undo deployment/app
+
+  - name: Smoke test
+    type: manual
+    needs: [deploy]
+    command: curl -f https://app.example.com/health

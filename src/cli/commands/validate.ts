@@ -7,6 +7,7 @@ import {
   isShellcheckAvailable,
   lintOperationCommands,
 } from '../../lib/shell-lint';
+import { validateStepDeps } from '../../lib/step-deps';
 import type { Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
@@ -177,22 +178,38 @@ class OperationValidator {
   private validateSteps(
     operation: Operation,
     result: ValidationResult,
-    _options: ValidationOptions,
+    options: ValidationOptions,
   ): void {
     if (operation.steps.length === 0) {
       result.errors.push('At least one step must be defined');
       return;
     }
 
-    const stepNames = new Set<string>();
     const stepIds = new Set<string>();
 
-    // First pass: collect all step names and IDs
+    // First pass: collect all step IDs
     for (let i = 0; i < operation.steps.length; i++) {
       const step = operation.steps[i];
-      stepNames.add(step.name);
       if (step.id) {
         stepIds.add(step.id);
+      }
+    }
+
+    // Dependency (`needs`) validation via the shared graph module:
+    //  - cycle / self-ref / forward-ref  → errors (can never be satisfied)
+    //  - unknown-ref                      → warning (error under --strict)
+    //  - ambiguous-ref / sub-step-needs   → warnings
+    for (const issue of validateStepDeps(operation.steps)) {
+      if (
+        issue.kind === 'cycle' ||
+        issue.kind === 'self-ref' ||
+        issue.kind === 'forward-ref'
+      ) {
+        result.errors.push(issue.message);
+      } else if (issue.kind === 'unknown-ref' && options.strict) {
+        result.errors.push(issue.message);
+      } else {
+        result.warnings.push(issue.message);
       }
     }
 
@@ -209,17 +226,6 @@ class OperationValidator {
       }
 
       // Note: Basic step type validation (command/instruction requirements) is now handled by JSON schema
-
-      // Validate dependencies (check both step names and IDs)
-      if (step.needs) {
-        for (const dep of step.needs) {
-          if (!stepNames.has(dep) && !stepIds.has(dep)) {
-            result.warnings.push(
-              `Step ${i + 1} (${step.name}): dependency '${dep}' not found among step names or IDs`,
-            );
-          }
-        }
-      }
 
       // Evidence validation
       if (

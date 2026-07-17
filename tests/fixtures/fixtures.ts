@@ -99,6 +99,11 @@ export const FIXTURES = {
   reviewerAndEnvEvidence:
     'tests/fixtures/operations/features/reviewer-and-env-evidence.yaml',
 
+  // Step dependencies (needs)
+  stepNeeds: 'tests/fixtures/operations/features/step-needs.yaml',
+  needsCycle: 'tests/fixtures/operations/invalid/needs-cycle.yaml',
+  needsForwardRef: 'tests/fixtures/operations/invalid/needs-forward-ref.yaml',
+
   // Run manifest: operation with explicit step ids
   withStepIds: 'tests/fixtures/operations/features/with-step-ids.yaml',
 

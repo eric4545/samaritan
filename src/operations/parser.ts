@@ -351,6 +351,9 @@ function expandForeachItem<
       id: item.id ? `${item.id}-${j}` : undefined,
       name: item.name ? `${item.name} (${varSuffix})` : varSuffix,
       foreach: undefined,
+      // Record the ORIGINAL authored name/id so a `needs` reference to it
+      // resolves to every expanded instance (Step-only structural field).
+      foreachSource: { name: item.name, id: item.id },
     };
   });
 }

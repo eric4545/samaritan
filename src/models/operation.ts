@@ -242,6 +242,11 @@ export interface Step extends StepContent {
   // All steps from the same outermost `uses:` share one id, keeping the block
   // contiguous during phase grouping. Not authored in YAML.
   usesGroup?: { id: string; name?: string };
+  // Internal: set by the parser on each step expanded from a `foreach`/`matrix`,
+  // recording the ORIGINAL (pre-suffix) authored name/id. A `needs` reference to
+  // that authored name/id therefore matches ALL expanded instances. Not authored
+  // in YAML.
+  foreachSource?: { name?: string; id?: string };
 }
 
 export interface Environment {

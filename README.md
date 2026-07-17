@@ -1106,6 +1106,41 @@ steps:
     command: kubectl apply -f deployment.yaml
 ```
 
+#### Step Dependencies (`needs`)
+
+Model dependencies between steps, like GitHub Actions `jobs.<id>.needs`. A
+`needs` entry references another step by its `id` or `name` (and, for a
+`foreach`/`matrix` step, its original authored name — so it depends on every
+expanded instance):
+
+```yaml
+steps:
+  - name: Build image
+    id: build
+    command: docker build -t app .
+  - name: Deploy
+    id: deploy
+    needs: [build]        # runs after Build
+    command: kubectl apply -f app.yaml
+  - name: Smoke test
+    needs: [deploy]
+    command: curl -f https://app/health
+```
+
+What `needs` drives:
+
+- **`validate`**: unknown references warn (error under `--strict`); **cycles,
+  self-references, and forward references** (a step needing a *later* step, which
+  can never be satisfied at run time) are always errors.
+- **Interactive `run`**: before a step whose dependencies aren't complete (e.g.
+  after a `[j]` jump or `--from-step`), the run loop warns and offers to go back.
+- **Rollback**: pressing `[r]` on a step offers to roll back the completed steps
+  that **depend on** it too (reverse dependency order); the global rollback plan
+  is ordered by reverse-topological order.
+
+`needs` is honored on **top-level steps** (v1); on sub-steps it is reported and
+ignored. See `examples/deployment-with-needs.yaml`.
+
 #### External Script Files (`script`)
 
 Reference an external shell script file. The generator reads the file at manual-generation time and embeds the full script content as a `bash` code block — so the operator can review what will run before executing it.

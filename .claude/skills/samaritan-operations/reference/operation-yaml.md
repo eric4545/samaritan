@@ -87,6 +87,16 @@ and `🖥 Session: <name>`.
 > AND `uses`/`with` file composition expand on rollback steps at parse time
 > just like normal steps.
 
+### `needs` — step dependencies (GitHub-Actions style)
+
+`needs: [<id-or-name>, …]` references earlier steps by `id` or `name` (a
+foreach step is matched by its original authored name → all expanded instances).
+Top-level steps only in v1 (sub-step `needs` is ignored with a warning).
+`validate`: unknown ref → warning (error under `--strict`); cycle / self-ref /
+forward-ref (needing a LATER step) → error. Drives run-loop forward-gating,
+dependents-aware `[r]` rollback, and reverse-topological global-rollback order.
+Example: `examples/deployment-with-needs.yaml`.
+
 ## command vs script
 
 ```yaml
