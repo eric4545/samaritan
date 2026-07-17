@@ -180,6 +180,9 @@ export const FIXTURES = {
   ganttTimeline: 'tests/fixtures/operations/confluence/gantt-timeline.yaml',
   evidenceRequired:
     'tests/fixtures/operations/confluence/evidence-required.yaml',
+
+  // Multi-operator / PIC focus mode
+  multiOperator: 'tests/fixtures/operations/features/multi-operator.yaml',
 } as const;
 
 /**

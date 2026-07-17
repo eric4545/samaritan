@@ -1,0 +1,33 @@
+id: multi-operator-focus
+name: Multi Operator Focus
+version: 1.0.0
+description: Steps assigned to different PICs plus a shared no-PIC step, for testing run --pic focus mode
+
+environments:
+  - name: staging
+
+# Ordered for focus-mode testing: a bob-owned step comes FIRST so that under
+# `--pic alice` it is auto-skipped before the loop reaches any step alice must
+# handle interactively (letting a test observe the skip with a single `abort`).
+steps:
+  - name: Bob migrate
+    type: manual
+    pic: bob
+    command: echo bob-migrate
+    instruction: Bob runs the migration.
+
+  - name: Alice deploy
+    type: manual
+    pic: alice
+    command: echo alice-deploy
+    instruction: Alice runs the deploy.
+
+  - name: Shared preflight
+    type: manual
+    instruction: Everyone sees this shared step (no pic).
+
+  - name: Alice verify
+    type: manual
+    pic: alice
+    command: echo alice-verify
+    instruction: Alice verifies the deploy.

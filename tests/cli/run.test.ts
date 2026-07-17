@@ -30,6 +30,7 @@ function fixturePath(name: string): string {
     rollbackForeach: 'tests/fixtures/operations/features/rollback-foreach.yaml',
     evidenceRequired:
       'tests/fixtures/operations/features/evidence-required.yaml',
+    multiOperator: 'tests/fixtures/operations/features/multi-operator.yaml',
   };
   return resolve(map[name]);
 }
@@ -1433,4 +1434,75 @@ describe('run command: TTY [t] attach prompt', () => {
       );
     },
   );
+});
+
+// ─── --pic focus mode ─────────────────────────────────────────────────────────
+
+describe('run command: --pic focus mode', () => {
+  // The multi-operator fixture orders a bob-owned step FIRST, so under
+  // `--pic alice` it is auto-skipped before the loop reaches alice's first
+  // interactive step — where we abort. A single `abort` keeps the readline
+  // flow simple (no multi-prompt chaining; see the manual-step testing note).
+
+  it('auto-skips a step assigned to a different PIC and records it', () => {
+    const fixture = fixturePath('multiOperator');
+    const result = runCli(
+      ['run', fixture, '--env', 'staging', '--pic', 'alice'],
+      { input: 'abort\n' },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Skipped (assigned to bob'),
+      `bob's step must be auto-skipped under --pic alice; output:\n${combined.slice(-2000)}`,
+    );
+    assert.ok(
+      combined.includes('🎯 Focus: alice'),
+      'focus banner must show the focused operator',
+    );
+    // Alice's own step is reached (it's where we abort).
+    assert.ok(
+      combined.includes('Alice deploy'),
+      "alice's own step must be presented",
+    );
+  });
+
+  it("--no-skip-others keeps other operators' steps visible (not skipped)", () => {
+    const fixture = fixturePath('multiOperator');
+    const result = runCli(
+      [
+        'run',
+        fixture,
+        '--env',
+        'staging',
+        '--pic',
+        'alice',
+        '--no-skip-others',
+      ],
+      { input: 'abort\n' },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      !combined.includes('Skipped (assigned to bob'),
+      '--no-skip-others must not auto-skip other PICs',
+    );
+    assert.ok(
+      combined.includes('assigned elsewhere'),
+      "other operators' steps must be annotated as assigned elsewhere",
+    );
+  });
+
+  it('without --pic, no focus filtering happens (bob step not skipped)', () => {
+    const fixture = fixturePath('multiOperator');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'abort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      !combined.includes('Skipped (assigned to'),
+      'no focus filtering without --pic',
+    );
+    assert.ok(!combined.includes('🎯 Focus:'), 'no focus banner without --pic');
+    // The first step (Bob migrate) is presented normally.
+    assert.ok(combined.includes('Bob migrate'), "bob's step is shown");
+  });
 });

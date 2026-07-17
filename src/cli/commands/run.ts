@@ -96,6 +96,11 @@ interface RunOptions {
   report?: string;
   fromStep?: number;
   requireEvidence?: boolean;
+  // Focus mode: `--pic [name]` — true when the flag is given without a value
+  // (defaults to $USER), a string when a name is passed, undefined when absent.
+  pic?: string | boolean;
+  // `--no-skip-others` sets this false: keep other operators' steps visible.
+  skipOthers?: boolean;
 }
 
 interface ResumeOptions {
@@ -103,6 +108,36 @@ interface ResumeOptions {
   autoApprove?: boolean;
   fromStep?: number;
   requireEvidence?: boolean;
+  pic?: string | boolean;
+  skipOthers?: boolean;
+}
+
+/**
+ * Focus mode: does `step` belong to the operator focusing on `focusPic`?
+ * A step with no `pic` is SHARED (belongs to everyone); a step whose `pic`
+ * matches (case-insensitive, trimmed) belongs to the focused operator; a step
+ * assigned to a different PIC does NOT. Called per step to decide whether to
+ * auto-skip other operators' work in the interactive run loop.
+ */
+export function stepBelongsToFocus(
+  step: { pic?: string },
+  focusPic: string,
+): boolean {
+  if (!step.pic) return true;
+  return step.pic.trim().toLowerCase() === focusPic.trim().toLowerCase();
+}
+
+/**
+ * Resolve the `--pic [name]` option into the focus identity: a passed name, or
+ * $USER when the flag was given bare (`true`), or undefined when the flag is
+ * absent (focus mode OFF — every step is visited as before).
+ */
+export function resolveFocusPic(
+  pic: string | boolean | undefined,
+): string | undefined {
+  if (pic === undefined || pic === false) return undefined;
+  if (pic === true) return process.env.USER || 'unknown';
+  return pic || undefined;
 }
 
 function flattenStepsForExecution(steps: Step[], prefix = ''): FlatStep[] {
@@ -217,7 +252,11 @@ class OperationRunner {
     const executionMode: ExecutionMode =
       options.mode ?? (options.autoApprove ? 'automatic' : 'sidecar');
 
-    const operator = process.env.USER || 'unknown';
+    // In focus mode the person running IS the focused PIC — attribute the
+    // session (and thus the merged report's `executed_by`) to them; otherwise
+    // fall back to the login. `--no-skip-others` keeps focus for attribution.
+    const focusPic = resolveFocusPic(options.pic);
+    const operator = focusPic || process.env.USER || 'unknown';
 
     // Create session first so its ID can serve as the JSONL log identifier
     const session = sessionManager.createSession(
@@ -247,6 +286,12 @@ class OperationRunner {
       context,
       executionMode,
     );
+
+    if (focusPic) {
+      console.log(
+        `🎯 Focus: ${focusPic}${options.skipOthers === false ? ' (showing all steps)' : ' (other operators’ steps auto-skipped)'}`,
+      );
+    }
 
     if (
       environment.approval_required &&
@@ -357,6 +402,8 @@ class OperationRunner {
           captureBackend,
           flatSteps,
           options.requireEvidence !== false,
+          focusPic,
+          options.skipOthers !== false,
         );
         executor.finalizeOperation();
 
@@ -494,6 +541,14 @@ class OperationRunner {
       `   Status: ${SessionUtils.getSessionStatusEmoji(session.status)} ${session.status}`,
     );
 
+    // Focus is NOT persisted on the session — re-supply `--pic` on resume.
+    const resumeFocusPic = resolveFocusPic(options.pic);
+    if (resumeFocusPic) {
+      console.log(
+        `🎯 Focus: ${resumeFocusPic}${options.skipOthers === false ? ' (showing all steps)' : ' (other operators’ steps auto-skipped)'}`,
+      );
+    }
+
     const operation = await this.parseOperationFile(session.operation_file);
 
     const context = {
@@ -547,6 +602,8 @@ class OperationRunner {
       tmuxSession,
       flatSteps,
       options.requireEvidence !== false,
+      resumeFocusPic,
+      options.skipOthers !== false,
     );
     executor.finalizeOperation();
     tmuxSession?.teardown();
@@ -583,6 +640,8 @@ class OperationRunner {
     captureBackend: CaptureBackend | undefined,
     flatSteps: FlatStep[],
     requireEvidence: boolean,
+    focusPic: string | undefined,
+    skipOthers: boolean,
   ): Promise<string> {
     const rl = createReadlineInterface({
       input: process.stdin,
@@ -1473,6 +1532,29 @@ class OperationRunner {
         const stepNum = `[${flatSteps[i].label}/${steps.length}]`;
         const typeLabel = step.type.toUpperCase();
 
+        // Focus mode (`run --pic <name>`): auto-skip steps assigned to a
+        // DIFFERENT operator so the focused operator only walks their own (and
+        // shared, no-PIC) steps. Section-header parents are structural — never
+        // filtered. Reuses the same skip plumbing as [j]/--from-step so the
+        // step lands in the report as ⏭ (skipped). `--no-skip-others` keeps
+        // other operators' steps visible (they're annotated below instead).
+        if (
+          focusPic &&
+          skipOthers &&
+          !(step.sub_steps && step.sub_steps.length > 0) &&
+          !stepBelongsToFocus(step, focusPic)
+        ) {
+          console.log(`\n${DIVIDER}`);
+          console.log(`${stepNum} ${typeLabel}: ${step.name}`);
+          console.log(
+            `    ⏭  Skipped (assigned to ${step.pic}; focus: ${focusPic})`,
+          );
+          executor.skipStep(i);
+          logSkip(i);
+          persistProgress();
+          continue;
+        }
+
         const resolvedCommand = tryResolve(step.command, step.variables);
         const resolvedInstruction = tryResolve(
           step.instruction,
@@ -1500,7 +1582,19 @@ class OperationRunner {
         console.log(`${stepNum} ${typeLabel}: ${step.name}`);
         if (step.description)
           console.log(`    ${tryResolve(step.description, step.variables)}`);
-        if (step.pic) console.log(`    PIC      : ${step.pic}`);
+        if (step.pic) {
+          // Under focus mode, mark whether this step is the operator's own.
+          // (Other operators' steps are only reachable here with
+          // `--no-skip-others`; otherwise they're auto-skipped above.)
+          const focusTag = focusPic
+            ? stepBelongsToFocus(step, focusPic)
+              ? '  ★ your step'
+              : '  (assigned elsewhere)'
+            : '';
+          console.log(`    PIC      : ${step.pic}${focusTag}`);
+        } else if (focusPic) {
+          console.log('    PIC      : (shared — no PIC)');
+        }
         if (step.reviewer) console.log(`    Reviewer : ${step.reviewer}`);
         if (step.session) console.log(`    Session  : ${step.session}`);
         if (step.ticket)
@@ -2249,6 +2343,14 @@ const runCommand = new Command('run')
     '--no-require-evidence',
     'Allow completing a step whose evidence.required is true without capturing evidence',
   )
+  .option(
+    '--pic [name]',
+    "Focus on steps assigned to this PIC (default: $USER); other operators' steps are auto-skipped",
+  )
+  .option(
+    '--no-skip-others',
+    "In --pic focus mode, keep other operators' steps visible/runnable instead of auto-skipping",
+  )
   .action(async (operation: string, options: RunOptions) => {
     try {
       if (
@@ -2281,6 +2383,14 @@ const resumeCommand = new Command('resume')
   .option(
     '--no-require-evidence',
     'Allow completing a step whose evidence.required is true without capturing evidence',
+  )
+  .option(
+    '--pic [name]',
+    "Focus on steps assigned to this PIC (default: $USER); other operators' steps are auto-skipped (not persisted — re-supply on resume)",
+  )
+  .option(
+    '--no-skip-others',
+    "In --pic focus mode, keep other operators' steps visible/runnable instead of auto-skipping",
   )
   .action(async (sessionId: string, options: ResumeOptions) => {
     try {

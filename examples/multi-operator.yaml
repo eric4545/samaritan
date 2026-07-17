@@ -1,0 +1,93 @@
+# Multi-Operator (PIC Focus Mode) Example
+#
+# Demonstrates running one operation with SEVERAL operators, each focusing on
+# only the steps assigned to them via `run --pic <name>`.
+#
+# Each step carries a `pic:` (Person In Charge). In focus mode:
+#   - your own steps (matching --pic) are presented normally
+#   - steps with NO pic are SHARED and shown to everyone
+#   - steps assigned to a DIFFERENT pic are auto-skipped (recorded as skipped)
+#
+# Usage — Alice runs her steps:
+#   samaritan run examples/multi-operator.yaml -e staging --pic alice@example.com
+#
+# Bob runs his steps (bare --pic defaults to $USER):
+#   samaritan run examples/multi-operator.yaml -e staging --pic bob@example.com
+#
+# A central operator runs everything (no focus):
+#   samaritan run examples/multi-operator.yaml -e staging
+#   # ...or keep the labels but don't skip:
+#   samaritan run examples/multi-operator.yaml -e staging --pic alice@example.com --no-skip-others
+#
+# Merge each operator's partial run into one consolidated report:
+#   samaritan report merge <alice-session-id> <bob-session-id> -o merged-report.md
+
+id: multi-operator-deployment
+name: Multi-Operator Deployment
+version: 1.0.0
+description: |
+  A deployment split across two operators (Alice on app tier, Bob on data
+  tier) plus a shared sign-off. Use `run --pic <name>` so each operator only
+  walks their own steps, then `report merge` to consolidate the audit trail.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: staging
+      IMAGE_TAG: latest
+
+steps:
+  # ─── Shared preflight (no pic — everyone sees it) ──────────────────────────
+  - name: Confirm change window is open
+    type: manual
+    phase: preflight
+    instruction: Confirm the change window is open and the on-call is aware.
+    # No pic: this is a SHARED step, shown to every operator in focus mode.
+
+  # ─── Alice: application tier ───────────────────────────────────────────────
+  - name: Deploy application
+    type: manual
+    phase: flight
+    pic: alice@example.com
+    reviewer: sre-lead@example.com
+    command: kubectl apply -f app/ -n ${NAMESPACE}
+    instruction: Deploy the application manifests, then press [v] to verify.
+    expect:
+      contains: configured
+
+  - name: Verify application pods
+    type: manual
+    phase: postflight
+    pic: alice@example.com
+    command: kubectl get pods -n ${NAMESPACE} -l tier=app
+    instruction: Confirm all app-tier pods are Running.
+    expect:
+      - contains: Running
+      - not_contains: CrashLoopBackOff
+
+  # ─── Bob: data tier ────────────────────────────────────────────────────────
+  - name: Run database migrations
+    type: manual
+    phase: flight
+    pic: bob@example.com
+    reviewer: dba-lead@example.com
+    command: ./scripts/migrate.sh --env ${NAMESPACE}
+    instruction: Run the migration script, then press [v] to verify.
+    expect:
+      contains: migration complete
+
+  - name: Verify data tier
+    type: manual
+    phase: postflight
+    pic: bob@example.com
+    command: kubectl get pods -n ${NAMESPACE} -l tier=data
+    instruction: Confirm all data-tier pods are Running.
+    expect:
+      contains: Running
+
+  # ─── Shared sign-off (no pic — everyone sees it) ───────────────────────────
+  - name: Final sign-off
+    type: approval
+    phase: postflight
+    instruction: Both operators confirm the deployment is healthy end to end.

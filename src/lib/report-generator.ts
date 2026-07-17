@@ -82,8 +82,12 @@ export function renderReport(
   const reviewers = [
     ...new Set(steps.flatMap((s) => (s.reviewer ? [s.reviewer] : []))),
   ];
+  const operators = [
+    ...new Set(steps.flatMap((s) => (s.executed_by ? [s.executed_by] : []))),
+  ];
   if (pics.length) lines.push(`- PIC: ${pics.join(', ')}`);
   if (reviewers.length) lines.push(`- Reviewer: ${reviewers.join(', ')}`);
+  if (operators.length) lines.push(`- Operators: ${operators.join(', ')}`);
 
   lines.push('');
 
@@ -154,6 +158,10 @@ function renderStep(step: StepRecord, redact: Redact): string[] {
     lines.push(
       `**Time**: ${formatTs(step.started_at)}${firstCmd ? ` | **Session**: ${firstCmd.session}` : ''}`,
     );
+  }
+
+  if (step.executed_by) {
+    lines.push(`**Operator**: ${step.executed_by}`);
   }
 
   for (const cmd of step.commands) {
