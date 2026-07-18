@@ -1,7 +1,7 @@
 import assert from 'node:assert';
-import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 import { generateReport } from '../../src/lib/report-generator';
 
@@ -15,6 +15,20 @@ function makeJsonl(events: object[]): string {
       }),
     )
     .join('\n')}\n`;
+}
+
+/**
+ * Write JSONL into a freshly-created private temp directory (0700, random
+ * name) and return the file path. Using mkdtempSync avoids the predictable
+ * shared-tmp filename that CodeQL's js/insecure-temporary-file flags.
+ */
+function writeTempJsonl(content: string): string {
+  const jsonlPath = join(
+    mkdtempSync(join(tmpdir(), 'samaritan-report-')),
+    'events.jsonl',
+  );
+  writeFileSync(jsonlPath, content, 'utf-8');
+  return jsonlPath;
 }
 
 const sampleJsonl = makeJsonl([
@@ -65,20 +79,18 @@ const sampleJsonl = makeJsonl([
 
 describe('generateReport (issue #10)', () => {
   it('generates valid Markdown from JSONL', () => {
-    const jsonlPath = join(tmpdir(), 'test-report-gen.jsonl');
-    writeFileSync(jsonlPath, sampleJsonl, 'utf-8');
+    const jsonlPath = writeTempJsonl(sampleJsonl);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(typeof md === 'string', 'should return string');
       assert.ok(md.includes('#'), 'should have heading');
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
   it('includes session ID and status in report', () => {
-    const jsonlPath = join(tmpdir(), 'test-report-session.jsonl');
-    writeFileSync(jsonlPath, sampleJsonl, 'utf-8');
+    const jsonlPath = writeTempJsonl(sampleJsonl);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(md.includes('f3a9b2'), 'should include session id');
@@ -87,37 +99,34 @@ describe('generateReport (issue #10)', () => {
         'should include status',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
   it('each step section has heading with step name', () => {
-    const jsonlPath = join(tmpdir(), 'test-report-steps.jsonl');
-    writeFileSync(jsonlPath, sampleJsonl, 'utf-8');
+    const jsonlPath = writeTempJsonl(sampleJsonl);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(md.includes('Pre-flight checks'), 'should include step 1 name');
       assert.ok(md.includes('Deploy App'), 'should include step 2 name');
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
   it('command output rendered as code block', () => {
-    const jsonlPath = join(tmpdir(), 'test-report-code.jsonl');
-    writeFileSync(jsonlPath, sampleJsonl, 'utf-8');
+    const jsonlPath = writeTempJsonl(sampleJsonl);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(md.includes('```'), 'should have code block');
       assert.ok(md.includes('kubectl'), 'should include command');
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
   it('includes rollback section (even if empty)', () => {
-    const jsonlPath = join(tmpdir(), 'test-report-rollback.jsonl');
-    writeFileSync(jsonlPath, sampleJsonl, 'utf-8');
+    const jsonlPath = writeTempJsonl(sampleJsonl);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
@@ -125,19 +134,18 @@ describe('generateReport (issue #10)', () => {
         'should have rollback section',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
   it('summary shows step counts and operation file', () => {
-    const jsonlPath = join(tmpdir(), 'test-report-summary.jsonl');
-    writeFileSync(jsonlPath, sampleJsonl, 'utf-8');
+    const jsonlPath = writeTempJsonl(sampleJsonl);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(md.includes('deployment.yaml'), 'should mention op file');
       assert.ok(md.includes('2'), 'should show step count');
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
@@ -161,8 +169,7 @@ describe('generateReport (issue #10)', () => {
       { type: 'step_complete', step: 0 },
       { type: 'session_end', status: 'completed', steps_completed: 1 },
     ]);
-    const jsonlPath = join(tmpdir(), 'test-report-evidence-text.jsonl');
-    writeFileSync(jsonlPath, withEvidence, 'utf-8');
+    const jsonlPath = writeTempJsonl(withEvidence);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
@@ -175,7 +182,7 @@ describe('generateReport (issue #10)', () => {
       );
       assert.ok(md.includes('```'), 'content rendered as code block');
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
@@ -200,8 +207,7 @@ describe('generateReport (issue #10)', () => {
       { type: 'step_complete', step: 0 },
       { type: 'session_end', status: 'completed', steps_completed: 1 },
     ]);
-    const jsonlPath = join(tmpdir(), 'test-report-evidence-screenshot.jsonl');
-    writeFileSync(jsonlPath, withEvidence, 'utf-8');
+    const jsonlPath = writeTempJsonl(withEvidence);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
@@ -211,7 +217,7 @@ describe('generateReport (issue #10)', () => {
         'should embed the screenshot as an image',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
@@ -236,8 +242,7 @@ describe('generateReport (issue #10)', () => {
       { type: 'step_complete', step: 0 },
       { type: 'session_end', status: 'completed', steps_completed: 1 },
     ]);
-    const jsonlPath = join(tmpdir(), 'test-report-evidence-file.jsonl');
-    writeFileSync(jsonlPath, withEvidence, 'utf-8');
+    const jsonlPath = writeTempJsonl(withEvidence);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
@@ -247,7 +252,7 @@ describe('generateReport (issue #10)', () => {
         'should render file evidence as a link',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
@@ -287,8 +292,7 @@ describe('generateReport (issue #10)', () => {
       { type: 'step_complete', step: 0 },
       { type: 'session_end', status: 'completed', steps_completed: 1 },
     ]);
-    const jsonlPath = join(tmpdir(), 'test-report-evidence-removed.jsonl');
-    writeFileSync(jsonlPath, withRemoval, 'utf-8');
+    const jsonlPath = writeTempJsonl(withRemoval);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
@@ -304,7 +308,7 @@ describe('generateReport (issue #10)', () => {
         'should omit the removed evidence content',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
@@ -333,8 +337,7 @@ describe('generateReport (issue #10)', () => {
       { type: 'step_complete', step: 0 },
       { type: 'session_end', status: 'completed', steps_completed: 1 },
     ]);
-    const jsonlPath = join(tmpdir(), 'test-report-notes.jsonl');
-    writeFileSync(jsonlPath, withNotes, 'utf-8');
+    const jsonlPath = writeTempJsonl(withNotes);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(md.includes('**Notes**'), 'should have a Notes heading');
@@ -347,7 +350,7 @@ describe('generateReport (issue #10)', () => {
         'should list second note as a bullet',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
@@ -372,8 +375,7 @@ describe('generateReport (issue #10)', () => {
       { type: 'step_complete', step: 0 },
       { type: 'session_end', status: 'completed', steps_completed: 1 },
     ]);
-    const jsonlPath = join(tmpdir(), 'test-report-command-displayed.jsonl');
-    writeFileSync(jsonlPath, withDisplayed, 'utf-8');
+    const jsonlPath = writeTempJsonl(withDisplayed);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
@@ -389,13 +391,12 @@ describe('generateReport (issue #10)', () => {
         'must not use "Command sent" label for command_displayed events',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
   it('command_sent still renders as "Command sent"', () => {
-    const jsonlPath = join(tmpdir(), 'test-report-command-sent-check.jsonl');
-    writeFileSync(jsonlPath, sampleJsonl, 'utf-8');
+    const jsonlPath = writeTempJsonl(sampleJsonl);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
@@ -403,7 +404,7 @@ describe('generateReport (issue #10)', () => {
         'regular command_sent events should still use "Command sent" label',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
@@ -430,8 +431,7 @@ describe('generateReport (issue #10)', () => {
       { type: 'step_complete', step: 0 },
       { type: 'session_end', status: 'completed', steps_completed: 1 },
     ]);
-    const jsonlPath = join(tmpdir(), 'test-report-verify.jsonl');
-    writeFileSync(jsonlPath, withVerify, 'utf-8');
+    const jsonlPath = writeTempJsonl(withVerify);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
@@ -448,7 +448,115 @@ describe('generateReport (issue #10)', () => {
         'should show actual for failing check',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
+    }
+  });
+
+  it('renders multi-line verify output as a fenced code block, not inline backticks', () => {
+    const multiline =
+      'pod/web-0   0/1   CrashLoopBackOff   3   40s\npod/web-1   1/1   Running            0   2m';
+    const withVerify = makeJsonl([
+      { type: 'session_start', op: 'deploy.yaml' },
+      { type: 'step_start', step: 0, name: 'Verify rollout' },
+      {
+        type: 'assert_result',
+        step: 0,
+        pass: false,
+        actual: multiline,
+        expected: 'contains "Running"',
+        assertion_type: 'contains',
+      },
+      { type: 'step_complete', step: 0 },
+      { type: 'session_end', status: 'completed', steps_completed: 1 },
+    ]);
+    const jsonlPath = writeTempJsonl(withVerify);
+    try {
+      const md = generateReport(jsonlPath);
+      // The capture must be inside a fenced block under the check bullet…
+      assert.ok(
+        md.includes('  ```\n  pod/web-0   0/1   CrashLoopBackOff'),
+        'multi-line actual should be fenced, not inline',
+      );
+      // …and NOT wrapped in a single inline-backtick pair spanning newlines.
+      assert.ok(
+        !md.includes('actual: `pod/web-0'),
+        'multi-line actual must not use inline backticks',
+      );
+    } finally {
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
+    }
+  });
+
+  it('redacts operator-local paths in verify actual/expected', () => {
+    const withVerify = makeJsonl([
+      { type: 'session_start', op: '/home/alice/ops/deploy.yaml' },
+      { type: 'step_start', step: 0, name: 'Verify config' },
+      {
+        type: 'assert_result',
+        step: 0,
+        pass: false,
+        // Path lives under the operation dir, so it should be stripped.
+        actual: 'reading /home/alice/ops/config/app.yaml\nstatus: bad',
+        expected: 'contains "ok"',
+        assertion_type: 'contains',
+      },
+      { type: 'step_complete', step: 0 },
+      { type: 'session_end', status: 'completed', steps_completed: 1 },
+    ]);
+    const jsonlPath = writeTempJsonl(withVerify);
+    try {
+      const md = generateReport(jsonlPath);
+      assert.ok(
+        !md.includes('/home/alice/ops/config/app.yaml'),
+        'operation-dir path should be redacted from actual',
+      );
+      assert.ok(
+        md.includes('config/app.yaml'),
+        'redacted path should keep its relative tail',
+      );
+    } finally {
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
+    }
+  });
+
+  it('renders per-step duration when timing is present', () => {
+    const withTiming = makeJsonl([
+      { type: 'session_start', op: 'deploy.yaml' },
+      {
+        type: 'step_start',
+        step: 0,
+        name: 'Slow step',
+        ts: '2026-07-15T10:00:00.000Z',
+      },
+      {
+        type: 'step_complete',
+        step: 0,
+        ts: '2026-07-15T10:01:05.000Z',
+      },
+      { type: 'session_end', status: 'completed', steps_completed: 1 },
+    ]);
+    const jsonlPath = writeTempJsonl(withTiming);
+    try {
+      const md = generateReport(jsonlPath);
+      assert.ok(
+        md.includes('**Duration**: 1m 5s'),
+        'should show the per-step duration',
+      );
+    } finally {
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
+    }
+  });
+
+  it('labels command output with a bold **Output** heading', () => {
+    const jsonlPath = writeTempJsonl(sampleJsonl);
+    try {
+      const md = generateReport(jsonlPath);
+      assert.ok(
+        md.includes('**Output**'),
+        'command output should use a bold Output label',
+      );
+    } finally {
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
@@ -466,8 +574,7 @@ describe('generateReport (issue #10)', () => {
       { type: 'step_complete', step: 0 },
       { type: 'session_end', status: 'completed', steps_completed: 1 },
     ]);
-    const jsonlPath = join(tmpdir(), 'test-report-approval.jsonl');
-    writeFileSync(jsonlPath, withApproval, 'utf-8');
+    const jsonlPath = writeTempJsonl(withApproval);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
@@ -481,7 +588,7 @@ describe('generateReport (issue #10)', () => {
         'should include the rationale',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 
@@ -503,8 +610,7 @@ describe('generateReport (issue #10)', () => {
       { type: 'rollback_complete', step: 0, status: 'success' },
       { type: 'session_end', status: 'rolled_back', steps_completed: 0 },
     ]);
-    const jsonlPath = join(tmpdir(), 'test-report-rb.jsonl');
-    writeFileSync(jsonlPath, withRollback, 'utf-8');
+    const jsonlPath = writeTempJsonl(withRollback);
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
@@ -512,7 +618,7 @@ describe('generateReport (issue #10)', () => {
         'should show rollback event',
       );
     } finally {
-      if (existsSync(jsonlPath)) unlinkSync(jsonlPath);
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
     }
   });
 });
