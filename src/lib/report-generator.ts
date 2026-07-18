@@ -155,8 +155,12 @@ function renderStep(step: StepRecord, redact: Redact): string[] {
   lines.push('');
 
   if (step.started_at) {
+    const durationSuffix =
+      typeof step.duration_ms === 'number'
+        ? ` | **Duration**: ${formatDurationMs(step.duration_ms)}`
+        : '';
     lines.push(
-      `**Time**: ${formatTs(step.started_at)}${firstCmd ? ` | **Session**: ${firstCmd.session}` : ''}`,
+      `**Time**: ${formatTs(step.started_at)}${firstCmd ? ` | **Session**: ${firstCmd.session}` : ''}${durationSuffix}`,
     );
   }
 
@@ -173,7 +177,7 @@ function renderStep(step: StepRecord, redact: Redact): string[] {
     }
     if (cmd.output) {
       lines.push('');
-      lines.push('Output');
+      lines.push('**Output**');
       lines.push('');
       lines.push('```');
       lines.push(redact(cleanTerminalOutput(cmd.output)).trim());
@@ -181,7 +185,7 @@ function renderStep(step: StepRecord, redact: Redact): string[] {
     }
   }
 
-  if (step.verification) lines.push(...renderVerification(step));
+  if (step.verification) lines.push(...renderVerification(step, redact));
 
   if (step.verification?.verifiedBy) {
     lines.push('');
@@ -213,7 +217,7 @@ function renderStep(step: StepRecord, redact: Redact): string[] {
   return lines;
 }
 
-function renderVerification(step: StepRecord): string[] {
+function renderVerification(step: StepRecord, redact: Redact): string[] {
   const v = step.verification;
   if (!v || v.checks.length === 0) return [];
   const lines: string[] = [''];
@@ -221,17 +225,53 @@ function renderVerification(step: StepRecord): string[] {
   for (const check of v.checks) {
     const icon = check.pass ? '✅' : '❌';
     const type = check.type ? ` (${check.type})` : '';
-    const detail = formatCheckDetail(check.expected, check.actual);
-    lines.push(`- ${icon}${type}${detail}`);
+    lines.push(
+      ...renderCheck(icon, type, check.expected, check.actual, redact),
+    );
   }
   return lines;
 }
 
-function formatCheckDetail(expected?: string, actual?: string): string {
-  const parts: string[] = [];
-  if (expected) parts.push(`expected: \`${expected}\``);
-  if (actual) parts.push(`actual: \`${actual}\``);
-  return parts.length ? ` — ${parts.join(', ')}` : '';
+/**
+ * Render one verification check as a Markdown bullet. `expected` is always a
+ * short criteria string, so it stays inline. `actual` in a sidecar verify is
+ * the whole captured console output — inline backticks can't hold newlines, so
+ * a multi-line (or backtick-containing) capture renders as a fenced code block
+ * under the bullet instead. Both are cleaned + path-redacted like every other
+ * rendered output block.
+ */
+function renderCheck(
+  icon: string,
+  type: string,
+  expected: string | undefined,
+  actual: string | undefined,
+  redact: Redact,
+): string[] {
+  const inlineParts: string[] = [];
+  if (expected) inlineParts.push(`expected: \`${redact(expected)}\``);
+
+  const cleanedActual = actual
+    ? redact(cleanTerminalOutput(actual)).trim()
+    : '';
+  const actualIsBlock =
+    cleanedActual.includes('\n') || cleanedActual.includes('`');
+
+  if (cleanedActual && !actualIsBlock) {
+    inlineParts.push(`actual: \`${cleanedActual}\``);
+  }
+
+  const detail = inlineParts.length ? ` — ${inlineParts.join(', ')}` : '';
+  const lines = [`- ${icon}${type}${detail}`];
+
+  if (cleanedActual && actualIsBlock) {
+    // Indent the fenced block by two spaces so it nests under the bullet.
+    lines.push('  actual:');
+    lines.push('');
+    lines.push('  ```');
+    for (const line of cleanedActual.split('\n')) lines.push(`  ${line}`);
+    lines.push('  ```');
+  }
+  return lines;
 }
 
 function renderApproval(approval: StepApproval): string[] {
@@ -285,16 +325,22 @@ function formatTs(ts: string): string {
 
 function calcDuration(start: string, end: string): string {
   try {
-    const ms = new Date(end).getTime() - new Date(start).getTime();
-    const s = Math.floor(ms / 1000);
-    const m = Math.floor(s / 60);
-    const h = Math.floor(m / 60);
-    if (h > 0) return `${h}h ${m % 60}m ${s % 60}s`;
-    if (m > 0) return `${m}m ${s % 60}s`;
-    return `${s}s`;
+    return formatDurationMs(
+      new Date(end).getTime() - new Date(start).getTime(),
+    );
   } catch {
     return 'unknown';
   }
+}
+
+/** Format a millisecond span as `1h 2m 3s` / `2m 3s` / `3s`. */
+function formatDurationMs(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}h ${m % 60}m ${s % 60}s`;
+  if (m > 0) return `${m}m ${s % 60}s`;
+  return `${s}s`;
 }
 
 function statusIcon(status: string): string {
