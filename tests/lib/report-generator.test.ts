@@ -84,6 +84,54 @@ describe('renderReport — steps-completed count', () => {
     assert.ok(md.includes('Steps completed: 2/2'), `expected 2/2, got:\n${md}`);
   });
 
+  it('flags the stop point of an aborted run (summary line + step marker)', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml', total_steps: 5 }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_complete', step: 1 }),
+      // Step 3 was reached (step_start) but never completed — the abort point.
+      ev({ type: 'step_start', step: 2, name: 'C in progress' }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    // Count stays honest…
+    assert.ok(md.includes('Steps completed: 2/5'), `expected 2/5, got:\n${md}`);
+    // …and the report says WHERE it stopped, both in the summary…
+    assert.ok(
+      md.includes('- Aborted at step 3: C in progress'),
+      `expected an "Aborted at step 3" summary line, got:\n${md}`,
+    );
+    // …and on the in-progress step's heading.
+    assert.ok(
+      md.includes('## Step 3: C in progress 🛑 (aborted here — in progress)'),
+      `expected the in-progress step heading to be flagged, got:\n${md}`,
+    );
+    // The status header is no longer a bare "unknown" (❓) icon.
+    assert.ok(
+      md.includes('Status: 🛑 cancelled'),
+      `expected a cancelled status icon, got:\n${md}`,
+    );
+    // Genuinely completed steps are NOT flagged as the abort point.
+    assert.ok(
+      !md.includes('## Step 1: A 🛑'),
+      'completed steps must not carry the abort marker',
+    );
+  });
+
+  it('does not flag any stop point for a cleanly completed run', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml', total_steps: 2 }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_complete', step: 1 }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    assert.ok(!md.includes('Aborted at step'), 'no abort line on clean run');
+    assert.ok(!md.includes('🛑'), 'no abort marker on clean run');
+  });
+
   it('does not count a failed step as completed', () => {
     const md = render([
       ev({ type: 'session_start', op: 'op.yaml', total_steps: 3 }),
