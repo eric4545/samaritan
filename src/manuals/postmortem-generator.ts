@@ -14,6 +14,7 @@ import {
   incidentDuration,
   resolvePath,
   severityIcon,
+  timelineColumns,
   timelineKindIcon,
 } from './postmortem-shared';
 
@@ -112,10 +113,14 @@ export function generatePostmortemMarkdown(
       lines.push('```');
       lines.push('');
     }
-    lines.push('| Time | Event | Who | Ref |');
-    lines.push('| --- | --- | --- | --- |');
+    const cols = timelineColumns(pm);
+    const headers = ['Time', 'Event'];
+    if (cols.who) headers.push('Who');
+    if (cols.ref) headers.push('Ref');
+    lines.push(`| ${headers.join(' | ')} |`);
+    lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
     for (const entry of pm.timeline) {
-      lines.push(renderTimelineRow(entry));
+      lines.push(renderTimelineRow(entry, cols));
     }
     lines.push('');
     // Inline any timeline-entry images beneath the table.
@@ -213,13 +218,17 @@ export function generatePostmortemMarkdown(
     .trimEnd()}\n`;
 }
 
-function renderTimelineRow(entry: TimelineEntry): string {
+function renderTimelineRow(
+  entry: TimelineEntry,
+  cols: { who: boolean; ref: boolean },
+): string {
   const icon = timelineKindIcon(entry.kind);
   const time = formatPostmortemTs(entry.at);
   const event = `${icon} ${entry.event}`.replace(/\|/g, '\\|');
-  const who = (entry.by ?? '').replace(/\|/g, '\\|');
-  const ref = (entry.ref ?? '').replace(/\|/g, '\\|');
-  return `| ${time} | ${event} | ${who} | ${ref} |`;
+  const cells = [time, event];
+  if (cols.who) cells.push((entry.by ?? '').replace(/\|/g, '\\|'));
+  if (cols.ref) cells.push((entry.ref ?? '').replace(/\|/g, '\\|'));
+  return `| ${cells.join(' | ')} |`;
 }
 
 function renderActionRow(item: ActionItem): string {

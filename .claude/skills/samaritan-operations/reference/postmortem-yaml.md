@@ -33,7 +33,7 @@ report" — only `title` and `summary` are required; every other section is opti
 | `tickets` | string[] | related tickets |
 | `impact` | object | `scope`, `services[]`, `customers_affected`, `notes`, plus `detected_after` (MTTD) / `resolved_after` (MTTR) — auto-derived from `occurred_at`→`detected_at` / `occurred_at`→`resolved_at` when omitted; set explicitly to override |
 | `detection` | object | `method` (`alert`\|`customer`\|`monitoring`\|`manual`), `source`, `detected_at` |
-| `timeline` | array | `{ at, event, kind?, by?, ref?, image? }`; `kind` = `cause`\|`detection`\|`action`\|`recovery`\|`note`. Rendered as a Mermaid `timeline` diagram + table |
+| `timeline` | array | `{ at, event, kind?, by?, ref?, image? }`; `kind` = `cause`\|`detection`\|`action`\|`recovery`\|`note`. Rendered as a Mermaid `timeline` diagram + table. The **Who** (`by`) / **Ref** (`ref`) columns are shown only when at least one entry populates them |
 | `root_cause` | object | `summary` (required within), `trigger`, `contributing_factors[]`, `five_whys[]` |
 | `resolution` | string | |
 | `action_items` | array | `{ title, owner?, ticket?, type?, status?, due? }`; `type` = `prevent`\|`mitigate`\|`detect`\|`process`; `status` = `open`\|`in-progress`\|`done` |

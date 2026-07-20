@@ -23,6 +23,7 @@ import {
   incidentDuration,
   resolvePath,
   severityIcon,
+  timelineColumns,
   timelineKindIcon,
 } from './postmortem-shared';
 
@@ -102,25 +103,24 @@ export function generatePostmortemADF(
     const mermaid = buildMermaidTimeline(pm);
     if (mermaid)
       content.push(codeBlock({ language: 'mermaid' })(text(mermaid)));
-    const rows = [
-      tableRow([
-        tableHeader()(paragraph(text('Time'))),
-        tableHeader()(paragraph(text('Event'))),
-        tableHeader()(paragraph(text('Who'))),
-        tableHeader()(paragraph(text('Ref'))),
-      ]),
+    const cols = timelineColumns(pm);
+    const headerCells = [
+      tableHeader()(paragraph(text('Time'))),
+      tableHeader()(paragraph(text('Event'))),
     ];
+    if (cols.who) headerCells.push(tableHeader()(paragraph(text('Who'))));
+    if (cols.ref) headerCells.push(tableHeader()(paragraph(text('Ref'))));
+    const rows = [tableRow(headerCells)];
     for (const entry of pm.timeline) {
-      rows.push(
-        tableRow([
-          tableCell()(paragraph(text(formatPostmortemTs(entry.at)))),
-          tableCell()(
-            paragraph(text(`${timelineKindIcon(entry.kind)} ${entry.event}`)),
-          ),
-          tableCell()(paragraph(text(entry.by ?? ''))),
-          tableCell()(paragraph(text(entry.ref ?? ''))),
-        ]),
-      );
+      const cells = [
+        tableCell()(paragraph(text(formatPostmortemTs(entry.at)))),
+        tableCell()(
+          paragraph(text(`${timelineKindIcon(entry.kind)} ${entry.event}`)),
+        ),
+      ];
+      if (cols.who) cells.push(tableCell()(paragraph(text(entry.by ?? ''))));
+      if (cols.ref) cells.push(tableCell()(paragraph(text(entry.ref ?? ''))));
+      rows.push(tableRow(cells));
     }
     content.push(table(...rows));
     // Timeline-entry images (ADF can't embed external images without an

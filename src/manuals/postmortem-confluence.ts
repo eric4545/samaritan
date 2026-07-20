@@ -8,6 +8,7 @@ import {
   incidentDuration,
   resolvePath,
   severityIcon,
+  timelineColumns,
   timelineKindIcon,
 } from './postmortem-shared';
 
@@ -112,11 +113,19 @@ export function generatePostmortemConfluence(
       out.push('{markdown}');
       out.push('');
     }
-    out.push('|| Time || Event || Who || Ref ||');
+    const cols = timelineColumns(pm);
+    const headers = ['Time', 'Event'];
+    if (cols.who) headers.push('Who');
+    if (cols.ref) headers.push('Ref');
+    out.push(`|| ${headers.join(' || ')} ||`);
     for (const entry of pm.timeline) {
-      out.push(
-        `| ${cell(formatPostmortemTs(entry.at))} | ${cell(`${timelineKindIcon(entry.kind)} ${entry.event}`)} | ${cell(entry.by ?? ' ')} | ${cell(entry.ref ?? ' ')} |`,
-      );
+      const cells = [
+        cell(formatPostmortemTs(entry.at)),
+        cell(`${timelineKindIcon(entry.kind)} ${entry.event}`),
+      ];
+      if (cols.who) cells.push(cell(entry.by ?? ' '));
+      if (cols.ref) cells.push(cell(entry.ref ?? ' '));
+      out.push(`| ${cells.join(' | ')} |`);
     }
     out.push('');
     // Inline any timeline-entry images beneath the table.

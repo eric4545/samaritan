@@ -123,4 +123,41 @@ describe('generatePostmortemMarkdown', () => {
     assert.ok(!md.includes('## Timeline'));
     assert.ok(!md.includes('## Action Items'));
   });
+
+  it('drops the Who/Ref columns when no timeline entry uses them', () => {
+    const pm: Postmortem = {
+      title: 'X',
+      summary: 'Y',
+      timeline: [
+        { at: '2026-07-01T14:32:00Z', event: 'Started', kind: 'cause' },
+        { at: '2026-07-01T14:40:00Z', event: 'Recovered', kind: 'recovery' },
+      ],
+    };
+    const md = generatePostmortemMarkdown(pm);
+    assert.ok(
+      md.includes('| Time | Event |\n| --- | --- |'),
+      'header collapses to Time/Event only',
+    );
+    assert.ok(!md.includes('Who'), 'no Who column');
+    assert.ok(!md.includes('Ref'), 'no Ref column');
+    assert.ok(
+      md.includes('| Wed, 01 Jul 2026 14:32:00 UTC | 💥 Started |'),
+      'rows carry no trailing empty cells',
+    );
+  });
+
+  it('keeps only the Who column when entries use by but not ref', () => {
+    const pm: Postmortem = {
+      title: 'X',
+      summary: 'Y',
+      timeline: [{ at: '2026-07-01T14:32:00Z', event: 'Started', by: 'alice' }],
+    };
+    const md = generatePostmortemMarkdown(pm);
+    assert.ok(
+      md.includes('| Time | Event | Who |\n| --- | --- | --- |'),
+      'header has Who but not Ref',
+    );
+    assert.ok(!md.includes('Ref'), 'no Ref column');
+    assert.ok(md.includes('| • Started | alice |'), 'Who cell populated');
+  });
 });

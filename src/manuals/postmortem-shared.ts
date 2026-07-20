@@ -115,6 +115,22 @@ export function buildMermaidTimeline(pm: Postmortem): string | undefined {
 }
 
 /**
+ * Which optional timeline columns carry any data. Drives the timeline table
+ * header/row width in every renderer so a lightweight incident report (entries
+ * with only `at`/`event`) doesn't ship permanently-empty Who/Ref columns.
+ */
+export function timelineColumns(pm: Postmortem): {
+  who: boolean;
+  ref: boolean;
+} {
+  const entries = pm.timeline ?? [];
+  return {
+    who: entries.some((e) => Boolean(e.by?.trim())),
+    ref: entries.some((e) => Boolean(e.ref?.trim())),
+  };
+}
+
+/**
  * Impact fields as ordered label/value rows (MTTD, MTTR, scope, services,
  * customers, notes). Shared by all renderers so the field selection, order, and
  * labels live in one place; each format styles the returned pairs itself.

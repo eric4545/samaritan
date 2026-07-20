@@ -6,6 +6,7 @@ import {
   generatePostmortemADFString,
 } from '../../src/manuals/postmortem-adf-generator';
 import { generatePostmortemConfluence } from '../../src/manuals/postmortem-confluence';
+import type { Postmortem } from '../../src/models/postmortem';
 import { parsePostmortemFile } from '../../src/operations/postmortem-parser';
 
 const examplePath = join(
@@ -60,6 +61,38 @@ describe('generatePostmortemConfluence', () => {
     assert.ok(c.includes('* *Time to detect (MTTD):* 4m'));
     assert.ok(c.includes('* *Time to resolve (MTTR):* 1h 16m'));
   });
+
+  it('renders the full Who/Ref header when the timeline populates them', () => {
+    const c = generatePostmortemConfluence(pm(), dir);
+    assert.ok(c.includes('|| Time || Event || Who || Ref ||'));
+  });
+
+  it('drops the Who/Ref columns when no timeline entry uses them', () => {
+    const minimal: Postmortem = {
+      title: 'X',
+      summary: 'Y',
+      timeline: [
+        { at: '2026-07-01T14:32:00Z', event: 'Started', kind: 'cause' },
+      ],
+    };
+    const c = generatePostmortemConfluence(minimal);
+    assert.ok(c.includes('|| Time || Event ||'), 'Time/Event header present');
+    assert.ok(!c.includes('|| Time || Event || Who'), 'no Who/Ref in header');
+    assert.ok(!c.includes('Who'), 'no Who column');
+    assert.ok(!c.includes('Ref'), 'no Ref column');
+  });
+
+  it('keeps only the Who column when entries use by but not ref', () => {
+    const byOnly: Postmortem = {
+      title: 'X',
+      summary: 'Y',
+      timeline: [{ at: '2026-07-01T14:32:00Z', event: 'Started', by: 'alice' }],
+    };
+    const c = generatePostmortemConfluence(byOnly);
+    assert.ok(c.includes('|| Time || Event || Who ||'), 'Who but not Ref');
+    assert.ok(!c.includes('Ref'), 'no Ref column');
+    assert.ok(c.includes('| • Started | alice |'), 'Who cell populated');
+  });
 });
 
 describe('generatePostmortemADF', () => {
@@ -96,5 +129,37 @@ describe('generatePostmortemADF', () => {
     );
     assert.ok(json.includes('Time to detect (MTTD): 4m'), 'derived MTTD');
     assert.ok(json.includes('Time to resolve (MTTR): 1h 16m'), 'derived MTTR');
+  });
+
+  it('renders Who/Ref timeline headers when populated', () => {
+    const json = generatePostmortemADFString(pm(), dir);
+    assert.ok(json.includes('"text": "Who"'), 'Who header present');
+    assert.ok(json.includes('"text": "Ref"'), 'Ref header present');
+  });
+
+  it('drops the Who/Ref columns when no timeline entry uses them', () => {
+    const minimal: Postmortem = {
+      title: 'X',
+      summary: 'Y',
+      timeline: [
+        { at: '2026-07-01T14:32:00Z', event: 'Started', kind: 'cause' },
+      ],
+    };
+    const json = generatePostmortemADFString(minimal);
+    assert.ok(json.includes('"text": "Time"'), 'Time header present');
+    assert.ok(!json.includes('"text": "Who"'), 'no Who header');
+    assert.ok(!json.includes('"text": "Ref"'), 'no Ref header');
+  });
+
+  it('keeps only the Who column when entries use by but not ref', () => {
+    const byOnly: Postmortem = {
+      title: 'X',
+      summary: 'Y',
+      timeline: [{ at: '2026-07-01T14:32:00Z', event: 'Started', by: 'alice' }],
+    };
+    const json = generatePostmortemADFString(byOnly);
+    assert.ok(json.includes('"text": "Who"'), 'Who header present');
+    assert.ok(!json.includes('"text": "Ref"'), 'no Ref header');
+    assert.ok(json.includes('"text": "alice"'), 'Who cell populated');
   });
 });
