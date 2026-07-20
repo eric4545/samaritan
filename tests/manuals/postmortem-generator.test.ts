@@ -160,4 +160,25 @@ describe('generatePostmortemMarkdown', () => {
     assert.ok(!md.includes('Ref'), 'no Ref column');
     assert.ok(md.includes('| • Started | alice |'), 'Who cell populated');
   });
+
+  it('escapes backslashes and pipes in timeline cells', () => {
+    const pm: Postmortem = {
+      title: 'X',
+      summary: 'Y',
+      timeline: [
+        {
+          at: '2026-07-01T14:32:00Z',
+          event: 'a|b',
+          by: 'dir\\path',
+          ref: 'x|y',
+        },
+      ],
+    };
+    const md = generatePostmortemMarkdown(pm);
+    // Backslash escaped first (\\), then pipe (\|) — cell separators intact.
+    assert.ok(
+      md.includes('| • a\\|b | dir\\\\path | x\\|y |'),
+      'backslash and pipe both escaped',
+    );
+  });
 });

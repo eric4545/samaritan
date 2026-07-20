@@ -218,16 +218,24 @@ export function generatePostmortemMarkdown(
     .trimEnd()}\n`;
 }
 
+/**
+ * Escape a value for a Markdown table cell. Backslashes are escaped first so a
+ * literal `\` in the input can't combine with the following pipe escape.
+ */
+function escapeCell(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+}
+
 function renderTimelineRow(
   entry: TimelineEntry,
   cols: { who: boolean; ref: boolean },
 ): string {
   const icon = timelineKindIcon(entry.kind);
   const time = formatPostmortemTs(entry.at);
-  const event = `${icon} ${entry.event}`.replace(/\|/g, '\\|');
+  const event = escapeCell(`${icon} ${entry.event}`);
   const cells = [time, event];
-  if (cols.who) cells.push((entry.by ?? '').replace(/\|/g, '\\|'));
-  if (cols.ref) cells.push((entry.ref ?? '').replace(/\|/g, '\\|'));
+  if (cols.who) cells.push(escapeCell(entry.by ?? ''));
+  if (cols.ref) cells.push(escapeCell(entry.ref ?? ''));
   return `| ${cells.join(' | ')} |`;
 }
 
