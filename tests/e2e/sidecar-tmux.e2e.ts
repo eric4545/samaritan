@@ -95,12 +95,12 @@ describe('sidecar e2e (real tmux)', () => {
       try {
         d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
 
-        // Step 1 prompt: the ${TOKEN} in the command must render resolved.
-        const step1 = await d.waitFor('Deploy App', { timeoutMs: 40_000 });
-        assert.ok(
-          step1.includes('echo "deploy E2E_DEPLOY_OK"'),
-          'displayed command resolves ${TOKEN}',
-        );
+        // Step 1 prompt. Wait for the ${TOKEN}-RESOLVED command to render in the
+        // box — not just the step header, which paints a beat earlier (waiting
+        // on the header races the command box and can miss it). Reaching this
+        // line at all proves ${TOKEN} resolved to E2E_DEPLOY_OK.
+        await d.waitFor('Deploy App', { timeoutMs: 40_000 });
+        await d.waitFor('echo "deploy E2E_DEPLOY_OK"', { timeoutMs: 15_000 });
 
         // Operator runs the command in the work pane, then verify.
         d.type('echo "deploy E2E_DEPLOY_OK"', d.work);
@@ -154,14 +154,15 @@ describe('sidecar e2e (real tmux)', () => {
         d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
         await d.waitFor('Paste check', { timeoutMs: 40_000 });
 
-        d.key('p'); // paste the resolved command into the work pane
-        // Give tmux paste-buffer a moment to land.
-        await sleep(1500);
-        const work = d.capture(d.work);
-        assert.ok(
-          work.includes("printf '%s_%s"),
-          `command text should be pasted into the work pane; got:\n${work.slice(-400)}`,
-        );
+        d.key('p'); // paste the resolved command into the work pane (no Enter)
+        // Wait for the pasted command to land rather than a fixed sleep. Because
+        // [p] never sends Enter, the runtime-joined marker PASTE_EXECMARK cannot
+        // appear unless the command executed — so once the paste is visible, its
+        // absence proves the "no trailing newline" contract.
+        const work = await d.waitFor("printf '%s_%s", {
+          pane: d.work,
+          timeoutMs: 15_000,
+        });
         assert.ok(
           !work.includes('PASTE_EXECMARK'),
           `command must NOT have executed on [p] (no Enter); ` +
@@ -187,22 +188,26 @@ describe('sidecar e2e (real tmux)', () => {
       try {
         d.type(launch(ws.dir, `run ${ws.op} --env staging`));
         await d.waitFor('Bootstrapping tmux sessions', { timeoutMs: 40_000 });
-        const prompt = await d.waitFor('Echo tag', { timeoutMs: 20_000 });
-        assert.ok(
-          prompt.includes('built v1 E2E_BUILD_OK'),
-          'displayed command resolves ${TAG}',
-        );
+        await d.waitFor('Echo tag', { timeoutMs: 20_000 });
+        // Wait for the ${TAG}-RESOLVED command in the box, not just the step
+        // header (which paints first) — reaching here proves ${TAG} resolved.
+        await d.waitFor('built v1 E2E_BUILD_OK', { timeoutMs: 15_000 });
 
         // A spawned samaritan-* session must now exist on the tmux server.
         const during = TmuxDriver.listSessions();
+        const spawned = during.find((s) => s.startsWith('samaritan-'));
         assert.ok(
-          during.some((s) => s.startsWith('samaritan-')),
+          spawned,
           `bootstrap must spawn a samaritan-* session; saw: ${during.join(', ')}`,
         );
 
-        // Send the command to the spawned pane, verify, complete.
+        // Send the command to the spawned pane; wait until it lands there (no
+        // fixed sleep), then verify and complete.
         d.key('p');
-        await sleep(1000);
+        await d.waitFor('built v1 E2E_BUILD_OK', {
+          pane: spawned,
+          timeoutMs: 15_000,
+        });
         d.key('v');
         await d.waitFor('✅ contains: E2E_BUILD_OK', { timeoutMs: 15_000 });
         d.enter();
