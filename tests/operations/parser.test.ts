@@ -958,7 +958,7 @@ steps:
     });
 
     it('should import a template referencing a built-in variable without requiring with:', async () => {
-      const { resolve } = await import('node:path');
+      const { resolve, join } = await import('node:path');
       const templateAbsPath = resolve(
         'tests/fixtures/templates/builtin-timestamp.yaml',
       );
@@ -970,8 +970,10 @@ environments:
 steps:
   - uses: ${templateAbsPath}
 `;
-      const { writeFileSync, unlinkSync } = await import('node:fs');
-      const tmpPath = '/tmp/samaritan-builtin-template-test.yaml';
+      const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+      const { tmpdir } = await import('node:os');
+      const tmpDir = mkdtempSync(join(tmpdir(), 'samaritan-builtin-template-'));
+      const tmpPath = join(tmpDir, 'op.yaml');
       writeFileSync(tmpPath, yamlContent);
       try {
         // Must NOT throw "Missing variables ... CURRENT_TIME".
@@ -980,7 +982,7 @@ steps:
         // The built-in stays a literal placeholder after parse (resolved late).
         assert.match(operation.steps[0].command ?? '', /\$\{CURRENT_TIME\}/);
       } finally {
-        unlinkSync(tmpPath);
+        rmSync(tmpDir, { recursive: true, force: true });
       }
     });
 
