@@ -71,6 +71,36 @@ jobs:
         bun run start -- validate examples/deployment.yaml
         bun run start -- generate manual examples/deployment.yaml -o /tmp/test-manual.md
 
+  e2e:
+    name: E2E (real tmux)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: ${{ env.DEFAULT_NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install tmux
+      run: sudo apt-get update && sudo apt-get install -y tmux
+
+    - name: Verify tmux is available
+      run: tmux -V
+
+    # SAMARITAN_E2E_REQUIRE_TMUX=1 makes the suite FAIL (not silently skip) if
+    # tmux is ever missing, so a broken sidecar path can't slip through here.
+    - name: Run sidecar e2e tests (real tmux)
+      run: npm run test:e2e
+      env:
+        SAMARITAN_E2E_REQUIRE_TMUX: '1'
+
   lint:
     runs-on: ubuntu-latest
 

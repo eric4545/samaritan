@@ -2451,6 +2451,26 @@ npm test -- tests/cli/
 npm test -- tests/evidence/
 ```
 
+### End-to-End Tests (real tmux)
+
+The sidecar `run` workflows are covered by end-to-end tests that drive a **real
+tmux** session (a genuine TTY, so the raw-mode key handling is exercised — not
+the readline fallback that piped stdin gets). They launch samaritan inside a
+tmux pane, send keystrokes with `tmux send-keys`, and assert on the rendered TUI
+plus the persisted run record.
+
+```bash
+# Requires a real `tmux` binary on PATH
+npm run test:e2e
+```
+
+- Without tmux, the suite **skips** gracefully (so `npm test` stays green on any
+  machine — e2e tests live in `tests/e2e/*.e2e.ts` and are excluded from the
+  default `npm test` glob).
+- In CI they run in a dedicated `e2e` job that installs tmux and sets
+  `SAMARITAN_E2E_REQUIRE_TMUX=1`, which makes a missing tmux **fail** the job
+  rather than skip — so a broken sidecar path can't slip through unnoticed.
+
 ## 🗺️ Roadmap
 
 SAMARITAN v1.0 focuses on documentation generation and validation. Future versions will add:
