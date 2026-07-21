@@ -1,0 +1,19 @@
+name: E2E Paste Buffer
+version: 1.0.0
+description: >-
+  Fixture for the [p] send-to-pane e2e test. The command builds its marker at
+  runtime (printf joins PASTE + EXECMARK), so the joined token PASTE_EXECMARK
+  appears in the work pane ONLY if the command actually executed — letting the
+  test prove [p] pastes WITHOUT a trailing newline.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables: {}
+
+steps:
+  - name: Paste check
+    type: automatic
+    command: printf '%s_%s\n' PASTE EXECMARK
+    expect:
+      contains: PASTE_EXECMARK

@@ -1,0 +1,24 @@
+name: E2E Sidecar Workflow
+version: 1.0.0
+description: >-
+  Fixture for real-tmux sidecar e2e tests. Two automatic steps whose expect
+  strings are unique tokens, so a verify PASS is unambiguous in captured output.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      TOKEN: E2E_DEPLOY_OK
+
+steps:
+  - name: Deploy App
+    type: automatic
+    command: echo "deploy ${TOKEN}"
+    expect:
+      contains: E2E_DEPLOY_OK
+
+  - name: Verify Health
+    type: automatic
+    command: echo "health E2E_HEALTH_OK"
+    expect:
+      contains: E2E_HEALTH_OK

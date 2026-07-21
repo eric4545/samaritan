@@ -229,9 +229,12 @@ const yamlContent = loadYaml('enhanced')
 ### CI Pipeline
 See `.github/workflows/ci.yml`:
 - **test**: Node 20/22/24 compatibility
+- **e2e**: real-tmux sidecar tests (`npm run test:e2e`, `tests/e2e/*.e2e.ts`) — installs tmux and sets `SAMARITAN_E2E_REQUIRE_TMUX=1` so a missing tmux fails the job instead of silently skipping
 - **lint**: Biome checks
 - **validate-examples**: Validate all `examples/*.yaml`
 - **security**: npm audit
+
+> **Real-tmux e2e tests** (`tests/e2e/sidecar-tmux.e2e.ts` + `tmux-driver.ts`): drive samaritan inside a real tmux pane (genuine TTY → exercises the raw-mode `readActionKey` path, not the piped-stdin readline fallback), send keys with `tmux send-keys`, and assert on `capture-pane` output + the persisted `report.md`/`events.jsonl`. They wait on captured output (`TmuxDriver.waitFor`) rather than fixed sleeps. Files are named `*.e2e.ts` (NOT `*.test.ts`) so the default `npm test` glob skips them; they only run via `npm run test:e2e`. Skip gracefully when tmux is absent unless `SAMARITAN_E2E_REQUIRE_TMUX=1`. Fixtures: `tests/fixtures/operations/features/e2e-*.yaml`.
 
 ---
 

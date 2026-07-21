@@ -1,0 +1,28 @@
+name: E2E Local Sessions
+version: 1.0.0
+description: >-
+  Fixture for the spawn-own tmux path in real-tmux e2e tests. The session has no
+  host, so bootstrapSessions spawns a LOCAL tmux pane (no SSH) that CI can drive.
+
+sessions:
+  work:
+    env:
+      GREETING: hi
+
+run:
+  auto_send: false
+  auto_exec: false
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      TAG: v1
+
+steps:
+  - name: Echo tag
+    type: automatic
+    session: work
+    command: echo "built ${TAG} E2E_BUILD_OK"
+    expect:
+      contains: E2E_BUILD_OK

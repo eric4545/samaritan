@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "test": "tsx --test tests/**/*.test.ts",
+    "test:e2e": "tsx --test tests/e2e/**/*.e2e.ts",
     "test:snapshots": "tsx --test tests/manuals/*.test.ts",
     "test:snapshots:update": "tsx --test --test-update-snapshots tests/manuals/*.test.ts",
     "build": "tsc && cp -r src/schemas dist/",
