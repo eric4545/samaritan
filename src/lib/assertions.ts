@@ -56,16 +56,20 @@ export function cleanTerminalOutput(raw: string): string {
  *
  * In sidecar/manual mode `captureSinceStepStart()` returns everything the pane
  * emitted since the step began — which starts with the shell prompt + the
- * echoed command (often duplicated by readline/SSH line-redraws). Without this,
- * `contains: stopped` matches a `Values=stopped` filter in the command itself,
- * and the highlight lands on the echo instead of the result.
+ * echoed command (sometimes duplicated by readline/SSH line-redraws). Without
+ * this, `contains: stopped` matches a `Values=stopped` filter in the command
+ * itself, and the highlight lands on the echo instead of the result.
  *
- * Finds the LAST place the whole command block appears consecutively (the first
- * echoed line carries the prompt prefix, so it's matched with `endsWith`;
- * continuation lines have none) and returns only what follows it. Using the
- * last occurrence skips redraw-duplicated echoes. Returns `output` unchanged
- * when no command is given or no echo is found, so it can never make a working
- * capture worse.
+ * The echo ALWAYS precedes its output, so we anchor on the FIRST place the whole
+ * command block appears consecutively (each output line matched with `endsWith`,
+ * since the first echoed line carries the shell prompt and continuation lines a
+ * PS2 `> ` prefix). We then consume any immediately-repeated copies — but only
+ * when a copy's first line is byte-identical to the anchor's, which is what a
+ * genuine redraw produces. That guard is what keeps a real RESULT line that
+ * merely *ends with* a short command (e.g. `file.ls` after `ls`) from being
+ * mistaken for the echo and dropped — the failure mode of anchoring on the last
+ * match instead. Returns `output` unchanged when no command is given or no echo
+ * is found, so it can never make a working capture worse.
  */
 export function stripCommandEcho(output: string, command?: string): string {
   if (!command) return output;
@@ -76,19 +80,30 @@ export function stripCommandEcho(output: string, command?: string): string {
   if (cmdLines.length === 0) return output;
 
   const outLines = output.split('\n');
-  for (let i = outLines.length - cmdLines.length; i >= 0; i--) {
-    let matched = true;
+  const matchesAt = (start: number): boolean => {
+    if (start + cmdLines.length > outLines.length) return false;
     for (let j = 0; j < cmdLines.length; j++) {
-      if (!outLines[i + j].trimEnd().endsWith(cmdLines[j])) {
-        matched = false;
-        break;
-      }
+      if (!outLines[start + j].trimEnd().endsWith(cmdLines[j])) return false;
     }
-    if (matched) {
-      return outLines.slice(i + cmdLines.length).join('\n');
+    return true;
+  };
+
+  let anchor = -1;
+  for (let i = 0; i + cmdLines.length <= outLines.length; i++) {
+    if (matchesAt(i)) {
+      anchor = i;
+      break;
     }
   }
-  return output;
+  if (anchor === -1) return output;
+
+  // Skip redraw-duplicated echoes: consecutive copies whose leading (prompt-
+  // carrying) line exactly repeats the anchor's — never a coincidental result.
+  let end = anchor + cmdLines.length;
+  while (matchesAt(end) && outLines[end] === outLines[anchor]) {
+    end += cmdLines.length;
+  }
+  return outLines.slice(end).join('\n');
 }
 
 export interface AssertResult {
