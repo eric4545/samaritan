@@ -109,7 +109,16 @@ most-complete record per index (completed > failed > skipped > pending).
 `stripCommandEcho(cleaned, command)` (the `${VAR}`-resolved command) — the pane
 slice since step start begins with the echoed command, so without this both the
 assertion and the highlighted tail would match the command text instead of its
-OUTPUT. `verifyOutput` also returns `detailed` (`assertOutputDetailed()` —
+OUTPUT. `stripCommandEcho` anchors on the **FIRST** consecutive run of the
+command block (each output line matched by `endsWith` — the first echoed line
+carries the prompt, continuation lines a PS2 `> ` prefix) since the echo always
+precedes its output, then consumes any immediately-repeated copies whose leading
+line is byte-identical to the anchor's (a genuine readline/SSH redraw), keeping
+only what follows. Anchoring on first-plus-identical-repeats (NOT the last match)
+is what stops a real RESULT line that merely *ends with* a short command — e.g.
+`file.ls` after `ls` — from being dropped as if it were the echo. No-op fallback
+when no command is passed or no echo is found (never makes a working capture
+worse). `verifyOutput` also returns `detailed` (`assertOutputDetailed()` —
 evaluates ALL checks, no short-circuit; `assertOutput` still short-circuits).
 `verifyManualOutput` loops on `[v]` via `renderVerifyOutcome(detailed, expect,
 {expand})` (PASS/FAIL header, per-check checklist, highlighted output tail
