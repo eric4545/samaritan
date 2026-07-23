@@ -1741,16 +1741,16 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 
 ### Evidence-required gate
 
-When a step declares `evidence: { required: true }`, completing it (pressing `Enter`/notes on a `manual`/sidecar step, or `approve` on an `approval` step) is **blocked** until either at least one item has been captured via `[e]`, or you explicitly override:
+When a step declares `evidence: { required: true }`, completing it (pressing `Enter`/notes on a `manual`/sidecar step, or `approve` on an `approval` step) is **blocked** until at least one item has been captured via `[e]`. There is no separate gate menu — trying to complete with nothing captured just prints a one-line warning **on the same action bar**, so you never leave it:
 
 ```
-    ⚠️  This step requires evidence and none has been captured yet.
-    [e=capture evidence / o=override with reason / Enter=back]:
+    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.
 ```
 
-- **`e`** — runs the same `[e]` capture flow described above; once an item is captured, the step completes immediately.
-- **`o`** — type a reason and proceed without evidence. Logged as a `user_input`/`override` event in the JSONL audit log (same shape as an overridden failed `[v]` assertion), so the audit trail always shows *why* a required-evidence step went through empty.
-- **Enter** — decline and return to the step's own menu; nothing is recorded and the step remains incomplete.
+- **`[e]`** — runs the same `[e]` capture flow described above; a captured item (including a quick typed-text note) satisfies the requirement, and the step completes on your next `Enter`. If you can't attach real evidence right now, type a note explaining why via `[e]` — it's recorded in the run report as the audit trail.
+- **`[s]`** — skip the step. It's recorded as **skipped** (not completed) in the run record, distinct from a completed step.
+
+`approval` steps get an `[e] evidence` key on their own bar too, so they're satisfied the same way (capture, then `approve`).
 
 This is **on by default** — declaring `evidence.required: true` is enough, no flag needed. To disable enforcement (e.g. a CI rehearsal or dry-run walk-through), pass `--no-require-evidence` to `run` or `resume`. The gate applies to `manual`/sidecar step completion and to `approval` steps' `approve` path; it does **not** gate plain (non-sidecar) `type: automatic` steps. See `examples/evidence-required-step.yaml`.
 

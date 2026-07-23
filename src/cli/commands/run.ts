@@ -1200,51 +1200,6 @@ class OperationRunner {
       !!s.evidence?.required &&
       stepEvidence(stepIndex).length === 0;
 
-    // Block completing a step whose evidence.required is true but has no
-    // captured evidence: offer inline [e] capture (reusing captureEvidence)
-    // or [o] override-with-reason, logged the same way as the failed-assertion
-    // override in promptAssertFailureAction so both appear identically in the
-    // audit log/report. Returns true when the caller may proceed with
-    // completion; false when the operator backed out (Enter) — the caller
-    // must not complete the step.
-    const confirmEvidenceGate = async (
-      stepIndex: number,
-      captureSinceStepStart: () => string | undefined = () => undefined,
-    ): Promise<boolean> => {
-      while (true) {
-        console.log(
-          '\n    ⚠️  This step requires evidence and none has been captured yet.',
-        );
-        const ans = (
-          await question(
-            '    [e=capture evidence / o=override with reason / Enter=back]: ',
-          )
-        )
-          .trim()
-          .toLowerCase();
-        if (ans === 'e' || ans === 'evidence') {
-          await captureEvidence(stepIndex, captureSinceStepStart);
-          if (stepEvidence(stepIndex).length > 0) return true;
-          continue;
-        }
-        if (ans === 'o' || ans === 'override') {
-          const reason = await question('    Reason for override: ');
-          logger.emit({
-            type: 'user_input',
-            action: 'override',
-            step: stepIndex,
-            actor: state.context.operator,
-            reason: reason.trim(),
-          });
-          console.log(
-            '    ⚠️  Override accepted — proceeding without evidence.',
-          );
-          return true;
-        }
-        return false;
-      }
-    };
-
     // Remove a previously captured evidence item from the current step — lists
     // the step's evidence, lets the operator pick one, and deletes any copied
     // file from the session's evidence directory along with the session record.
@@ -1527,7 +1482,7 @@ class OperationRunner {
         if (steps[k].status === 'skipped') logSkip(k);
       }
 
-      for (let i = startIndex; i < steps.length; i++) {
+      stepLoop: for (let i = startIndex; i < steps.length; i++) {
         const { step } = steps[i];
         const stepNum = `[${flatSteps[i].label}/${steps.length}]`;
         const typeLabel = step.type.toUpperCase();
@@ -2036,6 +1991,22 @@ class OperationRunner {
               }
               continue;
             }
+            // About to complete this step (any non-action input = confirm or
+            // free-text notes). If it requires evidence and none is captured,
+            // refuse inline and stay on THIS bar — no sub-menu, no step
+            // re-entry. Skip/rollback/abort still fall through to break.
+            const pending = input.trim().toLowerCase();
+            if (
+              !isSkip(pending) &&
+              !isRollback(pending) &&
+              pending !== 'abort' &&
+              needsEvidenceGate(i, step)
+            ) {
+              console.log(
+                '\n    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.',
+              );
+              continue; // re-render only the bar; header/command stay put
+            }
             manualNotes = input;
             break;
           }
@@ -2090,16 +2061,8 @@ class OperationRunner {
             console.log('    ⏭  Skipped.');
             continue;
           }
-          if (needsEvidenceGate(i, step)) {
-            const proceed = await confirmEvidenceGate(i, captureSinceStepStart);
-            if (!proceed) {
-              console.log(
-                '    ↩  Step not completed — capture evidence or override to proceed.',
-              );
-              i--;
-              continue;
-            }
-          }
+          // Evidence-required completion is gated inline in the action loop
+          // above (stay-on-the-bar warning) — nothing to check here.
           await executor.executeStepManually(
             i,
             manualNotes.trim() || 'confirmed',
@@ -2116,45 +2079,53 @@ class OperationRunner {
           console.log('    ✅ Step marked complete.');
         } else if (step.type === 'approval') {
           if (resolvedInstruction) console.log(`\n    ${resolvedInstruction}`);
-          const choice = await promptAction([
-            { key: 'approve', label: 'approve' },
-            { key: 'reject', label: 'reject' },
-            { key: 'r', label: 'rollback' },
-            ...globalRollbackMenuItem,
-            { key: 's', label: 'skip' },
-          ]);
-          if (isGlobalRollback(choice)) {
-            if (await doGlobalRollback(i)) break;
-            continue;
-          }
-          if (isRollback(choice)) {
-            await doRollback(step, i);
-            continue;
-          }
-          if (choice === 'approve') {
-            if (needsEvidenceGate(i, step)) {
-              const proceed = await confirmEvidenceGate(i);
-              if (!proceed) {
+          // Loop the approval bar so evidence capture (and the evidence-
+          // required nudge) happen inline on the SAME bar — no sub-menu.
+          while (true) {
+            const choice = await promptAction([
+              { key: 'approve', label: 'approve' },
+              { key: 'reject', label: 'reject' },
+              { key: 'e', label: 'evidence' },
+              { key: 'r', label: 'rollback' },
+              ...globalRollbackMenuItem,
+              { key: 's', label: 'skip' },
+            ]);
+            if (choice === 'e' || choice === 'evidence') {
+              await captureEvidence(i, () => undefined);
+              continue;
+            }
+            if (isGlobalRollback(choice)) {
+              if (await doGlobalRollback(i)) break stepLoop;
+              continue stepLoop;
+            }
+            if (isRollback(choice)) {
+              await doRollback(step, i);
+              continue stepLoop;
+            }
+            if (choice === 'approve') {
+              if (needsEvidenceGate(i, step)) {
                 console.log(
-                  '    ↩  Approval withheld — capture evidence or override to proceed.',
+                  '\n    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.',
                 );
-                i--;
                 continue;
               }
+              await recordApprovalDecision(i, step, true);
+              await executor.executeStepManually(i, 'approved');
+              persistProgress();
+              logger.emit({ type: 'step_complete', step: i });
+              console.log('    ✅ Approved.');
+              break;
             }
-            await recordApprovalDecision(i, step, true);
-            await executor.executeStepManually(i, 'approved');
-            persistProgress();
-            logger.emit({ type: 'step_complete', step: i });
-            console.log('    ✅ Approved.');
-          } else if (choice === 'reject') {
-            await recordApprovalDecision(i, step, false);
-            executor.skipStep(i);
-            persistProgress();
-            console.log('    ❌ Rejected — step skipped.');
-          } else {
+            if (choice === 'reject') {
+              await recordApprovalDecision(i, step, false);
+              executor.skipStep(i);
+              persistProgress();
+              console.log('    ❌ Rejected — step skipped.');
+              break;
+            }
             executor.skipStep(i);
             console.log('    ⏭  Skipped.');
+            break;
           }
         } else {
           await executor.executeStepManually(i, 'confirmed');

@@ -362,12 +362,12 @@ describe('run command: evidence-required gate', () => {
     });
     const combined = result.stdout + result.stderr;
     assert.ok(
-      combined.includes('requires evidence and none has been captured'),
-      'should show the evidence gate warning',
+      combined.includes('requires evidence'),
+      'should show the inline evidence-required warning',
     );
     assert.ok(
       !combined.includes('✅ Step marked complete.'),
-      'step must not complete without evidence or an override',
+      'step must not complete without evidence or a skip',
     );
   });
 
@@ -383,96 +383,54 @@ describe('run command: evidence-required gate', () => {
       'step should complete immediately when the gate is disabled',
     );
     assert.ok(
-      !combined.includes('requires evidence and none has been captured'),
+      !combined.includes('requires evidence'),
       'gate warning must not appear when disabled',
     );
   });
 
-  it('declining the gate (blank) redisplays the step instead of completing', () => {
+  it('warning on completion keeps the operator on the same bar (no re-entry)', () => {
     const fixture = fixturePath('evidenceRequired');
     const { stdout, stderr } = runSequenced(
       ['run', fixture, '--env', 'default'],
-      ['', '', 'abort'],
+      ['', 'abort'],
     );
     const combined = stdout + stderr;
     assert.ok(
-      combined.includes('↩  Step not completed'),
-      `should show the not-completed message; output:\n${combined.slice(-1000)}`,
+      combined.includes('requires evidence'),
+      `should show the inline evidence-required warning; output:\n${combined.slice(-1000)}`,
     );
     assert.ok(
       !combined.includes('✅ Step marked complete.'),
-      'step must not complete when the gate is declined',
+      'step must not complete while evidence is missing',
     );
     assert.ok(
       combined.includes('aborted by operator'),
-      'run should still be abortable after declining the gate',
+      'run should still be abortable after the warning',
     );
   });
 
-  it('overriding with a reason completes the step', () => {
+  it('skipping from the bar marks the step skipped without completing it', () => {
     const fixture = fixturePath('evidenceRequired');
     const { stdout, stderr } = runSequenced(
       ['run', fixture, '--env', 'default'],
-      ['', 'o', 'not needed for this drill'],
+      ['', 's'],
     );
     const combined = stdout + stderr;
     assert.ok(
-      combined.includes('Override accepted'),
-      `should confirm the override; output:\n${combined.slice(-1000)}`,
+      combined.includes('⏭  Skipped.'),
+      `should skip the gated step; output:\n${combined.slice(-1000)}`,
     );
     assert.ok(
-      combined.includes('✅ Step marked complete.'),
-      'step should complete after an accepted override',
+      !combined.includes('✅ Step marked complete.'),
+      'a skipped step must not be marked complete',
     );
   });
 
-  it('override is logged as a user_input/override event with the typed reason', () => {
-    const opDir = mkdtempSync(join(tmpdir(), 'samaritan-evidence-gate-'));
-    const opFile = join(opDir, 'op.yaml');
-    writeFileSync(
-      opFile,
-      readFileSync(fixturePath('evidenceRequired'), 'utf-8'),
-    );
-
-    try {
-      const { stdout, stderr } = runSequenced(
-        ['run', opFile, '--env', 'default'],
-        ['', 'o', 'demo reason'],
-      );
-      const combined = stdout + stderr;
-      const m = combined.match(/📋 Session: ([0-9a-f-]{36})/);
-      assert.ok(m, `run output must include the session id; got:\n${combined}`);
-      const sessionId = (m as RegExpMatchArray)[1];
-
-      const eventsPath = join(
-        opDir,
-        '.samaritan-runs',
-        sessionId,
-        'events.jsonl',
-      );
-      assert.ok(existsSync(eventsPath), 'events.jsonl must be written');
-      const events = readFileSync(eventsPath, 'utf-8')
-        .trim()
-        .split('\n')
-        .map((line) => JSON.parse(line));
-      const overrideEvent = events.find(
-        (e) => e.type === 'user_input' && e.action === 'override',
-      );
-      assert.ok(
-        overrideEvent,
-        `expected a user_input/override event; events:\n${JSON.stringify(events, null, 2)}`,
-      );
-      assert.strictEqual(overrideEvent.reason, 'demo reason');
-    } finally {
-      rmSync(opDir, { recursive: true, force: true });
-    }
-  });
-
-  it('capturing evidence via [e] satisfies the gate and allows completion', () => {
+  it('capturing evidence via [e] satisfies the requirement and allows completion', () => {
     const fixture = fixturePath('evidenceRequired');
     const { stdout, stderr } = runSequenced(
       ['run', fixture, '--env', 'default'],
-      ['', 'e', 't', 'pods healthy, 3/3 ready', ''],
+      ['e', 't', 'pods healthy, 3/3 ready', '', ''],
     );
     const combined = stdout + stderr;
     assert.ok(
@@ -485,10 +443,11 @@ describe('run command: evidence-required gate', () => {
     );
   });
 
-  it('approval step: blocks approve until evidence exists or overridden', () => {
+  it('approval step: blocks approve until evidence is captured on its bar', () => {
     const fixture = fixturePath('evidenceRequired');
-    // Capture evidence for step 1, complete it, then approve step 2 which
-    // gets gated in turn and is resolved via override.
+    // Capture evidence for step 1 and complete it, then reach the approval
+    // step: approve is refused inline until evidence is captured on the
+    // approval bar itself (no separate gate sub-menu).
     const { stdout, stderr } = runSequenced(
       ['run', fixture, '--env', 'default'],
       [
@@ -498,20 +457,23 @@ describe('run command: evidence-required gate', () => {
         '',
         '',
         'approve',
-        'o',
-        'sign-off override reason',
+        'e',
+        't',
+        'sign-off evidence',
         '',
+        'approve',
+        '', // approval rationale (optional)
       ],
-      20_000,
+      25_000,
     );
     const combined = stdout + stderr;
     assert.ok(
-      combined.includes('requires evidence and none has been captured'),
-      `should gate the approval step before evidence/override; output:\n${combined.slice(-1500)}`,
+      combined.includes('requires evidence'),
+      `should gate the approval step until evidence exists; output:\n${combined.slice(-1500)}`,
     );
     assert.ok(
       combined.includes('✅ Approved.'),
-      'approval step should complete after the override',
+      'approval step should complete once evidence is captured',
     );
   });
 
@@ -522,7 +484,7 @@ describe('run command: evidence-required gate', () => {
     });
     const combined = result.stdout + result.stderr;
     assert.ok(
-      !combined.includes('requires evidence and none has been captured'),
+      !combined.includes('requires evidence'),
       'gate must not appear for steps without evidence.required',
     );
   });

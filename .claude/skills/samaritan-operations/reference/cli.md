@@ -104,12 +104,14 @@ Per manual/sidecar step:
 ## Evidence-required gate
 
 When a step has `evidence: { required: true }`, completing it (`manual`/sidecar
-`Enter`, or `approval`'s `approve`) is **blocked** by default until either `[e]`
-captures at least one evidence item, or the operator types `o` + a reason to
-override (logged as a `user_input`/`override` event, same shape as an
-overridden failed `[v]` assertion). Enter alone declines and returns to the
-step's menu without completing it. Disable with `--no-require-evidence`. Does
-NOT gate plain (non-sidecar) `type: automatic` steps.
+`Enter`, or `approval`'s `approve`) is **blocked** by default until `[e]`
+captures at least one evidence item (a typed-text note counts). There is no
+separate gate menu — trying to complete with nothing captured just prints a
+one-line warning **on the same action bar** (`⚠️  This step requires evidence
+— press [e] to capture … or [s] to skip.`) and keeps you there. `[s]` skips
+the step (recorded as skipped, not completed). Disable with
+`--no-require-evidence`. Does NOT gate plain (non-sidecar) `type: automatic`
+steps.
 
 ## Run artifacts
 
