@@ -592,6 +592,19 @@ describe('stripCommandEcho — drop the echoed command from a pane capture', () 
     const out = 'pod/web-0 Running\npod/web-1 Running';
     assert.strictEqual(stripCommandEcho(out, 'kubectl get svc'), out);
   });
+
+  it('keeps a result line that merely ends with a short command', () => {
+    // The echo precedes its output, so anchor on the FIRST occurrence. A result
+    // line ending with the command (`file1.ls` ends with `ls`) must NOT be
+    // mistaken for the echo and dropped.
+    const captured = 'user@host:~$ ls\nfile1.ls\nfile2.txt';
+    const stripped = stripCommandEcho(captured, 'ls');
+    assert.strictEqual(stripped, 'file1.ls\nfile2.txt');
+    assert.strictEqual(
+      assertOutput(stripped, { contains: 'file1.ls' }).pass,
+      true,
+    );
+  });
 });
 
 describe('assertOutputDetailed — no short-circuit', () => {
