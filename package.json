@@ -58,6 +58,7 @@
     "tsx": "^4.22.3"
   },
   "overrides": {
-    "linkify-it": "^5.0.1"
+    "linkify-it": "^5.0.2",
+    "fast-uri": "^3.1.4"
   }
 }
