@@ -50,6 +50,47 @@ export function cleanTerminalOutput(raw: string): string {
     .join('\n');
 }
 
+/**
+ * Drop the echoed command from a pane capture so assertions and highlights
+ * target the command's OUTPUT, not the command text the operator typed/pasted.
+ *
+ * In sidecar/manual mode `captureSinceStepStart()` returns everything the pane
+ * emitted since the step began — which starts with the shell prompt + the
+ * echoed command (often duplicated by readline/SSH line-redraws). Without this,
+ * `contains: stopped` matches a `Values=stopped` filter in the command itself,
+ * and the highlight lands on the echo instead of the result.
+ *
+ * Finds the LAST place the whole command block appears consecutively (the first
+ * echoed line carries the prompt prefix, so it's matched with `endsWith`;
+ * continuation lines have none) and returns only what follows it. Using the
+ * last occurrence skips redraw-duplicated echoes. Returns `output` unchanged
+ * when no command is given or no echo is found, so it can never make a working
+ * capture worse.
+ */
+export function stripCommandEcho(output: string, command?: string): string {
+  if (!command) return output;
+  const cmdLines = command
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (cmdLines.length === 0) return output;
+
+  const outLines = output.split('\n');
+  for (let i = outLines.length - cmdLines.length; i >= 0; i--) {
+    let matched = true;
+    for (let j = 0; j < cmdLines.length; j++) {
+      if (!outLines[i + j].trimEnd().endsWith(cmdLines[j])) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) {
+      return outLines.slice(i + cmdLines.length).join('\n');
+    }
+  }
+  return output;
+}
+
 export interface AssertResult {
   pass: boolean;
   actual: string;

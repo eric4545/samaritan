@@ -7,6 +7,7 @@ import {
   compileRegex,
   isPrimitiveExpectShorthand,
   renderExpectParts,
+  stripCommandEcho,
 } from './assertions';
 import type { EventLogger } from './event-logger';
 import { extractRetryConfig, parseInterval, shouldRetry } from './retry-assert';
@@ -149,7 +150,12 @@ export class StepController {
     });
 
     if (!isSSH && step.expect) {
-      let { assertResult } = this.verifyOutput(step, stepIndex, output);
+      let { assertResult } = this.verifyOutput(
+        step,
+        stepIndex,
+        output,
+        command,
+      );
 
       // expect.retry: poll for eventual consistency. On a failed assertion,
       // wait `interval` and re-capture/re-assert up to `max` times. A `while`
@@ -178,6 +184,7 @@ export class StepController {
             step,
             stepIndex,
             latest,
+            command,
           ).assertResult;
           attempt += 1;
         }
@@ -201,6 +208,10 @@ export class StepController {
     step: Step,
     stepIndex: number,
     output: string,
+    // ${VAR}-resolved command that produced this capture. When given, its
+    // echoed copy is stripped from the pane slice so the assertion and the
+    // highlighted output target the command's OUTPUT, not the command text.
+    command?: string,
   ): {
     assertResult?: ReturnType<typeof assertOutput>;
     detailed?: ReturnType<typeof assertOutputDetailed>;
@@ -213,8 +224,9 @@ export class StepController {
       ? interpolateExpect(step.expect, sessionState)
       : step.expect;
     // Pane captures are raw terminal bytes — strip ANSI codes and resolve
-    // \r overwrites so assertions match what the operator actually sees.
-    const cleaned = cleanTerminalOutput(output);
+    // \r overwrites so assertions match what the operator actually sees, then
+    // drop the echoed command so checks/highlights hit the output, not the echo.
+    const cleaned = stripCommandEcho(cleanTerminalOutput(output), command);
     const result = assertOutput(cleaned, expect);
     const detailed = assertOutputDetailed(cleaned, expect);
 
