@@ -138,9 +138,7 @@ describe('aggregate_step_rollbacks jump-links + centralization', () => {
     operation.rollback = {
       automatic: false,
       aggregate_step_rollbacks: true,
-      steps: [
-        { name: 'Notify on-call', instruction: 'Page the on-call SRE.' },
-      ],
+      steps: [{ name: 'Notify on-call', instruction: 'Page the on-call SRE.' }],
     };
     // Sub-step "Stage 1 (1% Traffic)" → anchor rollback-stage-1-1-traffic.
     const anchor = 'rollback-stage-1-1-traffic';
