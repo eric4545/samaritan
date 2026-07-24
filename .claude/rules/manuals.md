@@ -67,6 +67,34 @@ siblings). Each per-format rollback site routes through ONE recursive helper
 Don't re-copy a rollback renderer — extend the shared one. See
 `.claude/rules/parser-and-schema.md` for the full rollback-parity contract.
 
+## `aggregate_step_rollbacks` centralizes rollbacks + emits jump-links/anchors
+
+When `operation.rollback?.aggregate_step_rollbacks` is true, every generator
+(gated on a `linkRollbacks`/`aggregateRollbacks` boolean threaded to the row
+helpers) does THREE things — keep them in lock-step across all four paths:
+
+1. **Inline rollback → jump-link.** Each step/sub-step inline rollback block
+   collapses to a single link instead of the full table/heading: Markdown
+   `↩ **Rollback:** [Rollback for Step N ↓](#rollback-<key>)`, Confluence wiki
+   `[Rollback for Step N |#rollback-<key>]`, ADF a `link` mark to `#rollback-<key>`.
+2. **Rollback Plan carries the anchor target.** The folded entry advertises
+   `EffectiveRollbackStep.sourceAnchor` (set by `buildGlobalRollback` via
+   `stepRollbackAnchor(step)` in `src/lib/anchor.ts`). Emit it once per source
+   step (dedup Set): Markdown `<a id="rollback-<key>"></a>`, wiki `{anchor:...}`,
+   ADF the Confluence `anchor` macro (`extension` node, `extensionKey:'anchor'`).
+3. **Drop the duplicate `Rollback Procedures` section** (Markdown multi-env + ADF)
+   so full content lives only in the Plan.
+
+The anchor id MUST match on both sides — always `stepRollbackAnchor(step)`
+(= `rollback-<step.id ?? slugify(step.name)>`), computed from the SAME source
+step at the inline site and inside `buildGlobalRollback`. Never re-derive it from
+the provenance label. ADF top-level step rollbacks have no inline row (they only
+lived in Procedures/Plan), and the Confluence wiki only renders a sub-step's
+inline rollback when that sub-step has nested `sub_steps` — both are pre-existing
+structural quirks, so those inline jump-links simply don't appear there.
+Fixtures: `aggregated-global-rollback.yaml` (top-level), `aggregated-substep-rollback.yaml`
+(sub-step). Flag off → output byte-identical to before (regression-tested).
+
 ## `--resolve-vars` must pass step.variables
 
 All generators (`generator.ts` single/multi-env, `adf-generator.ts`,

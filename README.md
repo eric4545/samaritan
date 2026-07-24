@@ -2104,6 +2104,14 @@ rollback:
       instruction: Notify the on-call engineer before rolling back.
 ```
 
+**In the generated manuals, this flag also *centralizes* the per-step rollbacks so the main step flow stays readable.** Without it, each step's rollback is repeated up to three times — inline after the step, in a **Rollback Procedures** section, and folded into the **Rollback Plan**. With it on:
+
+- the inline block after each step collapses to a compact **jump-link** — `↩ **Rollback:** [Rollback for Step N ↓](#rollback-<step>)` — pointing at that step's folded entry in the bottom **Rollback Plan**;
+- the folded entry in the Rollback Plan carries the matching **anchor target** (a heading/cell anchor in Markdown, a `{anchor}` macro in Confluence wiki, an anchor-macro node in ADF);
+- the now-redundant **Rollback Procedures** section is dropped, so the full rollback content lives in exactly one place.
+
+The full recovery therefore reads top-to-bottom as one Rollback Plan, and each step links down to its own entry. Applies to every output format (Markdown multi-/single-env, Confluence wiki, ADF). With the flag off, rendering is unchanged.
+
 During `samaritan run`, every step prompt offers **`[g]` global rollback**: it previews the consolidated recovery (explicit plan steps + the **completed** steps' rollbacks, reversed), asks for confirmation, runs it (sending via tmux when a session is attached, otherwise listing the commands to run manually), then aborts the operation — a full rollback ends forward progress, and the session is resumable. See `examples/global-rollback-aggregated.yaml`.
 
 ### JSONL audit trail

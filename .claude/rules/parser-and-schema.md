@@ -65,9 +65,15 @@ parity trap).
 one pure helper `buildGlobalRollback(globalSteps, stepsToAggregate, { aggregate })`
 (`src/lib/global-rollback.ts`): explicit `rollback.steps` followed by every
 step's own rollback (recursing `sub_steps`) in reverse step order, each named
-`↩ Rollback for "<step>"`. All four operation-level renderers iterate its output
-unchanged. Fixtures: `global-rollback-substeps.yaml`, `step-rollback-substeps.yaml`,
-`rollback-foreach.yaml`, `rollback-with-uses.yaml`, `aggregated-global-rollback.yaml`.
+`↩ Rollback for "<step>"`. It returns `EffectiveRollbackStep[]` — folded entries
+also carry `sourceAnchor` (`stepRollbackAnchor(step)` from `src/lib/anchor.ts`),
+the jump-link target the manuals' inline rollback links point at (see
+`.claude/rules/manuals.md`). `EffectiveRollbackStep extends RollbackStep` with an
+OPTIONAL `sourceAnchor`, so it stays assignable to `RollbackStep[]` and the run
+loop / renderers that ignore it are unaffected. All four operation-level renderers
+iterate its output unchanged. Fixtures: `global-rollback-substeps.yaml`,
+`step-rollback-substeps.yaml`, `rollback-foreach.yaml`, `rollback-with-uses.yaml`,
+`aggregated-global-rollback.yaml`, `aggregated-substep-rollback.yaml`.
 
 ## Variable resolution layering (don't conflate the two layers)
 

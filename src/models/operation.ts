@@ -184,6 +184,11 @@ export interface RollbackPlan {
   // explicit `steps` above. Lets operators author rollback next to the step it
   // undoes while still seeing/running one consolidated recovery. Opt-in
   // (default false) so existing manuals are unchanged. See src/lib/global-rollback.ts.
+  //
+  // In the generated manuals this also CENTRALIZES per-step rollbacks: each
+  // step's inline rollback collapses to a jump-link into its folded entry in the
+  // Rollback Plan (which carries the anchor target), and the duplicate Rollback
+  // Procedures section is dropped — keeping the main step flow readable.
   aggregate_step_rollbacks?: boolean;
 }
 

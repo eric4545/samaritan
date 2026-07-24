@@ -1,0 +1,35 @@
+name: Aggregated Sub-Step Rollback
+version: 1.0.0
+description: aggregate_step_rollbacks with a step whose sub_steps carry rollback.
+
+environments:
+  - name: staging
+    description: Staging
+    variables:
+      NS: web-staging
+  - name: production
+    description: Production
+    variables:
+      NS: web-prod
+
+steps:
+  - name: Roll out services
+    type: manual
+    sub_steps:
+      - name: Deploy API
+        type: automatic
+        command: kubectl apply -f api.yaml -n ${NS}
+        rollback:
+          - name: Undo API
+            command: kubectl rollout undo deployment/api -n ${NS}
+        sub_steps:
+          - name: Wait for API
+            type: manual
+            command: kubectl rollout status deployment/api -n ${NS}
+
+rollback:
+  automatic: false
+  aggregate_step_rollbacks: true
+  steps:
+    - name: Notify on-call
+      instruction: Page the on-call SRE before rolling back.

@@ -7,7 +7,9 @@ import {
   codeBlock,
   doc,
   em,
+  extension,
   heading,
+  link,
   listItem,
   panel,
   paragraph,
@@ -18,9 +20,13 @@ import {
   tableRow,
   text,
 } from '@atlaskit/adf-utils/builders';
+import { stepRollbackAnchor } from '../lib/anchor';
 import { renderExpectParts } from '../lib/assertions';
 import type { GenerationMetadata } from '../lib/git-metadata';
-import { buildEffectiveRollback } from '../lib/global-rollback';
+import {
+  buildEffectiveRollback,
+  type EffectiveRollbackStep,
+} from '../lib/global-rollback';
 import { indexToLetters } from '../lib/letter-sequence';
 import { groupByPhase } from '../lib/phase-grouping';
 import { hasRollbackContent } from '../lib/rollback';
@@ -58,6 +64,32 @@ function rollbackEntryLabel(
         ...rb.variables,
       })
     : rb.name;
+}
+
+/**
+ * Confluence anchor macro node — the jump target a folded rollback entry
+ * advertises so the inline rollback jump-links resolve to it. ADF has no native
+ * heading anchors, so aggregate mode relies on this macro (extensionKey
+ * `anchor`). Emitted once per source step in the Rollback Plan.
+ */
+function rollbackAnchorNode(name: string): any {
+  return extension({
+    extensionType: 'com.atlassian.confluence.macro.core',
+    extensionKey: 'anchor',
+    parameters: { macroParams: { '': { value: name } } },
+  });
+}
+
+/**
+ * A one-cell jump-link paragraph replacing an inline rollback in aggregate mode:
+ * points at the step's folded entry in the bottom Rollback Plan.
+ */
+function rollbackJumpParagraph(anchorId: string, label: string): any {
+  return paragraph(
+    text('↩ '),
+    strong(text('Rollback: ')),
+    link({ href: `#${anchorId}` })(text(`${label} ↓`)),
+  );
 }
 
 /**
@@ -199,6 +231,12 @@ export function generateADF(
 
   const environmentNames = environments.map((e) => e.name);
 
+  // When aggregate_step_rollbacks is on, per-step rollbacks are centralized in
+  // the Rollback Plan (jump-link targets); the duplicate Rollback Procedures
+  // section is dropped and inline sub-step rollbacks collapse to jump-links.
+  const aggregateRollbacks =
+    operation.rollback?.aggregate_step_rollbacks === true;
+
   // Build ADF content nodes
   const content = [];
 
@@ -290,6 +328,7 @@ export function generateADF(
           'preflight',
           operationDir,
           operation.common_variables ?? {},
+          aggregateRollbacks,
         ),
       );
     }
@@ -307,6 +346,7 @@ export function generateADF(
           'flight',
           operationDir,
           operation.common_variables ?? {},
+          aggregateRollbacks,
         ),
       );
     }
@@ -322,16 +362,18 @@ export function generateADF(
           'postflight',
           operationDir,
           operation.common_variables ?? {},
+          aggregateRollbacks,
         ),
       );
     }
   }
 
-  // Rollback procedures
+  // Rollback procedures. Skipped in aggregate mode — the per-step content is
+  // centralized in the Rollback Plan below (jump-link targets).
   const stepsWithRollback = operation.steps.filter(
     (step) => step.rollback && step.rollback.length > 0,
   );
-  if (stepsWithRollback.length > 0) {
+  if (!aggregateRollbacks && stepsWithRollback.length > 0) {
     content.push(heading({ level: 2 })(text('🔄 Rollback Procedures')));
     content.push(
       paragraph(
@@ -427,11 +469,22 @@ export function generateADF(
     // operation-level plan emits sub_steps as their own rows, so the shared cell
     // builder is called with includeSubsteps=false here.
     const globalRollbackRows: ReturnType<typeof tableRow>[] = [];
-    const pushRollbackRows = (rb: RollbackStep, label: string): void => {
+    const emittedAnchors = new Set<string>();
+    const pushRollbackRows = (
+      rb: EffectiveRollbackStep,
+      label: string,
+    ): void => {
       const namedLabel = rb.name ? `${label}: ${rb.name}` : label;
+      // Prepend the Confluence anchor macro once per source step so the inline
+      // jump-links resolve to this folded entry.
+      const labelNodes: any[] = [paragraph(text(namedLabel))];
+      if (rb.sourceAnchor && !emittedAnchors.has(rb.sourceAnchor)) {
+        emittedAnchors.add(rb.sourceAnchor);
+        labelNodes.unshift(rollbackAnchorNode(rb.sourceAnchor));
+      }
       globalRollbackRows.push(
         tableRow([
-          tableCell()(paragraph(text(namedLabel))),
+          tableCell()(...labelNodes),
           ...environments.map((env) =>
             tableCell()(
               ...buildRollbackCellNodes(
@@ -603,6 +656,7 @@ function createStepsTable(
   currentPhase?: string,
   operationDir?: string,
   commonVariables?: Record<string, any>,
+  linkRollbacks = false,
 ): any {
   // Build header row
   const headerCells = [tableHeader()(paragraph(text('Step')))];
@@ -877,6 +931,7 @@ function createStepsTable(
         dataRows,
         operationDir,
         commonVariables,
+        linkRollbacks,
       );
     }
   });
@@ -902,6 +957,7 @@ function addSubStepRows(
   dataRows: any[],
   operationDir?: string,
   commonVariables?: Record<string, any>,
+  linkRollbacks = false,
 ): void {
   // First loop: render all sub-step rows
   subSteps.forEach((subStep, subIndex) => {
@@ -1166,6 +1222,7 @@ function addSubStepRows(
         dataRows,
         operationDir,
         commonVariables,
+        linkRollbacks,
       );
     }
   });
@@ -1182,6 +1239,23 @@ function addSubStepRows(
       subStepId = `${stepPrefix}${letter}`;
     } else {
       subStepId = `${stepPrefix}${subIndex + 1}`;
+    }
+
+    // Aggregate mode: collapse the inline sub-step rollback to a single
+    // jump-link row pointing at its folded entry in the bottom Rollback Plan.
+    if (linkRollbacks) {
+      dataRows.push(
+        tableRow([
+          tableCell()(
+            rollbackJumpParagraph(
+              stepRollbackAnchor(subStep),
+              `Rollback for Step ${subStepId}`,
+            ),
+          ),
+          ...environments.map(() => tableCell()(paragraph(text('—')))),
+        ]),
+      );
+      return;
     }
 
     rollbacks.forEach((rb, rbIndex) => {
