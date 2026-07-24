@@ -74,21 +74,32 @@ When `operation.rollback?.aggregate_step_rollbacks` is true, every generator
 helpers) does THREE things — keep them in lock-step across all four paths:
 
 1. **Inline rollback → jump-link.** Each step/sub-step inline rollback block
-   collapses to a single link instead of the full table/heading: Markdown
-   `↩ **Rollback:** [Rollback for Step N ↓](#rollback-<key>)`, Confluence wiki
-   `[Rollback for Step N |#rollback-<key>]`, ADF a `link` mark to `#rollback-<key>`.
-2. **Rollback Plan carries the anchor target.** The folded entry advertises
-   `EffectiveRollbackStep.sourceAnchor` (set by `buildGlobalRollback` via
-   `stepRollbackAnchor(step)` in `src/lib/anchor.ts`). Emit it once per source
-   step (dedup Set): Markdown `<a id="rollback-<key>"></a>`, wiki `{anchor:...}`,
-   ADF the Confluence `anchor` macro (`extension` node, `extensionKey:'anchor'`).
+   collapses to a single link instead of the full table/heading. The label is the
+   SEMANTIC `stepRollbackHeadingText(step)` (`Rollback for "<name>"`), NOT a
+   numeric position — so link text and target heading share a searchable phrase:
+   Markdown `↩ **Rollback:** [Rollback for "<name>" ↓](#<anchor>)`, Confluence
+   wiki `[Rollback for "<name>" |#<anchor>]`, ADF a `link` mark to `#<anchor>`.
+2. **Rollback Plan carries the jump target.** The folded entry advertises
+   `EffectiveRollbackStep.sourceAnchor` AND `sourceHeading` (both set by
+   `buildGlobalRollback`). The target differs by format because sanitizers
+   (GitHub) rewrite hand-authored `<a id>` to `user-content-…` with no clean
+   `#slug` alias — only HEADING slugs jump. So **Markdown** renders the folded
+   entry as a real heading `### <sourceHeading>` whose slug IS the anchor (multi-
+   env: heading + mini env-table split out of the explicit-steps table; single-
+   env: `renderRollbackStepSingleEnv(..., headingOverride=sourceHeading)`), NO
+   `<a id>`. Confluence wiki keeps `{anchor:...}` and ADF the `anchor` macro
+   (`extension` node, `extensionKey:'anchor'`) — native macros already jump.
+   Emit once per source step (dedup Set).
 3. **Drop the duplicate `Rollback Procedures` section** (Markdown multi-env + ADF)
    so full content lives only in the Plan.
 
 The anchor id MUST match on both sides — always `stepRollbackAnchor(step)`
-(= `rollback-<step.id ?? slugify(step.name)>`), computed from the SAME source
-step at the inline site and inside `buildGlobalRollback`. Never re-derive it from
-the provenance label. ADF top-level step rollbacks have no inline row (they only
+(= `slugify(stepRollbackHeadingText(step))` = `slugify('Rollback for "<name>"')`,
+in `src/lib/anchor.ts`), computed from the SAME source step at the inline site
+and inside `buildGlobalRollback`. Deriving the anchor by slugifying the heading
+text is what guarantees the Markdown link resolves to its heading; keep the
+heading emoji-free so `slugify` matches the renderer's own slug. Never re-derive
+it from the provenance label. ADF top-level step rollbacks have no inline row (they only
 lived in Procedures/Plan), and the Confluence wiki only renders a sub-step's
 inline rollback when that sub-step has nested `sub_steps` — both are pre-existing
 structural quirks, so those inline jump-links simply don't appear there.

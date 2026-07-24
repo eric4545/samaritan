@@ -1,5 +1,5 @@
 import type { RollbackPlan, RollbackStep, Step } from '../models/operation';
-import { stepRollbackAnchor } from './anchor';
+import { stepRollbackAnchor, stepRollbackHeadingText } from './anchor';
 import { hasRollbackContent } from './rollback';
 import { sortStepsByDependencies } from './step-deps';
 
@@ -13,6 +13,14 @@ import { sortStepsByDependencies } from './step-deps';
  */
 export interface EffectiveRollbackStep extends RollbackStep {
   sourceAnchor?: string;
+  /**
+   * Renderer-safe heading text for this folded entry (e.g. `Rollback for
+   * "Deploy app"`), whose slug equals `sourceAnchor`. Set alongside
+   * `sourceAnchor` so target renderers can emit the jump-link's heading without
+   * re-deriving it from the source step. Same value for every sibling entry of
+   * one source step (they share the anchor).
+   */
+  sourceHeading?: string;
 }
 
 /**
@@ -77,6 +85,7 @@ export function buildGlobalRollback(
   const collected: Array<{
     stepName: string;
     anchor: string;
+    heading: string;
     rollback: RollbackStep;
   }> = [];
   const walk = (steps: Step[] | undefined): void => {
@@ -87,6 +96,7 @@ export function buildGlobalRollback(
           collected.push({
             stepName: step.name,
             anchor: stepRollbackAnchor(step),
+            heading: stepRollbackHeadingText(step),
             rollback: rb,
           });
         }
@@ -96,8 +106,8 @@ export function buildGlobalRollback(
   };
   walk(stepsToAggregate);
 
-  for (const { stepName, anchor, rollback } of collected.reverse()) {
-    result.push(withProvenance(rollback, stepName, anchor));
+  for (const { stepName, anchor, heading, rollback } of collected.reverse()) {
+    result.push(withProvenance(rollback, stepName, anchor, heading));
   }
   return result;
 }
@@ -111,11 +121,13 @@ function withProvenance(
   rb: RollbackStep,
   stepName: string,
   anchor: string,
+  heading: string,
 ): EffectiveRollbackStep {
   const prefix = `↩ Rollback for "${stepName}"`;
   return {
     ...rb,
     name: rb.name ? `${prefix}: ${rb.name}` : prefix,
     sourceAnchor: anchor,
+    sourceHeading: heading,
   };
 }
