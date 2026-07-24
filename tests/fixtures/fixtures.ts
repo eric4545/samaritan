@@ -117,10 +117,6 @@ export const FIXTURES = {
   aggregatedGlobalRollback:
     'tests/fixtures/operations/features/aggregated-global-rollback.yaml',
 
-  // aggregate_step_rollbacks where a step's SUB-STEP carries the rollback
-  aggregatedSubstepRollback:
-    'tests/fixtures/operations/features/aggregated-substep-rollback.yaml',
-
   // Rollback steps with foreach/matrix (step-level + operation-level + nested)
   rollbackForeach: 'tests/fixtures/operations/features/rollback-foreach.yaml',
 

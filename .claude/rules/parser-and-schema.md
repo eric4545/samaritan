@@ -73,7 +73,8 @@ OPTIONAL `sourceAnchor`, so it stays assignable to `RollbackStep[]` and the run
 loop / renderers that ignore it are unaffected. All four operation-level renderers
 iterate its output unchanged. Fixtures: `global-rollback-substeps.yaml`,
 `step-rollback-substeps.yaml`, `rollback-foreach.yaml`, `rollback-with-uses.yaml`,
-`aggregated-global-rollback.yaml`, `aggregated-substep-rollback.yaml`.
+`aggregated-global-rollback.yaml` (the sub-step jump-link case reuses
+`nested-substep-with-rollback.yaml` with the flag set in-test).
 
 ## Variable resolution layering (don't conflate the two layers)
 

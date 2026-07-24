@@ -131,23 +131,35 @@ describe('aggregate_step_rollbacks jump-links + centralization', () => {
   });
 
   it('sub-step rollbacks also collapse to jump-links (all formats)', async () => {
-    const operation = await parseFixture('aggregatedSubstepRollback');
+    // Reuse the nested-sub-step fixture (a sub-step that has BOTH its own
+    // rollback and nested sub_steps — the shape the Confluence wiki path needs)
+    // and turn aggregation on in-test so no dedicated fixture is required.
+    const operation = await parseFixture('nestedSubstepWithRollback');
+    operation.rollback = {
+      automatic: false,
+      aggregate_step_rollbacks: true,
+      steps: [
+        { name: 'Notify on-call', instruction: 'Page the on-call SRE.' },
+      ],
+    };
+    // Sub-step "Stage 1 (1% Traffic)" → anchor rollback-stage-1-1-traffic.
+    const anchor = 'rollback-stage-1-1-traffic';
 
     // Multi-env Markdown: the sub-step's inline rollback becomes a link.
     const md = generateManual(operation);
-    assert.ok(md.includes('](#rollback-deploy-api)'));
-    assert.ok(md.includes('<a id="rollback-deploy-api"></a>'));
-    assert.ok(!md.includes('#### 🔄 Rollback for Step'));
+    assert.ok(md.includes(`](#${anchor})`));
+    assert.ok(md.includes(`<a id="${anchor}"></a>`));
+    assert.ok(!md.includes('🔄 Rollback for Step'));
 
     // ADF: link mark + anchor macro for the sub-step.
     const adf = generateADFString(operation, undefined, undefined, false);
-    assert.ok(adf.includes('#rollback-deploy-api'));
-    assert.ok(adf.includes('rollback-deploy-api'));
+    assert.ok(adf.includes(`#${anchor}`));
+    assert.ok(adf.includes(anchor));
 
     // Confluence markup: link + {anchor}.
     const content = generateConfluenceContent(operation, false);
-    assert.ok(content.includes('|#rollback-deploy-api]'));
-    assert.ok(content.includes('{anchor:rollback-deploy-api}'));
+    assert.ok(content.includes(`|#${anchor}]`));
+    assert.ok(content.includes(`{anchor:${anchor}}`));
   });
 });
 

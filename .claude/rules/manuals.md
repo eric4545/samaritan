@@ -92,8 +92,9 @@ the provenance label. ADF top-level step rollbacks have no inline row (they only
 lived in Procedures/Plan), and the Confluence wiki only renders a sub-step's
 inline rollback when that sub-step has nested `sub_steps` — both are pre-existing
 structural quirks, so those inline jump-links simply don't appear there.
-Fixtures: `aggregated-global-rollback.yaml` (top-level), `aggregated-substep-rollback.yaml`
-(sub-step). Flag off → output byte-identical to before (regression-tested).
+Fixtures: `aggregated-global-rollback.yaml` (top-level); the sub-step jump-link
+case reuses `nested-substep-with-rollback.yaml` with the flag set in-test. Flag
+off → output byte-identical to before (regression-tested).
 
 ## `--resolve-vars` must pass step.variables
 
