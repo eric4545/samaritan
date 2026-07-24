@@ -58,9 +58,26 @@ const NAMED_REFS: Record<string, string> = {
   '#/properties/steps/items': 'Step',
 };
 
+/**
+ * Encode a value for safe inclusion in a Markdown table cell.
+ *
+ * Pipes become the `&#124;` entity rather than a `\|` backslash escape. Escaping
+ * with a backslash would be incomplete unless backslashes were escaped too — and
+ * doing THAT would corrupt the values that legitimately carry one, such as the
+ * regex in ``pattern `^\d+\.\d+\.\d+$` ``: inside a code span `\\d` renders as a
+ * literal double backslash, not as `\d`. Entity encoding sidesteps both problems
+ * by never treating backslash as special.
+ *
+ * Caveat: HTML entities are NOT decoded inside code spans, so a pipe within
+ * backticks would render as the literal text `&#124;`. Nothing emits that today,
+ * and `tests/docs/gen-docs.test.ts` fails if anything starts to.
+ */
 function cell(value: string): string {
-  return value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim();
+  return value.replace(/\|/g, '&#124;').replace(/\n+/g, ' ').trim();
 }
+
+/** Union separator for the Type column — same reasoning as `cell()`. */
+const UNION = ' &#124; ';
 
 /** Human-readable type expression for a schema node. */
 function renderType(root: SchemaNode, node: SchemaNode): string {
@@ -73,7 +90,7 @@ function renderType(root: SchemaNode, node: SchemaNode): string {
   }
 
   if (node.enum) {
-    return node.enum.map((v: unknown) => `\`${v}\``).join(' \\| ');
+    return node.enum.map((v: unknown) => `\`${v}\``).join(UNION);
   }
 
   if (node.oneOf || node.anyOf) {
@@ -81,15 +98,15 @@ function renderType(root: SchemaNode, node: SchemaNode): string {
     return branches
       .map((b: SchemaNode) => renderType(root, b))
       .filter((t: string, i: number, all: string[]) => all.indexOf(t) === i)
-      .join(' \\| ');
+      .join(UNION);
   }
 
   if (node.type === 'array') {
     const inner = renderType(root, node.items);
-    return inner.includes('\\|') ? `(${inner})[]` : `${inner}[]`;
+    return inner.includes(UNION.trim()) ? `(${inner})[]` : `${inner}[]`;
   }
 
-  if (Array.isArray(node.type)) return node.type.join(' \\| ');
+  if (Array.isArray(node.type)) return node.type.join(UNION);
 
   // A branch that declares `properties`/`required` but no explicit `type` is an
   // object in practice; without this, oneOf branches collapse to "any".

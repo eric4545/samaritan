@@ -10,9 +10,22 @@ import type { Command, Option } from 'commander';
  * from the docs on the next build.
  */
 
-/** Escape a value for safe inclusion in a Markdown table cell. */
+/**
+ * Encode a value for safe inclusion in a Markdown table cell.
+ *
+ * Pipes become the `&#124;` entity rather than a `\|` backslash escape. Escaping
+ * with a backslash would be incomplete unless backslashes were escaped too — and
+ * doing THAT would corrupt the values that legitimately carry one, such as the
+ * regex in ``pattern `^\d+\.\d+\.\d+$` ``: inside a code span `\\d` renders as a
+ * literal double backslash, not as `\d`. Entity encoding sidesteps both problems
+ * by never treating backslash as special.
+ *
+ * Caveat: HTML entities are NOT decoded inside code spans, so a pipe within
+ * backticks would render as the literal text `&#124;`. Nothing emits that today,
+ * and `tests/docs/gen-docs.test.ts` fails if anything starts to.
+ */
 function cell(value: string): string {
-  return value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim();
+  return value.replace(/\|/g, '&#124;').replace(/\n+/g, ' ').trim();
 }
 
 /** Commander stores subcommands on `.commands`; `help` is generated, not authored. */

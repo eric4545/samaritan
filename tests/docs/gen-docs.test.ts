@@ -125,6 +125,53 @@ describe('operation YAML reference generator', () => {
     assert.match(row('steps'), /object\[\]/);
   });
 
+  it('encodes pipes without mangling backslashes', () => {
+    // CodeQL flagged the previous `\|` escaping as incomplete: escaping the pipe
+    // with a backslash is only sound if backslashes are escaped too. Escaping
+    // them WOULD have been a regression — the one schema value carrying a
+    // backslash is a regex inside a code span, where `\\d` renders as a literal
+    // double backslash rather than `\d`. Pipes are entity-encoded instead.
+    const patternRow = output
+      .split('\n')
+      .find((line) => line.startsWith('| `version`'));
+    assert.ok(patternRow, 'expected the version row to exist');
+    assert.match(
+      patternRow,
+      /\^\\d\+\\\.\\d\+\\\.\\d\+\$/,
+      `regex pattern was mangled: ${patternRow}`,
+    );
+    assert.ok(
+      !patternRow.includes('\\\\d'),
+      'backslash was double-escaped, which renders literally inside a code span',
+    );
+  });
+
+  it('never leaves a bare pipe that would break a table row', () => {
+    for (const line of output.split('\n')) {
+      if (!line.startsWith('|')) continue;
+      // Strip the legitimate cell delimiters, then assert nothing else remains.
+      const inner = line.replace(/^\||\|$/g, '');
+      const cells = inner.split('|');
+      assert.strictEqual(
+        cells.length,
+        5,
+        `row has a stray unencoded pipe: ${line}`,
+      );
+    }
+  });
+
+  it('never emits a pipe inside a code span', () => {
+    // HTML entities are NOT decoded inside backticks, so an entity-encoded pipe
+    // there would render as the literal text `&#124;`. Nothing does this today;
+    // this test makes it a loud failure rather than a silent rendering bug.
+    for (const span of output.matchAll(/`[^`\n]*`/g)) {
+      assert.ok(
+        !span[0].includes('&#124;') && !span[0].includes('|'),
+        `pipe inside a code span will not render correctly: ${span[0]}`,
+      );
+    }
+  });
+
   it('documents verify as deprecated, everywhere it is accepted', () => {
     // The type column contains escaped pipes (`string \| object`), so match the
     // whole row rather than counting columns.
