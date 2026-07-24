@@ -12,8 +12,9 @@ validator, and interactive runner — **not** a non-interactive execution engine
 ## Quickstart
 
 ```bash
-# Scaffold a new operation interactively
-samaritan create operation
+# Scaffold a new operation interactively (the command is `operation`, NOT
+# `create operation` — only the subcommand is registered; see reference/cli.md)
+samaritan operation --template deployment
 
 # Validate (add --lint for shellcheck, --strict to fail on warnings)
 samaritan validate path/to/op.yaml --lint
@@ -21,8 +22,10 @@ samaritan validate path/to/op.yaml --lint
 # Generate a Markdown manual (omit --env for the multi-env table format)
 samaritan generate manual path/to/op.yaml --env production --output manual.md
 
-# Generate Confluence (ADF)
-samaritan generate confluence path/to/op.yaml --output manual.json
+# Generate Confluence markup or ADF — these are FORMATS of `generate manual`,
+# not a subcommand. A `generate confluence` subcommand does not exist.
+samaritan generate manual path/to/op.yaml -f confluence --output manual.confluence
+samaritan generate manual path/to/op.yaml -f adf --output manual.json
 
 # Drive it interactively (default mode = sidecar)
 samaritan run path/to/op.yaml
@@ -79,8 +82,10 @@ shellcheck lint, interactive `run`/`resume`/`sessions`, `run --mock`, templates,
 (`${CURRENT_DATE}`, `${RUN_START_TIME}`, `${ELAPSED_TIME}`, …), **postmortem /
 incident report (RCA) documents** (`generate postmortem`, `postmortem
 from-run`/`init`). NOT implemented:
-non-interactive command execution, automatic evidence collection, QRH, external
-integrations (Jira/Slack), AI assistant. When unsure, check `ROADMAP.md`.
+non-interactive command execution, automatic evidence collection, a QRH
+**database** (the `qrh` commands themselves exist and read a local `./qrh/`
+directory; nothing is bundled or hosted), external integrations (Jira/Slack), AI
+assistant. When unsure, check `ROADMAP.md`.
 
 ## When to load the reference files
 

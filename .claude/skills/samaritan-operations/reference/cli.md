@@ -1,27 +1,39 @@
 # SAMARITAN CLI Reference
 
-Run `samaritan <command> --help` for authoritative flags. Locally use
-`npm start -- <command>`.
+**The authoritative command and flag list is GENERATED from the Commander tree**
+(`src/cli/program.ts`) by `scripts/gen-docs`. Build it with `npm run docs:gen` and
+read `docs/reference/cli.md`, or browse
+<https://eric4545.github.io/samaritan/reference/cli>. Ad-hoc: `samaritan <command>
+--help` (locally `npm start -- <command>`).
 
-## Commands
+Do **not** re-add a hand-maintained command table here. One existed for a long
+time and drifted — it documented `generate confluence`, which has never been a
+command — and that error was copied into three other files. This page now covers
+only the *behavioural* notes that cannot be derived from the command tree.
 
-| Command | Purpose |
-|---|---|
-| `init` | Initialize SAMARITAN config in a repo |
-| `create operation` | Interactive scaffold of a new operation YAML |
-| `validate <file>` | JSON-Schema validation of an operation |
-| `generate manual <file>` | Render a Markdown runbook |
-| `generate confluence <file>` | Render Confluence ADF (JSON) |
-| `generate postmortem <file>` | Render a postmortem/incident report (RCA); `-f markdown\|confluence\|adf` |
-| `postmortem from-run <session\|jsonl>` | Seed a postmortem YAML from a captured run record |
-| `postmortem init` | Write a blank postmortem authoring template |
-| `report <jsonl>` | Render a Markdown evidence report from a run log |
-| `report merge <session...>` | Merge several operators' partial runs of one operation into a consolidated report |
-| `schema` | Export the JSON schema (IDE / tooling integration) |
-| `run <file>` | Drive an operation interactively |
-| `resume <session-id>` | Resume a paused session |
-| `sessions` | List saved sessions (`--all` for everything) |
-| `qrh` | Quick Reference Handbook (scaffold only, no DB yet) |
+`tests/docs/prose-lint.test.ts` fails the build if any prose in this repo names a
+subcommand or flag that does not exist, so keep examples here real.
+
+## Commands at a glance
+
+`init`, `operation`, `validate`, `generate` (`manual` | `docs` | `postmortem` |
+`schedule`), `run`, `resume`, `sessions`, `schema`, `diff`, `report`
+(+ `report merge`), `postmortem` (`init` | `from-run`), `qrh`
+(`search` | `list` | `show` | `run`).
+
+Two traps worth stating explicitly:
+
+- **There is no `generate confluence`.** Confluence and ADF are *formats*:
+  `generate manual -f confluence|adf`. `--gantt` is a `generate manual` flag;
+  `generate docs` does not accept it.
+- **Scaffolding is `samaritan operation`, not `create operation`.** `project.ts`
+  chains `.command('operation')` off a `create` parent, and the chain returns the
+  *subcommand*, so only `operation` is ever registered. It takes `--template
+  <name>` only — no positional name, no `--env`.
+
+**QRH** is implemented as a set of commands that read operations from a local
+`./qrh/` directory. There is no bundled or hosted QRH *database*, and no `qrh/`
+directory or example ships with this repo today.
 
 ## Key flags
 
