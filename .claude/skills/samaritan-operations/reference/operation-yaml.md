@@ -56,6 +56,13 @@ This drives both the rendered Rollback Plan ("see all rollbacks at once") and th
 interactive `[g]` global-rollback jump (which uses only **completed** steps).
 Opt-in (default false). Example: `examples/global-rollback-aggregated.yaml`.
 
+With this flag on, the generated manuals also **centralize** per-step rollbacks:
+each step's inline rollback collapses to a **jump-link** into its folded entry in
+the Rollback Plan (which carries the anchor target), and the duplicate **Rollback
+Procedures** section is dropped — so the rollback content lives in one place and
+the step flow stays readable. Applies to all formats (Markdown, Confluence wiki,
+ADF). With the flag off, rendering is unchanged.
+
 ## Step content fields (shared by steps AND rollback steps — `StepContent`)
 
 `command`, `script`, `instruction`, `timeout`, `description`, `evidence`,

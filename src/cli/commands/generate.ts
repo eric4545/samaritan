@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { Command } from 'commander';
+import { stepRollbackAnchor } from '../../lib/anchor';
 import { renderExpectParts } from '../../lib/assertions';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
@@ -916,6 +917,12 @@ export function generateConfluenceContent(
     steps: filterStepsForEnvironments(operation.steps, environmentNames),
   };
 
+  // When aggregate_step_rollbacks is on, per-step rollbacks are centralized in
+  // the Rollback Plan (with {anchor} jump targets) and inline rollbacks collapse
+  // to jump-links into it.
+  const aggregateRollbacks =
+    operation.rollback?.aggregate_step_rollbacks === true;
+
   // Use Confluence emoticons instead of Unicode emojis for better compatibility
   const phaseIcons = {
     preflight: '(/)',
@@ -1517,6 +1524,7 @@ ${filteredOperation.environments
             formatTimelineForDisplay,
             operationDir,
             operation.common_variables ?? {},
+            aggregateRollbacks,
           );
         }
 
@@ -1525,6 +1533,13 @@ ${filteredOperation.environments
         // regular steps, after the step row. Renders EVERY entry (foreach-
         // expanded or hand-authored siblings), not just [0].
         const stepRollbacks = (step.rollback ?? []).filter(hasRollbackContent);
+        if (aggregateRollbacks && stepRollbacks.length > 0) {
+          // Collapse the inline block to a single jump-link into the bottom
+          // Rollback Plan (the {anchor} target lives there).
+          content += `\n(<) *Rollback:* [Rollback for Step ${stepNumber} |#${stepRollbackAnchor(step)}]\n\n`;
+          tableOpen = false;
+          return;
+        }
         stepRollbacks.forEach((rb: any, rbIndex: number) => {
           // Disambiguate multiple entries in the heading via the rollback
           // step's own (foreach-suffixed) name; single-entry output unchanged.
@@ -1696,11 +1711,22 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
 
     // Emit a table row per rollback step and recurse into its sub_steps so
     // nested rollback structure renders as Rollback Step N, N.M, N.M.K, …
+    const emittedAnchors = new Set<string>();
     const emitRollbackRow = (rollbackStep: any, label: string): void => {
       const namedLabel = rollbackStep.name
         ? `${label}: ${rollbackStep.name}`
         : label;
-      content += `| ${namedLabel} | ${buildRollbackCells(rollbackStep).join(' | ')} |\n`;
+      // Prepend the {anchor} macro once per source step so inline jump-links
+      // resolve to this folded entry.
+      let anchor = '';
+      if (
+        rollbackStep.sourceAnchor &&
+        !emittedAnchors.has(rollbackStep.sourceAnchor)
+      ) {
+        emittedAnchors.add(rollbackStep.sourceAnchor);
+        anchor = `{anchor:${rollbackStep.sourceAnchor}}`;
+      }
+      content += `| ${anchor}${namedLabel} | ${buildRollbackCells(rollbackStep).join(' | ')} |\n`;
       rollbackStep.sub_steps?.forEach((sub: any, subIndex: number) => {
         emitRollbackRow(sub, `${label}.${subIndex + 1}`);
       });
@@ -1924,6 +1950,7 @@ function addConfluenceSubStepRows(
   formatTimelineForDisplay: (timeline: any) => string,
   operationDir?: string,
   commonVariables?: Record<string, any>,
+  linkRollbacks = false,
 ): string {
   // Resolve ${VAR} placeholders in sub-step names against common variables +
   // the sub-step's own variables when --resolve-vars is set. MUST run BEFORE
@@ -2149,11 +2176,17 @@ function addConfluenceSubStepRows(
         formatTimelineForDisplay,
         operationDir,
         commonVariables,
+        linkRollbacks,
       );
 
       // Render rollback for sub-step AFTER all nested sub-steps (inline
       // rendering). Renders EVERY entry, not just [0].
       const subRollbacks = (subStep.rollback ?? []).filter(hasRollbackContent);
+      if (linkRollbacks && subRollbacks.length > 0) {
+        // Collapse the inline block to a jump-link into the bottom Rollback Plan.
+        content += `\n(<) *Rollback:* [Rollback for Step ${subStepId} |#${stepRollbackAnchor(subStep)}]\n\n`;
+        return;
+      }
       subRollbacks.forEach((subRb: any, subRbIndex: number) => {
         // Calculate parent heading level (same formula as section heading)
         const parentHeadingLevel = Math.min(4 + Math.ceil((depth - 1) / 2), 6);

@@ -6,6 +6,9 @@ description: |
   step order (the most-recently-completed step's rollback first). This lets you
   author each undo next to the step it reverses while still seeing — and, during
   `samaritan run`, jumping to and running — one consolidated recovery via [g].
+  In the generated manuals the per-step rollbacks are also CENTRALIZED: each
+  step's inline rollback becomes a jump-link into its entry in the bottom
+  Rollback Plan, and the duplicate Rollback Procedures section is dropped.
 
 environments:
   - name: staging

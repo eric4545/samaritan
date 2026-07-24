@@ -1,11 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveStepKey, stepRollbackAnchor } from '../lib/anchor';
 import { renderExpectParts } from '../lib/assertions';
 import {
   type GenerationMetadata,
   generateYamlFrontmatter,
 } from '../lib/git-metadata';
-import { buildEffectiveRollback } from '../lib/global-rollback';
+import {
+  buildEffectiveRollback,
+  type EffectiveRollbackStep,
+} from '../lib/global-rollback';
 import { indexToLetters } from '../lib/letter-sequence';
 import { groupByPhase } from '../lib/phase-grouping';
 import { hasRollbackContent } from '../lib/rollback';
@@ -24,11 +28,14 @@ import type {
 } from '../models/operation';
 import type { RunEvidenceItem, RunManifest } from '../models/run-manifest';
 
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
+/**
+ * Compact one-line jump-link that replaces the inline rollback block after a
+ * step when `aggregate_step_rollbacks` is on. Points at the step's folded entry
+ * in the bottom Rollback Plan (anchor emitted there), keeping the main step flow
+ * readable instead of repeating the full rollback table inline.
+ */
+function rollbackJumpLink(anchorId: string, label: string): string {
+  return `↩ **Rollback:** [${label} ↓](#${anchorId})\n\n`;
 }
 
 export function evidenceLang(type: string): string {
@@ -69,10 +76,6 @@ export function preserveLineBreaks(text: string): string {
       return wantsBreak ? `${line}  ` : line;
     })
     .join('\n');
-}
-
-function resolveStepKey(step: Step): string {
-  return step.id ?? slugify(step.name);
 }
 
 /**
@@ -647,6 +650,7 @@ function generateStepRow(
   operationDir?: string,
   commonVariables?: Record<string, any>,
   tableState: TableState = { open: true },
+  linkRollbacks: boolean = false,
 ): string {
   let rows = '';
 
@@ -895,6 +899,7 @@ function generateStepRow(
         operationDir,
         commonVariables,
         tableState,
+        linkRollbacks,
       );
     });
 
@@ -908,6 +913,16 @@ function generateStepRow(
 
       // Close current table (the next step row reopens lazily)
       rows += closeStepTable(tableState);
+
+      // Aggregate mode: collapse the inline sub-step rollback to a jump-link
+      // pointing at its folded entry in the bottom Rollback Plan.
+      if (linkRollbacks) {
+        rows += rollbackJumpLink(
+          stepRollbackAnchor(subStep),
+          `Rollback for Step ${subStepPrefix}`,
+        );
+        return;
+      }
 
       // Add rollback heading (h4 level for sub-step rollbacks)
       const subStepRollbackName = resolveVariables
@@ -958,6 +973,7 @@ function generateSubStepRow(
   operationDir?: string,
   commonVariables?: Record<string, any>,
   tableState: TableState = { open: true },
+  linkRollbacks: boolean = false,
 ): string {
   let rows = '';
 
@@ -1207,6 +1223,7 @@ function generateSubStepRow(
         operationDir,
         commonVariables,
         tableState,
+        linkRollbacks,
       );
     });
 
@@ -1227,6 +1244,15 @@ function generateSubStepRow(
 
       // Close current table (the next step row reopens lazily)
       rows += closeStepTable(tableState);
+
+      // Aggregate mode: collapse the inline nested rollback to a jump-link.
+      if (linkRollbacks) {
+        rows += rollbackJumpLink(
+          stepRollbackAnchor(nestedSubStep),
+          `Rollback for Step ${nestedStepId}`,
+        );
+        return;
+      }
 
       // Determine heading level based on depth
       const headingLevel = '#'.repeat(Math.min(3 + depth, 6));
@@ -1402,6 +1428,11 @@ function generateManualContent(
   resolveVariables: boolean = false,
   operationDir?: string,
 ): string {
+  // When aggregate_step_rollbacks is on, per-step rollbacks are centralized in
+  // the bottom Rollback Plan; inline blocks collapse to jump-links and the
+  // duplicate Rollback Procedures section is dropped.
+  const aggregateRollbacks =
+    operation.rollback?.aggregate_step_rollbacks === true;
   let markdown = `# Manual for: ${operation.name} (v${operation.version})\n\n`;
   if (operation.description) {
     markdown += `_${operation.description}_\n\n`;
@@ -1528,6 +1559,7 @@ function generateManualContent(
           operationDir,
           operation.common_variables ?? {},
           tableState,
+          aggregateRollbacks,
         );
 
         // Inline rollback rendering - render immediately after step if present.
@@ -1536,7 +1568,15 @@ function generateManualContent(
         const inlineRollbacks = (step.rollback ?? []).filter(
           hasRollbackContent,
         );
-        if (inlineRollbacks.length > 0) {
+        if (inlineRollbacks.length > 0 && aggregateRollbacks) {
+          // Aggregate mode: collapse the inline block to a jump-link pointing
+          // at this step's folded entry in the bottom Rollback Plan.
+          markdown += closeStepTable(tableState);
+          markdown += rollbackJumpLink(
+            stepRollbackAnchor(step),
+            `Rollback for Step ${globalStepNumber}`,
+          );
+        } else if (inlineRollbacks.length > 0) {
           // Close current table (next step row reopens lazily)
           markdown += closeStepTable(tableState);
 
@@ -1586,11 +1626,13 @@ function generateManualContent(
     });
   }
 
-  // Add rollback section if any steps have rollback defined
+  // Add rollback section if any steps have rollback defined. Skipped in
+  // aggregate mode: the per-step content is centralized in the Rollback Plan
+  // below (jump-link targets), so this duplicate section is dropped.
   const stepsWithRollback = operation.steps.filter(
     (step) => step.rollback && step.rollback.length > 0,
   );
-  if (stepsWithRollback.length > 0) {
+  if (!aggregateRollbacks && stepsWithRollback.length > 0) {
     markdown += '## 🔄 Rollback Procedures\n\n';
     markdown +=
       'If deployment fails, execute the following rollback steps:\n\n';
@@ -1661,11 +1703,23 @@ function generateManualContent(
     });
     markdown += '\n';
 
+    // Anchor target for each folded per-step entry, emitted once per source
+    // step (into the Step cell) so the inline jump-links resolve here.
+    const emittedAnchors = new Set<string>();
+    const anchorCell = (anchorId?: string): string => {
+      if (!anchorId || emittedAnchors.has(anchorId)) return '';
+      emittedAnchors.add(anchorId);
+      return `<a id="${anchorId}"></a>`;
+    };
+
     // Emit a table row for a rollback step (and recurse into its sub_steps as
     // Rollback Step N.M rows) so nested rollback structure isn't dropped.
-    const emitRollbackRow = (rb: RollbackStep, label: string): void => {
+    const emitRollbackRow = (
+      rb: EffectiveRollbackStep,
+      label: string,
+    ): void => {
       const namedLabel = rb.name ? `${label}: ${rb.name}` : label;
-      markdown += `| ${namedLabel} |`;
+      markdown += `| ${anchorCell(rb.sourceAnchor)}${namedLabel} |`;
       operation.environments.forEach((env) => {
         const cellContent = renderRollbackCellMarkdown(
           rb,
@@ -1718,6 +1772,14 @@ export function generateSingleEnvManual(
 
   const env = workingOperation.environments.find((e) => e.name === targetEnv);
   const envVars = env?.variables ?? {};
+
+  // Aggregate mode: inline step rollbacks collapse to jump-links pointing at
+  // their folded entries in the bottom Rollback Plan.
+  const aggregateRollbacks =
+    workingOperation.rollback?.aggregate_step_rollbacks === true;
+  // Tracks which rollback anchors have been emitted so each jump-link target
+  // appears exactly once in the Rollback Plan.
+  const emittedRollbackAnchors = new Set<string>();
 
   function resolveCmd(
     cmd: string,
@@ -1875,14 +1937,25 @@ export function generateSingleEnvManual(
     // operation-level plan, so a step-level rollback's own sub_steps render too.
     // Renders EVERY entry (foreach-expanded or hand-authored siblings); the
     // renderer puts each rollback step's own name in its heading.
-    (effectiveStep.rollback ?? []).filter(hasRollbackContent).forEach((rb) => {
-      renderRollbackStepSingleEnv(
-        rb,
-        '🔄 Rollback',
-        Math.min(headingLevel + 1, 6),
-        effectiveStep.variables ?? {},
+    const inlineRollbacks = (effectiveStep.rollback ?? []).filter(
+      hasRollbackContent,
+    );
+    if (aggregateRollbacks && inlineRollbacks.length > 0) {
+      // Collapse the inline block to a jump-link into the bottom Rollback Plan.
+      lines.push(
+        `↩ **Rollback:** [Rollback for ${prefix} ↓](#${stepRollbackAnchor(step)})`,
       );
-    });
+      lines.push('');
+    } else {
+      inlineRollbacks.forEach((rb) => {
+        renderRollbackStepSingleEnv(
+          rb,
+          '🔄 Rollback',
+          Math.min(headingLevel + 1, 6),
+          effectiveStep.variables ?? {},
+        );
+      });
+    }
   }
 
   // Render one rollback step (and its nested sub_steps) recursively. Shared by
@@ -1895,6 +1968,7 @@ export function generateSingleEnvManual(
     label: string,
     headingLevel: number,
     stepVariables: Record<string, any> = {},
+    anchorId?: string,
   ): void {
     const substituteVars = rb.options?.substitute_vars ?? true;
     const resolve = resolveVariables && substituteVars;
@@ -1902,6 +1976,12 @@ export function generateSingleEnvManual(
     const heading = rb.name
       ? `${label}: ${resolve ? resolveCmd(rb.name, stepVariables) : rb.name}`
       : label;
+    // Anchor target for a folded per-step entry (jump-link destination),
+    // emitted once per source step.
+    if (anchorId && !emittedRollbackAnchors.has(anchorId)) {
+      emittedRollbackAnchors.add(anchorId);
+      lines.push(`<a id="${anchorId}"></a>`);
+    }
     lines.push(`${hashes} ${heading}`);
     lines.push('');
 
@@ -2015,7 +2095,13 @@ export function generateSingleEnvManual(
     }
 
     globalRollbackSteps.forEach((rb, index) => {
-      renderRollbackStepSingleEnv(rb, `Rollback Step ${index + 1}`, 3);
+      renderRollbackStepSingleEnv(
+        rb,
+        `Rollback Step ${index + 1}`,
+        3,
+        {},
+        rb.sourceAnchor,
+      );
     });
   }
 
