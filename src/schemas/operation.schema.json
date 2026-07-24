@@ -50,6 +50,7 @@
     },
     "environments": {
       "type": "array",
+      "description": "Environments this operation targets. Each entry declares a name and its variable values; an entry may instead be `{ uses: <file> }` to import an environment manifest wholesale.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -155,6 +156,7 @@
     },
     "steps": {
       "type": "array",
+      "description": "The ordered steps of the operation. An entry may instead be `{ uses: <file>, with: {...} }` to expand the steps of another file inline.",
       "minItems": 1,
       "items": {
         "oneOf": [
@@ -388,6 +390,24 @@
                   }
                 ]
               },
+              "verify": {
+                "deprecated": true,
+                "description": "DEPRECATED - use `expect:` instead. Backward-compatible shorthand only: a bare string, or an object whose `expect` key is lifted into `expect`. EVERY OTHER KEY IS DISCARDED - in particular `verify.command:` is silently dropped and never runs. There is no separate verification command: a step runs its own `command:`, and `expect` is matched against that output.",
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "description": "Shorthand for `expect: <string>` (expect contains)"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "expect": {
+                        "$ref": "#/properties/steps/items/oneOf/1/properties/expect"
+                      }
+                    }
+                  }
+                ]
+              },
               "timeline": {
                 "oneOf": [
                   {
@@ -491,7 +511,7 @@
                 "description": "Environment-specific step overrides (can override any step field except 'when' and 'variants')"
               },
               "rollback": {
-                "description": "Rollback steps for this step. A rollback step is a full step (see #/definitions/rollbackStep). Array format preferred; object format accepted for backward compatibility (parser normalizes to array).",
+                "description": "Rollback steps for this step. A rollback step is a full step with the same field surface (see the Rollback step reference). Array format preferred; object format accepted for backward compatibility (parser normalizes to array).",
                 "oneOf": [
                   {
                     "type": "array",
@@ -545,12 +565,15 @@
     },
     "rollback": {
       "type": "object",
+      "description": "Operation-level rollback plan, offered as [g] global rollback at any step prompt during a run.",
       "properties": {
         "automatic": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Marks the plan as automatic. Non-interactive execution is NOT implemented - see ROADMAP.md; the plan is still offered interactively."
         },
         "conditions": {
           "type": "array",
+          "description": "Human-readable conditions under which this rollback plan should be run",
           "items": {
             "type": "string"
           }
@@ -562,26 +585,32 @@
         },
         "steps": {
           "type": "array",
+          "description": "Explicit rollback steps, run in the order given",
           "items": { "$ref": "#/definitions/rollbackStep" }
         }
       }
     },
     "metadata": {
       "type": "object",
+      "description": "Provenance for the operation document. Normally populated automatically and embedded in generated manuals rather than authored by hand.",
       "properties": {
         "created_at": {
           "type": "string",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "When the operation was created (ISO 8601)"
         },
         "updated_at": {
           "type": "string",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "When the operation was last modified (ISO 8601)"
         },
         "source": {
-          "type": "string"
+          "type": "string",
+          "description": "Where the operation originated (e.g. the source file or template it was created from)"
         },
         "git_hash": {
-          "type": "string"
+          "type": "string",
+          "description": "Git commit the operation was generated from, for traceability"
         }
       }
     }
@@ -766,6 +795,9 @@
               "minItems": 1
             }
           ]
+        },
+        "verify": {
+          "$ref": "#/properties/steps/items/oneOf/1/properties/verify"
         },
         "sub_steps": {
           "type": "array",
