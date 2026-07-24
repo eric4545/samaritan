@@ -151,3 +151,6 @@ evidence/
 .samaritan-runs/
 operations-cache/
 manuals/
+# Generated documentation reference (build artifact — see scripts/gen-docs).
+# Produced by `npm run docs:gen`, which docs:dev and docs:build run first.
+docs/reference/
