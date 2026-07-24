@@ -20,7 +20,7 @@ import {
   tableRow,
   text,
 } from '@atlaskit/adf-utils/builders';
-import { stepRollbackAnchor } from '../lib/anchor';
+import { stepRollbackAnchor, stepRollbackHeadingText } from '../lib/anchor';
 import { renderExpectParts } from '../lib/assertions';
 import type { GenerationMetadata } from '../lib/git-metadata';
 import {
@@ -1300,7 +1300,7 @@ function addSubStepRows(
           tableCell()(
             rollbackJumpParagraph(
               stepRollbackAnchor(subStep),
-              `Rollback for Step ${subStepId}`,
+              stepRollbackHeadingText(subStep),
             ),
           ),
           ...environments.map(() => tableCell()(paragraph(text('—')))),

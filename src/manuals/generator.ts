@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { resolveStepKey, stepRollbackAnchor } from '../lib/anchor';
+import {
+  resolveStepKey,
+  stepRollbackAnchor,
+  stepRollbackHeadingText,
+} from '../lib/anchor';
 import { renderExpectParts } from '../lib/assertions';
 import {
   type GenerationMetadata,
@@ -914,7 +918,7 @@ function generateStepRow(
       if (linkRollbacks) {
         rows += rollbackJumpLink(
           stepRollbackAnchor(subStep),
-          `Rollback for Step ${subStepPrefix}`,
+          stepRollbackHeadingText(subStep),
         );
         return;
       }
@@ -1254,7 +1258,7 @@ function generateSubStepRow(
       if (linkRollbacks) {
         rows += rollbackJumpLink(
           stepRollbackAnchor(nestedSubStep),
-          `Rollback for Step ${nestedStepId}`,
+          stepRollbackHeadingText(nestedSubStep),
         );
         return;
       }
@@ -1579,7 +1583,7 @@ function generateManualContent(
           markdown += closeStepTable(tableState);
           markdown += rollbackJumpLink(
             stepRollbackAnchor(step),
-            `Rollback for Step ${globalStepNumber}`,
+            stepRollbackHeadingText(step),
           );
         } else if (inlineRollbacks.length > 0) {
           // Close current table (next step row reopens lazily)
@@ -1698,33 +1702,70 @@ function generateManualContent(
       markdown += `**Conditions:** ${operation.rollback.conditions.join(', ')}\n\n`;
     }
 
-    markdown += '| Step |';
-    operation.environments.forEach((env) => {
-      markdown += ` ${env.name} |`;
-    });
-    markdown += '\n|------|';
-    operation.environments.forEach(() => {
-      markdown += '---------|';
-    });
-    markdown += '\n';
+    // Explicit operation-level plan steps stay a table. Folded per-step
+    // rollbacks (aggregate_step_rollbacks) are split out below as heading-slug
+    // jump targets — a hand-authored <a id> would be rewritten by sanitizers
+    // (GitHub prefixes it `user-content-`) and never resolve the inline link.
+    const explicitSteps = globalRollbackSteps.filter((rb) => !rb.sourceAnchor);
+    const foldedSteps = globalRollbackSteps.filter((rb) => rb.sourceAnchor);
 
-    // Anchor target for each folded per-step entry, emitted once per source
-    // step (into the Step cell) so the inline jump-links resolve here.
-    const emittedAnchors = new Set<string>();
-    const anchorCell = (anchorId?: string): string => {
-      if (!anchorId || emittedAnchors.has(anchorId)) return '';
-      emittedAnchors.add(anchorId);
-      return `<a id="${anchorId}"></a>`;
-    };
+    if (explicitSteps.length > 0) {
+      markdown += '| Step |';
+      operation.environments.forEach((env) => {
+        markdown += ` ${env.name} |`;
+      });
+      markdown += '\n|------|';
+      operation.environments.forEach(() => {
+        markdown += '---------|';
+      });
+      markdown += '\n';
 
-    // Emit a table row for a rollback step (and recurse into its sub_steps as
-    // Rollback Step N.M rows) so nested rollback structure isn't dropped.
-    const emitRollbackRow = (
-      rb: EffectiveRollbackStep,
-      label: string,
-    ): void => {
-      const namedLabel = rb.name ? `${label}: ${rb.name}` : label;
-      markdown += `| ${anchorCell(rb.sourceAnchor)}${namedLabel} |`;
+      // Emit a table row for a rollback step (and recurse into its sub_steps as
+      // Rollback Step N.M rows) so nested rollback structure isn't dropped.
+      const emitRollbackRow = (
+        rb: EffectiveRollbackStep,
+        label: string,
+      ): void => {
+        const namedLabel = rb.name ? `${label}: ${rb.name}` : label;
+        markdown += `| ${namedLabel} |`;
+        operation.environments.forEach((env) => {
+          const cellContent = renderRollbackCellMarkdown(
+            rb,
+            env,
+            resolveVariables,
+            operationDir,
+            {},
+          );
+          markdown += ` ${cellContent} |`;
+        });
+        markdown += '\n';
+        rb.sub_steps?.forEach((sub, subIndex) => {
+          emitRollbackRow(sub, `${label}.${subIndex + 1}`);
+        });
+      };
+
+      explicitSteps.forEach((rb, index) => {
+        emitRollbackRow(rb, `Rollback Step ${index + 1}`);
+      });
+      markdown += '\n';
+    }
+
+    // Folded per-step rollbacks: each source step gets a renderer-safe HEADING
+    // (its slug == sourceAnchor == the inline jump-link target) followed by an
+    // env table. Siblings of one step share the heading (dedup by anchor).
+    const emittedFoldedHeadings = new Set<string>();
+    foldedSteps.forEach((rb) => {
+      const anchor = rb.sourceAnchor as string;
+      if (!emittedFoldedHeadings.has(anchor)) {
+        emittedFoldedHeadings.add(anchor);
+        markdown += `### ${rb.sourceHeading ?? rb.name}\n\n`;
+      } else if (rb.name) {
+        // Another rollback entry for the same step: label its own action so it
+        // is distinguishable beneath the shared heading.
+        markdown += `**${rb.name}**\n\n`;
+      }
+      markdown += '| Environment | Rollback Action |\n';
+      markdown += '|-------------|----------------|\n';
       operation.environments.forEach((env) => {
         const cellContent = renderRollbackCellMarkdown(
           rb,
@@ -1732,20 +1773,12 @@ function generateManualContent(
           resolveVariables,
           operationDir,
           {},
+          true,
         );
-        markdown += ` ${cellContent} |`;
+        markdown += `| ${env.name} | ${cellContent} |\n`;
       });
       markdown += '\n';
-      rb.sub_steps?.forEach((sub, subIndex) => {
-        emitRollbackRow(sub, `${label}.${subIndex + 1}`);
-      });
-    };
-
-    globalRollbackSteps.forEach((rb, index) => {
-      emitRollbackRow(rb, `Rollback Step ${index + 1}`);
     });
-
-    markdown += '\n';
   }
 
   return markdown;
@@ -1782,9 +1815,6 @@ export function generateSingleEnvManual(
   // their folded entries in the bottom Rollback Plan.
   const aggregateRollbacks =
     workingOperation.rollback?.aggregate_step_rollbacks === true;
-  // Tracks which rollback anchors have been emitted so each jump-link target
-  // appears exactly once in the Rollback Plan.
-  const emittedRollbackAnchors = new Set<string>();
 
   function resolveCmd(
     cmd: string,
@@ -1967,7 +1997,7 @@ export function generateSingleEnvManual(
     if (aggregateRollbacks && inlineRollbacks.length > 0) {
       // Collapse the inline block to a jump-link into the bottom Rollback Plan.
       lines.push(
-        `↩ **Rollback:** [Rollback for ${prefix} ↓](#${stepRollbackAnchor(step)})`,
+        `↩ **Rollback:** [${stepRollbackHeadingText(step)} ↓](#${stepRollbackAnchor(step)})`,
       );
       lines.push('');
     } else {
@@ -1992,20 +2022,19 @@ export function generateSingleEnvManual(
     label: string,
     headingLevel: number,
     stepVariables: Record<string, any> = {},
-    anchorId?: string,
+    headingOverride?: string,
   ): void {
     const substituteVars = rb.options?.substitute_vars ?? true;
     const resolve = resolveVariables && substituteVars;
     const hashes = '#'.repeat(Math.min(headingLevel, 6));
-    const heading = rb.name
-      ? `${label}: ${resolve ? resolveCmd(rb.name, stepVariables) : rb.name}`
-      : label;
-    // Anchor target for a folded per-step entry (jump-link destination),
-    // emitted once per source step.
-    if (anchorId && !emittedRollbackAnchors.has(anchorId)) {
-      emittedRollbackAnchors.add(anchorId);
-      lines.push(`<a id="${anchorId}"></a>`);
-    }
+    // `headingOverride` renders a folded aggregate entry under its renderer-safe
+    // heading (slug == the inline jump-link's anchor); sub_steps keep numbering
+    // off `label`. Otherwise the heading is the usual `<label>: <name>`.
+    const heading =
+      headingOverride ??
+      (rb.name
+        ? `${label}: ${resolve ? resolveCmd(rb.name, stepVariables) : rb.name}`
+        : label);
     lines.push(`${hashes} ${heading}`);
     lines.push('');
 
@@ -2153,14 +2182,24 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
+    // Folded aggregate entries (sourceAnchor) render under a renderer-safe
+    // heading whose slug is the inline jump-link target; explicit plan steps
+    // keep their `Rollback Step N` heading. Siblings of one source step share
+    // the heading (emitted once per anchor).
+    const emittedFoldedHeadings = new Set<string>();
     globalRollbackSteps.forEach((rb, index) => {
-      renderRollbackStepSingleEnv(
-        rb,
-        `Rollback Step ${index + 1}`,
-        3,
-        {},
-        rb.sourceAnchor,
-      );
+      if (rb.sourceAnchor && !emittedFoldedHeadings.has(rb.sourceAnchor)) {
+        emittedFoldedHeadings.add(rb.sourceAnchor);
+        renderRollbackStepSingleEnv(
+          rb,
+          `Rollback Step ${index + 1}`,
+          3,
+          {},
+          rb.sourceHeading,
+        );
+      } else {
+        renderRollbackStepSingleEnv(rb, `Rollback Step ${index + 1}`, 3, {});
+      }
     });
   }
 

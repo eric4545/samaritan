@@ -57,11 +57,13 @@ interactive `[g]` global-rollback jump (which uses only **completed** steps).
 Opt-in (default false). Example: `examples/global-rollback-aggregated.yaml`.
 
 With this flag on, the generated manuals also **centralize** per-step rollbacks:
-each step's inline rollback collapses to a **jump-link** into its folded entry in
-the Rollback Plan (which carries the anchor target), and the duplicate **Rollback
+each step's inline rollback collapses to a **jump-link** labelled `Rollback for
+"<step>"` into its folded entry in the Rollback Plan, and the duplicate **Rollback
 Procedures** section is dropped — so the rollback content lives in one place and
-the step flow stays readable. Applies to all formats (Markdown, Confluence wiki,
-ADF). With the flag off, rendering is unchanged.
+the step flow stays readable. In Markdown the target is a renderer-safe **heading
+slug** (`### Rollback for "<step>"`) so the link jumps in sanitized previews
+(GitHub); Confluence wiki uses a `{anchor}` macro and ADF an anchor-macro node.
+Applies to all formats. With the flag off, rendering is unchanged.
 
 ## Step content fields (shared by steps AND rollback steps — `StepContent`)
 

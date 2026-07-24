@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { Command } from 'commander';
-import { stepRollbackAnchor } from '../../lib/anchor';
+import { stepRollbackAnchor, stepRollbackHeadingText } from '../../lib/anchor';
 import { renderExpectParts } from '../../lib/assertions';
 import { getBuiltinVariables } from '../../lib/builtin-variables';
 import { createGenerationMetadata } from '../../lib/git-metadata';
@@ -1561,7 +1561,7 @@ ${filteredOperation.environments
         if (aggregateRollbacks && stepRollbacks.length > 0) {
           // Collapse the inline block to a single jump-link into the bottom
           // Rollback Plan (the {anchor} target lives there).
-          content += `\n(<) *Rollback:* [Rollback for Step ${stepNumber} |#${stepRollbackAnchor(step)}]\n\n`;
+          content += `\n(<) *Rollback:* [${stepRollbackHeadingText(step)} |#${stepRollbackAnchor(step)}]\n\n`;
           tableOpen = false;
           return;
         }
@@ -2231,7 +2231,7 @@ function addConfluenceSubStepRows(
       const subRollbacks = (subStep.rollback ?? []).filter(hasRollbackContent);
       if (linkRollbacks && subRollbacks.length > 0) {
         // Collapse the inline block to a jump-link into the bottom Rollback Plan.
-        content += `\n(<) *Rollback:* [Rollback for Step ${subStepId} |#${stepRollbackAnchor(subStep)}]\n\n`;
+        content += `\n(<) *Rollback:* [${stepRollbackHeadingText(subStep)} |#${stepRollbackAnchor(subStep)}]\n\n`;
         return;
       }
       subRollbacks.forEach((subRb: any, subRbIndex: number) => {
