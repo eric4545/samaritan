@@ -901,6 +901,27 @@ common_variables > variables: > env_file
 
 If the same key appears in both `variables:` and `common_variables:`, `common_variables:` wins. See `examples/top-level-variables.yaml`.
 
+#### Built-in run-time variables
+
+SAMARITAN provides built-in variables that resolve **late** — at run time (in the
+interactive loop, re-evaluated each step), or at generation time with
+`--resolve-vars`. They never need to be declared, and a user-defined variable of
+the same name always wins (built-ins are the lowest-priority defaults).
+
+| Variable | Value | Notes |
+|---|---|---|
+| `${RUN_START_DATE}` | `YYYY-MM-DD` | Fixed at run/session start; **resume-safe** (from the original `started_at`) |
+| `${RUN_START_TIME}` | `HH:MM:SS` | Fixed at run/session start |
+| `${CURRENT_DATE}` | `YYYY-MM-DD` | Re-evaluated per step |
+| `${CURRENT_TIME}` | `HH:MM:SS` | Re-evaluated per step |
+| `${CURRENT_DATETIME}` | `YYYY-MM-DD HH:MM:SS` | Re-evaluated per step |
+| `${ELAPSED_TIME}` | e.g. `1h 16m` | Humanized time since run start — your live **time-to-recover** |
+
+At **generation time** (`--resolve-vars`), `CURRENT_*`/`RUN_START_*` resolve to the
+generation clock; `${ELAPSED_TIME}` is a run-only value and is left literal in the
+manual. `validate` warns if you define a variable that shadows a built-in name.
+See `examples/builtin-variables.yaml`.
+
 **Benefits:**
 - **Audit Trail**: Know exactly which code version generated each manual
 - **Environment Focus**: Production manuals show only production procedures
@@ -1069,6 +1090,58 @@ samaritan report merge <alice-session-id> <bob-session-id> -o merged-report.md
 ```
 
 See `examples/multi-operator.yaml` for a complete runnable example.
+
+#### Timeout & Session metadata
+
+`timeout` (seconds) and `session` (the tmux pane a step runs in) render in every
+manual format — for steps, sub-steps, and rollback steps — as `⏱ Timeout: <N>s`
+and `🖥 Session: <name>`:
+
+```yaml
+steps:
+  - name: Deploy Application
+    type: manual
+    timeout: 300          # ⏱ Timeout: 300s in generated manuals
+    session: execution    # 🖥 Session: execution in generated manuals
+    command: kubectl apply -f deployment.yaml
+```
+
+#### Step Dependencies (`needs`)
+
+Model dependencies between steps, like GitHub Actions `jobs.<id>.needs`. A
+`needs` entry references another step by its `id` or `name` (and, for a
+`foreach`/`matrix` step, its original authored name — so it depends on every
+expanded instance):
+
+```yaml
+steps:
+  - name: Build image
+    id: build
+    command: docker build -t app .
+  - name: Deploy
+    id: deploy
+    needs: [build]        # runs after Build
+    command: kubectl apply -f app.yaml
+  - name: Smoke test
+    needs: [deploy]
+    command: curl -f https://app/health
+```
+
+What `needs` drives:
+
+- **`validate`**: unknown references warn (error under `--strict`); **cycles,
+  self-references, and forward references** (a step needing a *later* step, which
+  can never be satisfied at run time) are always errors.
+- **Interactive `run`**: before a step whose dependencies aren't complete (e.g.
+  after a `[j]` jump or `--from-step`), the run loop warns and offers to go back.
+- **Rollback**: the global rollback plan (`[g]`) unwinds completed steps in
+  **reverse-topological order** when `needs` are present, so a step is undone
+  before the steps it depends on. Pressing `[r]` on a step with no rollback of
+  its own offers the nearest upstream step's rollback (following the `needs`
+  chain).
+
+`needs` is honored on **top-level steps** (v1); on sub-steps it is reported and
+ignored. See `examples/deployment-with-needs.yaml`.
 
 #### External Script Files (`script`)
 
@@ -1632,7 +1705,8 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 **Step display in sidecar:**
 - `type: automatic` steps: Command is displayed prominently; the `command_displayed` event is written to the audit log (not `command_sent`). The report renders it as `**Command (run by operator)**`.
 - `type: manual` steps: Same prompt loop as always.
-- Both types offer `[v] verify` (when `expect` is defined), `[t] attach pane`, and `[p] send to pane` (when the step has a command and a pane is attached).
+- **Script-only steps** (`script:` with no inline `command`): the run loop shows `Script: <path>`, embeds the script file's content, and displays the `bash <path>` invocation to run. `[c] copy` and `[p] send to pane` operate on that `bash <path>` invocation.
+- Both types offer `[v] verify` (when `expect` is defined), `[t] attach pane`, and `[p] send to pane` (when the step has a command **or a `script`** and a pane is attached).
 
 ### Execution flow (spawn-own sessions)
 
@@ -1733,8 +1807,9 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 - **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's captured evidence (type, description, and stored path), lets you pick one by number to delete, removes it from the session record, and — for file/screenshot/video evidence copied into the session's evidence directory — deletes the copy from disk too (your original source file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event, and the `--report` Markdown omits removed items entirely.
 - **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutputDetailed`/`interpolateExpect` machinery `automatic` steps use), evaluating **every** check (not just the first failure) and rendering the PASS/FAIL checklist + highlighted, line-numbered output described in [Verify output: checklist, highlighting, and the line-number gutter](#verify-output-checklist-highlighting-and-the-line-number-gutter) — and, on failure, the override/rollback/`[m]` more/`[v]` re-verify/stop prompt. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
   - **Auto-capture on pass (closes the `expect` ↔ `evidence` loop):** the first time a step's `[v]` verify **passes**, the verified pane output is automatically saved as a `command_output` evidence item (marked `automatic`/`validated`, `source: verify`) — so the output you checked also becomes the output recorded in the session and `--report`. The evidence is captured from the pane's **rendered screen** (`tmux capture-pane -p -J`), so it reads as clean text in the report instead of the raw terminal byte stream (no ANSI/cursor-move/redraw noise). Re-pressing `[v]` won't record duplicates. `evidence` (the record) and `expect` (the check) stay separate concepts; this just records what you verified.
-- **`[r]` rollback** — runs *this step's* `rollback` (sends each command via tmux, or lists them when there's no session) and stays on the step.
-- **`[g]` global rollback** — only offered when the operation declares a top-level `rollback:` block. Previews the **consolidated** recovery — the explicit `rollback.steps` plus, when `aggregate_step_rollbacks` is on, every **completed** step's own rollback in reverse order — asks for confirmation, runs it, then aborts the operation (the session stays resumable). Use it when a failure means abandoning forward progress and unwinding what's been done so far.
+- **`[r]` rollback** — runs *this step's* `rollback` (sends each command via tmux, or lists them when there's no session) and stays on the step. If this step has **no rollback**, it offers the **nearest upstream** step's rollback instead — following the `needs` chain if present, otherwise scanning earlier steps in document order (only completed steps are offered).
+- **`[g]` global rollback** — only offered when the operation declares a top-level `rollback:` block. Previews the **consolidated** recovery — the explicit `rollback.steps` plus, when `aggregate_step_rollbacks` is on, every **completed** step's own rollback in reverse order (ordered by reverse-topological order when `needs` are present) — asks for confirmation, runs it, then aborts the operation (the session stays resumable). Use it when a failure means abandoning forward progress and unwinding what's been done so far.
+- **Forward gating (`needs`)** — before starting a step whose `needs` aren't all completed (e.g. a dependency was skipped by `[j]` jump or `--from-step`), the run loop warns (`⚠️ This step needs: …`) and prompts `Start anyway? [y=proceed / Enter=go back]`. `y` proceeds and records a `needs_override` audit event; Enter rewinds to the first unmet dependency. A **skipped** dependency counts as unmet.
 - **`[p]` send to pane** (sidecar only) — **pastes** the step's `${VAR}`-resolved command into the attached tmux pane **without** pressing Enter, so you review it at your own prompt and run it yourself. The command is delivered via a tmux paste buffer with **bracketed paste** (`paste-buffer -p`), so a multi-line command (e.g. a heredoc script) lands as **one atomic block** at your prompt and does **not** execute line-by-line — you press Enter once yourself to run it. Only offered when the step has a command and a pane is attached (a spawn-own `sessions:` pane, or one attached via `[t]`/`--attach`); with nothing attached it tells you to `[t]` attach first. To re-run a command during verify, just press `[p]` again, then `[v]`. Logged as a `user_input`/`send_to_pane` breadcrumb in the JSONL audit log — sidecar still never executes anything on your behalf.
 - **`[b]` back** — go back to an earlier, already-processed step to re-run it (e.g. an external dependency was fixed and you want to retry from there). Shows a numbered picker of the prior steps; the chosen step **and every step after it** are reset to pending and execution resumes from there. The append-only JSONL audit log keeps the full history of the earlier attempt, and the rewound step index is persisted so `resume` stays consistent. Not offered on the first step.
 - **`[j]` jump** — jump **forward** to a later step (e.g. steps 3–5 are irrelevant this run and you want to go straight to step 6). Shows a numbered picker of the steps after the current one; the current step and every step up to (but not including) the target are recorded as **skipped** (⏭) in the run report, and execution resumes at the target. The append-only JSONL audit log keeps the full history. Not offered on the last step. To start a fresh run partway through instead, use `run --from-step <N>` (see below).

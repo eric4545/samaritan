@@ -1,0 +1,44 @@
+name: Built-in Run-Time Variables Demo
+version: 1.0.0
+description: |
+  Demonstrates SAMARITAN's built-in run-time variables. These resolve LATE
+  (at run time, or at generation time with --resolve-vars) and never need to be
+  declared in variables:. User-defined variables of the same name always win.
+
+  Available built-ins:
+    ${RUN_START_TIME}    HH:MM:SS   fixed at run/session start (resume-safe)
+    ${RUN_START_DATE}    YYYY-MM-DD fixed at run/session start
+    ${CURRENT_DATE}      YYYY-MM-DD re-evaluated per step
+    ${CURRENT_TIME}      HH:MM:SS   re-evaluated per step
+    ${CURRENT_DATETIME}  YYYY-MM-DD HH:MM:SS
+    ${ELAPSED_TIME}      humanized duration since run start (time-to-recover),
+                         e.g. "1h 16m" — run-only, stays literal in manuals
+
+environments:
+  - name: production
+    description: Production environment
+    variables:
+      BACKUP_BUCKET: s3://acme-prod-backups
+
+steps:
+  - name: Snapshot database with a timestamped name
+    type: manual
+    instruction: |
+      Take a database snapshot named for the run start, so re-runs and resumes
+      keep a stable name.
+    command: >-
+      pg_dump prod | gzip >
+      backups/db-${RUN_START_DATE}-${RUN_START_TIME}.sql.gz
+
+  - name: Upload snapshot
+    type: manual
+    command: >-
+      aws s3 cp backups/db-${RUN_START_DATE}-${RUN_START_TIME}.sql.gz
+      ${BACKUP_BUCKET}/db-${RUN_START_DATE}.sql.gz
+
+  - name: Record recovery time
+    type: manual
+    instruction: |
+      Note how long recovery has taken so far. ${ELAPSED_TIME} is the time since
+      the run started — your live time-to-recover.
+    command: 'echo "Recovery elapsed at ${CURRENT_TIME}: ${ELAPSED_TIME}"'

@@ -3,6 +3,7 @@ import { basename, dirname, join } from 'node:path';
 import { Command } from 'commander';
 import { stepRollbackAnchor } from '../../lib/anchor';
 import { renderExpectParts } from '../../lib/assertions';
+import { getBuiltinVariables } from '../../lib/builtin-variables';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
@@ -14,6 +15,7 @@ import {
   substituteExpectVars,
   substituteVariables,
 } from '../../lib/step-resolution';
+import { formatTimelineForDisplay } from '../../lib/timeline-format';
 import { generateADFString } from '../../manuals/adf-generator';
 import {
   generateManualWithMetadata,
@@ -160,11 +162,51 @@ class DocumentationGenerator {
    * single-file path and the per-environment --all-envs loop so the operation
    * is parsed only once per invocation.
    */
+  /**
+   * When --resolve-vars is set, inject the built-in run-time variables
+   * (CURRENT_*, RUN_START_*) as low-priority defaults under common_variables and
+   * every environment's variables, using the generation clock. ELAPSED_TIME is
+   * deliberately omitted (a run-only duration; it stays literal in manuals).
+   * User-defined variables of the same name win (built-ins are merged UNDER).
+   */
+  private injectBuiltinVariables(operation: any): any {
+    const now = new Date();
+    const builtins = getBuiltinVariables({
+      startTime: now,
+      now,
+      includeElapsed: false,
+    });
+    const mergeUnder = (userVars: Record<string, any> | undefined) => ({
+      ...builtins,
+      ...(userVars ?? {}),
+    });
+
+    const variables: Record<string, any> = {};
+    for (const [envName, envVars] of Object.entries(
+      operation.variables ?? {},
+    )) {
+      variables[envName] = mergeUnder(envVars as Record<string, any>);
+    }
+
+    return {
+      ...operation,
+      common_variables: mergeUnder(operation.common_variables),
+      variables,
+      environments: (operation.environments ?? []).map((env: any) => ({
+        ...env,
+        variables: mergeUnder(env.variables),
+      })),
+    };
+  }
+
   private async renderManual(
     operation: any,
     operationFile: string,
     options: GenerateOptions,
   ): Promise<void> {
+    if (options.resolveVars) {
+      operation = this.injectBuiltinVariables(operation);
+    }
     const targetEnv = getTargetEnvironment(options);
     const envSuffix = targetEnv ? ` (${targetEnv})` : '';
     const format = options.format || 'markdown';
@@ -857,36 +899,6 @@ function collectAllStepsWithTimelineForConfluence(steps: any[]): any[] {
   return result;
 }
 
-/**
- * Format timeline data for display in documentation
- */
-function formatTimelineForDisplay(timeline: any): string {
-  if (typeof timeline === 'string') {
-    return timeline;
-  }
-
-  // Structured format - convert to natural, readable format
-  const parts: string[] = [];
-
-  // Start time or dependency
-  if (timeline.start) {
-    parts.push(timeline.start);
-  } else if (timeline.after) {
-    parts.push(`(after ${timeline.after})`);
-  }
-
-  // Duration with "for" prefix if we have a start time
-  if (timeline.duration) {
-    if (timeline.start) {
-      parts.push(`for ${timeline.duration}`);
-    } else {
-      parts.push(timeline.duration);
-    }
-  }
-
-  return parts.join(' ');
-}
-
 // Export as standalone function for testing
 export function generateConfluenceContent(
   operation: any,
@@ -1363,6 +1375,10 @@ ${filteredOperation.environments
           stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`;
         if (step.needs && step.needs.length > 0)
           stepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(step.needs.join(', '))}`;
+        if (step.timeout != null)
+          stepInfo += `\n(time) Timeout: ${step.timeout}s`;
+        if (step.session)
+          stepInfo += `\n(server) Session: ${escapeConfluenceMacros(step.session)}`;
         if (step.ticket)
           stepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket)}`;
         if (step.if)
@@ -1382,23 +1398,29 @@ ${filteredOperation.environments
             return;
           }
 
+          // Apply environment-specific variant overrides (command, instruction,
+          // script, expect, evidence, pic/reviewer, options) for this env's
+          // cell. The shared name/description cell above stays on the base step,
+          // matching the markdown/ADF multi-env renderers.
+          const effectiveStep = mergeStepVariant(step, env.name);
+
           let cellContent = '';
 
           // Get step-level options (defaults)
-          const substituteVars = step.options?.substitute_vars ?? true;
+          const substituteVars = effectiveStep.options?.substitute_vars ?? true;
           const showCommandSeparately =
-            step.options?.show_command_separately ?? false;
+            effectiveStep.options?.show_command_separately ?? false;
 
           // Process instruction (always render as markdown)
-          if (step.instruction) {
-            let displayInstruction = step.instruction;
+          if (effectiveStep.instruction) {
+            let displayInstruction = effectiveStep.instruction;
 
             // Apply variable substitution if enabled
             if (resolveVars && substituteVars) {
               displayInstruction = substituteVariables(
                 displayInstruction,
                 env.variables || {},
-                step.variables,
+                effectiveStep.variables,
               );
             }
 
@@ -1407,25 +1429,25 @@ ${filteredOperation.environments
           }
 
           // Process command (always render as code block)
-          if (step.command) {
-            let displayCommand = step.command;
+          if (effectiveStep.command) {
+            let displayCommand = effectiveStep.command;
 
             // Apply variable substitution if enabled
             if (resolveVars && substituteVars) {
               displayCommand = substituteVariables(
                 displayCommand,
                 env.variables || {},
-                step.variables,
+                effectiveStep.variables,
               );
             }
 
             const trimmedCommand = displayCommand.replace(/\n+$/, '');
 
             // Show command separately or inline
-            if (showCommandSeparately && step.instruction) {
+            if (showCommandSeparately && effectiveStep.instruction) {
               // Show command in separate labeled section
               cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
-            } else if (!step.instruction) {
+            } else if (!effectiveStep.instruction) {
               // No instruction, just show command
               cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
             } else {
@@ -1435,15 +1457,18 @@ ${filteredOperation.environments
           }
 
           // Process script (external shell script file)
-          if (step.script) {
+          if (effectiveStep.script) {
             const sep = cellContent ? '\n' : '';
-            cellContent += `${sep}*Script:* \`${step.script}\``;
+            cellContent += `${sep}*Script:* \`${effectiveStep.script}\``;
             if (operationDir) {
               try {
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
                 const fs = require('node:fs');
                 const nodePath = require('node:path');
-                const scriptPath = nodePath.resolve(operationDir, step.script);
+                const scriptPath = nodePath.resolve(
+                  operationDir,
+                  effectiveStep.script,
+                );
                 const scriptContent = fs
                   .readFileSync(scriptPath, 'utf-8')
                   .trimEnd();
@@ -1455,15 +1480,15 @@ ${filteredOperation.environments
           }
 
           // Add expect assertions
-          if (step.expect != null) {
+          if (effectiveStep.expect != null) {
             const resolvedExpect =
               resolveVars && substituteVars
                 ? substituteExpectVars(
-                    step.expect,
+                    effectiveStep.expect,
                     env.variables || {},
-                    step.variables,
+                    effectiveStep.variables,
                   )
-                : step.expect;
+                : effectiveStep.expect;
             const parts = renderExpectParts(resolvedExpect);
             if (parts.length > 0) {
               const sep = cellContent ? '\n' : '';
@@ -1482,20 +1507,20 @@ ${filteredOperation.environments
           }
 
           // Add sign-off checkboxes if PIC or Reviewer is set (interactive checkboxes)
-          if (step.pic || step.reviewer) {
+          if (effectiveStep.pic || effectiveStep.reviewer) {
             cellContent += '\nSign-off:';
-            if (step.pic) {
+            if (effectiveStep.pic) {
               cellContent += '\n* [ ] PIC';
             }
-            if (step.reviewer) {
+            if (effectiveStep.reviewer) {
               cellContent += '\n* [ ] Reviewer';
             }
           }
 
           // Add evidence area with environment-specific results
-          if (step.evidence) {
+          if (effectiveStep.evidence) {
             cellContent += formatEvidenceArea(
-              step.evidence,
+              effectiveStep.evidence,
               env.name,
               operationDir,
             );
@@ -1689,6 +1714,15 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
             cellContent += `\n- [ ] Reviewer (${rollbackStep.reviewer})`;
         }
 
+        if (rollbackStep.timeout != null) {
+          const sep = cellContent ? '\n' : '';
+          cellContent += `${sep}(time) Timeout: ${rollbackStep.timeout}s`;
+        }
+        if (rollbackStep.session) {
+          const sep = cellContent ? '\n' : '';
+          cellContent += `${sep}(server) Session: ${escapeConfluenceMacros(rollbackStep.session)}`;
+        }
+
         // Fallback
         if (!cellContent) {
           cellContent = '-';
@@ -1871,6 +1905,15 @@ function renderInlineRollback(
       if (rb.reviewer) cellContent += `\n- [ ] Reviewer (${rb.reviewer})`;
     }
 
+    if (rb?.timeout != null) {
+      const sep = cellContent ? '\n' : '';
+      cellContent += `${sep}(time) Timeout: ${rb.timeout}s`;
+    }
+    if (rb?.session) {
+      const sep = cellContent ? '\n' : '';
+      cellContent += `${sep}(server) Session: ${escapeConfluenceMacros(rb.session)}`;
+    }
+
     if (rb?.evidence) {
       cellContent += formatEvidenceArea(rb.evidence, env.name, operationDir);
     }
@@ -2015,6 +2058,10 @@ function addConfluenceSubStepRows(
       subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(subStep.timeline))}`;
     if (subStep.needs && subStep.needs.length > 0)
       subStepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(subStep.needs.join(', '))}`;
+    if (subStep.timeout != null)
+      subStepInfo += `\n(time) Timeout: ${subStep.timeout}s`;
+    if (subStep.session)
+      subStepInfo += `\n(server) Session: ${escapeConfluenceMacros(subStep.session)}`;
     if (subStep.ticket)
       subStepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket)}`;
     if (subStep.if)

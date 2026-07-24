@@ -1,6 +1,9 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { buildGlobalRollback } from '../../src/lib/global-rollback';
+import {
+  buildEffectiveRollback,
+  buildGlobalRollback,
+} from '../../src/lib/global-rollback';
 import type { RollbackStep, Step } from '../../src/models/operation';
 
 function step(
@@ -93,5 +96,45 @@ describe('buildGlobalRollback', () => {
     const result = buildGlobalRollback([], nested, { aggregate: true });
     assert.equal(result[0].name, '↩ Rollback for "Deploy": Roll back');
     assert.equal(result[0].sub_steps?.length, 2);
+  });
+});
+
+describe('buildEffectiveRollback dependency ordering', () => {
+  function withNeeds(
+    name: string,
+    id: string,
+    rollbackCmd: string,
+    needs?: string[],
+  ): Step {
+    return {
+      name,
+      id,
+      type: 'manual',
+      needs,
+      rollback: [{ command: rollbackCmd }],
+    } as Step;
+  }
+
+  it('keeps document order for a valid backward-dependency chain', () => {
+    const plan = { steps: [], aggregate_step_rollbacks: true };
+    const steps = [
+      withNeeds('Build', 'build', 'undo-build'),
+      withNeeds('Deploy', 'deploy', 'undo-deploy', ['build']),
+    ];
+    const result = buildEffectiveRollback(plan, steps);
+    // aggregated in REVERSE step order: Deploy's rollback first, then Build's.
+    assert.deepStrictEqual(
+      result.map((r) => r.command),
+      ['undo-deploy', 'undo-build'],
+    );
+  });
+
+  it('is cycle-safe (does not throw) when steps form a cycle', () => {
+    const plan = { steps: [], aggregate_step_rollbacks: true };
+    const steps = [
+      withNeeds('A', 'a', 'undo-a', ['b']),
+      withNeeds('B', 'b', 'undo-b', ['a']),
+    ];
+    assert.doesNotThrow(() => buildEffectiveRollback(plan, steps));
   });
 });

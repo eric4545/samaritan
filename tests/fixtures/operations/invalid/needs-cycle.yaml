@@ -1,0 +1,20 @@
+name: Needs Cycle Test
+version: 1.0.0
+description: Two steps that depend on each other (a cycle)
+
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+
+steps:
+  - name: Step A
+    id: a
+    type: manual
+    needs: [b]
+    command: echo a
+  - name: Step B
+    id: b
+    type: manual
+    needs: [a]
+    command: echo b

@@ -1,11 +1,13 @@
 import { existsSync } from 'node:fs';
 import { Command } from 'commander';
+import { BUILTIN_VARIABLE_NAMES } from '../../lib/builtin-variables';
 import { formatRegexFinding, lintOperationRegex } from '../../lib/regex-lint';
 import {
   formatFinding,
   isShellcheckAvailable,
   lintOperationCommands,
 } from '../../lib/shell-lint';
+import { validateStepDeps } from '../../lib/step-deps';
 import type { Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
@@ -176,22 +178,38 @@ class OperationValidator {
   private validateSteps(
     operation: Operation,
     result: ValidationResult,
-    _options: ValidationOptions,
+    options: ValidationOptions,
   ): void {
     if (operation.steps.length === 0) {
       result.errors.push('At least one step must be defined');
       return;
     }
 
-    const stepNames = new Set<string>();
     const stepIds = new Set<string>();
 
-    // First pass: collect all step names and IDs
+    // First pass: collect all step IDs
     for (let i = 0; i < operation.steps.length; i++) {
       const step = operation.steps[i];
-      stepNames.add(step.name);
       if (step.id) {
         stepIds.add(step.id);
+      }
+    }
+
+    // Dependency (`needs`) validation via the shared graph module:
+    //  - cycle / self-ref / forward-ref  → errors (can never be satisfied)
+    //  - unknown-ref                      → warning (error under --strict)
+    //  - ambiguous-ref / sub-step-needs   → warnings
+    for (const issue of validateStepDeps(operation.steps)) {
+      if (
+        issue.kind === 'cycle' ||
+        issue.kind === 'self-ref' ||
+        issue.kind === 'forward-ref'
+      ) {
+        result.errors.push(issue.message);
+      } else if (issue.kind === 'unknown-ref' && options.strict) {
+        result.errors.push(issue.message);
+      } else {
+        result.warnings.push(issue.message);
       }
     }
 
@@ -208,17 +226,6 @@ class OperationValidator {
       }
 
       // Note: Basic step type validation (command/instruction requirements) is now handled by JSON schema
-
-      // Validate dependencies (check both step names and IDs)
-      if (step.needs) {
-        for (const dep of step.needs) {
-          if (!stepNames.has(dep) && !stepIds.has(dep)) {
-            result.warnings.push(
-              `Step ${i + 1} (${step.name}): dependency '${dep}' not found among step names or IDs`,
-            );
-          }
-        }
-      }
 
       // Evidence validation
       if (
@@ -285,8 +292,12 @@ class OperationValidator {
       const envVariables = new Set(Object.keys(operation.variables[envName]));
 
       for (const usedVar of usedVariables) {
-        // Skip built-in variables
-        if (['DATE', 'TIME', 'USER', 'environment'].includes(usedVar)) {
+        // Skip built-in variables (legacy names + run-time built-ins, which are
+        // resolved late and never need an environment definition)
+        if (
+          ['DATE', 'TIME', 'USER', 'environment'].includes(usedVar) ||
+          (BUILTIN_VARIABLE_NAMES as readonly string[]).includes(usedVar)
+        ) {
           continue;
         }
 
@@ -296,6 +307,28 @@ class OperationValidator {
           );
         }
       }
+    }
+
+    // Warn when a user-defined variable shadows a built-in run-time variable.
+    // User vars win (built-ins are defaults), so this is intentional-but-notable.
+    const builtinSet = new Set<string>(BUILTIN_VARIABLE_NAMES);
+    const shadowed = new Set<string>();
+    const checkShadow = (vars: Record<string, any> | undefined) => {
+      for (const key of Object.keys(vars ?? {})) {
+        if (builtinSet.has(key)) shadowed.add(key);
+      }
+    };
+    checkShadow(operation.common_variables);
+    for (const envName of Object.keys(operation.variables)) {
+      checkShadow(operation.variables[envName]);
+    }
+    for (const step of operation.steps) {
+      checkShadow(step.variables);
+    }
+    for (const name of shadowed) {
+      result.warnings.push(
+        `Variable '${name}' shadows a built-in run-time variable; your value will be used instead of the built-in`,
+      );
     }
   }
 

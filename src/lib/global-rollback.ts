@@ -1,6 +1,7 @@
 import type { RollbackPlan, RollbackStep, Step } from '../models/operation';
 import { stepRollbackAnchor } from './anchor';
 import { hasRollbackContent } from './rollback';
+import { sortStepsByDependencies } from './step-deps';
 
 /**
  * A rollback step as it appears in the effective operation-level plan. Adds
@@ -20,15 +21,25 @@ export interface EffectiveRollbackStep extends RollbackStep {
  * `aggregate_step_rollbacks` is set. Thin wrapper over `buildGlobalRollback`
  * so the four manual renderers and the run loop share one call shape instead
  * of repeating the plan→opts ternary. Returns `[]` when there is no plan.
+ *
+ * When `needs` dependencies are present, the aggregated per-step rollbacks are
+ * ordered by REVERSE topological order (a dependent is undone before the step it
+ * depends on). For a valid document (dependencies only ever point backward) the
+ * topological order equals document order, so this is a no-op there — it only
+ * matters for `needs`-reordered steps. `sortStepsByDependencies` is cycle-safe.
  */
 export function buildEffectiveRollback(
   rollback: RollbackPlan | undefined,
   stepsToAggregate: Step[],
 ): EffectiveRollbackStep[] {
   if (!rollback) return [];
-  return buildGlobalRollback(rollback.steps ?? [], stepsToAggregate, {
-    aggregate: rollback.aggregate_step_rollbacks,
-  });
+  return buildGlobalRollback(
+    rollback.steps ?? [],
+    sortStepsByDependencies(stepsToAggregate),
+    {
+      aggregate: rollback.aggregate_step_rollbacks,
+    },
+  );
 }
 
 /**

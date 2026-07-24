@@ -20,6 +20,7 @@ import {
   cleanTerminalOutput,
   renderExpectDescription,
 } from '../../lib/assertions';
+import { getBuiltinVariables } from '../../lib/builtin-variables';
 import type { CaptureBackend } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
@@ -28,6 +29,7 @@ import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { generateReport, renderReport } from '../../lib/report-generator';
+import { findNearestRollbackSource } from '../../lib/rollback';
 import {
   buildStepRecords,
   foldEvents,
@@ -39,6 +41,7 @@ import {
   getSessionEvidenceDir,
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
+import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
 import {
   mergeStepVariables,
   substituteExpectVars,
@@ -745,6 +748,28 @@ class OperationRunner {
     console.log(`📝 Audit log: ${logger.path}`);
     const sessionState = new SessionState();
 
+    // Fixed run-start time for RUN_START_* / ELAPSED_TIME built-in variables.
+    // Sourced from the persisted session so `resume` reports the ORIGINAL start
+    // (guarded new Date(...) for older session files); falls back to now.
+    const persistedStart = sessionManager.getSession(
+      state.context.sessionId,
+    )?.started_at;
+    const runStartedAt = persistedStart ? new Date(persistedStart) : new Date();
+
+    // Step dependency graph (from `needs`) over the flat step list the loop
+    // iterates. Drives forward-gating and dependents-aware [r] rollback. Built
+    // once; the topology never changes during a run. v1 honors `needs` on
+    // TOP-LEVEL steps only (matching validate), so sub-step entries (labels with
+    // a letter suffix, e.g. "1a") have their outgoing needs cleared here.
+    const depGraph = buildStepDepGraph(
+      executor.getState().steps.map((s, idx) => {
+        const isTopLevel = /^\d+$/.test(flatSteps[idx]?.label ?? '');
+        return isTopLevel ? s.step : { ...s.step, needs: undefined };
+      }),
+    );
+    const stepIsCompleted = (idx: number): boolean =>
+      executor.getState().steps[idx]?.status === 'completed';
+
     // Persist progress after each interactive step action. The executor emits
     // step_completed BEFORE it advances currentStepIndex, so the event-driven
     // save in SessionManager records a stale index — this explicit sync
@@ -874,7 +899,13 @@ class OperationRunner {
       stepVars?: Record<string, any>,
     ): string | undefined => {
       if (!text) return text;
-      const scope = mergeStepVariables(vars, stepVars);
+      // Merge built-in run-time variables (CURRENT_*, ELAPSED_TIME, …) UNDER the
+      // user's vars each call, so they resolve fresh per step and user-defined
+      // variables of the same name win.
+      const scope = mergeStepVariables(
+        { ...getBuiltinVariables({ startTime: runStartedAt }), ...vars },
+        stepVars,
+      );
       try {
         return resolveVars(text, scope);
       } catch {
@@ -893,8 +924,22 @@ class OperationRunner {
       }
     };
 
+    // Read an external `script:` file relative to the operation file and return
+    // its content for display (mirrors the manual generators). Returns undefined
+    // on a missing/unreadable file so callers can show a graceful message.
+    const readScriptContent = (scriptPath: string): string | undefined => {
+      try {
+        const resolved = join(dirname(operationFile), scriptPath);
+        return readFileSync(resolved, 'utf-8').trimEnd();
+      } catch {
+        return undefined;
+      }
+    };
+
     const doRollback = async (step: Step, i: number): Promise<void> => {
       const hasRollbackSteps = step.rollback && step.rollback.length > 0;
+      const stateSteps = executor.getState().steps;
+
       if (controller && tmuxSession) {
         console.log('    🔄 Initiating rollback...');
         await controller.rollback(step, i, state.context.operator);
@@ -908,7 +953,45 @@ class OperationRunner {
         }
         await controller?.rollback(step, i, state.context.operator);
       } else {
-        console.log('    ℹ️  No rollback defined for this step.');
+        // This step has no rollback of its own — offer the nearest upstream
+        // step's rollback (needs chain first, else document order; only
+        // completed steps qualify).
+        const nearest = findNearestRollbackSource(
+          stateSteps.map((s) => s.step),
+          i,
+          { graph: depGraph, isCandidate: stepIsCompleted },
+        );
+        if (nearest) {
+          const sourceStep = stateSteps[nearest.stepIndex].step;
+          const label = flatSteps[nearest.stepIndex].label;
+          console.log('\n    This step has no rollback.');
+          for (const rb of flattenRollbackSteps(nearest.rollback)) {
+            if (rb.command)
+              console.log(
+                `      $ ${tryResolve(rb.command, sourceStep.variables)}`,
+              );
+          }
+          const ans = (
+            await question(
+              `    Nearest rollback comes from step [${label}] "${sourceStep.name}" — run it? [y/N]: `,
+            )
+          )
+            .trim()
+            .toLowerCase();
+          if (ans === 'y' || ans === 'yes') {
+            await controller?.runRollbackSteps(
+              nearest.rollback,
+              i,
+              state.context.operator,
+              'nearest',
+            );
+            console.log('    ↩  Nearest rollback complete.');
+            return;
+          }
+          console.log('    ↩  Skipped.');
+        } else {
+          console.log('    ℹ️  No rollback defined for this step.');
+        }
       }
     };
 
@@ -934,10 +1017,12 @@ class OperationRunner {
         '\n    🔄 Global rollback will run the following (reverse order):',
       );
       for (const rb of flattenRollbackSteps(rbSteps)) {
+        // Pass the rollback entry's own variables so a foreach-expanded
+        // rollback's ${LOOP_VAR} resolves in the preview, not just env vars.
         const cmd = rb.command
-          ? `$ ${tryResolve(rb.command)}`
+          ? `$ ${tryResolve(rb.command, rb.variables)}`
           : rb.instruction
-            ? `(manual) ${tryResolve(rb.instruction)}`
+            ? `(manual) ${tryResolve(rb.instruction, rb.variables)}`
             : '';
         const label = rb.name ?? '';
         console.log(
@@ -1483,6 +1568,10 @@ class OperationRunner {
         if (steps[k].status === 'skipped') logSkip(k);
       }
 
+      // Steps whose unmet-needs gate we've already bounced off once — prevents an
+      // infinite go-back loop under piped/EOF stdin (empty answer = go back).
+      const gatedBackOnce = new Set<number>();
+
       stepLoop: for (let i = startIndex; i < steps.length; i++) {
         const { step } = steps[i];
         const stepNum = `[${flatSteps[i].label}/${steps.length}]`;
@@ -1511,7 +1600,67 @@ class OperationRunner {
           continue;
         }
 
+        // Forward gating: if this step's `needs` aren't all completed (e.g. a
+        // dependency was skipped by [j] jump or --from-step), warn and offer to
+        // go back. Skipped ≠ completed. Operator agency: [y] proceeds anyway.
+        const missing = unmetNeeds(depGraph, i, stepIsCompleted);
+        if (missing.length > 0) {
+          const firstUnmet = missing[0];
+          const missingLabels = missing
+            .map((k) => `${steps[k].step.name} (${steps[k].status})`)
+            .join(', ');
+          console.log(`\n${DIVIDER}`);
+          console.log(`${stepNum} ${typeLabel}: ${step.name}`);
+          console.log(`    ⚠️  This step needs: ${missingLabels}`);
+          const proceed = (
+            await question(
+              `    Start anyway? [y=proceed / Enter=go back to "${steps[firstUnmet].step.name}"]: `,
+            )
+          )
+            .trim()
+            .toLowerCase();
+          if (proceed === 'y' || proceed === 'yes') {
+            logger.emit({
+              type: 'user_input',
+              action: 'needs_override',
+              step: i,
+              actor: state.context.operator,
+              notes: `unmet needs: ${missingLabels}`,
+            });
+          } else if (gatedBackOnce.has(i)) {
+            // Already went back from this gate once and returned unsatisfied —
+            // proceed to avoid an infinite bounce (piped/EOF stdin).
+            logger.emit({
+              type: 'user_input',
+              action: 'needs_override',
+              step: i,
+              actor: state.context.operator,
+              notes: `unmet needs (auto-proceed after go-back): ${missingLabels}`,
+            });
+          } else {
+            gatedBackOnce.add(i);
+            logger.emit({
+              type: 'user_input',
+              action: 'back',
+              step: i,
+              actor: state.context.operator,
+              notes: `go back to unmet dependency: ${steps[firstUnmet].step.name}`,
+            });
+            executor.goToStep(firstUnmet);
+            persistProgress();
+            i = firstUnmet - 1;
+            continue;
+          }
+        }
+
         const resolvedCommand = tryResolve(step.command, step.variables);
+        // A script-only step has no inline command; its runnable action is
+        // `bash <path>`. runnableCommand is what the operator can copy/paste
+        // ([c]/[p]) and defaults to the inline command when present.
+        const scriptRunHint = step.script
+          ? tryResolve(`bash ${step.script}`, step.variables)
+          : undefined;
+        const runnableCommand = resolvedCommand ?? scriptRunHint;
         const resolvedInstruction = tryResolve(
           step.instruction,
           step.variables,
@@ -1522,7 +1671,11 @@ class OperationRunner {
         // instead of leaking raw ${VAR}. The assertion path interpolates
         // separately (sessionState) inside controller.verifyOutput.
         const resolvedExpect = step.expect
-          ? substituteExpectVars(step.expect, vars, step.variables)
+          ? substituteExpectVars(
+              step.expect,
+              { ...getBuiltinVariables({ startTime: runStartedAt }), ...vars },
+              step.variables,
+            )
           : undefined;
 
         // Emit step_start for every step so the report can reconstruct the timeline
@@ -1578,6 +1731,12 @@ class OperationRunner {
         if (step.type === 'automatic' && !isSidecarAutomatic) {
           if (resolvedCommand)
             console.log(`\n${renderCodeBlock(resolvedCommand)}`);
+          else if (step.script) {
+            console.log(`\n    Script: ${step.script}`);
+            const scriptBody = readScriptContent(step.script);
+            if (scriptBody) console.log(renderCodeBlock(scriptBody));
+            else console.log(`    ⚠️  Script file not found: ${step.script}`);
+          }
 
           if (controller && step.session && resolvedCommand) {
             // tmux-backed automatic step
@@ -1710,6 +1869,26 @@ class OperationRunner {
               console.log('\n    Command reference:');
               console.log(renderCodeBlock(resolvedCommand));
             }
+          } else if (step.script) {
+            // A script-only step: show the path + embedded content, and the
+            // `bash <path>` invocation the operator runs (or [c]/[p] to copy).
+            console.log(`\n    Script: ${step.script}`);
+            const scriptBody = readScriptContent(step.script);
+            if (scriptBody) console.log(renderCodeBlock(scriptBody));
+            else console.log(`    ⚠️  Script file not found: ${step.script}`);
+            if (isSidecarAutomatic)
+              console.log('\n    Run this in your terminal:');
+            else console.log('\n    Run:');
+            if (runnableCommand) console.log(renderCodeBlock(runnableCommand));
+            if (isSidecarAutomatic && runnableCommand) {
+              const sessionName = step.session ?? 'default';
+              logger.emit({
+                type: 'command_displayed',
+                step: i,
+                session: sessionName,
+                command: runnableCommand,
+              });
+            }
           }
 
           // Baseline the capture offset at the start of each step.
@@ -1742,7 +1921,7 @@ class OperationRunner {
               '\n' +
                 renderKeyHints([
                   { key: '↵', label: 'done' },
-                  ...(resolvedCommand ? [{ key: 'c', label: 'copy' }] : []),
+                  ...(runnableCommand ? [{ key: 'c', label: 'copy' }] : []),
                   { key: 'n', label: 'note' },
                   { key: 'e', label: 'evidence' },
                   ...(evidenceForStep.length
@@ -1752,7 +1931,7 @@ class OperationRunner {
                   ...(mode === 'sidecar'
                     ? [{ key: 't', label: 'attach pane' }]
                     : []),
-                  ...(mode === 'sidecar' && resolvedCommand
+                  ...(mode === 'sidecar' && runnableCommand
                     ? [{ key: 'p', label: 'send to pane' }]
                     : []),
                   ...(i > 0 ? [{ key: 'b', label: 'back' }] : []),
@@ -1774,10 +1953,10 @@ class OperationRunner {
               break;
             }
             if (
-              resolvedCommand &&
+              runnableCommand &&
               (inputChoice === 'c' || inputChoice === 'copy')
             ) {
-              await copyCommand(resolvedCommand);
+              await copyCommand(runnableCommand);
               continue;
             }
             if (inputChoice === 'n' || inputChoice === 'note') {
@@ -1814,7 +1993,7 @@ class OperationRunner {
                 i,
                 captureSinceStepStart,
                 resolvedExpect,
-                resolvedCommand,
+                runnableCommand,
                 () => captureRef.backend?.captureScreen?.(sessionName),
               );
               continue;
@@ -1888,13 +2067,14 @@ class OperationRunner {
             }
             if (
               mode === 'sidecar' &&
-              resolvedCommand &&
+              runnableCommand &&
               (inputChoice === 'p' || inputChoice === 'send')
             ) {
-              // [p] — paste the resolved command into the attached pane WITHOUT
-              // executing it (no Enter). Operator reviews it, presses Enter
-              // themselves, then [v] to verify. Only available once a pane is
-              // attached (spawn-own session or [t]/--attach).
+              // [p] — paste the resolved command (or `bash <script>` for a
+              // script-only step) into the attached pane WITHOUT executing it
+              // (no Enter). Operator reviews it, presses Enter themselves, then
+              // [v] to verify. Only available once a pane is attached (spawn-own
+              // session or [t]/--attach).
               const backend = captureRef.backend;
               if (!backend?.hasTarget(sessionName) || !backend.pasteCommand) {
                 console.log(
@@ -1902,7 +2082,7 @@ class OperationRunner {
                 );
                 continue;
               }
-              backend.pasteCommand(sessionName, resolvedCommand);
+              backend.pasteCommand(sessionName, runnableCommand);
               // Recorded as a user_input breadcrumb (not command_sent): sidecar
               // never executes, so folding it into the step's command list would
               // render a misleading duplicate "Command sent" row in the report.
@@ -1911,7 +2091,7 @@ class OperationRunner {
                 action: 'send_to_pane',
                 step: i,
                 session: sessionName,
-                command: resolvedCommand,
+                command: runnableCommand,
                 actor: state.context.operator,
               });
               console.log(

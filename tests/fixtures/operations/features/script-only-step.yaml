@@ -1,0 +1,14 @@
+name: Script Only Step
+version: 1.0.0
+description: A step whose only action is an external script (no inline command)
+
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+
+steps:
+  - name: Run deploy script
+    type: manual
+    instruction: Review the script, then run it.
+    script: ./deploy.sh

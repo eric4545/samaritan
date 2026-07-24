@@ -1,0 +1,32 @@
+name: Structured Timeline Test
+version: 1.0.0
+description: Structured timeline objects must render formatted in every output format
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables: {}
+
+steps:
+  - name: Deploy service
+    type: manual
+    instruction: Deploy it
+    timeline:
+      start: '2024-01-15 09:00'
+      duration: 30m
+  - name: Parent step
+    type: manual
+    sub_steps:
+      - name: Section heading sub
+        type: manual
+        section_heading: true
+        pic: ops@example.com
+        timeline:
+          start: '2024-01-15 10:00'
+          duration: 15m
+      - name: Nested sub with timeline
+        type: manual
+        instruction: Check things
+        timeline:
+          after: Deploy service
+          duration: 10m

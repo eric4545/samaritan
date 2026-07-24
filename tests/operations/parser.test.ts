@@ -957,6 +957,35 @@ steps:
       }
     });
 
+    it('should import a template referencing a built-in variable without requiring with:', async () => {
+      const { resolve, join } = await import('node:path');
+      const templateAbsPath = resolve(
+        'tests/fixtures/templates/builtin-timestamp.yaml',
+      );
+      const yamlContent = `name: Builtin Template Test
+version: 1.0.0
+description: Template referencing a built-in run-time variable
+environments:
+  - name: staging
+steps:
+  - uses: ${templateAbsPath}
+`;
+      const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+      const { tmpdir } = await import('node:os');
+      const tmpDir = mkdtempSync(join(tmpdir(), 'samaritan-builtin-template-'));
+      const tmpPath = join(tmpDir, 'op.yaml');
+      writeFileSync(tmpPath, yamlContent);
+      try {
+        // Must NOT throw "Missing variables ... CURRENT_TIME".
+        const operation = await parseOperation(tmpPath);
+        assert.strictEqual(operation.steps.length, 1);
+        // The built-in stays a literal placeholder after parse (resolved late).
+        assert.match(operation.steps[0].command ?? '', /\$\{CURRENT_TIME\}/);
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
     it('should preserve phase: preflight set inside a template step', async () => {
       const { resolve } = await import('node:path');
       const templateAbsPath = resolve(

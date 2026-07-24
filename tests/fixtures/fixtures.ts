@@ -72,6 +72,14 @@ export const FIXTURES = {
   sectionHeadingFirst:
     'tests/fixtures/operations/features/section-heading-first.yaml',
 
+  // Structured timeline objects (start/duration/after)
+  structuredTimeline:
+    'tests/fixtures/operations/features/structured-timeline.yaml',
+
+  // options.substitute_vars: false keeps ${VAR} literal even with --resolve-vars
+  substituteVarsOff:
+    'tests/fixtures/operations/features/substitute-vars-off.yaml',
+
   // Nested sub-steps
   nestedSubSteps2Levels:
     'tests/fixtures/operations/features/nested-substeps-2-levels.yaml',
@@ -91,8 +99,17 @@ export const FIXTURES = {
   reviewerAndEnvEvidence:
     'tests/fixtures/operations/features/reviewer-and-env-evidence.yaml',
 
+  // Step dependencies (needs)
+  stepNeeds: 'tests/fixtures/operations/features/step-needs.yaml',
+  needsCycle: 'tests/fixtures/operations/invalid/needs-cycle.yaml',
+  needsForwardRef: 'tests/fixtures/operations/invalid/needs-forward-ref.yaml',
+
   // Run manifest: operation with explicit step ids
   withStepIds: 'tests/fixtures/operations/features/with-step-ids.yaml',
+
+  // Rollback steps carrying evidence (both step-level and operation-level)
+  rollbackWithEvidence:
+    'tests/fixtures/operations/features/rollback-with-evidence.yaml',
 
   // Rollback for sub-steps
   substepRollback: 'tests/fixtures/operations/features/substep-rollback.yaml',

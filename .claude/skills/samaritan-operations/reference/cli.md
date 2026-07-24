@@ -94,11 +94,12 @@ Per manual/sidecar step:
 - `[x]` remove evidence — only shown once evidence exists
 - `[v]` verify — run `step.expect` against captured pane output
 - `[t]` attach pane — (sidecar) attach/swap a tmux capture backend mid-run
-- `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command and a pane is attached. Re-run during verify = `[p]` then `[v]`
+- `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command (or a `script:`, whose `bash <path>` invocation is pasted) and a pane is attached. Re-run during verify = `[p]` then `[v]`
+- A **script-only step** (`script:` with no inline `command`) displays `Script: <path>`, the embedded script content, and a `bash <path>` runnable; `[c]` copy and `[p]` send-to-pane act on that `bash <path>` invocation
 - `[b]` back — go back to an earlier step and re-run from there (resets it + later steps to pending; audit log keeps the prior attempt); not offered on the first step
 - `[j]` jump — jump **forward** to a later step; the current step through the target are recorded as **skipped** (⏭) in the report, execution resumes at the target; not offered on the last step. Startup equivalent: `run --from-step <N>`
-- `[r]` rollback — run *this step's* `rollback`, stay on the step
-- `[g]` global rollback — only when the operation declares a top-level `rollback:`. Previews + runs the consolidated recovery (explicit `rollback.steps` + every **completed** step's rollback in reverse order when `aggregate_step_rollbacks: true`), then aborts the operation
+- `[r]` rollback — run *this step's* `rollback`, stay on the step. When this step has no rollback of its own, offers the **nearest upstream** step's rollback instead (needs chain first, else document order; only completed steps qualify).
+- `[g]` global rollback — only when the operation declares a top-level `rollback:`. Previews + runs the consolidated recovery (explicit `rollback.steps` + every **completed** step's rollback in reverse order when `aggregate_step_rollbacks: true`; ordered by reverse-topological order when `needs` are present), then aborts the operation
 - `q` / `quit` / `Ctrl+C` — **aborts** the operation, persists session as `paused` (resumable) and prints a resume hint (`Ctrl+C` saves too — it no longer hard-quits without saving)
 
 ## Evidence-required gate
@@ -112,6 +113,8 @@ one-line warning **on the same action bar** (`⚠️  This step requires evidenc
 the step (recorded as skipped, not completed). Disable with
 `--no-require-evidence`. Does NOT gate plain (non-sidecar) `type: automatic`
 steps.
+
+**Forward gating (`needs`):** before a step whose `needs` aren't all completed (e.g. a dependency was skipped by `[j]` jump or `--from-step`), the run loop warns (`⚠️ This step needs: …`) and prompts `Start anyway? [y=proceed / Enter=go back]`. `y` proceeds (logging a `needs_override` audit event); Enter rewinds to the first unmet dependency. Skipped ≠ completed.
 
 ## Run artifacts
 

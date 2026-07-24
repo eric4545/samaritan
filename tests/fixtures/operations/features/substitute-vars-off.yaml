@@ -1,0 +1,22 @@
+name: Substitute Vars Off Test
+version: 1.0.0
+description: A step with options.substitute_vars false must keep ${VAR} literal
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      TARGET_HOST: staging.example.com
+
+steps:
+  - name: Literal step
+    type: manual
+    options:
+      substitute_vars: false
+    instruction: Connect to ${TARGET_HOST}
+    command: ssh ${TARGET_HOST}
+    expect:
+      contains: connected to ${TARGET_HOST}
+  - name: Resolved step
+    type: manual
+    command: ssh ${TARGET_HOST}

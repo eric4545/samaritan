@@ -1,0 +1,27 @@
+name: Step Needs Test
+version: 1.0.0
+description: Valid step dependency chain (by id and by name), incl. a foreach dep
+
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+
+steps:
+  - name: Build image
+    id: build
+    type: manual
+    command: docker build -t app .
+
+  - name: Deploy region
+    type: manual
+    needs: [build]
+    foreach:
+      var: REGION
+      values: [us, eu]
+    command: kubectl apply -f app.yaml --context ${REGION}
+
+  - name: Smoke test
+    type: manual
+    needs: [Deploy region]
+    command: curl https://app/health

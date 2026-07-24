@@ -20,6 +20,7 @@ import {
   substituteExpectVars,
   substituteVariables,
 } from '../lib/step-resolution';
+import { formatTimelineForDisplay } from '../lib/timeline-format';
 import type {
   Environment,
   Operation,
@@ -177,33 +178,6 @@ function renderEvidenceItemMarkdown(
     md += `\`\`\`${evidenceLang(item.type)}\n${item.content.trimEnd()}\n\`\`\`\n\n`;
   }
   return md;
-}
-
-function formatTimelineForDisplay(timeline: any): string {
-  if (typeof timeline === 'string') {
-    return timeline;
-  }
-
-  // Structured format - convert to natural, readable format
-  const parts: string[] = [];
-
-  // Start time or dependency
-  if (timeline.start) {
-    parts.push(timeline.start);
-  } else if (timeline.after) {
-    parts.push(`(after ${timeline.after})`);
-  }
-
-  // Duration with "for" prefix if we have a start time
-  if (timeline.duration) {
-    if (timeline.start) {
-      parts.push(`for ${timeline.duration}`);
-    } else {
-      parts.push(timeline.duration);
-    }
-  }
-
-  return parts.join(' ');
 }
 
 function formatEvidenceInfo(
@@ -564,6 +538,15 @@ function renderRollbackCellMarkdown(
     if (rb.reviewer) cellContent += `<br>- [ ] Reviewer (${rb.reviewer})`;
   }
 
+  if (rb.timeout != null) {
+    const sep = cellContent ? '<br>' : '';
+    cellContent += `${sep}⏱ <em>Timeout: ${rb.timeout}s</em>`;
+  }
+  if (rb.session) {
+    const sep = cellContent ? '<br>' : '';
+    cellContent += `${sep}🖥 <em>Session: ${rb.session}</em>`;
+  }
+
   // Environment-specific evidence results
   if (rb.evidence) {
     cellContent += formatEvidenceInfo(rb.evidence, env.name, operationDir);
@@ -720,6 +703,16 @@ function generateStepRow(
   // Add timeline
   if (step.timeline) {
     stepCell += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
+  }
+
+  // Add timeout
+  if (step.timeout != null) {
+    stepCell += `<br>⏱ <em>Timeout: ${step.timeout}s</em>`;
+  }
+
+  // Add execution session
+  if (step.session) {
+    stepCell += `<br>🖥 <em>Session: ${step.session}</em>`;
   }
 
   // Add conditional expression if present
@@ -885,7 +878,9 @@ function generateStepRow(
           const metadata = [];
           if (subStep.pic) metadata.push(`👤 PIC: ${subStep.pic}`);
           if (subStep.timeline)
-            metadata.push(`⏱️ Timeline: ${subStep.timeline}`);
+            metadata.push(
+              `⏱️ Timeline: ${formatTimelineForDisplay(subStep.timeline)}`,
+            );
           rows += `_${metadata.join(' • ')}_\n\n`;
         }
       }
@@ -1033,6 +1028,16 @@ function generateSubStepRow(
   // Add timeline
   if (step.timeline) {
     stepCell += `<br>⏱️ <em>Timeline: ${formatTimelineForDisplay(step.timeline)}</em>`;
+  }
+
+  // Add timeout
+  if (step.timeout != null) {
+    stepCell += `<br>⏱ <em>Timeout: ${step.timeout}s</em>`;
+  }
+
+  // Add execution session
+  if (step.session) {
+    stepCell += `<br>🖥 <em>Session: ${step.session}</em>`;
   }
 
   // Add conditional expression if present (for sub-steps)
@@ -1795,8 +1800,16 @@ export function generateSingleEnvManual(
 
     // Resolve ${VAR} placeholders (e.g. in foreach-expanded step names) against
     // env variables + this step's own variables when --resolve-vars is set.
+    // Name/description resolve regardless of substitute_vars (parity with the
+    // multi-env table's name cell).
     const resolveText = (s: string): string =>
       resolveCmd(s, effectiveStep.variables);
+
+    // Content fields (instruction/command/expect) additionally honor the step's
+    // options.substitute_vars flag, matching the multi-env/ADF/Confluence paths.
+    const substituteVars = effectiveStep.options?.substitute_vars ?? true;
+    const resolveContent = (s: string): string =>
+      substituteVars ? resolveCmd(s, effectiveStep.variables) : s;
 
     const hashes = '#'.repeat(headingLevel);
     lines.push(`${hashes} ${prefix}: ${resolveText(effectiveStep.name)}`);
@@ -1828,6 +1841,16 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
+    if (effectiveStep.timeout != null) {
+      lines.push(`> Timeout: ${effectiveStep.timeout}s`);
+      lines.push('');
+    }
+
+    if (effectiveStep.session) {
+      lines.push(`> Session: ${effectiveStep.session}`);
+      lines.push('');
+    }
+
     if (effectiveStep.if) {
       lines.push(`> Condition: ${effectiveStep.if}`);
       lines.push('');
@@ -1836,12 +1859,12 @@ export function generateSingleEnvManual(
     if (effectiveStep.instruction) {
       lines.push('**Instructions**');
       lines.push('');
-      lines.push(preserveLineBreaks(resolveText(effectiveStep.instruction)));
+      lines.push(preserveLineBreaks(resolveContent(effectiveStep.instruction)));
       lines.push('');
     }
 
     if (effectiveStep.command) {
-      const resolvedCmd = resolveText(effectiveStep.command);
+      const resolvedCmd = resolveContent(effectiveStep.command);
       lines.push('**Command**');
       lines.push('');
       if (/^\s*```/.test(resolvedCmd)) {
@@ -1872,13 +1895,14 @@ export function generateSingleEnvManual(
     }
 
     if (effectiveStep.expect != null) {
-      const resolvedExpect = resolveVariables
-        ? substituteExpectVars(
-            effectiveStep.expect,
-            envVars,
-            effectiveStep.variables,
-          )
-        : effectiveStep.expect;
+      const resolvedExpect =
+        resolveVariables && substituteVars
+          ? substituteExpectVars(
+              effectiveStep.expect,
+              envVars,
+              effectiveStep.variables,
+            )
+          : effectiveStep.expect;
       const parts = renderExpectParts(resolvedExpect);
       if (parts.length > 0) {
         lines.push('**Expected:**');
@@ -2037,6 +2061,41 @@ export function generateSingleEnvManual(
       if (rb.pic) lines.push(`- [ ] PIC (${rb.pic})`);
       if (rb.reviewer) lines.push(`- [ ] Reviewer (${rb.reviewer})`);
       lines.push('');
+    }
+
+    if (rb.timeout != null) {
+      lines.push(`> Timeout: ${rb.timeout}s`);
+      lines.push('');
+    }
+    if (rb.session) {
+      lines.push(`> Session: ${rb.session}`);
+      lines.push('');
+    }
+
+    // Environment-specific evidence results (parity with renderStep and the
+    // multi-env/ADF/Confluence rollback renderers, which already embed
+    // rb.evidence).
+    if (rb.evidence) {
+      const evStatus = rb.evidence.required ? 'Required' : 'Optional';
+      const evTypes = rb.evidence.types ?? [];
+      const evTypesText = evTypes.length > 0 ? `: ${evTypes.join(', ')}` : '';
+      lines.push(`> Evidence ${evStatus}${evTypesText}`);
+      lines.push('');
+
+      const envResults = rb.evidence.results?.[targetEnv];
+      if (envResults && envResults.length > 0) {
+        lines.push('**Evidence Captured**');
+        lines.push('');
+        for (const item of envResults as RunEvidenceItem[]) {
+          lines.push(renderEvidenceItemMarkdown(item, operationDir).trimEnd());
+          lines.push('');
+        }
+      } else if (evTypes.includes('command_output')) {
+        lines.push('```bash');
+        lines.push('# Paste command output here');
+        lines.push('```');
+        lines.push('');
+      }
     }
 
     rb.sub_steps?.forEach((sub, subIndex) => {

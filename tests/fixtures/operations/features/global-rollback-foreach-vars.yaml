@@ -1,0 +1,26 @@
+name: Global Rollback Foreach Vars
+version: 1.0.0
+description: Foreach global-rollback whose values are env-var references (resolved late)
+
+environments:
+  - name: staging
+    description: Staging
+    variables:
+      WEB_HOST: web.staging.example.com
+      API_HOST: api.staging.example.com
+
+steps:
+  - name: Deploy
+    type: manual
+    command: echo deploy
+
+# The foreach values are ${VAR} references, so they are NOT baked at parse time;
+# each expanded rollback entry carries them in `variables`, resolved late.
+rollback:
+  automatic: false
+  steps:
+    - name: Restart host
+      foreach:
+        var: HOST
+        values: ['${WEB_HOST}', '${API_HOST}']
+      command: ssh ${HOST} systemctl restart app

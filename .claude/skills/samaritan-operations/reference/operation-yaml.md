@@ -71,6 +71,10 @@ ADF). With the flag off, rendering is unchanged.
 > Rule: never author execution/content fields outside this set on a step;
 > they live on `StepContent` so steps and rollback steps both get them.
 
+`timeout` (seconds) and `session` (tmux pane name) both render in all four
+manual formats — for steps, sub-steps, and rollback steps — as `⏱ Timeout: Ns`
+and `🖥 Session: <name>`.
+
 ## Step-only structural fields
 
 `name`, `type`, `id`, `phase` (`preflight`/`flight`/`postflight`), `if`,
@@ -82,6 +86,16 @@ ADF). With the flag off, rendering is unchanged.
 > (use `sub_steps` for multi-part rollbacks). In particular `foreach`/`matrix`
 > AND `uses`/`with` file composition expand on rollback steps at parse time
 > just like normal steps.
+
+### `needs` — step dependencies (GitHub-Actions style)
+
+`needs: [<id-or-name>, …]` references earlier steps by `id` or `name` (a
+foreach step is matched by its original authored name → all expanded instances).
+Top-level steps only in v1 (sub-step `needs` is ignored with a warning).
+`validate`: unknown ref → warning (error under `--strict`); cycle / self-ref /
+forward-ref (needing a LATER step) → error. Drives run-loop forward-gating,
+dependents-aware `[r]` rollback, and reverse-topological global-rollback order.
+Example: `examples/deployment-with-needs.yaml`.
 
 ## command vs script
 
@@ -227,6 +241,19 @@ against **common variables** at parse time (same scope as `foreach`; unmatched
 `${VAR}` stay literal), so a session can be derived from e.g. a ticket id. Quote
 keys that start with `${`. Remote-vs-local is **config-driven, not name-driven**.
 Example: `examples/sessions-with-vars.yaml`.
+
+## Built-in run-time variables
+
+Resolve **late** (run time per step, or generation time with `--resolve-vars`);
+never declared; user vars of the same name win (built-ins are lowest-priority
+defaults). `validate` warns on shadowing.
+
+- `${RUN_START_DATE}` / `${RUN_START_TIME}` — fixed at run/session start (resume-safe)
+- `${CURRENT_DATE}` / `${CURRENT_TIME}` / `${CURRENT_DATETIME}` — per-step fresh
+- `${ELAPSED_TIME}` — humanized time since run start (time-to-recover), e.g. `1h 16m`;
+  left literal in generated manuals (run-only)
+
+Example: `examples/builtin-variables.yaml`.
 
 ## Examples to copy from
 

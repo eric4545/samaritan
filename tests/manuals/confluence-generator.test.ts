@@ -765,6 +765,32 @@ steps:
     );
   });
 
+  it('applies top-level step variants per environment column (multi-env)', async () => {
+    // when-and-variants.yaml step 2 "Deploy application" has a prod variant
+    // overriding command/instruction. In the multi-env table, the prod column
+    // must show the variant, not the base command.
+    const operation = await parseFixture('whenAndVariants');
+    const content = generateConfluenceContent(operation, false);
+
+    // The prod variant command + instruction must appear.
+    assert.match(
+      content,
+      /--strategy=blue-green/,
+      'prod column should render the variant command',
+    );
+    assert.match(
+      content,
+      /blue-green deployment strategy/,
+      'prod column should render the variant instruction',
+    );
+    // The staging variant overrides the command with a staging-specific one.
+    assert.match(
+      content,
+      /deployment-staging\.yaml --replicas=2/,
+      'staging column should render the variant command',
+    );
+  });
+
   it('resolves common_variables references in foreach-expanded step names with --resolve-vars', async () => {
     // Use parseFixture (not yaml.load) so the parser's foreach expansion +
     // common_variables resolution (Fix A) has already run.

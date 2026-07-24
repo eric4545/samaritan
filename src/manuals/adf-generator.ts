@@ -37,6 +37,7 @@ import {
   substituteExpectVars,
   substituteVariables,
 } from '../lib/step-resolution';
+import { formatTimelineForDisplay } from '../lib/timeline-format';
 import type {
   Environment,
   Operation,
@@ -175,6 +176,30 @@ function buildRollbackCellNodes(
     if (rb.pic) cellContent.push(paragraph(text(`- [ ] PIC (${rb.pic})`)));
     if (rb.reviewer)
       cellContent.push(paragraph(text(`- [ ] Reviewer (${rb.reviewer})`)));
+  }
+
+  if (rb.timeout != null) {
+    cellContent.push(paragraph(text(`⏱ Timeout: ${rb.timeout}s`)));
+  }
+  if (rb.session) {
+    cellContent.push(paragraph(text(`🖥 Session: ${rb.session}`)));
+  }
+
+  // Environment-specific evidence results (parity with the markdown/Confluence
+  // rollback renderers, which already embed rb.evidence).
+  if (rb.evidence) {
+    const evidenceInfo = formatEvidenceInfo(
+      rb.evidence,
+      env.name,
+      operationDir,
+    );
+    if (evidenceInfo) {
+      if (Array.isArray(evidenceInfo)) {
+        cellContent.push(...evidenceInfo);
+      } else {
+        cellContent.push(evidenceInfo);
+      }
+    }
   }
 
   if (includeSubsteps) {
@@ -762,7 +787,21 @@ function createStepsTable(
 
     // Timeline
     if (step.timeline) {
-      stepCellContent.push(paragraph(text(`⏱️ Timeline: ${step.timeline}`)));
+      stepCellContent.push(
+        paragraph(
+          text(`⏱️ Timeline: ${formatTimelineForDisplay(step.timeline)}`),
+        ),
+      );
+    }
+
+    // Timeout
+    if (step.timeout != null) {
+      stepCellContent.push(paragraph(text(`⏱ Timeout: ${step.timeout}s`)));
+    }
+
+    // Execution session
+    if (step.session) {
+      stepCellContent.push(paragraph(text(`🖥 Session: ${step.session}`)));
     }
 
     // Conditional expression
@@ -1055,8 +1094,20 @@ function addSubStepRows(
 
     if (subStep.timeline) {
       subStepCellContent.push(
-        paragraph(text(`⏱️ Timeline: ${subStep.timeline}`)),
+        paragraph(
+          text(`⏱️ Timeline: ${formatTimelineForDisplay(subStep.timeline)}`),
+        ),
       );
+    }
+
+    if (subStep.timeout != null) {
+      subStepCellContent.push(
+        paragraph(text(`⏱ Timeout: ${subStep.timeout}s`)),
+      );
+    }
+
+    if (subStep.session) {
+      subStepCellContent.push(paragraph(text(`🖥 Session: ${subStep.session}`)));
     }
 
     if (subStep.if) {

@@ -13,10 +13,12 @@ environments:
 
 steps:
   - name: Deploy Application
+    id: deploy
     type: manual
     instruction: Deploy to ${TARGET_HOST} and confirm rollout.
     command: kubectl apply -f deployment.yaml --context=${TARGET_HOST}
     timeout: 120
+    session: primary
     pic: ops-team@example.com
     reviewer: sre-lead@example.com
     description: Primary deployment step exercising all content fields
@@ -41,6 +43,7 @@ steps:
 
   - name: Verify Replica Count
     type: automatic
+    needs: [deploy]
     script: ./deploy.sh
     expect: "${REPLICA_COUNT}"
     sub_steps:

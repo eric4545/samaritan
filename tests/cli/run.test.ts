@@ -31,6 +31,13 @@ function fixturePath(name: string): string {
     evidenceRequired:
       'tests/fixtures/operations/features/evidence-required.yaml',
     multiOperator: 'tests/fixtures/operations/features/multi-operator.yaml',
+    globalRollbackForeachVars:
+      'tests/fixtures/operations/features/global-rollback-foreach-vars.yaml',
+    scriptOnlyStep: 'tests/fixtures/operations/features/script-only-step.yaml',
+    builtinVariables:
+      'tests/fixtures/operations/features/builtin-variables.yaml',
+    needsGate: 'tests/fixtures/operations/features/needs-gate.yaml',
+    nearestRollback: 'tests/fixtures/operations/features/nearest-rollback.yaml',
   };
   return resolve(map[name]);
 }
@@ -859,6 +866,33 @@ describe('run command: sidecar mode', () => {
     );
   });
 
+  it('displays a script-only step with its content and a bash <path> runnable', () => {
+    // A step whose only action is `script:` (no inline command) previously
+    // rendered nothing runnable in the run loop.
+    const fixture = fixturePath('scriptOnlyStep');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Script: ./deploy.sh'),
+      'should show the script path',
+    );
+    assert.ok(
+      combined.includes('Deploying web server'),
+      'should embed the script file content',
+    );
+    assert.ok(
+      combined.includes('bash ./deploy.sh'),
+      'should show a bash <path> runnable for the operator',
+    );
+    assert.ok(
+      combined.includes('copy'),
+      'should offer [c] copy for the script invocation',
+    );
+  });
+
   it('--attach bogus-target warns gracefully and still starts the step loop', () => {
     const fixture = fixturePath('sidecar');
     const result = runCli(
@@ -1135,6 +1169,29 @@ describe('run command: ${VAR} rendering in step display', () => {
     }
   });
 
+  it('[g] global rollback preview resolves foreach entry variables', () => {
+    // The foreach values are ${VAR} references (not baked at parse time), so
+    // each expanded rollback entry carries them in `variables`. The preview
+    // must pass those to tryResolve so ${HOST} resolves in the command.
+    const fixture = fixturePath('globalRollbackForeachVars');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'g\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('ssh web.staging.example.com systemctl restart app'),
+      `preview must resolve ${'${HOST}'} from the entry's variables; output:\n${combined.slice(-1200)}`,
+    );
+    assert.ok(
+      combined.includes('ssh api.staging.example.com systemctl restart app'),
+      'preview must resolve the second foreach entry command',
+    );
+    assert.ok(
+      !combined.includes('ssh ${HOST}'),
+      'preview must not leave literal ${HOST} in the command',
+    );
+  });
+
   it('warns about unresolved variables instead of failing silently', () => {
     const fixture = fixturePath('varRendering');
     // skip step 1 so step 2 (with ${NOT_DEFINED}) renders, then EOF ends run
@@ -1149,6 +1206,29 @@ describe('run command: ${VAR} rendering in step display', () => {
     assert.ok(
       combined.includes('${NOT_DEFINED}'),
       'unresolved placeholder stays visible as a marker',
+    );
+  });
+
+  it('resolves built-in run-time variables without declaring them', () => {
+    const fixture = fixturePath('builtinVariables');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
+    const combined = result.stdout + result.stderr;
+    // ${CURRENT_DATE}-${RUN_START_TIME} → a real timestamped command; no literals
+    assert.match(
+      combined,
+      /backup-\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}/,
+      `built-ins must resolve to a timestamp; output:\n${combined.slice(-800)}`,
+    );
+    assert.ok(
+      !combined.includes('${CURRENT_DATE}') &&
+        !combined.includes('${RUN_START_TIME}'),
+      'no literal built-in placeholders should remain',
+    );
+    assert.ok(
+      !combined.includes('Unresolved variable(s)'),
+      'built-ins must not trigger unresolved-variable warnings',
     );
   });
 });
@@ -1360,6 +1440,92 @@ describe('run command: --from-step starts at a later step', () => {
       'must print the valid range error',
     );
   });
+});
+
+// ─── needs forward-gating in the run loop ────────────────────────────────────
+
+describe('run command: needs forward-gating', () => {
+  it('warns and lets the operator proceed when a dependency is skipped', () => {
+    // --from-step 2 skips Build (id: build); Deploy needs build → gate fires.
+    // Single prompt: 'y' proceeds, then EOF ends the run.
+    const fixture = fixturePath('needsGate');
+    const result = runCli(
+      ['run', fixture, '--env', 'staging', '--from-step', '2'],
+      { input: 'y\n', timeout: 15_000 },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('This step needs: Build (skipped)'),
+      `must warn that Build is unmet; output:\n${combined.slice(-800)}`,
+    );
+    assert.ok(
+      combined.includes('Start anyway?'),
+      'must offer to proceed or go back',
+    );
+    // After proceeding, the Deploy step banner is shown.
+    assert.match(combined, /\[2\/2\] MANUAL: Deploy/);
+  });
+
+  it('does not gate when the dependency was completed', () => {
+    // Normal start: Build (Enter=done) then Deploy — Build completed, no gate.
+    const fixture = fixturePath('needsGate');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: '\nq\n',
+      timeout: 15_000,
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      !combined.includes('This step needs'),
+      'no gate warning when the dependency is completed',
+    );
+  });
+
+  it('does not loop forever on empty (EOF) stdin at the gate', () => {
+    const fixture = fixturePath('needsGate');
+    const result = runCli(
+      ['run', fixture, '--env', 'staging', '--from-step', '2'],
+      { input: '', timeout: 15_000 },
+    );
+    // Terminates (status not null via timeout kill) and shows the go-back offer.
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('go back to "Build"'),
+      'must offer to go back to the unmet dependency',
+    );
+  });
+});
+
+// ─── TTY: [r] on a step with no rollback offers the nearest upstream rollback ─
+
+describe('run command: TTY [r] nearest-upstream rollback', () => {
+  const hasScript =
+    process.platform === 'linux' &&
+    spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0;
+
+  it(
+    'offers the nearest upstream rollback when the current step has none',
+    { skip: !hasScript },
+    () => {
+      // nearest-rollback.yaml: Build (has rollback) → Deploy (needs build, NO
+      // rollback of its own). Complete Build (Enter), then on Deploy press r →
+      // the loop offers Build's rollback as the nearest upstream source.
+      const fixture = fixturePath('nearestRollback');
+      const cmd = `(sleep 3; printf '\\n'; sleep 3; printf 'r'; sleep 2; printf 'n\\n'; sleep 2; printf 'q'; sleep 2) | script -qec "${CLI} ${INDEX} run ${fixture} --env staging" /dev/null`;
+      const result = spawnSync('bash', ['-c', cmd], {
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+      const combined = (result.stdout ?? '') + (result.stderr ?? '');
+      assert.ok(
+        combined.includes('Nearest rollback comes from step'),
+        `[r] on a no-rollback step must offer the nearest upstream rollback; output:\n${combined.slice(-1800)}`,
+      );
+      assert.ok(
+        combined.includes('Build'),
+        'the nearest rollback source should be Build',
+      );
+    },
+  );
 });
 
 // ─── TTY raw-mode: [t] fires immediately and keys are not echoed twice ───────

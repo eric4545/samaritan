@@ -166,6 +166,54 @@ describe('Render parity: all StepContent fields across formats', () => {
     }
   });
 
+  it('renders timeout in all formats', async () => {
+    const { multiEnv, singleEnv, adf, confluence } = await generateAll();
+
+    for (const [label, content] of Object.entries({
+      multiEnv,
+      singleEnv,
+      adf,
+      confluence,
+    })) {
+      assert.ok(
+        content.includes('Timeout: 120s'),
+        `${label}: should render step timeout`,
+      );
+    }
+  });
+
+  it('renders session in all formats', async () => {
+    const { multiEnv, singleEnv, adf, confluence } = await generateAll();
+
+    for (const [label, content] of Object.entries({
+      multiEnv,
+      singleEnv,
+      adf,
+      confluence,
+    })) {
+      assert.ok(
+        content.includes('Session: primary'),
+        `${label}: should render step session`,
+      );
+    }
+  });
+
+  it('renders needs (Depends on) in all formats', async () => {
+    const { multiEnv, singleEnv, adf, confluence } = await generateAll();
+
+    for (const [label, content] of Object.entries({
+      multiEnv,
+      singleEnv,
+      adf,
+      confluence,
+    })) {
+      assert.ok(
+        content.includes('Depends on: deploy'),
+        `${label}: should render step needs`,
+      );
+    }
+  });
+
   it('renders pic and reviewer sign-off in all formats', async () => {
     const { multiEnv, singleEnv, adf, confluence } = await generateAll();
 

@@ -119,3 +119,126 @@ ${expectYaml}
     assert.match(result.stdout, /regex-lint:.*catastrophic/);
   });
 });
+
+describe('validate built-in variable shadowing', () => {
+  function writeOp(body: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-builtin-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(file, body);
+    return file;
+  }
+
+  it('warns when a user variable shadows a built-in run-time variable', () => {
+    const file = writeOp(`name: Shadow Test
+version: 1.0.0
+common_variables:
+  CURRENT_DATE: not-a-date
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+steps:
+  - name: Step
+    type: manual
+    command: echo hi
+`);
+    const result = runCli(['validate', file]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.match(result.stdout, /CURRENT_DATE.*shadows a built-in/);
+  });
+
+  it('does not warn "not defined" for built-ins used but not declared', () => {
+    const file = writeOp(`name: Builtin Use
+version: 1.0.0
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+steps:
+  - name: Step
+    type: manual
+    command: echo \${CURRENT_DATE}
+`);
+    const result = runCli(['validate', file]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.ok(
+      !result.stdout.includes(
+        "Variable 'CURRENT_DATE' used in steps but not defined",
+      ),
+      'built-in use must not trigger an undefined-variable warning',
+    );
+  });
+});
+
+describe('validate step dependencies (needs)', () => {
+  it('errors on a dependency cycle', () => {
+    const result = runCli([
+      'validate',
+      'tests/fixtures/operations/invalid/needs-cycle.yaml',
+    ]);
+    assert.strictEqual(result.status, 1);
+    assert.match(result.stdout, /dependency cycle/);
+  });
+
+  it('errors on a forward reference (needing a later step)', () => {
+    const result = runCli([
+      'validate',
+      'tests/fixtures/operations/invalid/needs-forward-ref.yaml',
+    ]);
+    assert.strictEqual(result.status, 1);
+    assert.match(result.stdout, /depends on a later step/);
+  });
+
+  it('warns (but passes) on an unknown dependency by default', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-needs-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(
+      file,
+      `name: Unknown Dep
+version: 1.0.0
+environments:
+  - name: staging
+    description: Staging
+steps:
+  - name: A
+    type: manual
+    needs: [ghost]
+    command: echo a
+`,
+    );
+    const result = runCli(['validate', file]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.match(result.stdout, /dependency 'ghost' not found/);
+  });
+
+  it('promotes an unknown dependency to an error under --strict', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-needs-strict-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(
+      file,
+      `name: Unknown Dep Strict
+version: 1.0.0
+environments:
+  - name: staging
+    description: Staging
+steps:
+  - name: A
+    type: manual
+    needs: [ghost]
+    command: echo a
+`,
+    );
+    const result = runCli(['validate', file, '--strict']);
+    assert.strictEqual(result.status, 1);
+    assert.match(result.stdout, /dependency 'ghost' not found/);
+  });
+
+  it('accepts a valid backward chain including a foreach dependency', () => {
+    const result = runCli([
+      'validate',
+      'tests/fixtures/operations/features/step-needs.yaml',
+    ]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.match(result.stdout, /validation passed/);
+  });
+});
