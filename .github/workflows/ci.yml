@@ -40,7 +40,7 @@ jobs:
         npm start -- generate manual examples/deployment.yaml -o /tmp/test-manual.md
 
     - name: Upload test results
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: test-results-${{ matrix.node-version }}
