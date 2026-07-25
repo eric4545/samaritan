@@ -72,7 +72,7 @@ embedding (`evidence.results`), `schema` export, interactive `run` (sidecar /
 manual / automatic / hybrid), session persistence + `resume`/`sessions`,
 `run --mock`, auto-capture on verify, retryable verification (`expect.retry`),
 multi-operator `--pic` focus + `report merge`, rollback (step + operation-level,
-full parity), lifecycle `hooks:` (Capistrano-style `before`/`after` anchors injected
+full parity), lifecycle `hooks:` (`before`/`after` anchors injected
 at parse time + `on_failure` steps rendered as their own section and offered on
 abort), postmortem / incident-report (RCA) documents.
 CLI: `validate`, `generate manual|docs|postmortem|schedule`, `postmortem`,

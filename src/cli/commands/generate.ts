@@ -1785,10 +1785,9 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
     content += '\n';
   }
 
-  // `hooks: [{ on_failure: true }]` steps — Capistrano's `deploy:failed`
-  // counterpart. Not part of the flow, so they get their own section, rendered
-  // through the SAME renderConfluenceStepRow as flow steps (no phase, so each
-  // step shows its own phase icon).
+  // `hooks: [{ on_failure: true }]` steps. Not part of the flow, so they get
+  // their own section, rendered through the SAME renderConfluenceStepRow as
+  // flow steps (no phase, so each step shows its own phase icon).
   if (filteredOperation.on_failure && filteredOperation.on_failure.length > 0) {
     content += `h2. (!) On Failure
 

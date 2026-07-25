@@ -258,8 +258,7 @@ export interface Step extends StepContent {
 export type HookPosition = 'before' | 'after';
 
 /**
- * An operation-level lifecycle hook (modelled on Capistrano's `before`/`after`
- * task enhancement and its `deploy:failed` anchor).
+ * An operation-level lifecycle hook.
  *
  * `before`/`after` name an ANCHOR — either a step `id` or a phase
  * (`preflight`/`flight`/`postflight`). Their steps are injected into the step
@@ -267,9 +266,8 @@ export type HookPosition = 'before' | 'after';
  * need no hook-specific handling.
  *
  * `on_failure` steps are NOT injected. They are recovery/notification steps that
- * run only when the operation aborts or a step fails — the counterpart to
- * Capistrano's `deploy:failed`, and distinct from `rollback` (which compensates
- * completed work; `on_failure` notifies and cleans up).
+ * run only when the operation aborts or a step fails — distinct from `rollback`
+ * (which compensates completed work; `on_failure` notifies and cleans up).
  */
 export interface OperationHook {
   before?: string;

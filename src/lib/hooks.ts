@@ -8,9 +8,9 @@ import type {
 /**
  * Lifecycle hook injection.
  *
- * Modelled on Capistrano's `before`/`after` task enhancement: a hook names an
- * ANCHOR and contributes steps on one side of it, so a shared step library can
- * add work to an operation without the operation reordering its own list.
+ * A hook names an ANCHOR and contributes steps on one side of it, so a shared
+ * step library can add work to an operation without the operation reordering
+ * its own list.
  *
  * The injection happens at PARSE time and produces ordinary `Step`s. That is
  * the whole design: every renderer and the run loop then see a normal step list
@@ -19,9 +19,8 @@ import type {
  *
  * `on_failure` hooks are the exception: their steps are collected separately
  * rather than injected, because they run only when a run aborts or a step fails.
- * That is Capistrano's `deploy:failed` anchor, and it is deliberately distinct
- * from `rollback` — rollback compensates work that succeeded, `on_failure`
- * notifies and cleans up after work that did not.
+ * They are deliberately distinct from `rollback` — rollback compensates work
+ * that succeeded, `on_failure` notifies and cleans up after work that did not.
  */
 
 const PHASE_ANCHORS: StepPhase[] = ['preflight', 'flight', 'postflight'];

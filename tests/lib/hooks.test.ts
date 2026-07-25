@@ -58,8 +58,7 @@ describe('applyHooks: step-id anchors', () => {
   });
 
   it('applies several hooks on one anchor in declaration order', () => {
-    // Capistrano semantics: multiple hooks on the same task run in the order
-    // they were declared.
+    // Multiple hooks on the same anchor apply in the order they were declared.
     const hooks: OperationHook[] = [
       { before: 'deploy', steps: [step('first')] },
       { before: 'deploy', steps: [step('second')] },

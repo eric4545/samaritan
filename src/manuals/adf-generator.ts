@@ -545,10 +545,9 @@ export function generateADF(
     );
   }
 
-  // `hooks: [{ on_failure: true }]` steps — Capistrano's `deploy:failed`
-  // counterpart. Not part of the flow, so they get their own section. Routed
-  // through the SAME createStepsTable as flow steps so every step field renders
-  // identically per environment.
+  // `hooks: [{ on_failure: true }]` steps. Not part of the flow, so they get
+  // their own section. Routed through the SAME createStepsTable as flow steps
+  // so every step field renders identically per environment.
   if (operation.on_failure && operation.on_failure.length > 0) {
     content.push(heading({ level: 2 })(text('🚨 On Failure')));
     content.push(
