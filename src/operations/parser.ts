@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import yaml from 'js-yaml';
 import { BUILTIN_VARIABLE_NAMES } from '../lib/builtin-variables';
+import { applyHooks } from '../lib/hooks';
 import {
   fetchRemoteTemplate,
   isRemoteTemplate,
@@ -13,6 +14,7 @@ import type {
   EvidenceConfig,
   EvidenceType,
   Operation,
+  OperationHook,
   OperationMetadata,
   RollbackStep,
   SessionConfig,
@@ -1397,6 +1399,38 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     }
   }
 
+  // Lifecycle hooks. Hook steps go through the SAME resolveStepReferences
+  // pipeline as authored steps (so `uses:`/`with:`, foreach and sub-steps all
+  // work inside a hook), then before/after entries are injected into the step
+  // list and on_failure entries are collected out. Injection at parse time is
+  // deliberate: downstream, hook-contributed steps are just steps, so no
+  // renderer or the run loop needs hook-specific handling.
+  let onFailureSteps: Step[] = [];
+  if (rawOperation.hooks && Array.isArray(rawOperation.hooks)) {
+    try {
+      const resolvedHooks: OperationHook[] = [];
+      for (const hook of rawOperation.hooks) {
+        const hookSteps = Array.isArray(hook?.steps)
+          ? await resolveStepReferences(hook.steps, importContext)
+          : [];
+        resolvedHooks.push({ ...hook, steps: hookSteps });
+      }
+      const applied = applyHooks(steps, resolvedHooks);
+      for (const issue of applied.issues) {
+        errors.push({ field: 'hooks', message: issue.message });
+      }
+      steps.length = 0;
+      steps.push(...applied.steps);
+      onFailureSteps = applied.onFailure;
+    } catch (error) {
+      if (error instanceof OperationParseError) {
+        errors.push(...error.errors);
+      } else {
+        errors.push({ field: 'hooks', message: (error as Error).message });
+      }
+    }
+  }
+
   // Process operation dependencies if present
   if (rawOperation.needs && Array.isArray(rawOperation.needs)) {
     // For now, just validate that dependencies are strings
@@ -1483,6 +1517,8 @@ export async function parseOperation(filePath: string): Promise<Operation> {
           steps: operationRollbackSteps,
         }
       : undefined,
+    hooks: rawOperation.hooks,
+    on_failure: onFailureSteps.length > 0 ? onFailureSteps : undefined,
     metadata,
     needs: rawOperation.needs,
     template: rawOperation.template,

@@ -1786,3 +1786,62 @@ describe('run command: when/variants filtering matches the generated manual', ()
     );
   });
 });
+
+// ─── hooks: on_failure fires on abort, and only on abort ────────────────────
+
+describe('run command: on_failure hook', () => {
+  const HOOKS = resolve('examples/deployment-with-hooks.yaml');
+
+  it('offers the on-failure steps when the operator aborts', () => {
+    const result = runCli(['run', HOOKS, '--env', 'staging'], {
+      input: 'abort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('On-failure steps are defined'),
+      `abort must offer the on-failure steps; output:\n${combined.slice(-1200)}`,
+    );
+    assert.ok(
+      combined.includes('Page the on-call engineer'),
+      'the on-failure step names must be listed',
+    );
+  });
+
+  it('resolves ${VAR} in the on-failure preview', () => {
+    const result = runCli(['run', HOOKS, '--env', 'staging'], {
+      input: 'abort\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('--context=staging-cluster'),
+      'the preview must show resolved commands, not raw ${VAR}',
+    );
+  });
+
+  // Capistrano's deploy_failure.feature asserts the failure task runs on a
+  // failed `deploy` but NOT on an unrelated successful invocation. Same
+  // contract here: a clean run must never trigger on_failure.
+  it('does NOT fire when the operation completes cleanly', () => {
+    const result = runCli(['run', HOOKS, '--env', 'staging', '--dry-run'], {
+      input: '',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.strictEqual(result.status, 0, 'dry run should succeed');
+    assert.ok(
+      !combined.includes('On-failure steps are defined'),
+      `a clean run must not offer on-failure steps; output:\n${combined.slice(-800)}`,
+    );
+  });
+
+  it('keeps on_failure steps out of the walked flow', () => {
+    const result = runCli(['run', HOOKS, '--env', 'staging', '--dry-run']);
+    const combined = result.stdout + result.stderr;
+    // 3 authored + 4 injected by before/after hooks; the 2 on_failure steps
+    // are NOT part of the flow.
+    assert.match(
+      combined,
+      /Steps: 7/,
+      `expected 7 flow steps; got:\n${combined}`,
+    );
+  });
+});

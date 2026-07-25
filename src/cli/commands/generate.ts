@@ -1293,6 +1293,281 @@ ${filteredOperation.environments
   );
 
   // Generate steps by phase with multi-column table
+  // One Confluence table row (plus any sub-step and inline-rollback rows) for
+  // a single step. Hoisted out of the phase loop so the On Failure section can
+  // render `hooks: [{ on_failure: true }]` steps through the SAME renderer as
+  // flow steps — otherwise the two would drift. `phaseName` is the enclosing
+  // phase heading when called from the phase loop, and undefined for On
+  // Failure steps (which sit outside the phases), in which case each step's own
+  // phase icon is shown.
+  const renderConfluenceStepRow = (
+    { step, stepNumber }: { step: any; stepNumber: number },
+    phaseName: string | undefined,
+    tableState: { open: boolean },
+  ): void => {
+    // Handle section heading
+    if (step.section_heading) {
+      // Close current table if one is open
+      if (tableState.open) {
+        content += '\n';
+        tableState.open = false;
+      }
+
+      // Add section heading
+      content += `h3. ${escapeConfluenceMacros(resolveStepName(step.name, step.variables))}\n\n`;
+      if (step.description) {
+        content += `${escapeConfluenceMacros(resolveStepName(step.description, step.variables))}\n\n`;
+      }
+
+      // Reopen table
+      content += `|| Step ||`;
+      filteredOperation.environments.forEach((env: any) => {
+        content += ` ${env.name} ||`;
+      });
+      content += '\n';
+      tableState.open = true;
+    } else if (!tableState.open) {
+      // Open table for regular steps if not already open (e.g., after rollback closed it)
+      content += `|| Step ||`;
+      filteredOperation.environments.forEach((env: any) => {
+        content += ` ${env.name} ||`;
+      });
+      content += '\n';
+      tableState.open = true;
+    }
+
+    const typeIcon = typeIcons[step.type] || '';
+    const phaseIconForStep =
+      step.phase && step.phase !== phaseName
+        ? phaseIcons[step.phase as keyof typeof phaseIcons] || ''
+        : '';
+
+    // Build step info cell (escape braces to prevent macro interpretation)
+    let stepInfo = `${phaseIconForStep}${typeIcon} Step ${stepNumber}: ${escapeConfluenceMacros(resolveStepName(step.name, step.variables))}`;
+    if (step.description)
+      stepInfo += `\n${escapeConfluenceMacros(resolveStepName(step.description, step.variables))}`;
+    if (step.pic)
+      stepInfo += `\n(i) PIC: [~${escapeConfluenceMacros(step.pic)}]`;
+    if (step.reviewer)
+      stepInfo += `\n(/) Reviewer: [~${escapeConfluenceMacros(step.reviewer)}]`;
+    if (step.timeline)
+      stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`;
+    if (step.needs && step.needs.length > 0)
+      stepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(step.needs.join(', '))}`;
+    if (step.timeout != null) stepInfo += `\n(time) Timeout: ${step.timeout}s`;
+    if (step.session)
+      stepInfo += `\n(server) Session: ${escapeConfluenceMacros(step.session)}`;
+    if (step.ticket)
+      stepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket)}`;
+    if (step.if)
+      stepInfo += `\n(?) Condition: ${escapeConfluenceMacros(step.if)}`;
+
+    // Add evidence metadata (not environment-specific) to step column
+    if (step.evidence) {
+      stepInfo += formatEvidenceArea(step.evidence);
+    }
+
+    // Build all command cells for each environment
+    const commandCells: string[] = [];
+    filteredOperation.environments.forEach((env: any) => {
+      // Check if step should be rendered for this environment
+      if (!shouldRenderStepForEnvironment(step, env.name)) {
+        commandCells.push('—');
+        return;
+      }
+
+      // Apply environment-specific variant overrides (command, instruction,
+      // script, expect, evidence, pic/reviewer, options) for this env's
+      // cell. The shared name/description cell above stays on the base step,
+      // matching the markdown/ADF multi-env renderers.
+      const effectiveStep = mergeStepVariant(step, env.name);
+
+      let cellContent = '';
+
+      // Get step-level options (defaults)
+      const substituteVars = effectiveStep.options?.substitute_vars ?? true;
+      const showCommandSeparately =
+        effectiveStep.options?.show_command_separately ?? false;
+
+      // Process instruction (always render as markdown)
+      if (effectiveStep.instruction) {
+        let displayInstruction = effectiveStep.instruction;
+
+        // Apply variable substitution if enabled
+        if (resolveVars && substituteVars) {
+          displayInstruction = substituteVariables(
+            displayInstruction,
+            env.variables || {},
+            effectiveStep.variables,
+          );
+        }
+
+        const trimmed = displayInstruction.replace(/\s+$/, '');
+        cellContent += `*Instructions:*\n{markdown}\n${trimmed}\n{markdown}`;
+      }
+
+      // Process command (always render as code block)
+      if (effectiveStep.command) {
+        let displayCommand = effectiveStep.command;
+
+        // Apply variable substitution if enabled
+        if (resolveVars && substituteVars) {
+          displayCommand = substituteVariables(
+            displayCommand,
+            env.variables || {},
+            effectiveStep.variables,
+          );
+        }
+
+        const trimmedCommand = displayCommand.replace(/\n+$/, '');
+
+        // Show command separately or inline
+        if (showCommandSeparately && effectiveStep.instruction) {
+          // Show command in separate labeled section
+          cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
+        } else if (!effectiveStep.instruction) {
+          // No instruction, just show command
+          cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
+        } else {
+          // Both present, inline mode: show command after instruction
+          cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
+        }
+      }
+
+      // Process script (external shell script file)
+      if (effectiveStep.script) {
+        const sep = cellContent ? '\n' : '';
+        cellContent += `${sep}*Script:* \`${effectiveStep.script}\``;
+        if (operationDir) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const fs = require('node:fs');
+            const nodePath = require('node:path');
+            const scriptPath = nodePath.resolve(
+              operationDir,
+              effectiveStep.script,
+            );
+            const scriptContent = fs
+              .readFileSync(scriptPath, 'utf-8')
+              .trimEnd();
+            cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
+          } catch {
+            cellContent += ' _(file not found)_';
+          }
+        }
+      }
+
+      // Add expect assertions
+      if (effectiveStep.expect != null) {
+        const resolvedExpect =
+          resolveVars && substituteVars
+            ? substituteExpectVars(
+                effectiveStep.expect,
+                env.variables || {},
+                effectiveStep.variables,
+              )
+            : effectiveStep.expect;
+        const parts = renderExpectParts(resolvedExpect);
+        if (parts.length > 0) {
+          const sep = cellContent ? '\n' : '';
+          cellContent += `${sep}*Expected:*`;
+          for (const p of parts) cellContent += `\n* [ ] _${p}_`;
+        }
+      }
+
+      // Fallback for steps with neither
+      if (!cellContent) {
+        if (step.sub_steps && step.sub_steps.length > 0) {
+          cellContent = '_(see substeps below)_';
+        } else {
+          cellContent = `_(${step.type} step)_`;
+        }
+      }
+
+      // Add sign-off checkboxes if PIC or Reviewer is set (interactive checkboxes)
+      if (effectiveStep.pic || effectiveStep.reviewer) {
+        cellContent += '\nSign-off:';
+        if (effectiveStep.pic) {
+          cellContent += '\n* [ ] PIC';
+        }
+        if (effectiveStep.reviewer) {
+          cellContent += '\n* [ ] Reviewer';
+        }
+      }
+
+      // Add evidence area with environment-specific results
+      if (effectiveStep.evidence) {
+        cellContent += formatEvidenceArea(
+          effectiveStep.evidence,
+          env.name,
+          operationDir,
+        );
+      }
+
+      commandCells.push(cellContent);
+    });
+
+    // Construct complete row with all cells
+    content += `| ${stepInfo} | ${commandCells.join(' | ')} |\n`;
+
+    // Add sub-steps in table format (recursive)
+    if (step.sub_steps && step.sub_steps.length > 0) {
+      content += addConfluenceSubStepRows(
+        step.sub_steps,
+        filteredOperation.environments,
+        `${stepNumber}`,
+        1,
+        resolveVars,
+        typeIcons,
+        escapeConfluenceMacros,
+        substituteVariables,
+        formatForTableCell,
+        addSmartLineBreaks,
+        formatEvidenceArea,
+        formatTimelineForDisplay,
+        operationDir,
+        operation.common_variables ?? {},
+        aggregateRollbacks,
+      );
+    }
+
+    // Render rollback for step AFTER all content (inline rendering).
+    // For parent steps with sub_steps, this renders after sub-steps; for
+    // regular steps, after the step row. Renders EVERY entry (foreach-
+    // expanded or hand-authored siblings), not just [0].
+    const stepRollbacks = (step.rollback ?? []).filter(hasRollbackContent);
+    if (aggregateRollbacks && stepRollbacks.length > 0) {
+      // Collapse the inline block to a single jump-link into the bottom
+      // Rollback Plan (the {anchor} target lives there).
+      content += `\n(<) *Rollback:* [${stepRollbackHeadingText(step)} |#${stepRollbackAnchor(step)}]\n\n`;
+      tableState.open = false;
+      return;
+    }
+    stepRollbacks.forEach((rb: any, rbIndex: number) => {
+      // Disambiguate multiple entries in the heading via the rollback
+      // step's own (foreach-suffixed) name; single-entry output unchanged.
+      const rbHeadingName =
+        stepRollbacks.length > 1
+          ? `${resolveStepName(step.name, step.variables)} — ${rb.name ? resolveStepName(rb.name, { ...step.variables, ...rb.variables }) : `Rollback ${rbIndex + 1}`}`
+          : resolveStepName(step.name, step.variables);
+      content += renderInlineRollback(
+        rb,
+        `${stepNumber}`,
+        rbHeadingName,
+        3, // h3 for parent steps
+        filteredOperation.environments,
+        resolveVars,
+        step.variables,
+        escapeConfluenceMacros,
+        substituteVariables,
+        formatEvidenceArea,
+        operationDir,
+      );
+      // Rollback closes the table, so mark it as closed
+      tableState.open = false;
+    });
+  };
+
   Object.entries(phases).forEach(([phaseName, phaseSteps]) => {
     if (phaseSteps.length === 0) return;
 
@@ -1311,7 +1586,7 @@ ${filteredOperation.environments
     // Only build initial table header if first step is not a section heading
     const firstStepIsSection =
       phaseSteps.length > 0 && phaseSteps[0].step.section_heading;
-    let tableOpen = false;
+    const tableState = { open: false };
 
     if (!firstStepIsSection) {
       // Build table header with environment columns
@@ -1320,276 +1595,13 @@ ${filteredOperation.environments
         content += ` ${env.name} ||`;
       });
       content += '\n';
-      tableOpen = true;
+      tableState.open = true;
     }
 
     // Build table rows for each step
-    phaseSteps.forEach(
-      ({ step, stepNumber }: { step: any; stepNumber: number }) => {
-        // Handle section heading
-        if (step.section_heading) {
-          // Close current table if one is open
-          if (tableOpen) {
-            content += '\n';
-            tableOpen = false;
-          }
-
-          // Add section heading
-          content += `h3. ${escapeConfluenceMacros(resolveStepName(step.name, step.variables))}\n\n`;
-          if (step.description) {
-            content += `${escapeConfluenceMacros(resolveStepName(step.description, step.variables))}\n\n`;
-          }
-
-          // Reopen table
-          content += `|| Step ||`;
-          filteredOperation.environments.forEach((env: any) => {
-            content += ` ${env.name} ||`;
-          });
-          content += '\n';
-          tableOpen = true;
-        } else if (!tableOpen) {
-          // Open table for regular steps if not already open (e.g., after rollback closed it)
-          content += `|| Step ||`;
-          filteredOperation.environments.forEach((env: any) => {
-            content += ` ${env.name} ||`;
-          });
-          content += '\n';
-          tableOpen = true;
-        }
-
-        const typeIcon = typeIcons[step.type] || '';
-        const phaseIconForStep =
-          step.phase && step.phase !== phaseName
-            ? phaseIcons[step.phase as keyof typeof phaseIcons] || ''
-            : '';
-
-        // Build step info cell (escape braces to prevent macro interpretation)
-        let stepInfo = `${phaseIconForStep}${typeIcon} Step ${stepNumber}: ${escapeConfluenceMacros(resolveStepName(step.name, step.variables))}`;
-        if (step.description)
-          stepInfo += `\n${escapeConfluenceMacros(resolveStepName(step.description, step.variables))}`;
-        if (step.pic)
-          stepInfo += `\n(i) PIC: [~${escapeConfluenceMacros(step.pic)}]`;
-        if (step.reviewer)
-          stepInfo += `\n(/) Reviewer: [~${escapeConfluenceMacros(step.reviewer)}]`;
-        if (step.timeline)
-          stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`;
-        if (step.needs && step.needs.length > 0)
-          stepInfo += `\n(-) Depends on: ${escapeConfluenceMacros(step.needs.join(', '))}`;
-        if (step.timeout != null)
-          stepInfo += `\n(time) Timeout: ${step.timeout}s`;
-        if (step.session)
-          stepInfo += `\n(server) Session: ${escapeConfluenceMacros(step.session)}`;
-        if (step.ticket)
-          stepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket)}`;
-        if (step.if)
-          stepInfo += `\n(?) Condition: ${escapeConfluenceMacros(step.if)}`;
-
-        // Add evidence metadata (not environment-specific) to step column
-        if (step.evidence) {
-          stepInfo += formatEvidenceArea(step.evidence);
-        }
-
-        // Build all command cells for each environment
-        const commandCells: string[] = [];
-        filteredOperation.environments.forEach((env: any) => {
-          // Check if step should be rendered for this environment
-          if (!shouldRenderStepForEnvironment(step, env.name)) {
-            commandCells.push('—');
-            return;
-          }
-
-          // Apply environment-specific variant overrides (command, instruction,
-          // script, expect, evidence, pic/reviewer, options) for this env's
-          // cell. The shared name/description cell above stays on the base step,
-          // matching the markdown/ADF multi-env renderers.
-          const effectiveStep = mergeStepVariant(step, env.name);
-
-          let cellContent = '';
-
-          // Get step-level options (defaults)
-          const substituteVars = effectiveStep.options?.substitute_vars ?? true;
-          const showCommandSeparately =
-            effectiveStep.options?.show_command_separately ?? false;
-
-          // Process instruction (always render as markdown)
-          if (effectiveStep.instruction) {
-            let displayInstruction = effectiveStep.instruction;
-
-            // Apply variable substitution if enabled
-            if (resolveVars && substituteVars) {
-              displayInstruction = substituteVariables(
-                displayInstruction,
-                env.variables || {},
-                effectiveStep.variables,
-              );
-            }
-
-            const trimmed = displayInstruction.replace(/\s+$/, '');
-            cellContent += `*Instructions:*\n{markdown}\n${trimmed}\n{markdown}`;
-          }
-
-          // Process command (always render as code block)
-          if (effectiveStep.command) {
-            let displayCommand = effectiveStep.command;
-
-            // Apply variable substitution if enabled
-            if (resolveVars && substituteVars) {
-              displayCommand = substituteVariables(
-                displayCommand,
-                env.variables || {},
-                effectiveStep.variables,
-              );
-            }
-
-            const trimmedCommand = displayCommand.replace(/\n+$/, '');
-
-            // Show command separately or inline
-            if (showCommandSeparately && effectiveStep.instruction) {
-              // Show command in separate labeled section
-              cellContent += `\n*Command:*\n{code:bash}\n${trimmedCommand}\n{code}`;
-            } else if (!effectiveStep.instruction) {
-              // No instruction, just show command
-              cellContent += `{code:bash}\n${trimmedCommand}\n{code}`;
-            } else {
-              // Both present, inline mode: show command after instruction
-              cellContent += `\n{code:bash}\n${trimmedCommand}\n{code}`;
-            }
-          }
-
-          // Process script (external shell script file)
-          if (effectiveStep.script) {
-            const sep = cellContent ? '\n' : '';
-            cellContent += `${sep}*Script:* \`${effectiveStep.script}\``;
-            if (operationDir) {
-              try {
-                // eslint-disable-next-line @typescript-eslint/no-require-imports
-                const fs = require('node:fs');
-                const nodePath = require('node:path');
-                const scriptPath = nodePath.resolve(
-                  operationDir,
-                  effectiveStep.script,
-                );
-                const scriptContent = fs
-                  .readFileSync(scriptPath, 'utf-8')
-                  .trimEnd();
-                cellContent += `\n{code:bash}\n${scriptContent}\n{code}`;
-              } catch {
-                cellContent += ' _(file not found)_';
-              }
-            }
-          }
-
-          // Add expect assertions
-          if (effectiveStep.expect != null) {
-            const resolvedExpect =
-              resolveVars && substituteVars
-                ? substituteExpectVars(
-                    effectiveStep.expect,
-                    env.variables || {},
-                    effectiveStep.variables,
-                  )
-                : effectiveStep.expect;
-            const parts = renderExpectParts(resolvedExpect);
-            if (parts.length > 0) {
-              const sep = cellContent ? '\n' : '';
-              cellContent += `${sep}*Expected:*`;
-              for (const p of parts) cellContent += `\n* [ ] _${p}_`;
-            }
-          }
-
-          // Fallback for steps with neither
-          if (!cellContent) {
-            if (step.sub_steps && step.sub_steps.length > 0) {
-              cellContent = '_(see substeps below)_';
-            } else {
-              cellContent = `_(${step.type} step)_`;
-            }
-          }
-
-          // Add sign-off checkboxes if PIC or Reviewer is set (interactive checkboxes)
-          if (effectiveStep.pic || effectiveStep.reviewer) {
-            cellContent += '\nSign-off:';
-            if (effectiveStep.pic) {
-              cellContent += '\n* [ ] PIC';
-            }
-            if (effectiveStep.reviewer) {
-              cellContent += '\n* [ ] Reviewer';
-            }
-          }
-
-          // Add evidence area with environment-specific results
-          if (effectiveStep.evidence) {
-            cellContent += formatEvidenceArea(
-              effectiveStep.evidence,
-              env.name,
-              operationDir,
-            );
-          }
-
-          commandCells.push(cellContent);
-        });
-
-        // Construct complete row with all cells
-        content += `| ${stepInfo} | ${commandCells.join(' | ')} |\n`;
-
-        // Add sub-steps in table format (recursive)
-        if (step.sub_steps && step.sub_steps.length > 0) {
-          content += addConfluenceSubStepRows(
-            step.sub_steps,
-            filteredOperation.environments,
-            `${stepNumber}`,
-            1,
-            resolveVars,
-            typeIcons,
-            escapeConfluenceMacros,
-            substituteVariables,
-            formatForTableCell,
-            addSmartLineBreaks,
-            formatEvidenceArea,
-            formatTimelineForDisplay,
-            operationDir,
-            operation.common_variables ?? {},
-            aggregateRollbacks,
-          );
-        }
-
-        // Render rollback for step AFTER all content (inline rendering).
-        // For parent steps with sub_steps, this renders after sub-steps; for
-        // regular steps, after the step row. Renders EVERY entry (foreach-
-        // expanded or hand-authored siblings), not just [0].
-        const stepRollbacks = (step.rollback ?? []).filter(hasRollbackContent);
-        if (aggregateRollbacks && stepRollbacks.length > 0) {
-          // Collapse the inline block to a single jump-link into the bottom
-          // Rollback Plan (the {anchor} target lives there).
-          content += `\n(<) *Rollback:* [${stepRollbackHeadingText(step)} |#${stepRollbackAnchor(step)}]\n\n`;
-          tableOpen = false;
-          return;
-        }
-        stepRollbacks.forEach((rb: any, rbIndex: number) => {
-          // Disambiguate multiple entries in the heading via the rollback
-          // step's own (foreach-suffixed) name; single-entry output unchanged.
-          const rbHeadingName =
-            stepRollbacks.length > 1
-              ? `${resolveStepName(step.name, step.variables)} — ${rb.name ? resolveStepName(rb.name, { ...step.variables, ...rb.variables }) : `Rollback ${rbIndex + 1}`}`
-              : resolveStepName(step.name, step.variables);
-          content += renderInlineRollback(
-            rb,
-            `${stepNumber}`,
-            rbHeadingName,
-            3, // h3 for parent steps
-            filteredOperation.environments,
-            resolveVars,
-            step.variables,
-            escapeConfluenceMacros,
-            substituteVariables,
-            formatEvidenceArea,
-            operationDir,
-          );
-          // Rollback closes the table, so mark it as closed
-          tableOpen = false;
-        });
-      },
-    );
+    phaseSteps.forEach((entry: { step: any; stepNumber: number }) => {
+      renderConfluenceStepRow(entry, phaseName, tableState);
+    });
 
     content += '\n';
   });
@@ -1770,6 +1782,27 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
       emitRollbackRow(rollbackStep, `Rollback Step ${index + 1}`);
     });
 
+    content += '\n';
+  }
+
+  // `hooks: [{ on_failure: true }]` steps — Capistrano's `deploy:failed`
+  // counterpart. Not part of the flow, so they get their own section, rendered
+  // through the SAME renderConfluenceStepRow as flow steps (no phase, so each
+  // step shows its own phase icon).
+  if (filteredOperation.on_failure && filteredOperation.on_failure.length > 0) {
+    content += `h2. (!) On Failure
+
+{warning}If the operation aborts or a step fails, carry out the following:{warning}
+
+`;
+    const failureTableState = { open: false };
+    filteredOperation.on_failure.forEach((step: any, index: number) => {
+      renderConfluenceStepRow(
+        { step, stepNumber: index + 1 },
+        undefined,
+        failureTableState,
+      );
+    });
     content += '\n';
   }
 

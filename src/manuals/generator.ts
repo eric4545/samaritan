@@ -1781,6 +1781,31 @@ function generateManualContent(
     });
   }
 
+  // `hooks: [{ on_failure: true }]` steps — Capistrano's `deploy:failed`
+  // counterpart. Not part of the flow, so they get their own section, rendered
+  // with the SAME generateStepRow used for flow steps so every step field lands
+  // in every environment column.
+  if (operation.on_failure && operation.on_failure.length > 0) {
+    markdown += '## 🚨 On Failure\n\n';
+    markdown +=
+      'If the operation aborts or a step fails, carry out the following:\n\n';
+    const failureTableState: TableState = { open: false };
+    operation.on_failure.forEach((step, index) => {
+      markdown += generateStepRow(
+        step,
+        index + 1,
+        operation.environments,
+        resolveVariables,
+        '',
+        undefined,
+        operationDir,
+        operation.common_variables,
+        failureTableState,
+      );
+    });
+    markdown += closeStepTable(failureTableState);
+  }
+
   return markdown;
 }
 
@@ -2200,6 +2225,29 @@ export function generateSingleEnvManual(
       } else {
         renderRollbackStepSingleEnv(rb, `Rollback Step ${index + 1}`, 3, {});
       }
+    });
+  }
+
+  // `hooks: [{ on_failure: true }]` steps. These are not part of the flow, so
+  // they get their own section — the counterpart to Capistrano's `deploy:failed`
+  // hook. Distinct from the Rollback Plan above: rollback compensates work that
+  // succeeded, on-failure notifies and cleans up after work that did not.
+  // Rendered with the SAME renderStep used for flow steps, so every step field
+  // (command, expect, evidence, PIC, sub-steps) renders identically here.
+  const onFailureSteps = (workingOperation.on_failure ?? []).filter((step) =>
+    shouldRenderStepForEnvironment(step, targetEnv),
+  );
+  if (onFailureSteps.length > 0) {
+    lines.push('---');
+    lines.push('');
+    lines.push('## 🚨 On Failure');
+    lines.push('');
+    lines.push(
+      'If the operation aborts or a step fails, carry out the following:',
+    );
+    lines.push('');
+    onFailureSteps.forEach((step, index) => {
+      renderStep(step, `Failure Step ${index + 1}`, 3);
     });
   }
 

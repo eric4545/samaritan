@@ -135,3 +135,37 @@ timestamps stay strings). Renderers live in `src/manuals/postmortem-*.ts`.
 Because a postmortem has its OWN sections (not operation steps), the
 four-render-path `StepContent` parity concern does NOT apply. See the skill's
 `reference/postmortem-yaml.md` for the authoring surface.
+
+## Lifecycle hooks (`hooks:`) are resolved at parse time, not at render time
+
+`applyHooks` (`src/lib/hooks.ts`) runs in `parseOperation` right after
+`resolveStepReferences` and BEFORE the operation object is assembled. That
+ordering is the whole design: `before`/`after` hook steps are spliced into
+`operation.steps` as ordinary `Step`s, so every generator and the run loop see a
+normal step list and need **zero** hook-specific code. Do not push hook handling
+downstream into a renderer.
+
+Hook steps go through `resolveStepReferences` themselves first, so `uses:`/`with:`,
+`foreach`/`matrix` and `sub_steps` work inside a hook exactly as in an authored
+step.
+
+Anchors resolve against the **original** step list and are applied in one pass
+(a `before`/`after` bucket keyed by original index), so multiple hooks on one
+anchor stay in declaration order and none attaches to another's injected output.
+A phase anchor picks the FIRST step of the phase for `before` and the LAST for
+`after`. `applyHooks` never throws — it returns `issues`, which the parser turns
+into `hooks:` field errors so `validate` reports an unresolvable anchor as a hard
+error rather than silently dropping the steps.
+
+`hookSource` is parser-set provenance (like `usesGroup` / `foreachSource`), so it
+is deliberately **absent from the schema** and therefore outside the
+rollback-parity contract below.
+
+`on_failure: true` hooks are NOT injected. They collect onto `operation.on_failure`
+and must be rendered in **all four** manual paths (see `.claude/rules/manuals.md`)
+plus offered by the run loop's abort handler — `on_failure` is a section-level
+feature, so the "update ALL generators" rule applies in full. Tests:
+`tests/lib/hooks.test.ts` (unit), `tests/operations/hooks-parsing.test.ts`
+(injection + anchor validation), `tests/manuals/hooks-on-failure.test.ts` (all
+render paths), `tests/cli/run.test.ts` (fires on abort, never on a clean run).
+Example `examples/deployment-with-hooks.yaml`; guide `docs/hooks.md`.

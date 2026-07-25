@@ -1,0 +1,115 @@
+name: Deployment With Lifecycle Hooks
+version: 1.0.0
+description: |
+  Demonstrates `hooks:` — lifecycle hooks modelled on Capistrano's
+  `before`/`after` task enhancement and its `deploy:failed` anchor.
+
+  A hook names an ANCHOR and contributes steps on one side of it:
+
+   - `before: <anchor>` / `after: <anchor>` — the anchor is a step `id` or a
+     phase (`preflight`, `flight`, `postflight`). The hook's steps are injected
+     into the step list at parse time, so they appear in generated manuals and
+     are walked by `samaritan run` exactly like authored steps. A phase anchor
+     attaches to the FIRST step of the phase for `before` and the LAST for
+     `after`.
+   - `on_failure: true` — the steps are NOT injected. They run only when the run
+     aborts or a step fails, and are rendered as their own manual section. This
+     is notification and cleanup; use `rollback:` to compensate work that
+     already succeeded.
+
+  Multiple hooks on the same anchor apply in declaration order.
+
+author: SRE Team
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      CLUSTER: staging-cluster
+      SLACK_CHANNEL: '#deploys'
+  - name: production
+    description: Production environment
+    variables:
+      CLUSTER: prod-cluster
+      SLACK_CHANNEL: '#incidents'
+    approval_required: true
+    validation_required: true
+
+steps:
+  - name: Check cluster reachability
+    id: preflight-cluster
+    type: automatic
+    phase: preflight
+    command: kubectl cluster-info --context=${CLUSTER}
+    expect:
+      contains: 'Kubernetes control plane'
+
+  - name: Apply the deployment manifest
+    id: deploy
+    type: automatic
+    phase: flight
+    command: kubectl apply -f deployment.yaml --context=${CLUSTER}
+    expect:
+      contains: configured
+    rollback:
+      - name: Roll the deployment back to the previous revision
+        command: kubectl rollout undo deployment/app --context=${CLUSTER}
+
+  - name: Confirm pods are healthy
+    id: verify
+    type: automatic
+    phase: postflight
+    command: kubectl get pods --context=${CLUSTER}
+    evidence:
+      required: true
+      types: [command_output]
+
+hooks:
+  # Announce the window before anything else runs. `before: preflight` attaches
+  # to the first preflight step, so it stays first even if more preflight checks
+  # are added later.
+  - before: preflight
+    steps:
+      - name: Announce the change window
+        type: manual
+        phase: preflight
+        instruction: Post in ${SLACK_CHANNEL} that the deployment is starting.
+
+  # Two hooks on the same anchor: they inject in declaration order, so the
+  # snapshot is taken before the traffic drain.
+  - before: deploy
+    steps:
+      - name: Snapshot current replica count
+        type: automatic
+        command: kubectl get deployment app -o=jsonpath='{.spec.replicas}' --context=${CLUSTER}
+        evidence:
+          required: true
+          types: [command_output]
+
+  - before: deploy
+    steps:
+      - name: Drain traffic from the old pods
+        type: automatic
+        command: kubectl label pods -l app=app draining=true --context=${CLUSTER}
+
+  - after: verify
+    steps:
+      - name: Re-enable alerting
+        type: manual
+        phase: postflight
+        instruction: Take the deployment silence off in the alerting system.
+
+  # Runs only if the operation aborts or a step fails. Distinct from `rollback:`
+  # above, which undoes the apply — this notifies and captures diagnostics.
+  - on_failure: true
+    steps:
+      - name: Page the on-call engineer
+        type: manual
+        instruction: Escalate in ${SLACK_CHANNEL} and page the on-call engineer.
+      - name: Capture pod diagnostics for the postmortem
+        type: automatic
+        command: kubectl describe pods -l app=app --context=${CLUSTER}
+        evidence:
+          required: true
+          types: [command_output]

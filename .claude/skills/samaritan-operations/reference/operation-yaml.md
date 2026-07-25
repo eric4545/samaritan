@@ -21,7 +21,38 @@ rollback:                    # operation-level rollback plan
   conditions: [ ... ]
   aggregate_step_rollbacks: false  # opt-in: group step.rollback[] into this plan
   steps: [ ... ]             # each a full step body (shares StepContent base)
+hooks:                       # lifecycle hooks (Capistrano before/after + deploy:failed)
+  - before: <step-id|phase>  # inject steps before an anchor
+    steps: [ ... ]
+  - after: <step-id|phase>   # inject steps after an anchor
+    steps: [ ... ]
+  - on_failure: true         # run only when the run aborts / a step fails
+    steps: [ ... ]
 ```
+
+### `hooks` — lifecycle hooks
+
+An anchor is a step **`id`** or a **phase** (`preflight`/`flight`/`postflight`).
+`before: <phase>` attaches to the **first** step of that phase, `after: <phase>`
+to the **last**.
+
+`before`/`after` steps are injected into `operation.steps` **at parse time**
+(`applyHooks` in `src/lib/hooks.ts`), so downstream they are ordinary steps —
+every generator and the run loop already handle them, and no renderer needs
+hook-specific code. Injected steps carry a `hookSource` provenance stamp
+(parser-set, not authored, so it is absent from the schema — like `usesGroup`
+and `foreachSource`).
+
+Multiple hooks may share an anchor; they apply in **declaration order**. Every
+anchor resolves against the ORIGINAL step list, so a hook never attaches to
+another hook's injected output. An anchor matching no step id or phase is a
+**parse error** (a silently-dropped hook is worse than a loud failure).
+
+`on_failure` steps are NOT injected: they land on `operation.on_failure`, render
+as a **🚨 On Failure** section in all four manual formats, and the run loop
+offers them when the operator aborts. They are distinct from `rollback` —
+rollback compensates work that succeeded, `on_failure` notifies/collects
+diagnostics after work that did not. Example: `examples/deployment-with-hooks.yaml`.
 
 The top-level `rollback` is a **RollbackPlan object** (`automatic`, `conditions`,
 `steps`) — not a bare array. It renders as a **🔄 Rollback Plan** section

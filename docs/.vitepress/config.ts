@@ -35,6 +35,7 @@ export default defineConfig({
           { text: 'Operation YAML', link: '/operation-yaml' },
           { text: 'Environments & variables', link: '/environments' },
           { text: 'Reusable steps', link: '/reusable-steps' },
+          { text: 'Lifecycle hooks', link: '/hooks' },
           { text: 'Rollback', link: '/rollback' },
         ],
       },
