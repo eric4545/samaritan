@@ -34,6 +34,12 @@ execution feature** — most execution features are roadmap items, not shipped.
    single-env — separate code paths) to see the actual broken output. Then fix,
    then re-run the SAME repro to prove it changed. A fix without a before/after
    repro and a regression test (rule 1) is not done.
+8. **CI runs supported runtimes only** — `DEFAULT_NODE_VERSION` must be the **Active
+   LTS**, the test matrix must cover every still-supported LTS line (Current is
+   allowed as an extra), and every `uses:` must resolve to a major whose `action.yml`
+   declares a supported `runs.using:`. A `Node 20 is deprecated` warning comes from an
+   **action's own** runtime, not from `node-version` — bump the action. Verify dates
+   and runtimes, never recall them: see `.claude/rules/github-actions.md`.
 
 ---
 
@@ -53,7 +59,7 @@ tests/             # fixtures/, manuals/ (snapshots), unit + integration
 ```
 
 Deeper, path-scoped guidance loads automatically from `.claude/rules/` when you
-open the matching source (manuals, parser/schema, run loop, tests).
+open the matching source (manuals, parser/schema, run loop, tests, CI workflows).
 
 ---
 
@@ -157,7 +163,7 @@ Per-area testing traps (readline multi-prompt gotcha, e2e notes) load from
 - **Skill `samaritan-operations`** (`.claude/skills/`) — how to author/validate/
   generate/run operations; `reference/{cli,operation-yaml,postmortem-yaml}.md`.
 - **`.claude/rules/`** — path-scoped code-editing traps (manuals, parser/schema,
-  run loop, tests), loaded on demand.
+  run loop, tests, GitHub Actions runtimes), loaded on demand.
 - **Source of truth:** `src/schemas/operation.schema.json`; `examples/*.yaml` are
   validated, copy-ready samples.
 
