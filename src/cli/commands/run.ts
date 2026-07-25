@@ -1155,10 +1155,10 @@ class OperationRunner {
     };
 
     /**
-     * Offer the `hooks: [{ on_failure: true }]` steps when a run ends badly —
-     * the counterpart to Capistrano's `deploy:failed`. Deliberately distinct
-     * from rollback: rollback compensates work that succeeded, on-failure
-     * notifies and captures diagnostics after work that did not. Reuses the
+     * Offer the `hooks: [{ on_failure: true }]` steps when a run ends badly.
+     * Deliberately distinct from rollback: rollback compensates work that
+     * succeeded, on-failure notifies and captures diagnostics after work that
+     * did not. Reuses the
      * same `runRollbackSteps` plumbing so the steps land in the audit log and
      * the report exactly like rollback steps do.
      */

@@ -1781,10 +1781,9 @@ function generateManualContent(
     });
   }
 
-  // `hooks: [{ on_failure: true }]` steps — Capistrano's `deploy:failed`
-  // counterpart. Not part of the flow, so they get their own section, rendered
-  // with the SAME generateStepRow used for flow steps so every step field lands
-  // in every environment column.
+  // `hooks: [{ on_failure: true }]` steps. Not part of the flow, so they get
+  // their own section, rendered with the SAME generateStepRow used for flow
+  // steps so every step field lands in every environment column.
   if (operation.on_failure && operation.on_failure.length > 0) {
     markdown += '## 🚨 On Failure\n\n';
     markdown +=
@@ -2229,9 +2228,9 @@ export function generateSingleEnvManual(
   }
 
   // `hooks: [{ on_failure: true }]` steps. These are not part of the flow, so
-  // they get their own section — the counterpart to Capistrano's `deploy:failed`
-  // hook. Distinct from the Rollback Plan above: rollback compensates work that
-  // succeeded, on-failure notifies and cleans up after work that did not.
+  // they get their own section. Distinct from the Rollback Plan above: rollback
+  // compensates work that succeeded, on-failure notifies and cleans up after
+  // work that did not.
   // Rendered with the SAME renderStep used for flow steps, so every step field
   // (command, expect, evidence, PIC, sub-steps) renders identically here.
   const onFailureSteps = (workingOperation.on_failure ?? []).filter((step) =>

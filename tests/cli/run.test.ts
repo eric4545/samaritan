@@ -1818,9 +1818,8 @@ describe('run command: on_failure hook', () => {
     );
   });
 
-  // Capistrano's deploy_failure.feature asserts the failure task runs on a
-  // failed `deploy` but NOT on an unrelated successful invocation. Same
-  // contract here: a clean run must never trigger on_failure.
+  // The contract: on_failure fires when the run ends badly, and never on a
+  // clean run.
   it('does NOT fire when the operation completes cleanly', () => {
     const result = runCli(['run', HOOKS, '--env', 'staging', '--dry-run'], {
       input: '',

@@ -21,7 +21,7 @@ rollback:                    # operation-level rollback plan
   conditions: [ ... ]
   aggregate_step_rollbacks: false  # opt-in: group step.rollback[] into this plan
   steps: [ ... ]             # each a full step body (shares StepContent base)
-hooks:                       # lifecycle hooks (Capistrano before/after + deploy:failed)
+hooks:                       # lifecycle hooks (before/after anchors + on_failure)
   - before: <step-id|phase>  # inject steps before an anchor
     steps: [ ... ]
   - after: <step-id|phase>   # inject steps after an anchor

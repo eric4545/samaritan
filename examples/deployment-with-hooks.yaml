@@ -1,8 +1,7 @@
 name: Deployment With Lifecycle Hooks
 version: 1.0.0
 description: |
-  Demonstrates `hooks:` — lifecycle hooks modelled on Capistrano's
-  `before`/`after` task enhancement and its `deploy:failed` anchor.
+  Demonstrates `hooks:` — lifecycle hooks.
 
   A hook names an ANCHOR and contributes steps on one side of it:
 
