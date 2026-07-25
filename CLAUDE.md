@@ -13,8 +13,11 @@ execution feature** — most execution features are roadmap items, not shipped.
 ## 🚨 Non-Negotiable Rules
 
 1. **Tests ship with code** — every feature/fix includes tests in the SAME commit.
-2. **Examples + docs for every feature** — a working file in `examples/` AND
-   updated `README.md`. Never commit a feature without both.
+2. **Examples + docs for every feature** — a working file in `examples/` AND the
+   relevant guide page under `docs/`. Never commit a feature without both.
+   Do **not** document a new flag or field by hand: register it in the CLI or the
+   schema and it appears in `docs/reference/` automatically. **README.md is not
+   the place** — it is a landing page with no reference content.
 3. **Lint clean before commit** — `npx @biomejs/biome check --write <changed files>`; fix all errors.
 4. **StepContent is the shared base** — never add execution/content fields directly
    to `Step` or `RollbackStep`; add them to `StepContent` so both benefit.
@@ -64,13 +67,25 @@ manual / automatic / hybrid), session persistence + `resume`/`sessions`,
 `run --mock`, auto-capture on verify, retryable verification (`expect.retry`),
 multi-operator `--pic` focus + `report merge`, rollback (step + operation-level,
 full parity), postmortem / incident-report (RCA) documents.
-CLI: `validate`, `generate manual|confluence|postmortem`, `postmortem`,
-`report`, `schema`, `init`, `create operation`, `run`, `resume`, `sessions`, `qrh`.
+CLI: `validate`, `generate manual|docs|postmortem|schedule`, `postmortem`,
+`report`, `schema`, `diff`, `init`, `operation`, `run`, `resume`, `sessions`, `qrh`.
+Confluence/ADF are **formats** (`generate manual -f confluence|adf`), not a
+subcommand — there is no `generate confluence`. Scaffolding is `samaritan
+operation` (NOT `create operation`: `project.ts` chains `.command('operation')`
+off a `create` parent and the chain returns the subcommand, so only `operation`
+is registered).
 
 **NOT implemented (roadmap):** non-interactive command execution
 (`--auto-approve`/`automatic` marks steps complete without running them),
-automatic evidence collection, QRH database, external integrations
-(Jira/Confluence API/Slack), AI assistant.
+automatic evidence collection, a QRH **database** (the `qrh` commands exist and
+read a local `./qrh/` directory; nothing is bundled or hosted), external
+integrations (Jira/Confluence API/Slack), AI assistant.
+
+**Docs are generated — never hand-write a CLI or YAML field table.**
+`docs/reference/` is produced by `scripts/gen-docs` from the Commander tree and
+`operation.schema.json`, and is **gitignored**. Run `npm run docs:gen` (or
+`npm run docs:dev` for the site). `tests/docs/prose-lint.test.ts` fails the build
+if prose anywhere in this repo names a subcommand or flag that does not exist.
 
 ---
 
@@ -132,8 +147,13 @@ Per-area testing traps (readline multi-prompt gotcha, e2e notes) load from
 
 ## 📚 Reference
 
-- **README.md** — user docs · **USAGE.md** — quick start · **ROADMAP.md** —
-  planned vs implemented (check before "future" features).
+- **`docs/`** — the user documentation, published with VitePress
+  (`npm run docs:dev`). Hand-written prose lives in `docs/*.md`;
+  **`docs/reference/` is GENERATED and gitignored** (see "Docs are generated"
+  above). **README.md** is a ~110-line landing page that deliberately contains
+  **no** CLI or YAML reference — do not reintroduce tables there.
+  **USAGE.md** is a stub pointing at the site. **ROADMAP.md** — planned vs
+  implemented (check before "future" features).
 - **Skill `samaritan-operations`** (`.claude/skills/`) — how to author/validate/
   generate/run operations; `reference/{cli,operation-yaml,postmortem-yaml}.md`.
 - **`.claude/rules/`** — path-scoped code-editing traps (manuals, parser/schema,

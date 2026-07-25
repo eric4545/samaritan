@@ -19,7 +19,7 @@
 - ✅ Template `uses:` composition with remote/GitHub shorthand and template imports
 - ✅ Sub-steps for nested step breakdowns
 - ✅ Structured output verification & assertions (`expect`/`verify` configs)
-- ✅ Comprehensive test suite (674 tests passing)
+- ✅ Comprehensive test suite (run `npm test` for the current count)
 
 ### Documentation
 - ✅ README.md with examples and workflows
@@ -45,8 +45,9 @@ in this roadmap:
   each step's input/output/verification/approval/notes/evidence/status/
   timing (folded from the event stream by `src/lib/session-log.ts`), so
   the persisted session is self-describing, not just metadata
-- ✅ Evidence report generation (always-on, plus `samaritan run --report
-  <dir>` / `samaritan resume --report <dir>` for an extra copy) — Markdown
+- ✅ Evidence report generation — the canonical `report.md` is always written
+  beside the operation under `.samaritan-runs/<id>/`; `samaritan run --report
+  <dir>` places an extra copy (`run` only, not `resume`) — Markdown
   report embedding captured evidence (images, files, code blocks) per
   step, a per-step verification ledger, and an aggregated Approval Trail
 - ✅ `samaritan diff` command — compares how an operation's steps render

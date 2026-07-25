@@ -1,6 +1,10 @@
 import { existsSync } from 'node:fs';
 import { Command } from 'commander';
 import { BUILTIN_VARIABLE_NAMES } from '../../lib/builtin-variables';
+import {
+  findDiscardedVerifyKeysInFile,
+  formatDiscardedVerifyFinding,
+} from '../../lib/deprecated-verify';
 import { formatRegexFinding, lintOperationRegex } from '../../lib/regex-lint';
 import {
   formatFinding,
@@ -52,6 +56,13 @@ class OperationValidator {
       // Basic validation (already done by parser)
       console.log('✅ YAML syntax valid');
       console.log('✅ Operation schema valid');
+
+      // Deprecated `verify:` keys the parser discards. Scanned from the raw YAML —
+      // by this point `operation` no longer carries `verify`, so the loss is
+      // invisible from the parsed model.
+      for (const finding of findDiscardedVerifyKeysInFile(filePath)) {
+        result.warnings.push(formatDiscardedVerifyFinding(finding));
+      }
 
       // Additional validations
       this.validateOperationStructure(operation, result, options);
