@@ -224,6 +224,12 @@ samaritan resume <session-id>
 samaritan resume <session-id> --from-step 4
 ```
 
+`--from-step` (on both `run` and `resume`) takes the step number **as the
+generated manual prints it**. Because step numbers follow the authored position,
+an environment that filters steps out with `when:` has sparse numbers — asking
+for one that this environment does not contain fails with the list of numbers it
+does have, rather than silently starting somewhere else.
+
 Quitting a run with `q`, `abort`, or **`Ctrl+C`** stops execution but **saves the session as paused**, prints the resume command, and keeps it listed in `samaritan sessions` — so you can stop mid-operation and pick it back up later. (`Ctrl+C` no longer hard-quits without saving — it now unwinds through the same save path as `abort`.) Resume restores variables, execution mode, and the current step index, then re-enters the interactive loop.
 
 ## Named sessions
