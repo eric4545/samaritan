@@ -25,7 +25,10 @@ import type { CaptureBackend } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
-import { buildEffectiveRollback } from '../../lib/global-rollback';
+import {
+  buildEffectiveRollback,
+  type EffectiveRollbackStep,
+} from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { generateReport, renderReport } from '../../lib/report-generator';
@@ -1151,6 +1154,52 @@ class OperationRunner {
       return true;
     };
 
+    /**
+     * Offer the `hooks: [{ on_failure: true }]` steps when a run ends badly —
+     * the counterpart to Capistrano's `deploy:failed`. Deliberately distinct
+     * from rollback: rollback compensates work that succeeded, on-failure
+     * notifies and captures diagnostics after work that did not. Reuses the
+     * same `runRollbackSteps` plumbing so the steps land in the audit log and
+     * the report exactly like rollback steps do.
+     */
+    const doOnFailure = async (i: number): Promise<void> => {
+      const failureSteps = (operation.on_failure ?? []).filter((s) =>
+        shouldRenderStepForEnvironment(s, state.context.environment),
+      );
+      if (failureSteps.length === 0) return;
+
+      console.log('\n    🚨 On-failure steps are defined for this operation:');
+      for (const s of failureSteps) {
+        const cmd = s.command
+          ? `$ ${tryResolve(s.command, s.variables)}`
+          : s.instruction
+            ? `(manual) ${tryResolve(s.instruction, s.variables)}`
+            : '';
+        console.log(`      • ${s.name}${cmd ? ' — ' : ''}${cmd}`.trimEnd());
+      }
+
+      const confirm = (await question('\n    Run on-failure steps? [y/N]: '))
+        .trim()
+        .toLowerCase();
+      if (confirm !== 'y' && confirm !== 'yes') {
+        console.log('    ↩  On-failure steps skipped.');
+        return;
+      }
+
+      if (!(controller && tmuxSession)) {
+        console.log(
+          '    🚨 Run the on-failure commands above manually (no tmux session).',
+        );
+      }
+      await controller?.runRollbackSteps(
+        failureSteps as EffectiveRollbackStep[],
+        i,
+        state.context.operator,
+        'global',
+      );
+      console.log('    ✅ On-failure steps recorded.');
+    };
+
     // Copy a command to the clipboard and report the outcome. `indent` matches
     // the surrounding prompt's left margin (the failure prompt nests deeper
     // than the action prompts).
@@ -1847,6 +1896,7 @@ class OperationRunner {
             if (isQuit(choice)) {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
+              await doOnFailure(i);
               break;
             }
             if (isGlobalRollback(choice)) {
@@ -1918,6 +1968,7 @@ class OperationRunner {
             if (isQuit(choice)) {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
+              await doOnFailure(i);
               break;
             }
             if (isGlobalRollback(choice)) {
@@ -2042,6 +2093,7 @@ class OperationRunner {
             if (isQuit(inputChoice)) {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
+              await doOnFailure(i);
               manualNotes = '';
               break;
             }
@@ -2324,6 +2376,7 @@ class OperationRunner {
           if (choice === 'abort') {
             executor.cancel();
             console.log('\n⛔ Execution aborted by operator.');
+            await doOnFailure(i);
             break;
           }
           if (isRollback(choice)) {

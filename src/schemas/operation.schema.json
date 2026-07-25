@@ -590,6 +590,42 @@
         }
       }
     },
+    "hooks": {
+      "type": "array",
+      "description": "Lifecycle hooks. `before`/`after` inject their steps into the step list at an anchor (a step id, or a phase: preflight/flight/postflight) at parse time, so a shared step library can contribute steps without the document reordering its own list. `on_failure` steps are not injected — they run only when a run aborts or a step fails (notification/cleanup; use `rollback` to compensate completed work). Multiple hooks on one anchor apply in declaration order.",
+      "items": {
+        "type": "object",
+        "required": ["steps"],
+        "additionalProperties": false,
+        "oneOf": [
+          { "required": ["before"] },
+          { "required": ["after"] },
+          { "required": ["on_failure"] }
+        ],
+        "properties": {
+          "before": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Anchor to inject before: a step `id`, or a phase name (preflight/flight/postflight)"
+          },
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Anchor to inject after: a step `id`, or a phase name (preflight/flight/postflight)"
+          },
+          "on_failure": {
+            "type": "boolean",
+            "description": "Run these steps when the operation aborts or a step fails, instead of injecting them into the flow"
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Steps this hook contributes (the full normal-step surface, including `uses:`)",
+            "items": { "$ref": "#/properties/steps/items" }
+          }
+        }
+      }
+    },
     "metadata": {
       "type": "object",
       "description": "Provenance for the operation document. Normally populated automatically and embedded in generated manuals rather than authored by hand.",

@@ -247,6 +247,35 @@ export interface Step extends StepContent {
   // that authored name/id therefore matches ALL expanded instances. Not authored
   // in YAML.
   foreachSource?: { name?: string; id?: string };
+  // Internal: set by the parser on each step injected by an operation-level
+  // `hooks:` entry, recording which anchor placed it and on which side. Lets
+  // generated manuals label a step as hook-contributed rather than authored
+  // inline. Not authored in YAML.
+  hookSource?: { anchor: string; position: HookPosition };
+}
+
+/** Which side of its anchor a hook's steps are injected on. */
+export type HookPosition = 'before' | 'after';
+
+/**
+ * An operation-level lifecycle hook (modelled on Capistrano's `before`/`after`
+ * task enhancement and its `deploy:failed` anchor).
+ *
+ * `before`/`after` name an ANCHOR — either a step `id` or a phase
+ * (`preflight`/`flight`/`postflight`). Their steps are injected into the step
+ * list at parse time, so every renderer and the run loop see ordinary steps and
+ * need no hook-specific handling.
+ *
+ * `on_failure` steps are NOT injected. They are recovery/notification steps that
+ * run only when the operation aborts or a step fails — the counterpart to
+ * Capistrano's `deploy:failed`, and distinct from `rollback` (which compensates
+ * completed work; `on_failure` notifies and cleans up).
+ */
+export interface OperationHook {
+  before?: string;
+  after?: string;
+  on_failure?: boolean;
+  steps: Step[];
 }
 
 export interface Environment {
@@ -291,6 +320,14 @@ export interface Operation {
   env_file?: string; // Path to .env file for loading variables
   steps: Step[];
   rollback?: RollbackPlan;
+  // Authored lifecycle hooks. `before`/`after` entries are consumed by the
+  // parser (their steps are injected into `steps`); only `on_failure` entries
+  // survive here, collected into `on_failure` below.
+  hooks?: OperationHook[];
+  // Steps contributed by `hooks: [{ on_failure: true, steps: [...] }]`, in
+  // declaration order. Rendered as their own manual section and offered by the
+  // run loop when a run aborts or a step fails.
+  on_failure?: Step[];
   metadata: OperationMetadata;
   needs?: string[];
   template?: string;
