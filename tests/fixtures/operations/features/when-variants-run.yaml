@@ -1,0 +1,51 @@
+name: When And Variants In The Run Loop
+version: 1.0.0
+description: |
+  `when:` and `variants:` used to be honoured only by the manual generators, so
+  `run --env production` walked steps the production manual omits and showed the
+  base command where the manual shows the production variant. This fixture pins
+  the run loop to the same filtering the generators apply.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      TARGET: staging-cluster
+  - name: production
+    description: Production environment
+    variables:
+      TARGET: prod-cluster
+
+steps:
+  # Label 1 — production only. Its absence in staging is what makes the staging
+  # labels sparse (2, 3, 4).
+  - name: Notify on-call before production change
+    id: notify
+    type: manual
+    when: [production]
+    instruction: Post in #incidents that a production deployment is starting.
+
+  # Label 2 — both environments, with a production-specific command variant.
+  - name: Deploy application
+    id: deploy
+    type: manual
+    command: kubectl apply -f app.yaml --context=${TARGET}
+    variants:
+      production:
+        command: kubectl apply -f app.yaml --context=${TARGET} --strategy=blue-green
+
+  # Label 3 — staging only, and it `needs` a step that does not exist in
+  # staging. A dependency filtered out by `when:` must NOT gate the run.
+  - name: Run smoke tests
+    id: smoke
+    type: manual
+    when: [staging]
+    needs: [notify]
+    command: npm run test:smoke
+
+  # Label 4 — both environments. Present in every env so the last label differs
+  # from the runnable count in staging.
+  - name: Verify deployment
+    id: verify
+    type: manual
+    command: kubectl get pods --context=${TARGET}

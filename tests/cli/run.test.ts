@@ -38,6 +38,8 @@ function fixturePath(name: string): string {
       'tests/fixtures/operations/features/builtin-variables.yaml',
     needsGate: 'tests/fixtures/operations/features/needs-gate.yaml',
     nearestRollback: 'tests/fixtures/operations/features/nearest-rollback.yaml',
+    whenVariantsRun:
+      'tests/fixtures/operations/features/when-variants-run.yaml',
   };
   return resolve(map[name]);
 }
@@ -1435,9 +1437,13 @@ describe('run command: --from-step starts at a later step', () => {
       'out-of-range --from-step must fail',
     );
     const combined = result.stdout + result.stderr;
+    // The argument names a step LABEL, which goes sparse once `when:` filters
+    // steps out, so the error lists the labels that actually exist in this
+    // environment rather than a contiguous range that would be a lie.
     assert.ok(
-      /--from-step must be between 1 and \d+/.test(combined),
-      'must print the valid range error',
+      /no step 9 in environment 'staging'/.test(combined) &&
+        /Available: 1, 2/.test(combined),
+      `must name the labels this environment has; got:\n${combined}`,
     );
   });
 });
@@ -1632,5 +1638,151 @@ describe('run command: --pic focus mode', () => {
     assert.ok(!combined.includes('🎯 Focus:'), 'no focus banner without --pic');
     // The first step (Bob migrate) is presented normally.
     assert.ok(combined.includes('Bob migrate'), "bob's step is shown");
+  });
+});
+
+// ─── when: / variants: are applied by the run loop, not just the generators ──
+
+describe('run command: when/variants filtering matches the generated manual', () => {
+  function shQuote(value: string): string {
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+  }
+
+  function runSequenced(
+    args: string[],
+    inputs: string[],
+    timeoutMs = 20_000,
+  ): string {
+    const piped = inputs
+      .map((line) => `printf ${shQuote(`${line}\\n`)}`)
+      .join('; sleep 1; ');
+    const quotedArgs = args.map(shQuote).join(' ');
+    const cmd = `(sleep 1; ${piped}) | timeout ${Math.ceil(timeoutMs / 1000)} ${shQuote(CLI)} ${shQuote(INDEX)} ${quotedArgs}`;
+    const result = spawnSync('bash', ['-c', cmd], {
+      encoding: 'utf8',
+      timeout: timeoutMs + 5_000,
+    });
+    return (result.stdout ?? '') + (result.stderr ?? '');
+  }
+
+  it('production omits the staging-only step', () => {
+    const result = runCli([
+      'run',
+      fixturePath('whenVariantsRun'),
+      '--env',
+      'production',
+      '--dry-run',
+    ]);
+    const combined = result.stdout + result.stderr;
+    assert.match(
+      combined,
+      /Steps: 3/,
+      `production runs 3 of the 4 authored steps; got:\n${combined}`,
+    );
+  });
+
+  it('staging omits the production-only step', () => {
+    const result = runCli([
+      'run',
+      fixturePath('whenVariantsRun'),
+      '--env',
+      'staging',
+      '--dry-run',
+    ]);
+    const combined = result.stdout + result.stderr;
+    assert.match(
+      combined,
+      /Steps: 3/,
+      'staging runs 3 of the 4 authored steps',
+    );
+  });
+
+  it('presents the production command variant, not the base command', () => {
+    const combined = runSequenced(
+      ['run', fixturePath('whenVariantsRun'), '--env', 'production'],
+      ['abort'],
+    );
+    assert.ok(
+      combined.includes('Notify on-call before production change'),
+      `the production-only step must be walked; output:\n${combined.slice(-1500)}`,
+    );
+    assert.ok(
+      !combined.includes('Run smoke tests'),
+      'the staging-only step must NOT be walked in production',
+    );
+  });
+
+  it('applies the variant command when the variant step is reached', () => {
+    const combined = runSequenced(
+      ['run', fixturePath('whenVariantsRun'), '--env', 'production'],
+      ['', 'abort'],
+    );
+    assert.ok(
+      combined.includes('--strategy=blue-green'),
+      `production must show the variant command; output:\n${combined.slice(-2000)}`,
+    );
+  });
+
+  it('staging shows the base command, not the production variant', () => {
+    const combined = runSequenced(
+      ['run', fixturePath('whenVariantsRun'), '--env', 'staging'],
+      ['abort'],
+    );
+    assert.ok(
+      !combined.includes('--strategy=blue-green'),
+      'staging must not pick up the production variant',
+    );
+    assert.ok(
+      combined.includes('staging-cluster'),
+      `staging vars must still resolve; output:\n${combined.slice(-1500)}`,
+    );
+  });
+
+  it('labels keep the authored step number so they match the manual', () => {
+    // Staging drops authored step 1, so its first runnable step is labelled 2.
+    const combined = runSequenced(
+      ['run', fixturePath('whenVariantsRun'), '--env', 'staging'],
+      ['abort'],
+    );
+    const firstBanner = combined.match(/\[\d+\/\d+\]/);
+    assert.ok(
+      firstBanner && firstBanner[0] === '[2/4]',
+      `staging's first step is authored step 2 of 4; got ${firstBanner?.[0]}`,
+    );
+  });
+
+  it('a needs pointing at a when-excluded step does not gate the run', () => {
+    // `smoke` needs `notify`, which does not exist in staging. The forward gate
+    // must not fire — an unresolvable dependency is not an unmet one.
+    const combined = runSequenced(
+      ['run', fixturePath('whenVariantsRun'), '--env', 'staging'],
+      ['', '', 'abort'],
+    );
+    assert.ok(
+      !combined.includes('Start anyway?'),
+      `no needs gate should fire in staging; output:\n${combined.slice(-2000)}`,
+    );
+    assert.ok(
+      combined.includes('Run smoke tests'),
+      'the staging-only step must be reached',
+    );
+  });
+
+  it('--from-step names the authored label, and rejects one filtered out', () => {
+    const rejected = runCli([
+      'run',
+      fixturePath('whenVariantsRun'),
+      '--env',
+      'staging',
+      '--from-step',
+      '1',
+    ]);
+    const combined = rejected.stdout + rejected.stderr;
+    assert.notStrictEqual(rejected.status, 0, 'must exit non-zero');
+    assert.ok(
+      combined.includes('no step 1 in environment') &&
+        combined.includes('2, 3, 4'),
+      `error must list the labels this environment does have; got:\n${combined}`,
+    );
   });
 });

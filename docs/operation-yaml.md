@@ -523,7 +523,24 @@ steps:
 
 Fields you can override in `variants`: `instruction`, `command`, `timeout`, `pic`, `reviewer`, `evidence`.
 
-See `tests/fixtures/operations/features/when-and-variants.yaml` for a complete example.
+### They govern runs, not just manuals
+
+`when` and `variants` apply identically when you `run` the operation. A step
+gated `when: [staging]` is not presented during `run --env production`, and the
+production run shows the production `variants` command — so the runbook you
+review and the runbook you walk are the same document.
+
+Step numbers stay tied to the **authored** position, so "Step 6" means the same
+step in every environment even when earlier steps are filtered out. That is why
+an environment's step labels can be sparse (`2`, `3`, `4`), and why
+`run --from-step <n>` takes the label as printed in the manual rather than a
+position in the filtered list.
+
+A `needs` entry pointing at a step that this environment filters out does not
+gate the run — an unresolvable dependency is not an unmet one.
+
+See `tests/fixtures/operations/features/when-and-variants.yaml` for a complete example,
+and `tests/fixtures/operations/features/when-variants-run.yaml` for the run-loop behaviour.
 
 ## Foreach Loops (Repeatable Steps)
 

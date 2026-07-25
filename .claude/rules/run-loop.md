@@ -46,6 +46,30 @@ it). Emits a `user_input`/`action:'send_to_pane'` breadcrumb — deliberately NO
 "Command sent" row; sidecar never executes). Smoke-test in real tmux: the
 command lands WITHOUT a trailing newline.
 
+## `when:` / `variants:` are applied by the run loop too
+
+`flattenStepsForExecution(steps, environmentName, prefix)` routes every step
+through the SAME `shouldRenderStepForEnvironment` → `mergeStepVariant` pair (in
+that order) that the four render paths use, so a run and its manual agree
+step-for-step. Before this, both helpers were generator-only and
+`run --env production` walked `when: [staging]` steps and showed the base
+command instead of the production variant. A filtered-out parent takes its
+sub-tree with it; `prepareFlatOperation(operation, environmentName)` takes the
+env from `targetEnv` on `run` and from `session.environment` on `resume` (so
+persisted indices line up across both).
+
+**Labels carry the AUTHORED step number, not the filtered position** — matching
+`generateSingleEnvManual`, which numbers with `originalIndex + 1` precisely so
+"Step 6" is the same step in every environment. Labels therefore go sparse
+(`2, 3, 4`), which has two consequences: the banner denominator is
+`labelScale` (highest top-level label, not `steps.length` — otherwise the last
+step renders `[4/3]`), and `--from-step <n>` resolves via
+`resolveFromStepIndex(flatSteps, n)` **by label**, erroring with the labels the
+environment does have rather than a contiguous range. A `needs` pointing at a
+filtered-out step resolves to no edge in `buildStepDepGraph` (it lands in
+`unknownRefs`), so it does NOT gate — an unresolvable dependency is not an unmet
+one. Fixture `when-variants-run.yaml`.
+
 ## `[b]` back / `[j]` jump / `--from-step`
 
 `executor.goToStep(index)` (rewind) resets the target + every later step to

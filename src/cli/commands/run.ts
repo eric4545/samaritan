@@ -44,6 +44,8 @@ import { SessionState } from '../../lib/session-state';
 import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
 import {
   mergeStepVariables,
+  mergeStepVariant,
+  shouldRenderStepForEnvironment,
   substituteExpectVars,
 } from '../../lib/step-resolution';
 import {
@@ -143,18 +145,70 @@ export function resolveFocusPic(
   return pic || undefined;
 }
 
-function flattenStepsForExecution(steps: Step[], prefix = ''): FlatStep[] {
+/**
+ * Flatten the step tree into the list the run loop iterates, applying the SAME
+ * environment filtering the manual generators apply.
+ *
+ * `when:` (drop steps that don't target this environment) and `variants:`
+ * (per-environment field overrides) used to be generator-only, so
+ * `run --env production` walked steps the production manual omits and presented
+ * the base command where the manual shows the production variant — the runbook
+ * you review was not the runbook you run. Both now route through the same
+ * `shouldRenderStepForEnvironment` / `mergeStepVariant` helpers the four render
+ * paths use, in the same order (filter, then merge, then recurse), so a run and
+ * its manual agree step-for-step.
+ *
+ * A filtered-out parent takes its whole sub-tree with it. Labels come from the
+ * step's ORIGINAL authored position, not its position in the filtered list —
+ * `generateSingleEnvManual` numbers the same way (`originalIdx + 1`), so the
+ * staging manual's "Step 4: Run smoke tests" is labelled `4` here too. Dense
+ * renumbering would agree on the step SET but disagree on every label.
+ */
+function flattenStepsForExecution(
+  steps: Step[],
+  environmentName: string,
+  prefix = '',
+): FlatStep[] {
   const result: FlatStep[] = [];
   steps.forEach((step, i) => {
+    if (!shouldRenderStepForEnvironment(step, environmentName)) return;
     const label = prefix ? `${prefix}${indexToLetters(i)}` : String(i + 1);
-    if (step.sub_steps && step.sub_steps.length > 0) {
-      result.push({ step, label });
-      result.push(...flattenStepsForExecution(step.sub_steps, label));
+    const effective = mergeStepVariant(step, environmentName);
+    if (effective.sub_steps && effective.sub_steps.length > 0) {
+      result.push({ step: effective, label });
+      result.push(
+        ...flattenStepsForExecution(
+          effective.sub_steps,
+          environmentName,
+          label,
+        ),
+      );
     } else {
-      result.push({ step, label });
+      result.push({ step: effective, label });
     }
   });
   return result;
+}
+
+/**
+ * Resolve a `--from-step <n>` argument to an index into the flat step list.
+ *
+ * The argument names the step LABEL the operator reads in the generated manual,
+ * not a position in the runnable list. Those coincided until `when:` filtering
+ * reached the run loop; for an environment whose first step is gated away the
+ * labels are sparse (`2`, `3`, `4`), and a positional reading would silently
+ * start one step off. Returns -1 when no step carries that label.
+ */
+export function resolveFromStepIndex(
+  flatSteps: FlatStep[],
+  requested: number,
+): number {
+  return flatSteps.findIndex((f) => f.label === String(requested));
+}
+
+/** Top-level labels available in this environment, for error messages. */
+function topLevelLabels(flatSteps: FlatStep[]): string[] {
+  return flatSteps.filter((f) => /^\d+$/.test(f.label)).map((f) => f.label);
 }
 
 class OperationRunner {
@@ -281,7 +335,10 @@ class OperationRunner {
       autoMode: executionMode === 'automatic' || options.autoApprove || false,
     };
 
-    const { flatSteps, execOperation } = this.prepareFlatOperation(operation);
+    const { flatSteps, execOperation } = this.prepareFlatOperation(
+      operation,
+      targetEnv,
+    );
 
     this.displayOperationSummary(
       execOperation,
@@ -373,20 +430,20 @@ class OperationRunner {
         console.log('▶️  Starting interactive operation execution...\n');
         executor.startInteractive();
         if (options.fromStep !== undefined) {
-          const total = executor.getState().steps.length;
-          if (
-            !Number.isInteger(options.fromStep) ||
-            options.fromStep < 1 ||
-            options.fromStep > total
-          ) {
-            console.error(`❌ --from-step must be between 1 and ${total}`);
+          const targetIndex = Number.isInteger(options.fromStep)
+            ? resolveFromStepIndex(flatSteps, options.fromStep)
+            : -1;
+          if (targetIndex < 0) {
+            console.error(
+              `❌ --from-step: no step ${options.fromStep} in environment '${targetEnv}'. Available: ${topLevelLabels(flatSteps).join(', ')}`,
+            );
             process.exit(1);
           }
-          // Mark 1..N-1 as skipped and start the loop at step N. Persist the
-          // jumped index immediately so an abort/crash before completing the
-          // target step still resumes there (the loop's persistProgress only
-          // runs after a step is acted on).
-          executor.jumpToStep(options.fromStep - 1);
+          // Mark everything before the target as skipped and start the loop
+          // there. Persist the jumped index immediately so an abort/crash before
+          // completing the target step still resumes there (the loop's
+          // persistProgress only runs after a step is acted on).
+          executor.jumpToStep(targetIndex);
           sessionManager.updateSessionFromExecutor(
             session.id,
             executor.getState(),
@@ -564,7 +621,13 @@ class OperationRunner {
       autoMode: session.mode === 'automatic',
     };
 
-    const { flatSteps, execOperation } = this.prepareFlatOperation(operation);
+    // Resume re-flattens with the environment stored on the session, so the
+    // filtered step list — and therefore every persisted step index — matches
+    // the one the original `run` built.
+    const { flatSteps, execOperation } = this.prepareFlatOperation(
+      operation,
+      session.environment,
+    );
     const executor = new OperationExecutor(execOperation, context);
     sessionManager.associateExecutor(session.id, executor);
 
@@ -587,10 +650,22 @@ class OperationRunner {
     }
 
     console.log('\n▶️  Resuming operation execution...\n');
-    const startIndex =
-      options.fromStep !== undefined
-        ? options.fromStep - 1
-        : session.current_step_index;
+    let startIndex = session.current_step_index;
+    if (options.fromStep !== undefined) {
+      // Same label-based resolution as `run --from-step` (see
+      // resolveFromStepIndex) — the number names the step as the manual labels
+      // it, which is sparse when `when:` filters steps out of this environment.
+      const targetIndex = Number.isInteger(options.fromStep)
+        ? resolveFromStepIndex(flatSteps, options.fromStep)
+        : -1;
+      if (targetIndex < 0) {
+        console.error(
+          `❌ --from-step: no step ${options.fromStep} in environment '${session.environment}'. Available: ${topLevelLabels(flatSteps).join(', ')}`,
+        );
+        process.exit(1);
+      }
+      startIndex = targetIndex;
+    }
     executor.resumeFromIndex(startIndex);
 
     const resumeMode: ExecutionMode =
@@ -622,11 +697,17 @@ class OperationRunner {
     }
   }
 
-  private prepareFlatOperation(operation: Operation): {
+  private prepareFlatOperation(
+    operation: Operation,
+    environmentName: string,
+  ): {
     flatSteps: FlatStep[];
     execOperation: Operation;
   } {
-    const flatSteps = flattenStepsForExecution(operation.steps);
+    const flatSteps = flattenStepsForExecution(
+      operation.steps,
+      environmentName,
+    );
     return {
       flatSteps,
       execOperation: { ...operation, steps: flatSteps.map((f) => f.step) },
@@ -1572,9 +1653,21 @@ class OperationRunner {
       // infinite go-back loop under piped/EOF stdin (empty answer = go back).
       const gatedBackOnce = new Set<number>();
 
+      // Banner denominator. Labels carry the step's AUTHORED number (so they
+      // match the generated manual), which goes sparse once `when:` filters
+      // steps out of this environment — a plain runnable count then renders
+      // nonsense like "[4/3]". Scale to the highest top-level label actually
+      // present instead, so the last step always reads "[N/N]".
+      const labelScale = Math.max(
+        steps.length,
+        ...flatSteps
+          .filter((f) => /^\d+$/.test(f.label))
+          .map((f) => Number(f.label)),
+      );
+
       stepLoop: for (let i = startIndex; i < steps.length; i++) {
         const { step } = steps[i];
-        const stepNum = `[${flatSteps[i].label}/${steps.length}]`;
+        const stepNum = `[${flatSteps[i].label}/${labelScale}]`;
         const typeLabel = step.type.toUpperCase();
 
         // Focus mode (`run --pic <name>`): auto-skip steps assigned to a
