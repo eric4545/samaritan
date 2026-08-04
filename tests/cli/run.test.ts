@@ -38,6 +38,7 @@ function fixturePath(name: string): string {
       'tests/fixtures/operations/features/builtin-variables.yaml',
     needsGate: 'tests/fixtures/operations/features/needs-gate.yaml',
     nearestRollback: 'tests/fixtures/operations/features/nearest-rollback.yaml',
+    whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
   };
   return resolve(map[name]);
 }
@@ -1632,5 +1633,39 @@ describe('run command: --pic focus mode', () => {
     assert.ok(!combined.includes('🎯 Focus:'), 'no focus banner without --pic');
     // The first step (Bob migrate) is presented normally.
     assert.ok(combined.includes('Bob migrate'), "bob's step is shown");
+  });
+});
+
+// ─── when-gated step filtering by environment ────────────────────────────────
+
+describe('run command: when-gated step filtering by environment', () => {
+  it('excludes a when: [dev] step from a stg run', () => {
+    const fixture = fixturePath('whenEnvFilter');
+    const result = runCli(['run', fixture, '--env', 'stg'], { input: 'q\n' });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      !combined.includes('Dev Only Step'),
+      `dev-only step must not appear in a stg run; output:\n${combined.slice(-800)}`,
+    );
+  });
+
+  it('includes a when: [dev, stg] step in a stg run', () => {
+    const fixture = fixturePath('whenEnvFilter');
+    const result = runCli(['run', fixture, '--env', 'stg'], { input: 'q\n' });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Dev And Stg Step'),
+      `dev+stg step must appear in a stg run; output:\n${combined.slice(-800)}`,
+    );
+  });
+
+  it('includes a step with no when in all environments', () => {
+    const fixture = fixturePath('whenEnvFilter');
+    const result = runCli(['run', fixture, '--env', 'stg'], { input: '\nq\n' });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('All Environments Step'),
+      `step with no when must appear in a stg run; output:\n${combined.slice(-800)}`,
+    );
   });
 });

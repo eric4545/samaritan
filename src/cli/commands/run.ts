@@ -44,6 +44,7 @@ import { SessionState } from '../../lib/session-state';
 import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
 import {
   mergeStepVariables,
+  shouldRenderStepForEnvironment,
   substituteExpectVars,
 } from '../../lib/step-resolution';
 import {
@@ -141,6 +142,16 @@ export function resolveFocusPic(
   if (pic === undefined || pic === false) return undefined;
   if (pic === true) return process.env.USER || 'unknown';
   return pic || undefined;
+}
+
+function filterStepsByEnv(steps: Step[], targetEnv: string): Step[] {
+  return steps
+    .filter((step) => shouldRenderStepForEnvironment(step, targetEnv))
+    .map((step) =>
+      step.sub_steps && step.sub_steps.length > 0
+        ? { ...step, sub_steps: filterStepsByEnv(step.sub_steps, targetEnv) }
+        : step,
+    );
 }
 
 function flattenStepsForExecution(steps: Step[], prefix = ''): FlatStep[] {
@@ -281,7 +292,10 @@ class OperationRunner {
       autoMode: executionMode === 'automatic' || options.autoApprove || false,
     };
 
-    const { flatSteps, execOperation } = this.prepareFlatOperation(operation);
+    const { flatSteps, execOperation } = this.prepareFlatOperation(
+      operation,
+      targetEnv,
+    );
 
     this.displayOperationSummary(
       execOperation,
@@ -564,7 +578,10 @@ class OperationRunner {
       autoMode: session.mode === 'automatic',
     };
 
-    const { flatSteps, execOperation } = this.prepareFlatOperation(operation);
+    const { flatSteps, execOperation } = this.prepareFlatOperation(
+      operation,
+      session.environment,
+    );
     const executor = new OperationExecutor(execOperation, context);
     sessionManager.associateExecutor(session.id, executor);
 
@@ -622,11 +639,15 @@ class OperationRunner {
     }
   }
 
-  private prepareFlatOperation(operation: Operation): {
+  private prepareFlatOperation(
+    operation: Operation,
+    targetEnv: string,
+  ): {
     flatSteps: FlatStep[];
     execOperation: Operation;
   } {
-    const flatSteps = flattenStepsForExecution(operation.steps);
+    const filteredSteps = filterStepsByEnv(operation.steps, targetEnv);
+    const flatSteps = flattenStepsForExecution(filteredSteps);
     return {
       flatSteps,
       execOperation: { ...operation, steps: flatSteps.map((f) => f.step) },

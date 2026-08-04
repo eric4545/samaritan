@@ -200,6 +200,9 @@ export const FIXTURES = {
 
   // Multi-operator / PIC focus mode
   multiOperator: 'tests/fixtures/operations/features/multi-operator.yaml',
+
+  // When-gate environment filtering in run/sidecar mode
+  whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
 } as const;
 
 /**

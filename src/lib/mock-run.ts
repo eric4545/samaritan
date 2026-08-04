@@ -7,7 +7,10 @@ import {
   cleanTerminalOutput,
 } from './assertions';
 import { getBuiltinVariables } from './builtin-variables';
-import { substituteExpectVars } from './step-resolution';
+import {
+  shouldRenderStepForEnvironment,
+  substituteExpectVars,
+} from './step-resolution';
 
 /**
  * Outcome of replaying one step's `expect` against its pre-captured evidence.
@@ -89,6 +92,7 @@ export function runMockExpect(
   const visit = (steps?: Step[]): void => {
     if (!steps) return;
     for (const step of steps) {
+      if (!shouldRenderStepForEnvironment(step, environmentName)) continue;
       if (step.expect !== undefined) {
         const sample = sampleOutputForEnv(step, environmentName, operationDir);
         if (sample === undefined) {

@@ -1,0 +1,24 @@
+name: When Environment Filter
+version: 1.0.0
+description: Verifies that when-gated steps are filtered by environment in run mode
+
+environments:
+  - name: dev
+    description: Development environment
+    variables: {}
+  - name: stg
+    description: Staging environment
+    variables: {}
+
+steps:
+  - name: Dev Only Step
+    type: manual
+    when: [dev]
+    instruction: This step only appears in dev
+  - name: Dev And Stg Step
+    type: manual
+    when: [dev, stg]
+    instruction: This step appears in dev and stg
+  - name: All Environments Step
+    type: manual
+    instruction: This step appears in all environments
