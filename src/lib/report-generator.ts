@@ -57,6 +57,12 @@ export function renderReport(
   const stepsCompleted = steps.filter((s) => s.status === 'completed').length;
   const stepsSkipped = steps.filter((s) => s.status === 'skipped').length;
 
+  const declaredTotal =
+    typeof sessionStart?.total_steps === 'number'
+      ? sessionStart.total_steps
+      : 0;
+  const totalSteps = Math.max(declaredTotal, steps.length);
+
   // Identify where an aborted/cancelled run actually stopped. A step that
   // emitted step_start but never completed (or failed/skipped) is left
   // `pending` with a `started_at` — that's the in-progress step at abort time.
@@ -67,21 +73,25 @@ export function renderReport(
     : undefined;
   const abortedIndex = abortedStep?.index;
 
+  // If the operator pressed Ctrl+C AFTER all steps completed (e.g. during the
+  // session-end confirmation), every step is done even though session_end says
+  // "cancelled". Display "completed" so the report is not misleading —
+  // "Steps completed: 31/31, Status: 🛑 cancelled" confuses readers.
+  const effectiveStatus =
+    isAborted && stepsCompleted === totalSteps && totalSteps > 0
+      ? 'completed'
+      : status;
+
   // Build Markdown
   const lines: string[] = [];
 
   lines.push(`# Evidence Report: ${opFile}`);
   lines.push(
-    `Session: ${sessionId} | Date: ${startTs} | Status: ${statusIcon(status)} ${status}`,
+    `Session: ${sessionId} | Date: ${startTs} | Status: ${statusIcon(effectiveStatus)} ${effectiveStatus}`,
   );
   lines.push('');
   lines.push('## Summary');
   lines.push('');
-  const declaredTotal =
-    typeof sessionStart?.total_steps === 'number'
-      ? sessionStart.total_steps
-      : 0;
-  const totalSteps = Math.max(declaredTotal, steps.length);
   lines.push(`- Steps completed: ${stepsCompleted}/${totalSteps}`);
   if (stepsSkipped > 0) {
     lines.push(`- Steps skipped: ${stepsSkipped}`);

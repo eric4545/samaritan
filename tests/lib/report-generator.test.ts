@@ -143,6 +143,53 @@ describe('renderReport — steps-completed count', () => {
     ]);
     assert.ok(md.includes('Steps completed: 1/3'), `expected 1/3, got:\n${md}`);
   });
+
+  it('shows completed status when all steps finish before a cancelled session_end', () => {
+    // Scenario: user pressed Ctrl+C AFTER the last step completed but before
+    // the session-end confirmation. All work is done, so the report should
+    // not confusingly show "🛑 cancelled" alongside "Steps completed: 3/3".
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml', total_steps: 3 }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_complete', step: 1 }),
+      ev({ type: 'step_start', step: 2, name: 'C' }),
+      ev({ type: 'step_complete', step: 2 }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(md.includes('Steps completed: 3/3'), `expected 3/3, got:\n${md}`);
+    assert.ok(
+      md.includes('Status: ✅ completed'),
+      `expected completed status icon, got:\n${md}`,
+    );
+    assert.ok(
+      !md.includes('Aborted at step'),
+      'no abort line when all steps finished',
+    );
+    assert.ok(
+      !md.includes('🛑'),
+      'no abort icon when all steps finished before cancel',
+    );
+  });
+
+  it('still shows cancelled status when only some steps completed before cancel', () => {
+    // Only 2 of 5 steps done — genuinely cancelled mid-run.
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml', total_steps: 5 }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_complete', step: 1 }),
+      ev({ type: 'step_start', step: 2, name: 'C in progress' }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(md.includes('Steps completed: 2/5'), `expected 2/5, got:\n${md}`);
+    assert.ok(
+      md.includes('Status: 🛑 cancelled'),
+      `expected cancelled status, got:\n${md}`,
+    );
+  });
 });
 
 describe('renderReport — operator-local path redaction', () => {
