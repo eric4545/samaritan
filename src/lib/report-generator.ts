@@ -57,10 +57,8 @@ export function renderReport(
   const stepsCompleted = steps.filter((s) => s.status === 'completed').length;
   const stepsSkipped = steps.filter((s) => s.status === 'skipped').length;
 
-  const declaredTotal =
-    typeof sessionStart?.total_steps === 'number'
-      ? sessionStart.total_steps
-      : 0;
+  const hasDeclaredTotal = typeof sessionStart?.total_steps === 'number';
+  const declaredTotal = hasDeclaredTotal ? sessionStart.total_steps : 0;
   const totalSteps = Math.max(declaredTotal, steps.length);
 
   // Identify where an aborted/cancelled run actually stopped. A step that
@@ -77,8 +75,15 @@ export function renderReport(
   // session-end confirmation), every step is done even though session_end says
   // "cancelled". Display "completed" so the report is not misleading —
   // "Steps completed: 31/31, Status: 🛑 cancelled" confuses readers.
+  // Only promote cancelled → completed when session_start.total_steps is
+  // explicitly declared (authoritative total). Without it, steps.length equals
+  // only the reached steps, so stepsCompleted === steps.length for any run that
+  // was cancelled at the end of what was recorded — a false positive.
   const effectiveStatus =
-    isAborted && stepsCompleted === totalSteps && totalSteps > 0
+    isAborted &&
+    hasDeclaredTotal &&
+    stepsCompleted === totalSteps &&
+    totalSteps > 0
       ? 'completed'
       : status;
 

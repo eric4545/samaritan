@@ -190,6 +190,34 @@ describe('renderReport — steps-completed count', () => {
       `expected cancelled status, got:\n${md}`,
     );
   });
+
+  it('stays cancelled when total_steps is absent even if stepsCompleted === steps.length', () => {
+    // Regression: without session_start.total_steps, the code fell back to
+    // steps.length as totalSteps. If every recorded step completed, then
+    // stepsCompleted === steps.length === totalSteps, which falsely triggered the
+    // "all done, promote to completed" path — even for a 40-step operation whose
+    // log only recorded 3 completed steps before cancellation.
+    const md = render([
+      // No total_steps declared — partial log with 3 completed steps.
+      ev({ type: 'session_start', op: 'op.yaml' }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_complete', step: 1 }),
+      ev({ type: 'step_start', step: 2, name: 'C' }),
+      ev({ type: 'step_complete', step: 2 }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(md.includes('Steps completed: 3/3'), `expected 3/3, got:\n${md}`);
+    assert.ok(
+      md.includes('Status: 🛑 cancelled'),
+      `must stay cancelled when no declared total — got:\n${md}`,
+    );
+    assert.ok(
+      !md.includes('Status: ✅ completed'),
+      `must not be falsely promoted to completed — got:\n${md}`,
+    );
+  });
 });
 
 describe('renderReport — operator-local path redaction', () => {
