@@ -1342,10 +1342,19 @@ describe('run command: TTY raw-mode action prompt', () => {
       // Record a note (an action that prints output), then abort. Without the
       // footer erase the bar accumulates one copy per action and scrolls the
       // step header away; with it exactly one bar survives on screen.
-      const cmd = `(sleep 4; printf 'n'; sleep 2; printf 'looks good\\n'; sleep 2; printf 'q'; sleep 2) | script -qec "${CLI} ${INDEX} run ${fixture} --env default" /dev/null`;
+      // Paths travel in the environment, never through shell text: `fixture` is
+      // resolved against cwd, so a checkout under a path with a space would
+      // otherwise split into extra argv entries.
+      const cmd = `(sleep 4; printf 'n'; sleep 2; printf 'looks good\\n'; sleep 2; printf 'q'; sleep 2) | script -qec '"$SAM_CLI" "$SAM_INDEX" run "$SAM_FIXTURE" --env default' /dev/null`;
       const result = spawnSync('bash', ['-c', cmd], {
         encoding: 'utf8',
         timeout: 40_000,
+        env: {
+          ...process.env,
+          SAM_CLI: CLI,
+          SAM_INDEX: INDEX,
+          SAM_FIXTURE: fixture,
+        },
       });
       const raw = (result.stdout ?? '') + (result.stderr ?? '');
       // The bar is torn down on the way out too, so replay the stream as of
