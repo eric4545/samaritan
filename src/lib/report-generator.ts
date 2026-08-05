@@ -57,8 +57,9 @@ export function renderReport(
   const stepsCompleted = steps.filter((s) => s.status === 'completed').length;
   const stepsSkipped = steps.filter((s) => s.status === 'skipped').length;
 
-  const hasDeclaredTotal = typeof sessionStart?.total_steps === 'number';
-  const declaredTotal = hasDeclaredTotal ? sessionStart.total_steps : 0;
+  const rawTotal = sessionStart?.total_steps;
+  const hasDeclaredTotal = typeof rawTotal === 'number';
+  const declaredTotal = typeof rawTotal === 'number' ? rawTotal : 0;
   const totalSteps = Math.max(declaredTotal, steps.length);
 
   // Identify where an aborted/cancelled run actually stopped. A step that
