@@ -145,13 +145,21 @@ export function resolveFocusPic(
 }
 
 function filterStepsByEnv(steps: Step[], targetEnv: string): Step[] {
-  return steps
-    .filter((step) => shouldRenderStepForEnvironment(step, targetEnv))
-    .map((step) =>
-      step.sub_steps && step.sub_steps.length > 0
-        ? { ...step, sub_steps: filterStepsByEnv(step.sub_steps, targetEnv) }
-        : step,
-    );
+  const result: Step[] = [];
+  for (const step of steps) {
+    if (!shouldRenderStepForEnvironment(step, targetEnv)) continue;
+    if (step.sub_steps && step.sub_steps.length > 0) {
+      const filteredSubs = filterStepsByEnv(step.sub_steps, targetEnv);
+      // Drop a parent section whose children are all env-filtered: if we kept
+      // it with sub_steps:[], the flattener would treat it as a leaf and the
+      // run loop would prompt/execute it — but it has no content of its own.
+      if (filteredSubs.length === 0) continue;
+      result.push({ ...step, sub_steps: filteredSubs });
+    } else {
+      result.push(step);
+    }
+  }
+  return result;
 }
 
 function flattenStepsForExecution(steps: Step[], prefix = ''): FlatStep[] {
@@ -647,6 +655,13 @@ class OperationRunner {
     execOperation: Operation;
   } {
     const filteredSteps = filterStepsByEnv(operation.steps, targetEnv);
+    // TODO(known-limitation): step labels in the run loop are assigned from the
+    // filtered list (1, 2, 3, …), while the generated manual preserves original
+    // authored indices (generator.ts maps each step to its originalIndex before
+    // filtering). This means --from-step 3 in a stg run may not correspond to
+    // "Step 3" in the manual when earlier steps are env-filtered out.
+    // Fix: thread originalIndex through FlatStep and use it for the label so
+    // run-loop numbers match the generated manual.
     const flatSteps = flattenStepsForExecution(filteredSteps);
     return {
       flatSteps,

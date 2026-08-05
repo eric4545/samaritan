@@ -1668,4 +1668,14 @@ describe('run command: when-gated step filtering by environment', () => {
       `step with no when must appear in a stg run; output:\n${combined.slice(-800)}`,
     );
   });
+
+  it('excludes a parent section whose only sub-steps are when: [dev] from a stg run', () => {
+    const fixture = fixturePath('whenEnvFilter');
+    const result = runCli(['run', fixture, '--env', 'stg'], { input: 'q\n' });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      !combined.includes('Dev Only Section'),
+      `parent section with only dev-gated children must not appear in a stg run; output:\n${combined.slice(-800)}`,
+    );
+  });
 });

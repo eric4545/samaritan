@@ -210,7 +210,7 @@ describe('runMockExpect: when-gate environment filtering', () => {
         updated_at: new Date(),
         execution_count: 0,
       },
-    } as unknown as Operation
+    } as unknown as Operation;
   }
 
   it('skips a when: [dev] step when the target environment is stg', () => {
@@ -226,11 +226,15 @@ describe('runMockExpect: when-gate environment filtering', () => {
           },
         },
       } as Step,
-    ])
-    const result = runMockExpect(op, 'stg', '/tmp')
-    assert.strictEqual(result.results.length, 0, 'when: [dev] step must not appear in stg results')
-    assert.strictEqual(result.skipped, 0)
-  })
+    ]);
+    const result = runMockExpect(op, 'stg', '/tmp');
+    assert.strictEqual(
+      result.results.length,
+      0,
+      'when: [dev] step must not appear in stg results',
+    );
+    assert.strictEqual(result.skipped, 0);
+  });
 
   it('includes a when: [dev, stg] step when the target environment is stg', () => {
     const op = makeMultiEnvOperation([
@@ -245,11 +249,11 @@ describe('runMockExpect: when-gate environment filtering', () => {
           },
         },
       } as Step,
-    ])
-    const result = runMockExpect(op, 'stg', '/tmp')
-    assert.strictEqual(result.passed, 1)
-    assert.strictEqual(result.results[0].stepName, 'Dev And Stg')
-  })
+    ]);
+    const result = runMockExpect(op, 'stg', '/tmp');
+    assert.strictEqual(result.passed, 1);
+    assert.strictEqual(result.results[0].stepName, 'Dev And Stg');
+  });
 
   it('includes a step with no when in all environments', () => {
     const op = makeMultiEnvOperation([
@@ -263,11 +267,11 @@ describe('runMockExpect: when-gate environment filtering', () => {
           },
         },
       } as Step,
-    ])
-    const result = runMockExpect(op, 'stg', '/tmp')
-    assert.strictEqual(result.passed, 1)
-    assert.strictEqual(result.results[0].stepName, 'Always')
-  })
+    ]);
+    const result = runMockExpect(op, 'stg', '/tmp');
+    assert.strictEqual(result.passed, 1);
+    assert.strictEqual(result.results[0].stepName, 'Always');
+  });
 
   it('skips a when-gated sub-step that does not match the target environment', () => {
     const op = makeMultiEnvOperation([
@@ -288,8 +292,12 @@ describe('runMockExpect: when-gate environment filtering', () => {
           } as Step,
         ],
       } as Step,
-    ])
-    const result = runMockExpect(op, 'stg', '/tmp')
-    assert.strictEqual(result.results.length, 0, 'dev-only sub-step must not appear in stg results')
-  })
+    ]);
+    const result = runMockExpect(op, 'stg', '/tmp');
+    assert.strictEqual(
+      result.results.length,
+      0,
+      'dev-only sub-step must not appear in stg results',
+    );
+  });
 });

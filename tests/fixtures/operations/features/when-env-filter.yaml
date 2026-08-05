@@ -22,3 +22,10 @@ steps:
   - name: All Environments Step
     type: manual
     instruction: This step appears in all environments
+  - name: Dev Only Section
+    type: manual
+    sub_steps:
+      - name: Dev Section Child
+        type: manual
+        when: [dev]
+        instruction: This sub-step only appears in dev
