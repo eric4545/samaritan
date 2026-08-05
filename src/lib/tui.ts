@@ -571,6 +571,35 @@ export function renderKeyHints(
   return `  ${parts.join(separator)}`;
 }
 
+/**
+ * Number of terminal ROWS `text` occupies once printed at `columns` width.
+ * ANSI styling costs no columns, so widths are measured stripped; a non-finite
+ * `columns` (non-TTY, per `getTerminalSize`) means no wrapping — one row per
+ * line. Used to size the cursor-up jump that erases the action footer.
+ */
+export function countRenderedRows(text: string, columns: number): number {
+  const unbounded = !Number.isFinite(columns) || columns <= 0;
+  return text.split('\n').reduce((rows, line) => {
+    const width = stripAnsi(line).length;
+    if (unbounded || width <= columns) return rows + 1;
+    return rows + Math.ceil(width / columns);
+  }, 0);
+}
+
+/**
+ * ANSI sequence that erases the block `text` just written to the terminal,
+ * leaving the cursor where the block started so the next render lands in the
+ * same place. Returns '' for empty text. Callers decide whether erasing applies
+ * at all (`process.stdout.isTTY`) — a TTY can still report an unknown width
+ * (a pty opened without a winsize), and that must not silently disable it.
+ */
+export function eraseRenderedBlock(text: string, columns: number): string {
+  if (!text) return '';
+  const rows = countRenderedRows(text, columns);
+  if (rows <= 0) return '';
+  return `${ANSI_ESC}[${rows}A${ANSI_ESC}[0J`;
+}
+
 const ASSERT_ACTUAL_TAIL_LINES = 8;
 const ASSERT_ACTUAL_MAX_LINE_LEN = 200;
 const VERIFY_OUTPUT_TAIL_LINES = 12;

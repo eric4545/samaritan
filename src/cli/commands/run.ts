@@ -58,7 +58,9 @@ import {
   validateTmuxTarget,
 } from '../../lib/tmux-session';
 import {
+  eraseRenderedBlock,
   flattenRollbackSteps,
+  getTerminalSize,
   renderAssertOutcome,
   renderCodeBlock,
   renderKeyHints,
@@ -942,6 +944,38 @@ class OperationRunner {
     const isSkip = (c: string) => c === 's' || c === 'skip';
     const isRollback = (c: string) => c === 'r' || c === 'rollback';
     const isGlobalRollback = (c: string) => c === 'g' || c === 'global';
+
+    // Long-form word each action key also answers to (the `inputChoice === 'x'
+    // || inputChoice === 'word'` pairs below). Keeping them in one map lets the
+    // action bar recognize a typed-out word as the SAME action as its key, so a
+    // word for an action the bar isn't offering is rejected rather than
+    // swallowed as a completion note.
+    const ACTION_WORDS: Record<string, string> = {
+      copy: 'c',
+      note: 'n',
+      evidence: 'e',
+      remove: 'x',
+      verify: 'v',
+      attach: 't',
+      send: 'p',
+      back: 'b',
+      jump: 'j',
+      skip: 's',
+      rollback: 'r',
+      global: 'g',
+      quit: 'q',
+    };
+    /** The action key `input` names, by bare character or long-form word. */
+    const resolveActionKey = (input: string): string | undefined =>
+      input.length === 1 && IMMEDIATE_ACTION_CHARS.has(input)
+        ? input
+        : ACTION_WORDS[input];
+
+    // Shared by the action bar (rejecting an un-offered [v]) and the defensive
+    // guard inside verifyManualOutput, so the two can never drift apart.
+    const VERIFY_NEEDS_CAPTURE =
+      '    ⚠️  Verify requires an attached capture — press [t] to attach a tmux pane.';
+
     // A global rollback is offered whenever the operation declares a rollback
     // block (explicit plan and/or aggregate_step_rollbacks). What actually runs
     // is computed per-invocation from completed steps in doGlobalRollback.
@@ -1215,12 +1249,34 @@ class OperationRunner {
       }
     };
 
+    // Render a footer block (the key bar, plus whatever context belongs with
+    // it), read ONE action key, then erase the block AND the `  > ` prompt line
+    // it was answered on. Every loop iteration therefore redraws the bar in the
+    // same place instead of leaving a spent copy behind, so the bar reads as a
+    // footer pinned under the transcript rather than something that walks down
+    // the screen once per keypress. Erasing is TTY-only, so piped/redirected
+    // output — tests, `| tee`, CI logs — stays append-only and byte-for-byte
+    // unchanged. A TTY with an unknown width still erases; the width only
+    // decides how many rows a long bar wrapped onto.
+    const promptFooter = async (block: string): Promise<string> => {
+      console.log(block);
+      const input = await readActionKey();
+      if (process.stdout.isTTY) {
+        process.stdout.write(
+          eraseRenderedBlock(
+            `${block}\n  > ${input}`,
+            getTerminalSize().columns,
+          ),
+        );
+      }
+      return input;
+    };
+
     const promptAction = async (
       hints: Array<{ key: string; label: string }>,
       commandToCopy?: string,
     ): Promise<string> => {
-      console.log(`\n${renderKeyHints(hints)}`);
-      const ans = await readActionKey();
+      const ans = await promptFooter(`\n${renderKeyHints(hints)}`);
       const choice = ans.trim().toLowerCase();
       if (commandToCopy && (choice === 'c' || choice === 'copy')) {
         await copyCommand(commandToCopy);
@@ -1499,9 +1555,7 @@ class OperationRunner {
       while (true) {
         const output = captureSinceStepStart();
         if (output === undefined || !controller) {
-          console.log(
-            '    ⚠️  Verify requires an attached capture — press [t] to attach a tmux pane.',
-          );
+          console.log(VERIFY_NEEDS_CAPTURE);
           return;
         }
 
@@ -2002,45 +2056,76 @@ class OperationRunner {
           let navIsJump = false;
           while (true) {
             const evidenceForStep = stepEvidence(i);
-            if (step.expect) {
-              console.log(
-                `\n    Expected: ${renderExpectDescription(resolvedExpect)}`,
-              );
-            }
-            console.log(
-              '\n' +
-                renderKeyHints([
-                  { key: '↵', label: 'done' },
-                  ...(runnableCommand ? [{ key: 'c', label: 'copy' }] : []),
-                  { key: 'n', label: 'note' },
-                  { key: 'e', label: 'evidence' },
-                  ...(evidenceForStep.length
-                    ? [{ key: 'x', label: 'remove evidence' }]
-                    : []),
-                  ...(step.expect ? [{ key: 'v', label: 'verify' }] : []),
-                  ...(mode === 'sidecar'
-                    ? [{ key: 't', label: 'attach pane' }]
-                    : []),
-                  ...(mode === 'sidecar' && runnableCommand
-                    ? [{ key: 'p', label: 'send to pane' }]
-                    : []),
-                  ...(i > 0 ? [{ key: 'b', label: 'back' }] : []),
-                  ...(i < steps.length - 1
-                    ? [{ key: 'j', label: 'jump' }]
-                    : []),
-                  { key: 's', label: 'skip' },
-                  { key: 'r', label: 'rollback' },
-                  ...globalRollbackMenuItem,
-                  { key: 'abort', label: 'abort' },
-                ]),
+            // [v] only works against a capture: without an attached pane
+            // there is no output to assert `expect` on, so offering the key
+            // would advertise a dead action. Re-evaluated every iteration —
+            // attaching with [t] makes [v] appear on the very next redraw.
+            const canVerify =
+              !!step.expect &&
+              !!controller &&
+              !!captureRef.backend?.hasTarget(sessionName);
+            const hints = [
+              { key: '↵', label: 'done' },
+              ...(runnableCommand ? [{ key: 'c', label: 'copy' }] : []),
+              { key: 'n', label: 'note' },
+              { key: 'e', label: 'evidence' },
+              ...(evidenceForStep.length
+                ? [{ key: 'x', label: 'remove evidence' }]
+                : []),
+              ...(canVerify ? [{ key: 'v', label: 'verify' }] : []),
+              ...(mode === 'sidecar'
+                ? [{ key: 't', label: 'attach pane' }]
+                : []),
+              ...(mode === 'sidecar' && runnableCommand
+                ? [{ key: 'p', label: 'send to pane' }]
+                : []),
+              ...(i > 0 ? [{ key: 'b', label: 'back' }] : []),
+              ...(i < steps.length - 1 ? [{ key: 'j', label: 'jump' }] : []),
+              { key: 's', label: 'skip' },
+              { key: 'r', label: 'rollback' },
+              ...globalRollbackMenuItem,
+              { key: 'abort', label: 'abort' },
+            ];
+            // Keys the bar is currently offering. `q` is always live (it is
+            // documented as abort's shorthand) but deliberately absent from
+            // the bar, which shows the spelled-out `abort` instead.
+            const offeredKeys = new Set([...hints.map((h) => h.key), 'q']);
+
+            // The expect criteria ride WITH the bar: they are the context for
+            // [v], and keeping them in the erased/redrawn block means they
+            // stay pinned above the keys instead of scrolling away.
+            const expectLine = step.expect
+              ? `\n    Expected: ${renderExpectDescription(resolvedExpect)}${
+                  canVerify
+                    ? ''
+                    : mode === 'sidecar'
+                      ? '  (press [t] to attach a pane, then verify)'
+                      : '  (verify needs an attached capture)'
+                }\n`
+              : '';
+            const input = await promptFooter(
+              `${expectLine}\n${renderKeyHints(hints)}`,
             );
-            const input = await readActionKey();
             const inputChoice = input.trim().toLowerCase();
             if (isQuit(inputChoice)) {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
               manualNotes = '';
               break;
+            }
+            // An action key this bar does NOT offer must be rejected here.
+            // Single chars fire without Enter, so anything reaching the
+            // fall-through below completes the step with the key stored as the
+            // operator's note — [v] on a step with no `expect` used to mark it
+            // done as "v". Free text is untouched: it is still a valid note.
+            const pressedKey = resolveActionKey(inputChoice);
+            if (pressedKey && !offeredKeys.has(pressedKey)) {
+              console.log(
+                pressedKey === 'v' && step.expect
+                  ? `\n${VERIFY_NEEDS_CAPTURE}`
+                  : `\n    ⚠️  [${pressedKey}] isn't available on this step.`,
+              );
+              continue;
             }
             if (
               runnableCommand &&

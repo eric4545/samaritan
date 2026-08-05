@@ -39,12 +39,18 @@ function fixturePath(name: string): string {
     needsGate: 'tests/fixtures/operations/features/needs-gate.yaml',
     nearestRollback: 'tests/fixtures/operations/features/nearest-rollback.yaml',
     whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
+    noExpectStep: 'tests/fixtures/operations/features/no-expect-step.yaml',
   };
   return resolve(map[name]);
 }
 
 const CLI = 'node_modules/.bin/tsx';
 const INDEX = 'src/cli/index.ts';
+
+// Strips SGR styling so assertions can match the key bar as the operator reads
+// it ("v verify") rather than its escape-laden bytes.
+const SGR_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+const stripAnsi = (s: string) => s.replace(SGR_RE, '');
 
 function runCli(
   args: string[],
@@ -251,15 +257,21 @@ describe('run command: manual-step note/evidence/verify actions', () => {
     assert.ok(combined.includes('evidence'), 'should offer an evidence action');
   });
 
-  it('manual step prompt offers [v] verify when step.expect is set', () => {
+  it('does not offer [v] verify while no capture is attached', () => {
+    // The fixture runs without tmux, so there is nothing to verify against —
+    // advertising [v] would put a dead key on the bar.
     const fixture = fixturePath('manualStepActions');
     const result = runCli(['run', fixture, '--env', 'default'], {
       input: 'abort\n',
     });
-    const combined = result.stdout + result.stderr;
+    const bar = stripAnsi(result.stdout + result.stderr);
     assert.ok(
-      combined.includes('verify'),
-      'should offer a verify action when step has an expect',
+      !bar.includes('v verify'),
+      `[v] must not be offered without a capture to verify against;\n${bar.slice(-800)}`,
+    );
+    assert.ok(
+      bar.includes('press [t] to attach a pane, then verify'),
+      'the Expected line should say why verify is unavailable and how to fix it',
     );
   });
 
@@ -328,6 +340,61 @@ describe('run command: manual-step note/evidence/verify actions', () => {
     assert.ok(
       !combined.includes('re-verify') && !combined.includes('more'),
       'failure menu hints must not appear without a captured outcome',
+    );
+  });
+});
+
+// ─── Action keys the bar does not offer must not complete the step ───────────
+
+describe('run command: unoffered action keys are rejected', () => {
+  // Every single-char action key fires immediately (no Enter). Before this
+  // guard, a key the bar did not offer fell through to the completion branch
+  // and marked the step done with the key recorded as the operator's note —
+  // pressing [v] on a step with no `expect` silently completed it as "v".
+
+  it('[v] on a step with no expect does not complete the step', () => {
+    const fixture = fixturePath('noExpectStep');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'v\nabort\n',
+    });
+    const combined = stripAnsi(result.stdout + result.stderr);
+    assert.ok(
+      combined.includes("[v] isn't available on this step"),
+      `unoffered [v] should be rejected inline; output:\n${combined.slice(-1200)}`,
+    );
+    assert.ok(
+      !combined.includes('Step marked complete'),
+      'unoffered [v] must not complete the step',
+    );
+  });
+
+  it('[c] copy on a step with no command does not complete the step', () => {
+    const fixture = fixturePath('noExpectStep');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'c\nabort\n',
+    });
+    const combined = stripAnsi(result.stdout + result.stderr);
+    assert.ok(
+      combined.includes("[c] isn't available on this step"),
+      `unoffered [c] should be rejected inline; output:\n${combined.slice(-1200)}`,
+    );
+    assert.ok(
+      !combined.includes('Step marked complete'),
+      'unoffered [c] must not complete the step',
+    );
+  });
+
+  it('free-text notes still complete the step', () => {
+    // The rejection is scoped to single action characters — a typed sentence
+    // remains a completion note, which is the documented behavior.
+    const fixture = fixturePath('noExpectStep');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'dashboard is green\n',
+    });
+    const combined = stripAnsi(result.stdout + result.stderr);
+    assert.ok(
+      combined.includes('Step marked complete'),
+      `free text must still complete the step; output:\n${combined.slice(-1200)}`,
     );
   });
 });
@@ -1266,7 +1333,81 @@ describe('run command: TTY raw-mode action prompt', () => {
       );
     },
   );
+
+  it(
+    'the action bar is a footer: erased and redrawn, never left behind',
+    { skip: !hasScript },
+    () => {
+      const fixture = fixturePath('manualStepActions');
+      // Record a note (an action that prints output), then abort. Without the
+      // footer erase the bar accumulates one copy per action and scrolls the
+      // step header away; with it exactly one bar survives on screen.
+      const cmd = `(sleep 4; printf 'n'; sleep 2; printf 'looks good\\n'; sleep 2; printf 'q'; sleep 2) | script -qec "${CLI} ${INDEX} run ${fixture} --env default" /dev/null`;
+      const result = spawnSync('bash', ['-c', cmd], {
+        encoding: 'utf8',
+        timeout: 40_000,
+      });
+      const raw = (result.stdout ?? '') + (result.stderr ?? '');
+      // The bar is torn down on the way out too, so replay the stream as of
+      // the LAST prompt — the screen the operator was actually looking at.
+      const screen = replayCursorErases(atLastPrompt(raw));
+      const bars = screen.filter((row) => row.includes('n note')).length;
+      assert.strictEqual(
+        bars,
+        1,
+        `exactly one action bar should be on screen at the prompt; saw ${bars}\n${screen.join('\n').slice(-2000)}`,
+      );
+      assert.ok(
+        screen.some((row) => row.includes('Note recorded')),
+        'the action output itself must stay in the transcript',
+      );
+      assert.ok(
+        screen.some((row) => row.includes('MANUAL: Verify rollout')),
+        'the step header must not be pushed off by stacked bars',
+      );
+    },
+  );
 });
+
+const ESC = String.fromCharCode(27);
+const ERASE_RE = new RegExp(`${ESC}\\[(\\d+)A${ESC}\\[0J`, 'g');
+const CSI_RE = new RegExp(`${ESC}\\[[0-9;]*[a-zA-Z]`, 'g');
+
+/** The stream up to the last footer teardown, i.e. as of the final prompt. */
+function atLastPrompt(raw: string): string {
+  const erases = [...raw.matchAll(ERASE_RE)];
+  const last = erases[erases.length - 1];
+  assert.ok(
+    last,
+    'the action footer must emit cursor-erase sequences on a TTY',
+  );
+  return raw.slice(0, last.index);
+}
+
+/**
+ * Minimal terminal replay: applies the `ESC[<n>A` + `ESC[0J` erase pairs the
+ * action footer emits, so a test can assert on what the operator actually SEES
+ * rather than on every byte ever written. Returns the surviving rows.
+ */
+function replayCursorErases(raw: string): string[] {
+  const rows: string[] = [''];
+  let cursor = 0;
+  for (const match of raw.matchAll(ERASE_RE)) {
+    appendRows(rows, raw.slice(cursor, match.index));
+    // Move up N rows and clear from there to the end of the screen.
+    rows.splice(Math.max(0, rows.length - Number(match[1])));
+    rows.push('');
+    cursor = (match.index as number) + match[0].length;
+  }
+  appendRows(rows, raw.slice(cursor));
+  return rows.map((row) => row.replace(CSI_RE, '').replace(/\r/g, ''));
+}
+
+function appendRows(rows: string[], chunk: string): void {
+  const lines = chunk.split('\n');
+  rows[rows.length - 1] += lines[0];
+  for (const line of lines.slice(1)) rows.push(line);
+}
 
 // ─── Abort persists a resumable session (issue: "how to resume a run?") ──────
 
