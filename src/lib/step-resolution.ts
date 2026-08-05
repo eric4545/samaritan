@@ -175,5 +175,13 @@ export function substituteExpectVars(
         ? substituteVariables(raw, envVars, stepVars)
         : String(raw);
   }
+  // retry.while is a string pattern (substring or regex) and participates in
+  // the same ${VAR} substitution as the other expect string fields.
+  if (result.retry?.while !== undefined) {
+    result.retry = {
+      ...result.retry,
+      while: substituteVariables(result.retry.while, envVars, stepVars),
+    };
+  }
   return result;
 }

@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
   mergeStepVariant,
+  substituteExpectVars,
   substituteVariables,
 } from '../../src/lib/step-resolution';
 import type { Step } from '../../src/models/operation';
@@ -86,6 +87,67 @@ describe('substituteVariables (chained step variable resolution)', () => {
       { TEST_RECIPIENT: '${EMAIL_A}' },
     );
     assert.strictEqual(literal, 'echo ${X}');
+  });
+});
+
+describe('substituteExpectVars — retry.while substitution', () => {
+  it('substitutes ${VAR} in retry.while when present', () => {
+    const result = substituteExpectVars(
+      {
+        contains: 'ok',
+        retry: { interval: '5s', max: 3, while: '${TRANSIENT_PATTERN}' },
+      },
+      { TRANSIENT_PATTERN: 'connection refused' },
+    );
+    assert.ok(typeof result === 'object' && !Array.isArray(result));
+    const cfg = result as import('../../src/models/operation').ExpectConfig;
+    assert.strictEqual(cfg.retry?.while, 'connection refused');
+  });
+
+  it('also substitutes other expect fields alongside retry.while', () => {
+    const result = substituteExpectVars(
+      {
+        contains: '${EXPECTED_OUTPUT}',
+        retry: { interval: '1s', max: 2, while: '${RETRY_GUARD}' },
+      },
+      { EXPECTED_OUTPUT: 'done', RETRY_GUARD: 'pending' },
+    );
+    assert.ok(typeof result === 'object' && !Array.isArray(result));
+    const cfg = result as import('../../src/models/operation').ExpectConfig;
+    assert.strictEqual(cfg.contains, 'done');
+    assert.strictEqual(cfg.retry?.while, 'pending');
+  });
+
+  it('leaves retry.while unchanged when no matching variable exists', () => {
+    const result = substituteExpectVars(
+      { retry: { interval: '5s', max: 3, while: '${UNKNOWN_VAR}' } },
+      { OTHER: 'value' },
+    );
+    assert.ok(typeof result === 'object' && !Array.isArray(result));
+    const cfg = result as import('../../src/models/operation').ExpectConfig;
+    assert.strictEqual(cfg.retry?.while, '${UNKNOWN_VAR}');
+  });
+
+  it('passes through expect configs without retry.while unchanged', () => {
+    const result = substituteExpectVars(
+      { contains: '${MSG}', retry: { interval: '5s', max: 2 } },
+      { MSG: 'hello' },
+    );
+    assert.ok(typeof result === 'object' && !Array.isArray(result));
+    const cfg = result as import('../../src/models/operation').ExpectConfig;
+    assert.strictEqual(cfg.contains, 'hello');
+    assert.strictEqual(cfg.retry?.while, undefined);
+  });
+
+  it('substitutes step variables in retry.while over env vars', () => {
+    const result = substituteExpectVars(
+      { retry: { interval: '1s', max: 1, while: '${GUARD}' } },
+      { GUARD: 'from-env' },
+      { GUARD: 'from-step' },
+    );
+    assert.ok(typeof result === 'object' && !Array.isArray(result));
+    const cfg = result as import('../../src/models/operation').ExpectConfig;
+    assert.strictEqual(cfg.retry?.while, 'from-step');
   });
 });
 

@@ -143,6 +143,81 @@ describe('renderReport — steps-completed count', () => {
     ]);
     assert.ok(md.includes('Steps completed: 1/3'), `expected 1/3, got:\n${md}`);
   });
+
+  it('shows completed status when all steps finish before a cancelled session_end', () => {
+    // Scenario: user pressed Ctrl+C AFTER the last step completed but before
+    // the session-end confirmation. All work is done, so the report should
+    // not confusingly show "🛑 cancelled" alongside "Steps completed: 3/3".
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml', total_steps: 3 }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_complete', step: 1 }),
+      ev({ type: 'step_start', step: 2, name: 'C' }),
+      ev({ type: 'step_complete', step: 2 }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(md.includes('Steps completed: 3/3'), `expected 3/3, got:\n${md}`);
+    assert.ok(
+      md.includes('Status: ✅ completed'),
+      `expected completed status icon, got:\n${md}`,
+    );
+    assert.ok(
+      !md.includes('Aborted at step'),
+      'no abort line when all steps finished',
+    );
+    assert.ok(
+      !md.includes('🛑'),
+      'no abort icon when all steps finished before cancel',
+    );
+  });
+
+  it('still shows cancelled status when only some steps completed before cancel', () => {
+    // Only 2 of 5 steps done — genuinely cancelled mid-run.
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml', total_steps: 5 }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_complete', step: 1 }),
+      ev({ type: 'step_start', step: 2, name: 'C in progress' }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(md.includes('Steps completed: 2/5'), `expected 2/5, got:\n${md}`);
+    assert.ok(
+      md.includes('Status: 🛑 cancelled'),
+      `expected cancelled status, got:\n${md}`,
+    );
+  });
+
+  it('stays cancelled when total_steps is absent even if stepsCompleted === steps.length', () => {
+    // Regression: without session_start.total_steps, the code fell back to
+    // steps.length as totalSteps. If every recorded step completed, then
+    // stepsCompleted === steps.length === totalSteps, which falsely triggered the
+    // "all done, promote to completed" path — even for a 40-step operation whose
+    // log only recorded 3 completed steps before cancellation.
+    const md = render([
+      // No total_steps declared — partial log with 3 completed steps.
+      ev({ type: 'session_start', op: 'op.yaml' }),
+      ev({ type: 'step_start', step: 0, name: 'A' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, name: 'B' }),
+      ev({ type: 'step_complete', step: 1 }),
+      ev({ type: 'step_start', step: 2, name: 'C' }),
+      ev({ type: 'step_complete', step: 2 }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(md.includes('Steps completed: 3/3'), `expected 3/3, got:\n${md}`);
+    assert.ok(
+      md.includes('Status: 🛑 cancelled'),
+      `must stay cancelled when no declared total — got:\n${md}`,
+    );
+    assert.ok(
+      !md.includes('Status: ✅ completed'),
+      `must not be falsely promoted to completed — got:\n${md}`,
+    );
+  });
 });
 
 describe('renderReport — operator-local path redaction', () => {

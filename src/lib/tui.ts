@@ -160,7 +160,11 @@ export class StepController {
       // expect.retry: poll for eventual consistency. On a failed assertion,
       // wait `interval` and re-capture/re-assert up to `max` times. A `while`
       // guard makes only transient failures retryable (otherwise fail fast).
-      const retry = extractRetryConfig(step.expect);
+      // Use the interpolated expect so ${VAR} in retry.while is resolved.
+      const interpolatedExpect = sessionState
+        ? interpolateExpect(step.expect, sessionState)
+        : step.expect;
+      const retry = extractRetryConfig(interpolatedExpect);
       if (retry && assertResult && !assertResult.pass) {
         const sleep =
           this.opts.sleep ??
@@ -402,6 +406,14 @@ export function interpolateExpect(
       result.equals = val;
       delete result.equals_captured;
     }
+  }
+  // retry.while is a string pattern (substring or regex) and participates in
+  // the same ${VAR} interpolation as the other expect string fields.
+  if (result.retry?.while !== undefined) {
+    result.retry = {
+      ...result.retry,
+      while: state.interpolate(result.retry.while),
+    };
   }
   return result;
 }
