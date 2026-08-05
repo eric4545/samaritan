@@ -177,3 +177,127 @@ describe('runMockExpect', () => {
     assert.strictEqual(result.results[0].stepName, 'Child');
   });
 });
+
+describe('runMockExpect: when-gate environment filtering', () => {
+  function makeMultiEnvOperation(steps: Step[]): Operation {
+    return {
+      id: 'when-op',
+      name: 'When Op',
+      version: '1.0.0',
+      description: 'when filter test',
+      environments: [
+        {
+          name: 'dev',
+          description: 'dev',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+        },
+        {
+          name: 'stg',
+          description: 'stg',
+          variables: {},
+          restrictions: [],
+          approval_required: false,
+          validation_required: false,
+        },
+      ],
+      variables: { dev: {}, stg: {} },
+      steps,
+      metadata: {
+        created_at: new Date(),
+        updated_at: new Date(),
+        execution_count: 0,
+      },
+    } as unknown as Operation;
+  }
+
+  it('skips a when: [dev] step when the target environment is stg', () => {
+    const op = makeMultiEnvOperation([
+      {
+        name: 'Dev Only',
+        type: 'automatic',
+        when: ['dev'],
+        expect: { contains: 'ok' },
+        evidence: {
+          results: {
+            stg: [{ type: 'command_output', content: 'ok' }],
+          },
+        },
+      } as Step,
+    ]);
+    const result = runMockExpect(op, 'stg', '/tmp');
+    assert.strictEqual(
+      result.results.length,
+      0,
+      'when: [dev] step must not appear in stg results',
+    );
+    assert.strictEqual(result.skipped, 0);
+  });
+
+  it('includes a when: [dev, stg] step when the target environment is stg', () => {
+    const op = makeMultiEnvOperation([
+      {
+        name: 'Dev And Stg',
+        type: 'automatic',
+        when: ['dev', 'stg'],
+        expect: { contains: 'ready' },
+        evidence: {
+          results: {
+            stg: [{ type: 'command_output', content: 'pod ready' }],
+          },
+        },
+      } as Step,
+    ]);
+    const result = runMockExpect(op, 'stg', '/tmp');
+    assert.strictEqual(result.passed, 1);
+    assert.strictEqual(result.results[0].stepName, 'Dev And Stg');
+  });
+
+  it('includes a step with no when in all environments', () => {
+    const op = makeMultiEnvOperation([
+      {
+        name: 'Always',
+        type: 'automatic',
+        expect: { contains: 'running' },
+        evidence: {
+          results: {
+            stg: [{ type: 'command_output', content: 'running' }],
+          },
+        },
+      } as Step,
+    ]);
+    const result = runMockExpect(op, 'stg', '/tmp');
+    assert.strictEqual(result.passed, 1);
+    assert.strictEqual(result.results[0].stepName, 'Always');
+  });
+
+  it('skips a when-gated sub-step that does not match the target environment', () => {
+    const op = makeMultiEnvOperation([
+      {
+        name: 'Parent',
+        type: 'manual',
+        sub_steps: [
+          {
+            name: 'Dev Sub',
+            type: 'automatic',
+            when: ['dev'],
+            expect: { contains: 'ok' },
+            evidence: {
+              results: {
+                stg: [{ type: 'command_output', content: 'ok' }],
+              },
+            },
+          } as Step,
+        ],
+      } as Step,
+    ]);
+    const result = runMockExpect(op, 'stg', '/tmp');
+    assert.strictEqual(
+      result.results.length,
+      0,
+      'dev-only sub-step must not appear in stg results',
+    );
+  });
+});
