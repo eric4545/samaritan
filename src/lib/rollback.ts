@@ -21,9 +21,20 @@ export function hasRollbackContent(
   );
 }
 
-/** True when a step has at least one rollback entry with content. */
-function stepHasRollback(step: Step): boolean {
-  return (step.rollback ?? []).some(hasRollbackContent);
+/**
+ * Filter a rollback step list to only those applicable to the target
+ * environment. A rollback step with no `when` (or an empty `when` list)
+ * applies to all environments. Generic so callers that pass
+ * `EffectiveRollbackStep[]` get back `EffectiveRollbackStep[]` without
+ * losing the extended type.
+ */
+export function filterRollbackByEnv<T extends RollbackStep>(
+  rollback: T[],
+  targetEnv: string,
+): T[] {
+  return rollback.filter(
+    (rb) => !rb.when || rb.when.length === 0 || rb.when.includes(targetEnv),
+  );
 }
 
 /**
@@ -48,18 +59,27 @@ export function findNearestRollbackSource(
   opts: {
     graph?: StepDepGraph;
     isCandidate?: (index: number) => boolean;
+    /** When set, rollback entries are filtered to those whose `when` matches. */
+    targetEnv?: string;
   } = {},
 ): { stepIndex: number; rollback: RollbackStep[] } | undefined {
   const isCandidate = opts.isCandidate ?? (() => true);
+
+  /** Returns the env-filtered, content-bearing rollback for step `idx`. */
+  const pickRollback = (idx: number): RollbackStep[] => {
+    const raw = (steps[idx].rollback ?? []).filter(hasRollbackContent);
+    return opts.targetEnv ? filterRollbackByEnv(raw, opts.targetEnv) : raw;
+  };
+
   const qualifies = (idx: number): boolean =>
     idx >= 0 &&
     idx < steps.length &&
-    stepHasRollback(steps[idx]) &&
+    pickRollback(idx).length > 0 &&
     isCandidate(idx);
 
   const pick = (idx: number) => ({
     stepIndex: idx,
-    rollback: (steps[idx].rollback ?? []).filter(hasRollbackContent),
+    rollback: pickRollback(idx),
   });
 
   // 1. Needs-chain BFS (nearest dependency first).

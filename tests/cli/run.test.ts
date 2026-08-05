@@ -1678,4 +1678,69 @@ describe('run command: when-gated step filtering by environment', () => {
       `parent section with only dev-gated children must not appear in a stg run; output:\n${combined.slice(-800)}`,
     );
   });
+
+  // Issue 1: parent with own content must not be dropped even when all its
+  // children are env-filtered.
+  it('shows a content-bearing parent even when all its sub-steps are env-filtered', () => {
+    const fixture = fixturePath('whenEnvFilter');
+    // Use --from-step 6 to jump to flat index 5 (Content Bearing Parent, label
+    // "5") directly, avoiding the readline batch-stdin gotcha.  The parent is a
+    // section header that auto-advances; the only prompt is for step 6 (label
+    // "6") where we quit.
+    const result = runCli(
+      ['run', fixture, '--env', 'stg', '--from-step', '6'],
+      { input: 'q\n' },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Content Bearing Parent'),
+      `content-bearing parent must appear in stg (as section header) even though its only sub-step is dev-only; output:\n${combined.slice(-800)}`,
+    );
+    assert.ok(
+      !combined.includes('Dev Only Child'),
+      `dev-only child must not appear in stg; output:\n${combined.slice(-800)}`,
+    );
+  });
+
+  // Issue 2: authored step numbers must be stable across env-filtering so that
+  // --from-step N always refers to the Nth authored step (flat index N-1).
+  it('preserves authored step numbers for --from-step when env-filtered steps precede the target', () => {
+    const fixture = fixturePath('whenEnvFilter');
+    // "Dev Only Step" is at flat index 0 (label "1") and is filtered in stg.
+    // "Dev And Stg Step" is at flat index 1 (label "2").
+    // --from-step 2 must land on "Dev And Stg Step" (authored step 2), not on
+    // whatever was formerly the 2nd post-filter step.
+    const result = runCli(
+      ['run', fixture, '--env', 'stg', '--from-step', '2'],
+      { input: 'q\n' },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Dev And Stg Step'),
+      `--from-step 2 must jump to authored step 2 ("Dev And Stg Step"); output:\n${combined.slice(-800)}`,
+    );
+  });
+
+  // Issue 3: per-step rollback entries with a non-matching `when` must be
+  // filtered so the run loop falls through to the nearest-upstream fallback.
+  it('filters env-gated rollback entries and falls through to no-rollback message in non-matching env', () => {
+    const fixture = fixturePath('whenEnvFilter');
+    // Jump directly to "Step With Env Rollback" (flat index 7 = --from-step 8)
+    // so only one readline question is needed, avoiding the batch-stdin gotcha.
+    // Its rollback has when: [dev] — in stg it must be filtered out so the
+    // fallback "No rollback defined" message appears.
+    const result = runCli(
+      ['run', fixture, '--env', 'stg', '--from-step', '8'],
+      { input: 'r\n' },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('No rollback defined'),
+      `dev-only rollback must be filtered in stg; fallback message expected; output:\n${combined.slice(-800)}`,
+    );
+    assert.ok(
+      !combined.includes('Undo only in dev'),
+      `dev-only rollback instruction must not appear in stg; output:\n${combined.slice(-800)}`,
+    );
+  });
 });

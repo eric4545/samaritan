@@ -15,13 +15,16 @@ steps:
     type: manual
     when: [dev]
     instruction: This step only appears in dev
+
   - name: Dev And Stg Step
     type: manual
     when: [dev, stg]
     instruction: This step appears in dev and stg
+
   - name: All Environments Step
     type: manual
     instruction: This step appears in all environments
+
   - name: Dev Only Section
     type: manual
     sub_steps:
@@ -29,3 +32,24 @@ steps:
         type: manual
         when: [dev]
         instruction: This sub-step only appears in dev
+
+  # Issue 1: parent has own content (instruction) even though its only sub-step
+  # is dev-only.  In stg the parent should NOT be dropped.
+  - name: Content Bearing Parent
+    type: manual
+    instruction: This parent has its own instruction visible in all envs
+    sub_steps:
+      - name: Dev Only Child
+        type: manual
+        when: [dev]
+        instruction: This child only appears in dev
+
+  # Issue 3: step with env-gated rollback.  In stg the rollback is a no-op
+  # (only the dev entry is present) so the nearest-upstream fallback fires.
+  - name: Step With Env Rollback
+    type: manual
+    instruction: Step whose rollback is dev-only
+    rollback:
+      - name: Dev Rollback
+        when: [dev]
+        instruction: Undo only in dev

@@ -29,7 +29,10 @@ import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { generateReport, renderReport } from '../../lib/report-generator';
-import { findNearestRollbackSource } from '../../lib/rollback';
+import {
+  filterRollbackByEnv,
+  findNearestRollbackSource,
+} from '../../lib/rollback';
 import {
   buildStepRecords,
   foldEvents,
@@ -84,6 +87,7 @@ const MAX_PASTED_EVIDENCE_BYTES = 10 * 1024 * 1024;
 interface FlatStep {
   step: Step;
   label: string;
+  filteredByEnv?: boolean;
 }
 
 interface RunOptions {
@@ -144,33 +148,58 @@ export function resolveFocusPic(
   return pic || undefined;
 }
 
-function filterStepsByEnv(steps: Step[], targetEnv: string): Step[] {
-  const result: Step[] = [];
-  for (const step of steps) {
-    if (!shouldRenderStepForEnvironment(step, targetEnv)) continue;
-    if (step.sub_steps && step.sub_steps.length > 0) {
-      const filteredSubs = filterStepsByEnv(step.sub_steps, targetEnv);
-      // Drop a parent section whose children are all env-filtered: if we kept
-      // it with sub_steps:[], the flattener would treat it as a leaf and the
-      // run loop would prompt/execute it — but it has no content of its own.
-      if (filteredSubs.length === 0) continue;
-      result.push({ ...step, sub_steps: filteredSubs });
-    } else {
-      result.push(step);
-    }
-  }
-  return result;
+/** True when a step has at least one displayable content field of its own. */
+function stepHasOwnContent(step: Step): boolean {
+  return !!(
+    step.command ||
+    step.instruction ||
+    step.script ||
+    step.expect != null ||
+    step.evidence
+  );
 }
 
-function flattenStepsForExecution(steps: Step[], prefix = ''): FlatStep[] {
+/**
+ * Flatten ALL steps (preserving authored step numbers) while marking those
+ * excluded by the target environment so the run loop can auto-skip them
+ * silently.  This replaces the old two-pass "filterStepsByEnv →
+ * flattenStepsForExecution" approach, fixing the bug where `--from-step N`
+ * referred to the post-filter position instead of the authored step N.
+ *
+ * Filtering rules (consistent with shouldRenderStepForEnvironment):
+ *  - A step is self-filtered when its `when` list exists, is non-empty, and
+ *    does not include `targetEnv`.
+ *  - inheritFiltered propagates a parent's filter down to its children.
+ *  - A parent whose children are ALL env-filtered is ALSO marked filteredByEnv
+ *    UNLESS the parent itself carries own-content fields (Issue 1 fix).
+ */
+function flattenAndMarkForEnv(
+  steps: Step[],
+  targetEnv: string,
+  prefix = '',
+  inheritFiltered = false,
+): FlatStep[] {
   const result: FlatStep[] = [];
   steps.forEach((step, i) => {
     const label = prefix ? `${prefix}${indexToLetters(i)}` : String(i + 1);
+    const selfFiltered =
+      inheritFiltered || !shouldRenderStepForEnvironment(step, targetEnv);
+
     if (step.sub_steps && step.sub_steps.length > 0) {
-      result.push({ step, label });
-      result.push(...flattenStepsForExecution(step.sub_steps, label));
+      const childResults = flattenAndMarkForEnv(
+        step.sub_steps,
+        targetEnv,
+        label,
+        selfFiltered,
+      );
+      const allChildrenFiltered =
+        childResults.length > 0 && childResults.every((c) => c.filteredByEnv);
+      const parentFiltered =
+        selfFiltered || (allChildrenFiltered && !stepHasOwnContent(step));
+      result.push({ step, label, filteredByEnv: parentFiltered || undefined });
+      result.push(...childResults);
     } else {
-      result.push({ step, label });
+      result.push({ step, label, filteredByEnv: selfFiltered || undefined });
     }
   });
   return result;
@@ -429,6 +458,7 @@ class OperationRunner {
           options.requireEvidence !== false,
           focusPic,
           options.skipOthers !== false,
+          targetEnv,
         );
         executor.finalizeOperation();
 
@@ -632,6 +662,7 @@ class OperationRunner {
       options.requireEvidence !== false,
       resumeFocusPic,
       options.skipOthers !== false,
+      session.environment,
     );
     executor.finalizeOperation();
     tmuxSession?.teardown();
@@ -654,15 +685,10 @@ class OperationRunner {
     flatSteps: FlatStep[];
     execOperation: Operation;
   } {
-    const filteredSteps = filterStepsByEnv(operation.steps, targetEnv);
-    // TODO(known-limitation): step labels in the run loop are assigned from the
-    // filtered list (1, 2, 3, …), while the generated manual preserves original
-    // authored indices (generator.ts maps each step to its originalIndex before
-    // filtering). This means --from-step 3 in a stg run may not correspond to
-    // "Step 3" in the manual when earlier steps are env-filtered out.
-    // Fix: thread originalIndex through FlatStep and use it for the label so
-    // run-loop numbers match the generated manual.
-    const flatSteps = flattenStepsForExecution(filteredSteps);
+    // All steps are included in flatSteps (with filteredByEnv flag) so that
+    // authored step numbers are stable — `--from-step N` always means the Nth
+    // step the author wrote, not the Nth step after env filtering.
+    const flatSteps = flattenAndMarkForEnv(operation.steps, targetEnv);
     return {
       flatSteps,
       execOperation: { ...operation, steps: flatSteps.map((f) => f.step) },
@@ -681,6 +707,7 @@ class OperationRunner {
     requireEvidence: boolean,
     focusPic: string | undefined,
     skipOthers: boolean,
+    targetEnv: string,
   ): Promise<string> {
     const rl = createReadlineInterface({
       input: process.stdin,
@@ -973,29 +1000,41 @@ class OperationRunner {
     };
 
     const doRollback = async (step: Step, i: number): Promise<void> => {
-      const hasRollbackSteps = step.rollback && step.rollback.length > 0;
+      // Filter rollback entries to those applicable to the current environment.
+      const envRollback = filterRollbackByEnv(step.rollback ?? [], targetEnv);
+      const hasRollbackSteps = envRollback.length > 0;
       const stateSteps = executor.getState().steps;
 
-      if (controller && tmuxSession) {
+      if (hasRollbackSteps && controller && tmuxSession) {
         console.log('    🔄 Initiating rollback...');
-        await controller.rollback(step, i, state.context.operator);
+        await controller.runRollbackSteps(
+          envRollback,
+          i,
+          state.context.operator,
+          'rollback',
+        );
         console.log('    ↩  Rollback complete.');
       } else if (hasRollbackSteps) {
         // No tmux to send through (sidecar without sessions) — show the
         // operator what to run; controller still records the audit events.
         console.log('    🔄 Rollback steps (manual — no tmux session):');
-        for (const rb of step.rollback ?? []) {
+        for (const rb of envRollback) {
           console.log(`      $ ${tryResolve(rb.command, step.variables)}`);
         }
-        await controller?.rollback(step, i, state.context.operator);
+        await controller?.runRollbackSteps(
+          envRollback,
+          i,
+          state.context.operator,
+          'rollback',
+        );
       } else {
-        // This step has no rollback of its own — offer the nearest upstream
-        // step's rollback (needs chain first, else document order; only
-        // completed steps qualify).
+        // This step has no rollback applicable to this environment — offer the
+        // nearest upstream step's rollback (needs chain first, else document
+        // order; only completed steps qualify).
         const nearest = findNearestRollbackSource(
           stateSteps.map((s) => s.step),
           i,
-          { graph: depGraph, isCandidate: stepIsCompleted },
+          { graph: depGraph, isCandidate: stepIsCompleted, targetEnv },
         );
         if (nearest) {
           const sourceStep = stateSteps[nearest.stepIndex].step;
@@ -1041,7 +1080,10 @@ class OperationRunner {
         .getState()
         .steps.filter((s) => s.status === 'completed')
         .map((s) => s.step);
-      const rbSteps = buildEffectiveRollback(operation.rollback, completed);
+      const rbSteps = filterRollbackByEnv(
+        buildEffectiveRollback(operation.rollback, completed),
+        targetEnv,
+      );
       if (rbSteps.length === 0) {
         console.log(
           '    ℹ️  Nothing to roll back globally (no rollback plan and no completed steps with rollback).',
@@ -1601,7 +1643,10 @@ class OperationRunner {
       // 'completed' instead, so this only fires for a startup jump.
       const startIndex = executor.getState().currentStepIndex;
       for (let k = 0; k < startIndex; k++) {
-        if (steps[k].status === 'skipped') logSkip(k);
+        // Env-filtered steps were auto-skipped silently — exclude them from
+        // the report's initial skip list to keep the log clean.
+        if (steps[k].status === 'skipped' && !flatSteps[k].filteredByEnv)
+          logSkip(k);
       }
 
       // Steps whose unmet-needs gate we've already bounced off once — prevents an
@@ -1612,6 +1657,15 @@ class OperationRunner {
         const { step } = steps[i];
         const stepNum = `[${flatSteps[i].label}/${steps.length}]`;
         const typeLabel = step.type.toUpperCase();
+
+        // Env-filtered steps: authored step numbers are preserved in flatSteps
+        // even when a step is excluded by its `when` field.  Auto-skip silently
+        // so the report only shows work that was relevant to this environment.
+        if (flatSteps[i].filteredByEnv) {
+          executor.skipStep(i);
+          persistProgress();
+          continue;
+        }
 
         // Focus mode (`run --pic <name>`): auto-skip steps assigned to a
         // DIFFERENT operator so the focused operator only walks their own (and
