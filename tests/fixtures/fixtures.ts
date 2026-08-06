@@ -207,6 +207,10 @@ export const FIXTURES = {
   // when: filtering with aggregate_step_rollbacks (regression for rollback leak)
   rollbackWhenAggregate:
     'tests/fixtures/operations/features/rollback-when-aggregate.yaml',
+
+  // Regression: explicit rollback.steps with when: gating (non-empty plan steps)
+  rollbackWhenAggregateGlobal:
+    'tests/fixtures/operations/features/rollback-when-aggregate-global.yaml',
 } as const;
 
 /**
