@@ -100,11 +100,19 @@ directory or example ships with this repo today.
 
 ## Interactive run loop actions
 
+The bar is a **footer**: on a TTY it is erased and redrawn in place after every
+keypress, so exactly one copy sits under the transcript (the `Expected:` line
+rides in the same block). Piped/redirected output is never erased — it stays
+append-only. Keys the bar does **not** offer are refused inline
+(`⚠️  [v] isn't available on this step.`) instead of falling through to the
+completion branch, where a single character would otherwise mark the step done
+with that letter as the operator's note. Typed sentences are still notes.
+
 Per manual/sidecar step:
 - `[n]` note — free-text annotation
 - `[e]` evidence — capture pane output / attach file / paste text
 - `[x]` remove evidence — only shown once evidence exists
-- `[v]` verify — run `step.expect` against captured pane output
+- `[v]` verify — run `step.expect` against captured pane output; only offered when the step has `expect` **and** a capture is attached (nothing to assert against otherwise). While unavailable, the `Expected:` line carries the reason (`(press [t] to attach a pane, then verify)` in sidecar, `(verify needs an attached capture)` elsewhere)
 - `[t]` attach pane — (sidecar) attach/swap a tmux capture backend mid-run
 - `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command (or a `script:`, whose `bash <path>` invocation is pasted) and a pane is attached. Re-run during verify = `[p]` then `[v]`
 - A **script-only step** (`script:` with no inline `command`) displays `Script: <path>`, the embedded script content, and a `bash <path>` runnable; `[c]` copy and `[p]` send-to-pane act on that `bash <path>` invocation

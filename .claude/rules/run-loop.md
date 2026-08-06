@@ -23,12 +23,44 @@ collection is NOT implemented. (Check `ROADMAP.md`.)
 - `[n]` note, `[e]` evidence (capture pane / attach file / paste text), `[x]`
   remove evidence (only shown once evidence exists — deletes from the session
   record and from `~/.samaritan/sessions/<id>/evidence/` on disk; logged
-  `evidence_removed`), `[v]` verify (`step.expect` against captured output).
+  `evidence_removed`), `[v]` verify (`step.expect` against captured output —
+  offered only when `step.expect` AND `controller` AND
+  `captureRef.backend?.hasTarget(sessionName)`, recomputed every redraw so `[t]`
+  makes it appear).
 - Sidecar-only: `[t]` attach pane (fires immediately, numbered picker from
   `listTmuxPanes()`), `[p]` send to pane (when step has a command + pane attached).
 - `[b]` back (not on first step), `[j]` jump forward (not on last step),
   `[r]` per-step rollback, `[g]` global rollback (when `operation.rollback`
   exists), `q`/`quit`/`Ctrl+C` abort.
+
+## The action bar is a sticky FOOTER, and unoffered keys are refused
+
+`promptFooter(block)` prints the block, reads one key, then writes
+`eraseRenderedBlock(block + '\n  > ' + input, getTerminalSize().columns)` —
+cursor-up N rows + `ESC[0J`. So the bar (plus the `Expected:` line, which lives
+in the SAME block) is torn down and redrawn in place instead of leaving a spent
+copy behind each keypress. `promptAction` routes through it too. Two traps:
+
+- **The TTY check belongs to the caller, not the width math.** A pty opened
+  without a winsize is a TTY whose `columns` is `undefined` → `getTerminalSize()`
+  returns `Infinity`. Gating the erase on a finite width silently disabled it
+  under `script`/CI ptys. `eraseRenderedBlock` therefore never consults
+  `isTTY`; `promptFooter` guards with `process.stdout.isTTY`, and an unknown
+  width just means "assume no wrapping". Non-TTY output stays append-only and
+  byte-for-byte identical (snapshot + piped-stdin tests depend on it).
+- **`countRenderedRows` must be wrap-aware** (`ceil(visibleWidth / columns)`,
+  measured after `stripAnsi`) or a wrapped bar leaves fragments on a narrow
+  terminal.
+
+Every single-char key fires without Enter and **anything the bar doesn't handle
+becomes the completion note**, so an un-offered key used to mark the step DONE
+with that letter recorded as the note (`[v]` on a step with no `expect` did
+exactly that). The bar now builds `hints` into a variable, derives
+`offeredKeys` (+ `q`, live but deliberately unlisted), and rejects
+`resolveActionKey(input)` — bare char via `IMMEDIATE_ACTION_CHARS` or long-form
+word via `ACTION_WORDS` — when it isn't offered. Free text is untouched: still a
+note. Adding a key means adding it to `hints`, `IMMEDIATE_ACTION_CHARS`, and
+`ACTION_WORDS`, or it will be refused.
 
 ## `[p]` send to pane — bracketed paste, never Enter
 

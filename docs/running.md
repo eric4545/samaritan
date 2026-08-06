@@ -31,7 +31,7 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 |---|---|
 | `sessions:` defined in YAML | Samaritan bootstraps its own tmux session; prints `Attach with: tmux attach -t samaritan-<id>` |
 | `--attach <target>` flag | Samaritan attaches a pipe-pane capture to your existing pane without touching your session |
-| No sessions, no `--attach` | Prompt-only mode; `[v]` will indicate that you need `[t]` to attach a pane first |
+| No sessions, no `--attach` | Prompt-only mode; `[v]` is not offered, and the `Expected:` line tells you to `[t]` attach a pane first |
 
 **Caveats:**
 - `--attach` mode uses a **single capture target** for all steps. Per-step `session:` routing is ignored; all capture reads come from the attached pane.
@@ -42,7 +42,7 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 - `type: automatic` steps: Command is displayed prominently; the `command_displayed` event is written to the audit log (not `command_sent`). The report renders it as `**Command (run by operator)**`.
 - `type: manual` steps: Same prompt loop as always.
 - **Script-only steps** (`script:` with no inline `command`): the run loop shows `Script: <path>`, embeds the script file's content, and displays the `bash <path>` invocation to run. `[c] copy` and `[p] send to pane` operate on that `bash <path>` invocation.
-- Both types offer `[v] verify` (when `expect` is defined), `[t] attach pane`, and `[p] send to pane` (when the step has a command **or a `script`** and a pane is attached).
+- Both types offer `[v] verify` (when `expect` is defined **and** a pane is attached), `[t] attach pane`, and `[p] send to pane` (when the step has a command **or a `script`** and a pane is attached).
 
 ## Execution flow (spawn-own sessions)
 
@@ -71,7 +71,7 @@ At each step, SAMARITAN pauses and shows the step details, then prompts based on
 
 `g`=global rollback is only offered when the operation declares a top-level `rollback:` block. It runs the consolidated recovery (see [Group per-step rollbacks into the global rollback](#group-per-step-rollbacks-into-the-global-rollback-aggregate_step_rollbacks)) and then aborts.
 
-Before each step, samaritan prints `Expected: <criteria>` up front (e.g. `Expected: contains: Running, does not contain: CrashLoopBackOff`) so you know what `[v]` will check before you run anything.
+Samaritan keeps `Expected: <criteria>` (e.g. `Expected: contains: Running, does not contain: CrashLoopBackOff`) pinned directly above the action bar, so you know what `[v]` will check before you run anything — and it stays there as you work the step rather than scrolling away behind your output.
 
 ## Verify output: checklist, highlighting, and the line-number gutter
 
@@ -131,6 +131,23 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 [↵] done  ·  [c] copy  ·  [n] note  ·  [e] evidence  ·  [x] remove evidence  ·  [v] verify  ·  [p] send to pane  ·  [b] back  ·  [j] jump  ·  [s] skip  ·  [r] rollback  ·  [g] global rollback  ·  [abort] abort
 ```
 
+**The bar is a footer, not a log line.** On a terminal it is erased and redrawn
+in place after every keypress, so exactly one copy sits under the transcript
+instead of a fresh copy marching down the screen after each action — the step
+header, its command block, and your action output stay where you left them. The
+`Expected:` criteria ride in the same block, pinned directly above the keys. When
+output is piped or redirected (no TTY) nothing is erased: the transcript stays
+plain and append-only for logs and CI.
+
+**The bar only shows keys that work, and only those keys are live.** `[c]`
+without a command, `[x]` with no evidence captured, `[v]` with nothing to verify
+against, `[b]` on the first step — none of them are offered, and pressing one is
+refused inline (`⚠️  [v] isn't available on this step.`) rather than being taken
+as free text. This matters because single-character keys fire without Enter:
+anything the bar doesn't handle counts as your completion note, so an unoffered
+key would otherwise mark the step **done** with the letter recorded as the note.
+Typed sentences are still notes — the refusal is scoped to action keys.
+
 - **`[n]` note** — record a free-text annotation (e.g. "restarted pod manually, confirmed with on-call"). Stored in the JSONL audit log as a `user_input`/`note` event and rendered as a bullet list under the step in the `--report` Markdown.
 - **`[e]` evidence** — capture and persist evidence with the session, the same way you'd attach a file in Claude Code. You're offered up to three sources:
   - **capture terminal output** (default, only offered when a tmux session is attached to the step) — grabs everything written to the pane since the step started and stores it as `command_output` evidence
@@ -141,7 +158,7 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 
   All evidence bytes — including dragged-in files, screenshots, and videos — are stored exclusively under `~/.samaritan/sessions/<session-id>/evidence/`, alongside the session's own JSON record. SAMARITAN never leaves a second copy elsewhere: the persisted session references the file by path rather than embedding its raw bytes.
 - **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's captured evidence (type, description, and stored path), lets you pick one by number to delete, removes it from the session record, and — for file/screenshot/video evidence copied into the session's evidence directory — deletes the copy from disk too (your original source file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event, and the `--report` Markdown omits removed items entirely.
-- **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutputDetailed`/`interpolateExpect` machinery `automatic` steps use), evaluating **every** check (not just the first failure) and rendering the PASS/FAIL checklist + highlighted, line-numbered output described in [Verify output: checklist, highlighting, and the line-number gutter](#verify-output-checklist-highlighting-and-the-line-number-gutter) — and, on failure, the override/rollback/`[m]` more/`[v]` re-verify/stop prompt. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
+- **`[v]` verify** — only offered when the step defines `expect` **and** a capture is attached, since without a pane there is no output to assert against. Until then the `Expected:` line says so — `(press [t] to attach a pane, then verify)` in sidecar mode, `(verify needs an attached capture)` elsewhere — and `[v]` appears on the bar the moment you attach. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutputDetailed`/`interpolateExpect` machinery `automatic` steps use), evaluating **every** check (not just the first failure) and rendering the PASS/FAIL checklist + highlighted, line-numbered output described in [Verify output: checklist, highlighting, and the line-number gutter](#verify-output-checklist-highlighting-and-the-line-number-gutter) — and, on failure, the override/rollback/`[m]` more/`[v]` re-verify/stop prompt. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
   - **Auto-capture on pass (closes the `expect` ↔ `evidence` loop):** the first time a step's `[v]` verify **passes**, the verified pane output is automatically saved as a `command_output` evidence item (marked `automatic`/`validated`, `source: verify`) — so the output you checked also becomes the output recorded in the session and `--report`. The evidence is captured from the pane's **rendered screen** (`tmux capture-pane -p -J`), so it reads as clean text in the report instead of the raw terminal byte stream (no ANSI/cursor-move/redraw noise). Re-pressing `[v]` won't record duplicates. `evidence` (the record) and `expect` (the check) stay separate concepts; this just records what you verified.
 - **`[r]` rollback** — runs *this step's* `rollback` (sends each command via tmux, or lists them when there's no session) and stays on the step. If this step has **no rollback**, it offers the **nearest upstream** step's rollback instead — following the `needs` chain if present, otherwise scanning earlier steps in document order (only completed steps are offered).
 - **`[g]` global rollback** — only offered when the operation declares a top-level `rollback:` block. Previews the **consolidated** recovery — the explicit `rollback.steps` plus, when `aggregate_step_rollbacks` is on, every **completed** step's own rollback in reverse order (ordered by reverse-topological order when `needs` are present) — asks for confirmation, runs it, then aborts the operation (the session stays resumable). Use it when a failure means abandoning forward progress and unwinding what's been done so far.
