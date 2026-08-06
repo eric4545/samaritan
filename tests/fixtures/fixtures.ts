@@ -203,6 +203,20 @@ export const FIXTURES = {
 
   // When-gate environment filtering in run/sidecar mode
   whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
+
+  // when: filtering with aggregate_step_rollbacks (regression for rollback leak)
+  rollbackWhenAggregate:
+    'tests/fixtures/operations/features/rollback-when-aggregate.yaml',
+
+  // Regression: explicit rollback.steps with when: gating (non-empty plan steps)
+  rollbackWhenAggregateGlobal:
+    'tests/fixtures/operations/features/rollback-when-aggregate-global.yaml',
+
+  // Correct pattern: per-env foreach/matrix rollback steps each gated with when:
+  // Documents the limitation that a mixed foreach.matrix (spanning environments)
+  // has no per-entry when: — split into separate steps with when: instead.
+  rollbackMatrixEnvScope:
+    'tests/fixtures/operations/features/rollback-matrix-env-scope.yaml',
 } as const;
 
 /**

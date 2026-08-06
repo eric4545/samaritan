@@ -5,6 +5,7 @@ import { slugify } from '../../src/lib/anchor';
 import { generateADFString } from '../../src/manuals/adf-generator';
 import {
   generateManual,
+  generateManualWithMetadata,
   generateSingleEnvManual,
 } from '../../src/manuals/generator';
 import { parseFixture } from '../fixtures/fixtures';
@@ -203,6 +204,52 @@ describe('aggregate_step_rollbacks jump-links + centralization', () => {
   });
 });
 
+// Regression: when-gated steps must not contribute rollbacks to environments
+// they don't apply to, even with aggregate_step_rollbacks: true (single-env
+// path used by `generate manual --env <name>`).
+describe('aggregate_step_rollbacks: when: filtering respected in rollback plan', () => {
+  it('single-env pro: dev-only step rollback does not appear', async () => {
+    const operation = await parseFixture('rollbackWhenAggregate');
+    const md = generateSingleEnvManual(operation, 'pro');
+
+    // The dev-only step itself must not appear.
+    assert.ok(!md.includes('Dev-only setup'), 'dev-only step body absent');
+    // Its rollback must not appear in the plan either.
+    assert.ok(
+      !md.includes('Rollback for "Dev-only setup"'),
+      'dev-only rollback absent from pro plan',
+    );
+    assert.ok(
+      !md.includes('echo "undo-dev"'),
+      'dev-only rollback command absent from pro plan',
+    );
+    // The all-environments step rollback must still appear.
+    assert.ok(
+      md.includes('Rollback for "All environments deploy"'),
+      'shared rollback present in pro plan',
+    );
+    assert.ok(
+      md.includes('echo "undo-deploy"'),
+      'shared rollback command present in pro plan',
+    );
+  });
+
+  it('single-env dev: dev-only step rollback is present', async () => {
+    const operation = await parseFixture('rollbackWhenAggregate');
+    const md = generateSingleEnvManual(operation, 'dev');
+
+    // Both rollbacks appear when generating for dev.
+    assert.ok(
+      md.includes('Rollback for "Dev-only setup"'),
+      'dev-only rollback present in dev plan',
+    );
+    assert.ok(
+      md.includes('Rollback for "All environments deploy"'),
+      'shared rollback present in dev plan',
+    );
+  });
+});
+
 // Guard the default: with aggregate_step_rollbacks OFF, nothing changes — inline
 // rollback blocks and the Rollback Procedures section still render, and NO
 // jump-links or anchors are emitted.
@@ -224,5 +271,256 @@ describe('aggregate_step_rollbacks OFF: rollback rendering unchanged', () => {
     assert.ok(adf.includes('Rollback Procedures'));
     assert.ok(!adf.includes('"extensionKey":"anchor"'));
     assert.ok(!/"extensionKey":\s*"anchor"/.test(adf));
+  });
+});
+
+// Regression: explicit rollback.steps with when: gating must not leak into
+// manuals for non-matching environments. Non-empty rollback.steps + nested
+// sub_steps + aggregate_step_rollbacks: true (single-env and multi-env paths).
+describe('explicit rollback.steps: when: filtering respected by environment', () => {
+  it('single-env pro: dev/stg-gated rollback steps absent, all-env and pro steps present', async () => {
+    const operation = await parseFixture('rollbackWhenAggregateGlobal');
+    const md = generateSingleEnvManual(operation, 'pro');
+
+    // Env-gated entries for other environments must not appear.
+    assert.ok(
+      !md.includes('Revert dev config'),
+      'dev-gated rollback step absent from pro manual',
+    );
+    assert.ok(
+      !md.includes('echo "revert-dev-config"'),
+      'dev-gated rollback command absent from pro manual',
+    );
+    assert.ok(
+      !md.includes('Revert stg config'),
+      'stg-gated rollback step absent from pro manual',
+    );
+    assert.ok(
+      !md.includes('echo "revert-stg-config"'),
+      'stg-gated rollback command absent from pro manual',
+    );
+    assert.ok(
+      !md.includes('Flush stg cache'),
+      'stg-only sub_step absent from pro manual',
+    );
+    // Universal and pro-specific entries must appear.
+    assert.ok(
+      md.includes('Notify on-call'),
+      'all-env rollback step present in pro manual',
+    );
+    assert.ok(
+      md.includes('Revert pro config'),
+      'pro-gated rollback step present in pro manual',
+    );
+    assert.ok(
+      md.includes('echo "revert-pro-config"'),
+      'pro-gated rollback command present in pro manual',
+    );
+  });
+
+  it('single-env stg: stg-gated steps (+ sub_steps) present, dev/pro absent', async () => {
+    const operation = await parseFixture('rollbackWhenAggregateGlobal');
+    const md = generateSingleEnvManual(operation, 'stg');
+
+    assert.ok(
+      !md.includes('Revert dev config'),
+      'dev-gated rollback step absent from stg manual',
+    );
+    assert.ok(
+      !md.includes('Revert pro config'),
+      'pro-gated rollback step absent from stg manual',
+    );
+    assert.ok(
+      md.includes('Revert stg config'),
+      'stg-gated rollback step present in stg manual',
+    );
+    assert.ok(
+      md.includes('echo "revert-stg-config"'),
+      'stg-gated rollback command present in stg manual',
+    );
+    // sub_step of the stg rollback step must also appear.
+    assert.ok(
+      md.includes('Flush stg cache'),
+      'stg rollback sub_step present in stg manual',
+    );
+    assert.ok(
+      md.includes('Notify on-call'),
+      'all-env rollback step present in stg manual',
+    );
+  });
+
+  it('single-env dev: dev-gated step present, stg/pro absent', async () => {
+    const operation = await parseFixture('rollbackWhenAggregateGlobal');
+    const md = generateSingleEnvManual(operation, 'dev');
+
+    assert.ok(
+      md.includes('Revert dev config'),
+      'dev-gated rollback step present in dev manual',
+    );
+    assert.ok(
+      md.includes('echo "revert-dev-config"'),
+      'dev-gated rollback command present in dev manual',
+    );
+    assert.ok(
+      !md.includes('Revert stg config'),
+      'stg-gated rollback step absent from dev manual',
+    );
+    assert.ok(
+      !md.includes('Revert pro config'),
+      'pro-gated rollback step absent from dev manual',
+    );
+  });
+
+  it('multi-env --env pro (generateManualWithMetadata): dev/stg rollback steps absent', async () => {
+    const operation = await parseFixture('rollbackWhenAggregateGlobal');
+    const md = generateManualWithMetadata(operation, undefined, 'pro');
+
+    assert.ok(
+      !md.includes('Revert dev config'),
+      'dev-gated rollback step absent from --env pro manual',
+    );
+    assert.ok(
+      !md.includes('Revert stg config'),
+      'stg-gated rollback step absent from --env pro manual',
+    );
+    assert.ok(
+      md.includes('Revert pro config'),
+      'pro-gated rollback step present in --env pro manual',
+    );
+    assert.ok(
+      md.includes('Notify on-call'),
+      'all-env rollback step present in --env pro manual',
+    );
+  });
+
+  it('multi-env all-envs (no targetEnvironment): all rollback steps appear', async () => {
+    const operation = await parseFixture('rollbackWhenAggregateGlobal');
+    // No targetEnvironment — all explicit rollback.steps remain unfiltered.
+    const md = generateManualWithMetadata(operation);
+
+    assert.ok(
+      md.includes('Revert dev config'),
+      'dev-gated rollback step present in all-env manual',
+    );
+    assert.ok(
+      md.includes('Revert stg config'),
+      'stg-gated rollback step present in all-env manual',
+    );
+    assert.ok(
+      md.includes('Revert pro config'),
+      'pro-gated rollback step present in all-env manual',
+    );
+    assert.ok(
+      md.includes('Notify on-call'),
+      'all-env rollback step present in all-env manual',
+    );
+  });
+});
+
+// Regression: foreach/matrix in rollback steps must honour the parent step's
+// when: gate. A mixed foreach.matrix spanning multiple environments has no
+// per-entry when: support — the correct pattern is one rollback step per
+// environment, each gated with when:, then foreach only over per-env resources.
+// Because foreach expansion preserves the parent step's when: on every expanded
+// copy, filterRollbackStepsForEnvironment correctly scopes the entries.
+describe('rollback foreach/matrix: when: on parent step scopes all expanded entries', () => {
+  it('single-env pro: only pro-gated matrix entries appear, dev/stg absent', async () => {
+    const operation = await parseFixture('rollbackMatrixEnvScope');
+    const md = generateSingleEnvManual(operation, 'pro');
+
+    // Pro-specific expanded entries must be present.
+    assert.ok(
+      md.includes('rollback-pro-service-a'),
+      'pro/service-a rollback entry present in pro manual',
+    );
+    assert.ok(
+      md.includes('rollback-pro-service-b'),
+      'pro/service-b rollback entry present in pro manual',
+    );
+    // Universal step must appear.
+    assert.ok(
+      md.includes('Notify on-call'),
+      'all-env rollback step present in pro manual',
+    );
+    // Dev and stg entries must not appear in the pro manual.
+    assert.ok(
+      !md.includes('rollback-dev-'),
+      'dev rollback entries absent from pro manual',
+    );
+    assert.ok(
+      !md.includes('rollback-stg-'),
+      'stg rollback entries absent from pro manual',
+    );
+  });
+
+  it('single-env dev: only dev-gated matrix entries appear, stg/pro absent', async () => {
+    const operation = await parseFixture('rollbackMatrixEnvScope');
+    const md = generateSingleEnvManual(operation, 'dev');
+
+    assert.ok(
+      md.includes('rollback-dev-service-a'),
+      'dev/service-a rollback entry present in dev manual',
+    );
+    assert.ok(
+      md.includes('rollback-dev-service-b'),
+      'dev/service-b rollback entry present in dev manual',
+    );
+    assert.ok(
+      !md.includes('rollback-stg-'),
+      'stg entries absent from dev manual',
+    );
+    assert.ok(
+      !md.includes('rollback-pro-'),
+      'pro entries absent from dev manual',
+    );
+  });
+
+  it('--env pro (generateManualWithMetadata): dev/stg matrix entries absent', async () => {
+    const operation = await parseFixture('rollbackMatrixEnvScope');
+    const md = generateManualWithMetadata(operation, undefined, 'pro');
+
+    assert.ok(
+      md.includes('rollback-pro-service-a'),
+      'pro/service-a rollback entry present in --env pro manual',
+    );
+    assert.ok(
+      md.includes('rollback-pro-service-b'),
+      'pro/service-b rollback entry present in --env pro manual',
+    );
+    assert.ok(
+      !md.includes('rollback-dev-'),
+      'dev rollback entries absent from --env pro manual',
+    );
+    assert.ok(
+      !md.includes('rollback-stg-'),
+      'stg rollback entries absent from --env pro manual',
+    );
+    assert.ok(
+      md.includes('Notify on-call'),
+      'all-env rollback step present in --env pro manual',
+    );
+  });
+
+  it('all-envs (no targetEnvironment): all matrix entries appear', async () => {
+    const operation = await parseFixture('rollbackMatrixEnvScope');
+    // generateManual (multi-env table, no env filter) must show every entry.
+    const md = generateManual(operation);
+
+    assert.ok(
+      md.includes('rollback-dev-service-a'),
+      'dev/service-a entry present in all-env manual',
+    );
+    assert.ok(
+      md.includes('rollback-stg-service-a'),
+      'stg/service-a entry present in all-env manual',
+    );
+    assert.ok(
+      md.includes('rollback-pro-service-a'),
+      'pro/service-a entry present in all-env manual',
+    );
+    assert.ok(
+      md.includes('Notify on-call'),
+      'all-env rollback step present in all-env manual',
+    );
   });
 });

@@ -16,7 +16,10 @@ import {
 } from '../lib/global-rollback';
 import { indexToLetters } from '../lib/letter-sequence';
 import { groupByPhase } from '../lib/phase-grouping';
-import { hasRollbackContent } from '../lib/rollback';
+import {
+  filterRollbackStepsForEnvironment,
+  hasRollbackContent,
+} from '../lib/rollback';
 import {
   mergeStepVariant,
   resolveDisplayText,
@@ -1369,10 +1372,23 @@ export function generateManualWithMetadata(
   // Create filtered operation for generation
   // Filter steps whose 'when' condition doesn't match any active environment
   const environmentNames = environments.map((e) => e.name);
+  // When targeting a single environment, also filter explicit rollback.steps
+  // so when-gated entries do not appear in manuals for non-matching environments.
+  const filteredRollback =
+    workingOperation.rollback && targetEnvironment
+      ? {
+          ...workingOperation.rollback,
+          steps: filterRollbackStepsForEnvironment(
+            workingOperation.rollback.steps,
+            targetEnvironment,
+          ),
+        }
+      : workingOperation.rollback;
   const filteredOperation = {
     ...workingOperation,
     environments,
     steps: filterStepsForEnvironments(workingOperation.steps, environmentNames),
+    rollback: filteredRollback,
   };
 
   markdown += generateManualContent(
@@ -2166,8 +2182,25 @@ export function generateSingleEnvManual(
 
   // Operation-level (global) rollback plan, resolved for this environment.
   // aggregate_step_rollbacks groups the per-step rollbacks (reverse order) in.
+  // Filter allSteps by targetEnv so when-gated steps do not contribute their
+  // rollbacks to an environment they don't apply to (mirrors visibleSteps above).
+  // Also filter explicit rollback.steps by targetEnv so when-gated entries in
+  // the top-level plan do not leak into manuals for non-matching environments.
   const globalRollback = workingOperation.rollback;
-  const globalRollbackSteps = buildEffectiveRollback(globalRollback, allSteps);
+  const stepsForRollback = filterStepsForEnvironments(allSteps, [targetEnv]);
+  const filteredGlobalRollback = globalRollback
+    ? {
+        ...globalRollback,
+        steps: filterRollbackStepsForEnvironment(
+          globalRollback.steps,
+          targetEnv,
+        ),
+      }
+    : undefined;
+  const globalRollbackSteps = buildEffectiveRollback(
+    filteredGlobalRollback,
+    stepsForRollback,
+  );
   if (globalRollback && globalRollbackSteps.length > 0) {
     lines.push('---');
     lines.push('');

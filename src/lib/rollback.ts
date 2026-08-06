@@ -38,6 +38,31 @@ export function filterRollbackByEnv<T extends RollbackStep>(
 }
 
 /**
+ * Recursively filter a `RollbackStep[]` to only entries applicable to the
+ * target environment, including nested `sub_steps`. A rollback step with no
+ * `when` (or an empty `when` list) applies to all environments. Used to
+ * filter explicit `rollback.steps` from a `RollbackPlan` before passing them
+ * to `buildEffectiveRollback`, so when-gated entries do not appear in manuals
+ * for non-matching environments.
+ */
+export function filterRollbackStepsForEnvironment(
+  steps: RollbackStep[],
+  targetEnv: string,
+): RollbackStep[] {
+  return steps
+    .filter(
+      (rb) => !rb.when || rb.when.length === 0 || rb.when.includes(targetEnv),
+    )
+    .map((rb) => {
+      if (!rb.sub_steps || rb.sub_steps.length === 0) return rb;
+      return {
+        ...rb,
+        sub_steps: filterRollbackStepsForEnvironment(rb.sub_steps, targetEnv),
+      };
+    });
+}
+
+/**
  * Find the nearest EARLIER step that has a usable rollback, for the run loop's
  * `[r]` fallback when the current step has none of its own.
  *

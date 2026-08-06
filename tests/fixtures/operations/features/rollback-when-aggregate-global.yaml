@@ -1,0 +1,45 @@
+name: Rollback When Aggregate Global
+version: 1.0.0
+description: >
+  Verifies that explicit top-level rollback.steps are filtered by environment
+  (when: gating) in the generated manual, including nested sub_steps and
+  environment-specific entries. Tests the case with aggregate_step_rollbacks: true
+  and non-empty rollback.steps containing when-gated entries.
+
+environments:
+  - name: dev
+    description: Development
+    variables: {}
+  - name: stg
+    description: Staging
+    variables: {}
+  - name: pro
+    description: Production
+    variables: {}
+
+steps:
+  - name: Deploy service
+    type: manual
+    instruction: Deploy to all environments
+    rollback:
+      - name: Undo deploy
+        command: echo "undo-deploy"
+
+rollback:
+  automatic: false
+  aggregate_step_rollbacks: true
+  steps:
+    - name: Notify on-call
+      instruction: Page on-call regardless of environment
+    - name: Revert dev config
+      when: [dev]
+      command: echo "revert-dev-config"
+    - name: Revert stg config
+      when: [stg]
+      command: echo "revert-stg-config"
+      sub_steps:
+        - name: Flush stg cache
+          command: echo "flush-stg-cache"
+    - name: Revert pro config
+      when: [pro]
+      command: echo "revert-pro-config"
