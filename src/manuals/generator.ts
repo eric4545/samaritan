@@ -2166,8 +2166,14 @@ export function generateSingleEnvManual(
 
   // Operation-level (global) rollback plan, resolved for this environment.
   // aggregate_step_rollbacks groups the per-step rollbacks (reverse order) in.
+  // Filter allSteps by targetEnv so when-gated steps do not contribute their
+  // rollbacks to an environment they don't apply to (mirrors visibleSteps above).
   const globalRollback = workingOperation.rollback;
-  const globalRollbackSteps = buildEffectiveRollback(globalRollback, allSteps);
+  const stepsForRollback = filterStepsForEnvironments(allSteps, [targetEnv]);
+  const globalRollbackSteps = buildEffectiveRollback(
+    globalRollback,
+    stepsForRollback,
+  );
   if (globalRollback && globalRollbackSteps.length > 0) {
     lines.push('---');
     lines.push('');

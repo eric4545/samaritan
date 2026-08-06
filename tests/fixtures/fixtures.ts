@@ -203,6 +203,10 @@ export const FIXTURES = {
 
   // When-gate environment filtering in run/sidecar mode
   whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
+
+  // when: filtering with aggregate_step_rollbacks (regression for rollback leak)
+  rollbackWhenAggregate:
+    'tests/fixtures/operations/features/rollback-when-aggregate.yaml',
 } as const;
 
 /**

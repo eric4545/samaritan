@@ -203,6 +203,52 @@ describe('aggregate_step_rollbacks jump-links + centralization', () => {
   });
 });
 
+// Regression: when-gated steps must not contribute rollbacks to environments
+// they don't apply to, even with aggregate_step_rollbacks: true (single-env
+// path used by `generate manual --env <name>`).
+describe('aggregate_step_rollbacks: when: filtering respected in rollback plan', () => {
+  it('single-env pro: dev-only step rollback does not appear', async () => {
+    const operation = await parseFixture('rollbackWhenAggregate');
+    const md = generateSingleEnvManual(operation, 'pro');
+
+    // The dev-only step itself must not appear.
+    assert.ok(!md.includes('Dev-only setup'), 'dev-only step body absent');
+    // Its rollback must not appear in the plan either.
+    assert.ok(
+      !md.includes('Rollback for "Dev-only setup"'),
+      'dev-only rollback absent from pro plan',
+    );
+    assert.ok(
+      !md.includes('echo "undo-dev"'),
+      'dev-only rollback command absent from pro plan',
+    );
+    // The all-environments step rollback must still appear.
+    assert.ok(
+      md.includes('Rollback for "All environments deploy"'),
+      'shared rollback present in pro plan',
+    );
+    assert.ok(
+      md.includes('echo "undo-deploy"'),
+      'shared rollback command present in pro plan',
+    );
+  });
+
+  it('single-env dev: dev-only step rollback is present', async () => {
+    const operation = await parseFixture('rollbackWhenAggregate');
+    const md = generateSingleEnvManual(operation, 'dev');
+
+    // Both rollbacks appear when generating for dev.
+    assert.ok(
+      md.includes('Rollback for "Dev-only setup"'),
+      'dev-only rollback present in dev plan',
+    );
+    assert.ok(
+      md.includes('Rollback for "All environments deploy"'),
+      'shared rollback present in dev plan',
+    );
+  });
+});
+
 // Guard the default: with aggregate_step_rollbacks OFF, nothing changes — inline
 // rollback blocks and the Rollback Procedures section still render, and NO
 // jump-links or anchors are emitted.

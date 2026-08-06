@@ -1,0 +1,34 @@
+name: Rollback When Aggregate
+version: 1.0.0
+description: >
+  Verifies that when-gated steps do not contribute rollbacks to environments
+  they don't apply to, even with aggregate_step_rollbacks: true.
+
+environments:
+  - name: dev
+    description: Development
+    variables: {}
+  - name: pro
+    description: Production
+    variables: {}
+
+steps:
+  - name: Dev-only setup
+    type: manual
+    when: [dev]
+    instruction: Run only in dev
+    rollback:
+      - name: Undo dev setup
+        command: echo "undo-dev"
+
+  - name: All environments deploy
+    type: manual
+    instruction: Deploy everywhere
+    rollback:
+      - name: Undo deploy
+        command: echo "undo-deploy"
+
+rollback:
+  automatic: false
+  aggregate_step_rollbacks: true
+  steps: []
