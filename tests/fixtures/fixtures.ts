@@ -211,6 +211,12 @@ export const FIXTURES = {
   // Regression: explicit rollback.steps with when: gating (non-empty plan steps)
   rollbackWhenAggregateGlobal:
     'tests/fixtures/operations/features/rollback-when-aggregate-global.yaml',
+
+  // Correct pattern: per-env foreach/matrix rollback steps each gated with when:
+  // Documents the limitation that a mixed foreach.matrix (spanning environments)
+  // has no per-entry when: — split into separate steps with when: instead.
+  rollbackMatrixEnvScope:
+    'tests/fixtures/operations/features/rollback-matrix-env-scope.yaml',
 } as const;
 
 /**

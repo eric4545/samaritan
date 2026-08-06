@@ -1,0 +1,56 @@
+name: Rollback Matrix Env Scope
+version: 1.0.0
+description: >
+  Correct pattern for environment-scoped rollback when iterating over multiple
+  resources with foreach/matrix.
+
+  LIMITATION: A single rollback step with a mixed foreach.matrix spanning
+  environments (e.g. env: [dev, stg, pro]) has no per-entry when: support.
+  All expanded matrix entries carry no when: field and therefore appear in
+  every environment's manual, regardless of the original env column value.
+
+  CORRECT PATTERN (used here): split into one rollback step per environment,
+  each gated with when:, then use foreach only over the per-env resources.
+  Because foreach expansion at parse time preserves the parent step's when:
+  field on every expanded copy, filterRollbackStepsForEnvironment correctly
+  removes the dev/stg entries from the pro manual and vice versa.
+
+environments:
+  - name: dev
+    description: Development
+    variables: {}
+  - name: stg
+    description: Staging
+    variables: {}
+  - name: pro
+    description: Production
+    variables: {}
+
+steps:
+  - name: Deploy service
+    type: manual
+    instruction: Deploy to all environments
+
+rollback:
+  automatic: false
+  steps:
+    - name: Notify on-call
+      instruction: Page on-call regardless of environment
+    - name: Rollback dev resources
+      when: [dev]
+      foreach:
+        matrix:
+          resource: [service-a, service-b]
+      command: echo "rollback-dev-${resource}"
+    - name: Rollback stg resources
+      when: [stg]
+      foreach:
+        matrix:
+          resource: [service-a, service-b]
+      command: echo "rollback-stg-${resource}"
+    - name: Rollback pro resources
+      when: [pro]
+      foreach:
+        matrix:
+          resource: [service-a, service-b]
+      command: echo "rollback-pro-${resource}"

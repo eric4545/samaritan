@@ -416,3 +416,111 @@ describe('explicit rollback.steps: when: filtering respected by environment', ()
     );
   });
 });
+
+// Regression: foreach/matrix in rollback steps must honour the parent step's
+// when: gate. A mixed foreach.matrix spanning multiple environments has no
+// per-entry when: support — the correct pattern is one rollback step per
+// environment, each gated with when:, then foreach only over per-env resources.
+// Because foreach expansion preserves the parent step's when: on every expanded
+// copy, filterRollbackStepsForEnvironment correctly scopes the entries.
+describe('rollback foreach/matrix: when: on parent step scopes all expanded entries', () => {
+  it('single-env pro: only pro-gated matrix entries appear, dev/stg absent', async () => {
+    const operation = await parseFixture('rollbackMatrixEnvScope');
+    const md = generateSingleEnvManual(operation, 'pro');
+
+    // Pro-specific expanded entries must be present.
+    assert.ok(
+      md.includes('rollback-pro-service-a'),
+      'pro/service-a rollback entry present in pro manual',
+    );
+    assert.ok(
+      md.includes('rollback-pro-service-b'),
+      'pro/service-b rollback entry present in pro manual',
+    );
+    // Universal step must appear.
+    assert.ok(
+      md.includes('Notify on-call'),
+      'all-env rollback step present in pro manual',
+    );
+    // Dev and stg entries must not appear in the pro manual.
+    assert.ok(
+      !md.includes('rollback-dev-'),
+      'dev rollback entries absent from pro manual',
+    );
+    assert.ok(
+      !md.includes('rollback-stg-'),
+      'stg rollback entries absent from pro manual',
+    );
+  });
+
+  it('single-env dev: only dev-gated matrix entries appear, stg/pro absent', async () => {
+    const operation = await parseFixture('rollbackMatrixEnvScope');
+    const md = generateSingleEnvManual(operation, 'dev');
+
+    assert.ok(
+      md.includes('rollback-dev-service-a'),
+      'dev/service-a rollback entry present in dev manual',
+    );
+    assert.ok(
+      md.includes('rollback-dev-service-b'),
+      'dev/service-b rollback entry present in dev manual',
+    );
+    assert.ok(
+      !md.includes('rollback-stg-'),
+      'stg entries absent from dev manual',
+    );
+    assert.ok(
+      !md.includes('rollback-pro-'),
+      'pro entries absent from dev manual',
+    );
+  });
+
+  it('--env pro (generateManualWithMetadata): dev/stg matrix entries absent', async () => {
+    const operation = await parseFixture('rollbackMatrixEnvScope');
+    const md = generateManualWithMetadata(operation, undefined, 'pro');
+
+    assert.ok(
+      md.includes('rollback-pro-service-a'),
+      'pro/service-a rollback entry present in --env pro manual',
+    );
+    assert.ok(
+      md.includes('rollback-pro-service-b'),
+      'pro/service-b rollback entry present in --env pro manual',
+    );
+    assert.ok(
+      !md.includes('rollback-dev-'),
+      'dev rollback entries absent from --env pro manual',
+    );
+    assert.ok(
+      !md.includes('rollback-stg-'),
+      'stg rollback entries absent from --env pro manual',
+    );
+    assert.ok(
+      md.includes('Notify on-call'),
+      'all-env rollback step present in --env pro manual',
+    );
+  });
+
+  it('all-envs (no targetEnvironment): all matrix entries appear', async () => {
+    const operation = await parseFixture('rollbackMatrixEnvScope');
+    // generateManual (multi-env table, no env filter) must show every entry.
+    const md = generateManual(operation);
+
+    assert.ok(
+      md.includes('rollback-dev-service-a'),
+      'dev/service-a entry present in all-env manual',
+    );
+    assert.ok(
+      md.includes('rollback-stg-service-a'),
+      'stg/service-a entry present in all-env manual',
+    );
+    assert.ok(
+      md.includes('rollback-pro-service-a'),
+      'pro/service-a entry present in all-env manual',
+    );
+    assert.ok(
+      md.includes('Notify on-call'),
+      'all-env rollback step present in all-env manual',
+    );
+  });
+});
