@@ -26,7 +26,6 @@ import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
-import { indexToLetters } from '../../lib/letter-sequence';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { generateReport, renderReport } from '../../lib/report-generator';
 import {
@@ -45,6 +44,7 @@ import {
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
 import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
+import { childStepLabel, describeStepPosition } from '../../lib/step-position';
 import {
   mergeStepVariables,
   shouldRenderStepForEnvironment,
@@ -52,6 +52,7 @@ import {
 } from '../../lib/step-resolution';
 import {
   bootstrapSessions,
+  isMultiLinePaste,
   listTmuxPanes,
   TmuxPaneCapture,
   type TmuxSession,
@@ -181,7 +182,7 @@ function flattenAndMarkForEnv(
 ): FlatStep[] {
   const result: FlatStep[] = [];
   steps.forEach((step, i) => {
-    const label = prefix ? `${prefix}${indexToLetters(i)}` : String(i + 1);
+    const label = childStepLabel(prefix, i);
     const selfFiltered =
       inheritFiltered || !shouldRenderStepForEnvironment(step, targetEnv);
 
@@ -1655,7 +1656,14 @@ class OperationRunner {
 
       stepLoop: for (let i = startIndex; i < steps.length; i++) {
         const { step } = steps[i];
-        const stepNum = `[${flatSteps[i].label}/${steps.length}]`;
+        // Heading uses the single-env manual's dotted number (`Step 10.2`)
+        // plus the flat progress position, so the sidecar maps 1:1 onto the
+        // `generate manual --env` output the operator has open.
+        const position = describeStepPosition(
+          flatSteps.map((f) => ({ ...f, name: f.step.name })),
+          i,
+        );
+        const stepNum = position.heading;
         const typeLabel = step.type.toUpperCase();
 
         // Env-filtered steps: authored step numbers are preserved in flatSteps
@@ -1779,6 +1787,12 @@ class OperationRunner {
 
         console.log(`\n${DIVIDER}`);
         console.log(`${stepNum} ${typeLabel}: ${step.name}`);
+        if (position.parent) console.log(`    Section  : ${position.parent}`);
+        console.log(
+          position.next
+            ? `    Next     : ${position.next} (${position.remaining} remaining)`
+            : '    Next     : — last step',
+        );
         if (step.description)
           console.log(`    ${tryResolve(step.description, step.variables)}`);
         if (step.pic) {
@@ -2171,6 +2185,24 @@ class OperationRunner {
                   '    ⚠️  No tmux pane attached — press [t] to attach a pane first.',
                 );
                 continue;
+              }
+              // A multi-line block lands atomically only when the pane's shell
+              // has bracketed paste on (bash ≥ 4.4, zsh ≥ 5.1). In sh/dash, or
+              // with it off, every embedded newline is an Enter — lines run as
+              // they arrive. tmux can't report the pane's mode, so ask first.
+              if (isMultiLinePaste(runnableCommand)) {
+                console.log(
+                  '    ⚠️  Multi-line command. It lands as one un-run block only if the pane shell supports bracketed paste (bash ≥ 4.4, zsh ≥ 5.1); in sh/dash each line runs as it arrives.',
+                );
+                const ok = (
+                  await question('    Paste it? [y / Enter=cancel]: ')
+                )
+                  .trim()
+                  .toLowerCase();
+                if (ok !== 'y' && ok !== 'yes') {
+                  console.log('    ↩  Cancelled — nothing pasted.');
+                  continue;
+                }
               }
               backend.pasteCommand(sessionName, runnableCommand);
               // Recorded as a user_input breadcrumb (not command_sent): sidecar
