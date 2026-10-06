@@ -10,6 +10,26 @@ export function isLocalSession(config: SessionConfig | undefined): boolean {
 }
 
 /**
+ * Normalize a command before it is pasted into a pane:
+ *
+ * - CRLF / lone CR → LF. tmux `paste-buffer` rewrites every LF to CR, so a
+ *   stray `\r` (e.g. from a CRLF variable value) arrives as `\r\r`: readline
+ *   renders a blank line after each line AND a `\` continuation now escapes
+ *   the CR instead of the newline — the block splits into separate commands.
+ * - Trailing newlines are stripped: a YAML `|` block always ends in `\n`, and
+ *   in a shell without bracketed paste that final newline is an Enter — the
+ *   `[p]` contract is that the operator presses Enter, never samaritan.
+ */
+export function normalizePasteText(command: string): string {
+  return command.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+}
+
+/** True when the (normalized) command spans more than one line. */
+export function isMultiLinePaste(command: string): boolean {
+  return normalizePasteText(command).includes('\n');
+}
+
+/**
  * Build the two tmux argv arrays used to paste a command into a pane.
  *
  * `set-buffer -- <command>` stores the WHOLE command (including any embedded
@@ -25,7 +45,13 @@ export function buildPasteBufferArgs(
   command: string,
 ): { setArgs: string[]; pasteArgs: string[] } {
   return {
-    setArgs: ['set-buffer', '-b', 'samaritan-send', '--', command],
+    setArgs: [
+      'set-buffer',
+      '-b',
+      'samaritan-send',
+      '--',
+      normalizePasteText(command),
+    ],
     pasteArgs: [
       'paste-buffer',
       '-d',

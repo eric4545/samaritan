@@ -6,7 +6,9 @@ import { describe, it } from 'node:test';
 import {
   buildPasteBufferArgs,
   isLocalSession,
+  isMultiLinePaste,
   listTmuxPanes,
+  normalizePasteText,
   sanitizeSessionName,
   TmuxPaneCapture,
   TmuxSession,
@@ -134,6 +136,35 @@ describe('TmuxSession (issue #6)', () => {
       'samaritan-send',
       '--',
     ]);
+  });
+
+  it('normalizePasteText turns CRLF into LF so a \\ continuation survives tmux LF→CR', () => {
+    // Regression: `\\\r\n` reached the pane as `\\\r\r` — a blank line after
+    // each continuation, and the block split into separate commands.
+    const crlf = 'echo a \\\r\n  --arg src x \\\r\n  b';
+    assert.strictEqual(
+      normalizePasteText(crlf),
+      'echo a \\\n  --arg src x \\\n  b',
+    );
+    assert.strictEqual(normalizePasteText('a\rb'), 'a\nb');
+  });
+
+  it('normalizePasteText strips trailing newlines so the paste never ends in Enter', () => {
+    // YAML `|` blocks always end in \n; without bracketed paste that is Enter.
+    assert.strictEqual(normalizePasteText('touch x\n'), 'touch x');
+    assert.strictEqual(normalizePasteText('a \\\n  b\r\n\n'), 'a \\\n  b');
+    assert.strictEqual(normalizePasteText('echo hi'), 'echo hi');
+  });
+
+  it('buildPasteBufferArgs stores the normalized command', () => {
+    const { setArgs } = buildPasteBufferArgs('%1', 'echo a \\\r\n  b\n');
+    assert.strictEqual(setArgs[setArgs.length - 1], 'echo a \\\n  b');
+  });
+
+  it('isMultiLinePaste ignores a lone trailing newline', () => {
+    assert.strictEqual(isMultiLinePaste('echo hi\n'), false);
+    assert.strictEqual(isMultiLinePaste('echo a \\\n  b'), true);
+    assert.strictEqual(isMultiLinePaste('echo a\r\nb'), true);
   });
 
   it('getPaneMap returns registered panes as a ReadonlyMap', () => {

@@ -959,7 +959,7 @@ describe('run command: sidecar mode', () => {
     });
     const combined = result.stdout + result.stderr;
     // Isolate the first step's prompt block (before any second step header).
-    const firstStepBlock = combined.split('Verify Health')[0];
+    const firstStepBlock = combined.split(/\] [A-Z]+: Verify Health/)[0];
     assert.ok(
       !/\bback\b/.test(firstStepBlock),
       'the [b] back action must not appear on the first step',
@@ -975,7 +975,9 @@ describe('run command: sidecar mode', () => {
       timeout: 15_000,
     });
     const combined = result.stdout + result.stderr;
-    const [firstStepBlock, lastStepBlock] = combined.split('Verify Health');
+    const [firstStepBlock, lastStepBlock] = combined.split(
+      /\] [A-Z]+: Verify Health/,
+    );
     // Note: labels are wrapped in ANSI codes (e.g. \x1b[2mjump\x1b[0m), so a
     // \bjump\b regex would fail on the leading boundary — use includes().
     assert.ok(
@@ -1017,16 +1019,18 @@ describe('run command: sub-steps support', () => {
     );
   });
 
-  it('interactive mode shows sub-step labels like [1a/N] after parent section', () => {
+  it('interactive mode labels sub-steps with the single-env manual number (Step 1.1)', () => {
     const fixture = fixturePath('nestedSubsteps2Levels');
     const result = runCli(['run', fixture, '--env', 'staging'], {
       input: 'q\n',
     });
     const combined = result.stdout + result.stderr;
-    assert.ok(
-      combined.includes('[1a/') || combined.includes('[1b/'),
-      'sub-steps must appear with alphabetic labels (1a, 1b, ...)',
-    );
+    // `generate manual --env` numbers sub-steps 1.1, 1.2 — the sidecar must
+    // match it, not the multi-env letter scheme (1a).
+    assert.match(combined, /\[Step 1\.1 · \d+\/\d+\]/);
+    assert.ok(!/\[1a\//.test(combined), 'no letter-suffixed labels');
+    assert.match(combined, /Section {2}: Step 1: /);
+    assert.match(combined, /Next {5}: Step 1\.1\.1: .* \(\d+ remaining\)/);
   });
 
   it('action prompt accepts single-char input in non-TTY fallback mode', () => {
@@ -1408,11 +1412,11 @@ describe('run command: --from-step starts at a later step', () => {
       combined.includes('Starting at step 2'),
       'must announce the jumped-to start step',
     );
-    // The first per-step banner shown must be [2/2], not [1/2].
-    const firstBanner = combined.match(/\[\d+\/\d+\]/);
+    // The first per-step banner shown must be step 2 of 2, not step 1.
+    const firstBanner = combined.match(/\[Step [\d.]+ · \d+\/\d+\]/);
     assert.ok(
-      firstBanner && firstBanner[0] === '[2/2]',
-      `first step banner must be [2/2]; got ${firstBanner?.[0]}`,
+      firstBanner && firstBanner[0] === '[Step 2 · 2/2]',
+      `first step banner must be [Step 2 · 2/2]; got ${firstBanner?.[0]}`,
     );
 
     const sessionId = extractSessionId(combined);
@@ -1464,7 +1468,7 @@ describe('run command: needs forward-gating', () => {
       'must offer to proceed or go back',
     );
     // After proceeding, the Deploy step banner is shown.
-    assert.match(combined, /\[2\/2\] MANUAL: Deploy/);
+    assert.match(combined, /\[Step 2 · 2\/2\] MANUAL: Deploy/);
   });
 
   it('does not gate when the dependency was completed', () => {

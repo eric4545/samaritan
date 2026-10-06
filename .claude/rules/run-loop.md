@@ -46,6 +46,25 @@ it). Emits a `user_input`/`action:'send_to_pane'` breadcrumb — deliberately NO
 "Command sent" row; sidecar never executes). Smoke-test in real tmux: the
 command lands WITHOUT a trailing newline.
 
+`buildPasteBufferArgs` stores `normalizePasteText(cmd)`: CRLF/CR → LF (tmux
+rewrites LF→CR, so `\r\n` became `\r\r` — a blank line after each `\`
+continuation and a broken command), trailing newlines stripped (a YAML `|`
+block's final `\n` is an Enter in a non-bracketed shell). A multi-line command
+(`isMultiLinePaste`) asks `Paste it? [y / Enter=cancel]` before pasting —
+sh/dash ignore bracketed paste and run each line on arrival, and tmux 3.4
+exposes no pane flag to detect that. e2e regression in
+`tests/e2e/sidecar-tmux.e2e.ts` (CRLF continuation block).
+
+## Step heading — single-env manual numbering
+
+`flattenAndMarkForEnv` labels steps with `childStepLabel` (`src/lib/step-position.ts`):
+dotted `10.2`, `10.2.1` — the numbering of `generate manual --env`, since a run
+always targets one env (NOT the multi-env `10b`/`10b1` letters).
+`describeStepPosition` renders `[Step 10.2 · 34/46]` (flat position = what
+`[b]`/`[j]`/`--from-step` take) plus `Section :` (parent) and
+`Next : … (N remaining)` (env-filtered steps excluded). Top-level detection for
+the `needs` dep graph is still `/^\d+$/` on the label.
+
 ## `[b]` back / `[j]` jump / `--from-step`
 
 `executor.goToStep(index)` (rewind) resets the target + every later step to

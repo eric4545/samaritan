@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { TmuxPaneCapture } from '../../src/lib/tmux-session.ts';
 import { hasTmux, TmuxDriver } from './tmux-driver.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -282,6 +283,38 @@ describe('sidecar e2e (real tmux)', () => {
       } finally {
         d.kill();
         ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '[p] paste keeps a CRLF backslash-continuation block intact (no blank line, one command)',
+    { skip, timeout: 60_000 },
+    async () => {
+      // Regression: tmux paste-buffer rewrites LF→CR, so a `\\\r\n` line end
+      // arrived as `\\\r\r` — readline drew a blank line after each `\\` and the
+      // continuation broke into separate commands (`b: command not found`).
+      const d = TmuxDriver.create({ width: 120, height: 20 });
+      try {
+        d.type("exec env -i TERM=screen PS1='$ ' bash --norc --noprofile");
+        await d.waitFor(/^\$ $/m);
+        new TmuxPaneCapture('e2e-paste', d.main).pasteCommand(
+          '',
+          'echo a \\\r\n  --arg src x \\\r\n  b\r\n',
+        );
+        const pasted = await d.waitFor(/ {2}b$/m);
+        assert.match(
+          pasted,
+          /echo a \\\n {2}--arg src x \\\n {2}b/,
+          'pasted block must keep its line breaks with no blank line inserted',
+        );
+        // Nothing ran yet — the operator presses Enter.
+        assert.ok(!/^a --arg src x b$/m.test(pasted), 'paste must not execute');
+        d.enter();
+        const ran = await d.waitFor(/^a --arg src x b$/m);
+        assert.ok(!ran.includes('command not found'), 'continuation intact');
+      } finally {
+        d.kill();
       }
     },
   );
