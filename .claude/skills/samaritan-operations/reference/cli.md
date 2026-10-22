@@ -73,6 +73,13 @@ directory or example ships with this repo today.
 - `--mock` — replay each step's `expect` against `evidence.results[<env>]` output;
   prints PASS/FAIL/SKIP, exits non-zero on failure. No tmux/execution.
 - `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning.
+  `resume --attach <tmux-target>` works the same way.
+- `--var KEY=VALUE` (repeatable) — override a variable; also feeds
+  `run.tmux_session`.
+- `sessions:` bootstrap uses the tmux session named by `run.tmux_session`
+  (default `samaritan-<id>`). It **reuses** an existing session with that name:
+  windows named after `sessions:` keys are adopted as-is, missing ones added,
+  and it never kills a session it didn't create (`@samaritan_owner` tag).
 - `--from-step <N>` — start at step N; earlier steps are recorded as **skipped**
   (distinct from `resume --from-step`, which marks earlier steps completed).
 - `--report <dir>` — write an extra copy of the run report.

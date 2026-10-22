@@ -1,0 +1,46 @@
+name: Tmux Session Name
+version: 1.0.0
+description: >-
+  Fixture for run.tmux_session + run.default_session. The tmux session name is
+  derived from a ticket + the target environment, so it can pre-exist (the
+  operator's own session) and be REUSED. The first step has no session: and is
+  routed to run.default_session.
+
+common_variables:
+  TICKET: SAMTEST-1
+
+sessions:
+  work: {}
+  aux: {}
+
+run:
+  tmux_session: ${TICKET}-${ENV}
+  default_session: work
+
+environments:
+  - name: sbx
+    description: Sandbox environment
+    variables:
+      TAG: v1
+
+steps:
+  - name: Echo tag
+    type: automatic
+    command: echo "built ${TAG} E2E_NAMED_OK"
+    expect:
+      contains: E2E_NAMED_OK
+    rollback:
+      - command: echo "undo ${TAG}"
+
+  - name: Aux check
+    type: automatic
+    session: aux
+    command: echo aux
+    sub_steps:
+      - name: Nested default
+        type: automatic
+        command: echo nested
+
+rollback:
+  steps:
+    - command: echo "global undo"

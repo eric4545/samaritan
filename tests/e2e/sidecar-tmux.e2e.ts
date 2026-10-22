@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { TmuxPaneCapture } from '../../src/lib/tmux-session.ts';
-import { hasTmux, TmuxDriver } from './tmux-driver.ts';
+import { hasTmux, TmuxDriver, tmux } from './tmux-driver.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const TSX = 'node_modules/.bin/tsx';
@@ -240,6 +240,76 @@ describe('sidecar e2e (real tmux)', () => {
         assert.ok(gone, 'teardown must kill the spawned samaritan-* session');
       } finally {
         d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'run.tmux_session: reuses an existing same-named session, adopts its window, routes a sessionless step via default_session, never kills it',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-tmux-session-name.yaml');
+      const ticket = `SAMTEST-${process.pid}-${Date.now()}`;
+      const opSession = `${ticket}-sbx`; // run.tmux_session: ${TICKET}-${ENV}
+      // The operator's own session: a `work` window (matches a sessions: key)
+      // and an unrelated window samaritan must never touch.
+      tmux(['new-session', '-d', '-s', opSession, '-n', 'work']);
+      tmux(['new-window', '-d', '-t', `=${opSession}:`, '-n', 'other']);
+      const work = `=${opSession}:work`;
+      const d = TmuxDriver.create();
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env sbx --var TICKET=${ticket}`));
+        await d.waitFor(`Reusing existing tmux session: ${opSession}`, {
+          timeoutMs: 40_000,
+        });
+        await d.waitFor('Adopted windows: work', { timeoutMs: 10_000 });
+        await d.waitFor('Added windows: aux', { timeoutMs: 10_000 });
+        await d.waitFor(`Attach with: tmux attach -t ${opSession}`);
+        await d.waitFor('built v1 E2E_NAMED_OK', { timeoutMs: 15_000 });
+        // Step 1 has no `session:` — default_session routes it to `work`.
+        await d.waitFor('Session  : work');
+
+        // [p] lands in the ADOPTED window (not a new one, not `other`).
+        d.key('p');
+        await d.waitFor('built v1 E2E_NAMED_OK', { pane: work });
+        assert.ok(
+          !d.capture(`=${opSession}:other`).includes('E2E_NAMED_OK'),
+          'the unrelated operator window must stay untouched',
+        );
+        d.enter(work);
+        await d.waitFor(/^built v1 E2E_NAMED_OK$/m, { pane: work });
+        d.key('v');
+        await d.waitFor('✅ contains: E2E_NAMED_OK', { timeoutMs: 15_000 });
+
+        // Abort ends the run through the normal teardown path.
+        d.type('abort');
+        await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+
+        // Not ours → never killed; every window survives, pipes closed.
+        let panes = '';
+        for (let i = 0; i < 20; i++) {
+          panes = tmux([
+            'list-panes',
+            '-s',
+            '-t',
+            `=${opSession}`,
+            '-F',
+            '#{window_name}=#{pane_pipe}',
+          ]).stdout;
+          if (!panes.includes('=1')) break;
+          await sleep(300);
+        }
+        assert.ok(
+          TmuxDriver.listSessions().includes(opSession),
+          'a reused operator session must not be killed',
+        );
+        for (const win of ['work=0', 'other=0', 'aux=0']) {
+          assert.ok(panes.includes(win), `expected ${win} in:\n${panes}`);
+        }
+      } finally {
+        d.kill();
+        tmux(['kill-session', '-t', `=${opSession}`]);
         ws.cleanup();
       }
     },

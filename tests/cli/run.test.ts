@@ -39,6 +39,8 @@ function fixturePath(name: string): string {
     needsGate: 'tests/fixtures/operations/features/needs-gate.yaml',
     nearestRollback: 'tests/fixtures/operations/features/nearest-rollback.yaml',
     whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
+    tmuxSessionName:
+      'tests/fixtures/operations/features/e2e-tmux-session-name.yaml',
   };
   return resolve(map[name]);
 }
@@ -1746,5 +1748,117 @@ describe('run command: when-gated step filtering by environment', () => {
       !combined.includes('Undo only in dev'),
       `dev-only rollback instruction must not appear in stg; output:\n${combined.slice(-800)}`,
     );
+  });
+});
+
+// ─── run.tmux_session / resume --attach ─────────────────────────────────────
+
+describe('run/resume: configurable tmux session name + resume --attach', () => {
+  it('run refuses to start when run.tmux_session has an unresolved ${VAR}', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-tmux-name-'));
+    const file = join(dir, 'op.yaml');
+    // Drop TICKET so `${TICKET}-${ENV}` can't resolve.
+    writeFileSync(
+      file,
+      readFileSync(fixturePath('tmuxSessionName'), 'utf-8').replace(
+        /common_variables:\n {2}TICKET: SAMTEST-1\n/,
+        '',
+      ),
+    );
+    try {
+      const result = runCli(['run', file, '--env', 'sbx'], { input: 'q\n' });
+      const combined = result.stdout + result.stderr;
+      assert.notStrictEqual(result.status, 0, combined);
+      assert.match(
+        combined,
+        /run\.tmux_session "\$\{TICKET\}-\$\{ENV\}" references undefined variable\(s\): TICKET/,
+      );
+      assert.ok(
+        !combined.includes('📋 Session:'),
+        'must fail BEFORE a session record is created',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('the unresolved-name check is skipped for a sidecar --attach run', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-tmux-name-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(
+      file,
+      readFileSync(fixturePath('tmuxSessionName'), 'utf-8').replace(
+        /common_variables:\n {2}TICKET: SAMTEST-1\n/,
+        '',
+      ),
+    );
+    try {
+      const result = runCli(
+        ['run', file, '--env', 'sbx', '--attach', 'no-such-session:9.9'],
+        { input: 'q\n' },
+      );
+      const combined = result.stdout + result.stderr;
+      assert.ok(!combined.includes('references undefined'), combined);
+      assert.ok(combined.includes('📋 Session:'), combined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('resume accepts --attach and validates the target like run does', () => {
+    const first = runCli(
+      ['run', fixturePath('manualStepActions'), '--env', 'default'],
+      { input: 'q\n' },
+    );
+    const m = (first.stdout + first.stderr).match(
+      /📋 Session: ([0-9a-f-]{36})/,
+    );
+    assert.ok(m, first.stdout + first.stderr);
+    const result = runCli(
+      ['resume', (m as RegExpMatchArray)[1], '--attach', 'no-such-session:9.9'],
+      { input: 'q\n' },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(!combined.includes("unknown option '--attach'"), combined);
+    assert.match(
+      combined,
+      /--attach target "no-such-session:9\.9" is not a valid tmux pane/,
+    );
+  });
+});
+
+// ─── --var overrides ─────────────────────────────────────────────────────────
+
+describe('run --var', () => {
+  it('overrides a YAML variable (regression: --var was silently ignored)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-var-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(
+      file,
+      `name: Var Override
+version: 1.0.0
+description: d
+common_variables:
+  TAG: from-yaml
+environments:
+  - name: sbx
+    description: s
+steps:
+  - name: Show
+    type: manual
+    command: echo TAG=\${TAG}
+`,
+    );
+    try {
+      const result = runCli(
+        ['run', file, '--env', 'sbx', '--var', 'TAG=from-cli'],
+        { input: 'q\n' },
+      );
+      const combined = result.stdout + result.stderr;
+      assert.ok(combined.includes('echo TAG=from-cli'), combined);
+      assert.ok(!combined.includes('echo TAG=from-yaml'), combined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
