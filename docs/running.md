@@ -347,6 +347,20 @@ verify:
 | `jsonpath: "$.status" equals: "ok"` | JSONPath expression equals value |
 | `equals_captured: VAR` | output equals a previously captured variable |
 
+> **Variables in `expect`**: only `${VAR}` operation variables (`variables:`,
+> `common_variables:`, `--var`) resolve in `expect`. A bare shell variable such
+> as `contains: $USER` is **compared literally** — the shell that expanded
+> `$USER` in your command never sees `expect`, and samaritan does not read its
+> own environment (an SSH pane's `$USER` would differ). `samaritan validate`
+> warns (`expect-lint:`) about every such `$NAME`, and a failing `[v]` prints a
+> hint. Use `${USER}` with a variable you define, or a literal value.
+
+> **Shell prompt**: in sidecar capture, the prompt the shell prints after the
+> output (`user@host:~$ `) is stripped before checks run, so `line_count`,
+> `all_lines_match`, `equals` and friends see only the command's output. With
+> an attached pane the pane's current prompt line is removed exactly;
+> otherwise an unterminated last line ending in `$ # % > ❯ ➜ » λ` is dropped.
+
 > **Regex semantics**: `matches`, `all_lines_match`, `any_line_matches`, and
 > `no_line_matches` compile with Node's `new RegExp(pattern)` using **default
 > flags** — case-sensitive, no multiline, and an **unanchored partial match**

@@ -133,7 +133,16 @@ most-complete record per index (completed > failed > skipped > pending).
 
 `StepController.verifyOutput` passes pane captures through `cleanTerminalOutput()`
 (`src/lib/assertions.ts`, strips ANSI/OSC, resolves `\r` overwrites) then
-`stripCommandEcho(cleaned, command)` (the `${VAR}`-resolved command) — the pane
+`stripCommandEcho(cleaned, command)` (the `${VAR}`-resolved command) then
+`stripTrailingPrompt(text, promptLine)` — the pane slice ENDS with the next
+shell prompt (unterminated last line), which would otherwise count as a line
+for `line_count`/`all_lines_match` and break `equals`. `promptLine` is the
+pane's cursor line (`CaptureBackend.promptLine?()` → `capturePaneCursorLine`,
+`#{cursor_y}` + `capture-pane -S y -E y`), removed as a suffix; without it an
+unterminated line ending in a prompt sigil is dropped. A failing `[v]` whose
+check still holds a bare `$NAME` prints a "compared literally" hint
+(`findShellVarRefs`, `src/lib/expect-lint.ts`; validate warns `expect-lint:`).
+About `stripCommandEcho`: the pane
 slice since step start begins with the echoed command, so without this both the
 assertion and the highlighted tail would match the command text instead of its
 OUTPUT. `stripCommandEcho` anchors on the **FIRST** consecutive run of the

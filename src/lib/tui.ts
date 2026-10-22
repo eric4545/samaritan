@@ -8,6 +8,7 @@ import {
   isPrimitiveExpectShorthand,
   renderExpectParts,
   stripCommandEcho,
+  stripTrailingPrompt,
 } from './assertions';
 import type { EventLogger } from './event-logger';
 import { extractRetryConfig, parseInterval, shouldRetry } from './retry-assert';
@@ -155,6 +156,7 @@ export class StepController {
         stepIndex,
         output,
         command,
+        tmux.promptLine?.(sessionName),
       );
 
       // expect.retry: poll for eventual consistency. On a failed assertion,
@@ -189,6 +191,7 @@ export class StepController {
             stepIndex,
             latest,
             command,
+            tmux.promptLine?.(sessionName),
           ).assertResult;
           attempt += 1;
         }
@@ -216,6 +219,9 @@ export class StepController {
     // echoed copy is stripped from the pane slice so the assertion and the
     // highlighted output target the command's OUTPUT, not the command text.
     command?: string,
+    // The pane's current prompt line (cursor line). When given, the trailing
+    // prompt is stripped exactly; otherwise a prompt-sigil heuristic is used.
+    promptLine?: string,
   ): {
     assertResult?: ReturnType<typeof assertOutput>;
     detailed?: ReturnType<typeof assertOutputDetailed>;
@@ -229,8 +235,12 @@ export class StepController {
       : step.expect;
     // Pane captures are raw terminal bytes — strip ANSI codes and resolve
     // \r overwrites so assertions match what the operator actually sees, then
-    // drop the echoed command so checks/highlights hit the output, not the echo.
-    const cleaned = stripCommandEcho(cleanTerminalOutput(output), command);
+    // drop the echoed command so checks/highlights hit the output, not the echo,
+    // and the trailing shell prompt so line-based checks count output lines only.
+    const cleaned = stripTrailingPrompt(
+      stripCommandEcho(cleanTerminalOutput(output), command),
+      promptLine,
+    );
     const result = assertOutput(cleaned, expect);
     const detailed = assertOutputDetailed(cleaned, expect);
 

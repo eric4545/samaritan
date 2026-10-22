@@ -1,10 +1,12 @@
 import assert from 'node:assert';
+import { spawnSync } from 'node:child_process';
 import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import {
   buildPasteBufferArgs,
+  capturePaneCursorLine,
   isLocalSession,
   isMultiLinePaste,
   listTmuxPanes,
@@ -422,4 +424,43 @@ describe('listTmuxPanes', () => {
       assert.strictEqual(typeof pane.isSelf, 'boolean');
     }
   });
+});
+
+describe('capturePaneCursorLine', () => {
+  const hasTmux =
+    process.platform !== 'win32' &&
+    spawnSync('tmux', ['-V'], { encoding: 'utf8' }).status === 0;
+
+  it('returns undefined for a pane that does not exist', () => {
+    assert.strictEqual(
+      capturePaneCursorLine('samaritan-no-such-session-xyz:0.0'),
+      undefined,
+    );
+  });
+
+  it(
+    'returns the shell prompt line of a live pane',
+    { skip: !hasTmux },
+    async () => {
+      const session = `sam-cursor-${process.pid}-${Date.now()}`;
+      spawnSync('tmux', [
+        'new-session',
+        '-d',
+        '-s',
+        session,
+        'env PS1="CURSOR_PROMPT\\$ " bash --norc --noprofile',
+      ]);
+      try {
+        let line: string | undefined;
+        for (let i = 0; i < 30; i++) {
+          line = capturePaneCursorLine(`${session}:0.0`);
+          if (line?.includes('CURSOR_PROMPT')) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        assert.strictEqual(line?.trimEnd(), 'CURSOR_PROMPT$');
+      } finally {
+        spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
+      }
+    },
+  );
 });

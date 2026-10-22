@@ -106,6 +106,47 @@ export function stripCommandEcho(output: string, command?: string): string {
   return outLines.slice(end).join('\n');
 }
 
+// Characters a shell prompt conventionally ends with (bash `$`/`#`, zsh `%`,
+// PS2/fish `>`, and the common starship/oh-my-zsh glyphs).
+const PROMPT_SIGIL_RE = /[$#%>❯➜»λ]$/;
+
+/**
+ * Drop the shell prompt the pane prints AFTER a command's output, so
+ * line-based checks (`line_count`, `all_lines_match`, …) and `equals` see only
+ * the output. A finished command's output lines are newline-terminated; the
+ * prompt that follows is not — so only a non-empty LAST line is a candidate.
+ *
+ * - `promptLine` (the pane's current cursor line, e.g. `user@host:~$ `) is the
+ *   exact prompt: it is removed as a suffix, so output that lacked a trailing
+ *   newline (`printf abc` → `abcuser@host:~$ `) keeps its `abc`.
+ * - Without it (no live pane), the line is dropped only when it ends with a
+ *   prompt sigil (`$ # % > ❯ ➜ » λ`).
+ *
+ * Returns `output` unchanged when the last line is newline-terminated or does
+ * not look like a prompt, so it never makes a working capture worse.
+ */
+export function stripTrailingPrompt(
+  output: string,
+  promptLine?: string,
+): string {
+  const lines = output.split('\n');
+  const last = lines[lines.length - 1].trimEnd();
+  if (!last.trim()) return output;
+
+  const prompt = promptLine?.trimEnd();
+  let rest: string | undefined;
+  if (prompt?.trim()) {
+    if (last.endsWith(prompt)) rest = last.slice(0, -prompt.length);
+  } else if (PROMPT_SIGIL_RE.test(last)) {
+    rest = '';
+  }
+  if (rest === undefined) return output;
+
+  const kept = lines.slice(0, -1);
+  if (rest.trim()) kept.push(rest);
+  return kept.join('\n');
+}
+
 export interface AssertResult {
   pass: boolean;
   actual: string;

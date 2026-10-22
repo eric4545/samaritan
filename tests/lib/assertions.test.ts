@@ -7,6 +7,7 @@ import {
   renderExpectDescription,
   renderExpectParts,
   stripCommandEcho,
+  stripTrailingPrompt,
 } from '../../src/lib/assertions';
 import { SessionState } from '../../src/lib/session-state';
 
@@ -707,5 +708,48 @@ describe('assertOutput still short-circuits on array expect', () => {
     ]);
     assert.strictEqual(r.pass, true);
     assert.strictEqual(r.type, 'all');
+  });
+});
+
+describe('stripTrailingPrompt — drop the shell prompt after the output', () => {
+  it('removes the exact pane prompt from the unterminated last line', () => {
+    assert.strictEqual(
+      stripTrailingPrompt('a\nb\nroot@vm:/srv# ', 'root@vm:/srv# '),
+      'a\nb',
+    );
+  });
+
+  it('keeps output that lacked a trailing newline (printf abc)', () => {
+    assert.strictEqual(
+      stripTrailingPrompt('abcroot@vm:/srv# ', 'root@vm:/srv# '),
+      'abc',
+    );
+  });
+
+  it('leaves a newline-terminated capture alone (no prompt captured yet)', () => {
+    assert.strictEqual(stripTrailingPrompt('a\nb\n', 'x$ '), 'a\nb\n');
+    assert.strictEqual(stripTrailingPrompt('a\nb\n'), 'a\nb\n');
+  });
+
+  it('does not strip a last line that is not the pane prompt', () => {
+    assert.strictEqual(
+      stripTrailingPrompt('a\nstill running', 'root@vm:/srv# '),
+      'a\nstill running',
+    );
+  });
+
+  it('falls back to prompt sigils when the pane prompt is unknown', () => {
+    for (const prompt of ['user@host:~$ ', 'root# ', 'host% ', '❯ ', '> ']) {
+      assert.strictEqual(stripTrailingPrompt(`a\nb\n${prompt}`), 'a\nb');
+    }
+    assert.strictEqual(
+      stripTrailingPrompt('a\nprogress 40'),
+      'a\nprogress 40',
+      'no sigil → kept',
+    );
+  });
+
+  it('treats an empty pane prompt as unknown', () => {
+    assert.strictEqual(stripTrailingPrompt('a\nb\n$ ', '   '), 'a\nb');
   });
 });

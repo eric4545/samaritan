@@ -31,6 +31,12 @@ export interface CaptureBackend {
    */
   captureScreen?(sessionName: string): string | undefined;
   /**
+   * Optional: the pane's current cursor line — the shell prompt once a command
+   * has finished. Used to strip the trailing prompt from a capture before
+   * line-based `expect` checks. Undefined when unavailable.
+   */
+  promptLine?(sessionName: string): string | undefined;
+  /**
    * Tear down this backend (close pipe, unlink temp files, etc.).
    * MUST NOT kill-session when the pane belongs to the operator (TmuxPaneCapture).
    */

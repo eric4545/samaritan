@@ -25,6 +25,7 @@ import type { CaptureBackend } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
+import { findShellVarRefs } from '../../lib/expect-lint';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { generateReport, renderReport } from '../../lib/report-generator';
@@ -1498,6 +1499,9 @@ class OperationRunner {
       // Captures the pane's rendered screen for the auto-recorded evidence, so
       // the report keeps clean output instead of the raw pipe-pane slice.
       captureScreen?: () => string | undefined,
+      // Reads the pane's current prompt line so the trailing prompt is
+      // stripped exactly before line-based checks (see stripTrailingPrompt).
+      readPromptLine?: () => string | undefined,
     ): Promise<void> => {
       if (!step.expect) return;
 
@@ -1518,6 +1522,7 @@ class OperationRunner {
           stepIndex,
           output,
           commandToCopy,
+          readPromptLine?.(),
         );
 
         if (!assertResult || !detailed) return;
@@ -1534,6 +1539,21 @@ class OperationRunner {
             '    ✅ Verify passed — press [v] again any time to re-check.',
           );
           return;
+        }
+
+        // A `$NAME` still in a failing check survived interpolation, so it is
+        // not an operation variable and was compared as literal text.
+        const literalShellVars = [
+          ...new Set(
+            detailed.checks
+              .filter((c) => !c.pass)
+              .flatMap((c) => findShellVarRefs(c.needle ?? c.expected)),
+          ),
+        ];
+        if (literalShellVars.length > 0) {
+          console.log(
+            `    ℹ️  ${literalShellVars.map((n) => `$${n}`).join(', ')} compared literally — expect does not expand shell variables; use \${VAR} with a variables:/--var value.`,
+          );
         }
 
         const action = await promptAssertFailureAction(stepIndex, {
@@ -2105,6 +2125,7 @@ class OperationRunner {
                 resolvedExpect,
                 runnableCommand,
                 () => captureRef.backend?.captureScreen?.(sessionName),
+                () => captureRef.backend?.promptLine?.(sessionName),
               );
               continue;
             }

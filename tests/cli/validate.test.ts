@@ -120,6 +120,47 @@ ${expectYaml}
   });
 });
 
+describe('validate expect-lint ($VAR in expect)', () => {
+  function writeOp(body: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-expect-lint-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(
+      file,
+      `name: Expect Lint Test
+version: 1.0.0
+environments:
+  - name: default
+${body}
+steps:
+  - name: Who
+    type: manual
+    command: echo $USER
+    expect:
+      contains: $USER
+`,
+    );
+    return file;
+  }
+
+  it('warns that a bare $VAR in expect is compared literally', () => {
+    const result = runCli(['validate', writeOp('')]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.match(
+      result.stdout,
+      /expect-lint: step "Who" \(expect\.contains\): "\$USER" is compared literally/,
+    );
+  });
+
+  it('stays quiet when $VAR names an operation variable (resolved at verify)', () => {
+    const result = runCli([
+      'validate',
+      writeOp('common_variables:\n  USER: deployer'),
+    ]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /expect-lint:/);
+  });
+});
+
 describe('validate built-in variable shadowing', () => {
   function writeOp(body: string): string {
     const dir = mkdtempSync(join(tmpdir(), 'samaritan-builtin-'));

@@ -106,6 +106,41 @@ export function capturePaneScreen(target: string): string | undefined {
 }
 
 /**
+ * Read the line the pane's cursor is on — the shell prompt (plus anything typed
+ * after it) once a command has finished. `capture-pane -S y -E y` with the
+ * cursor row from `#{cursor_y}`; no `-e`, so no escape sequences. Returns
+ * undefined when tmux is unavailable or the target is gone.
+ */
+export function capturePaneCursorLine(target: string): string | undefined {
+  try {
+    const pos = spawnSync('tmux', [
+      'display-message',
+      '-p',
+      '-t',
+      target,
+      '#{cursor_y}',
+    ]);
+    if (pos.status !== 0) return undefined;
+    const y = pos.stdout?.toString('utf-8').trim();
+    if (!y || !/^\d+$/.test(y)) return undefined;
+    const line = spawnSync('tmux', [
+      'capture-pane',
+      '-p',
+      '-t',
+      target,
+      '-S',
+      y,
+      '-E',
+      y,
+    ]);
+    if (line.status !== 0) return undefined;
+    return line.stdout?.toString('utf-8').replace(/\n+$/, '');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Validate that a tmux target string (e.g. "mysession:0.0" or "%12") refers to
  * an existing pane. Returns true when the target resolves, false otherwise.
  * Never throws — a bad target simply returns false.
@@ -213,6 +248,12 @@ export class TmuxSession implements CaptureBackend {
   captureScreen(sessionName: string): string | undefined {
     const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
     return capturePaneScreen(pane);
+  }
+
+  /** The pane's current cursor line (the prompt once a command finished). */
+  promptLine(sessionName: string): string | undefined {
+    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    return capturePaneCursorLine(pane);
   }
 
   hasTarget(sessionName: string): boolean {
@@ -369,6 +410,11 @@ export class TmuxPaneCapture implements CaptureBackend {
   /** Capture the attached pane's rendered screen as clean text. */
   captureScreen(_sessionName: string): string | undefined {
     return capturePaneScreen(this.target);
+  }
+
+  /** The attached pane's cursor line (the prompt once a command finished). */
+  promptLine(_sessionName: string): string | undefined {
+    return capturePaneCursorLine(this.target);
   }
 
   /**
