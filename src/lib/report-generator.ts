@@ -7,7 +7,7 @@ import type {
   StepEvidenceRef,
   StepRecord,
 } from '../models/step-record';
-import { cleanTerminalOutput } from './assertions';
+import { cleanTerminalOutput, stripControlChars } from './assertions';
 import { redactLocalPaths } from './path-redact';
 import { foldEvents, readEvents, type SessionEvent } from './session-log';
 
@@ -108,6 +108,14 @@ export function renderReport(
     );
   }
   lines.push(`- Duration: ${duration}`);
+  const overridden = steps.filter(
+    (s) => s.verification?.override && !s.verification.pass,
+  );
+  if (overridden.length > 0) {
+    lines.push(
+      `- Verification overridden: ${overridden.map((s) => `Step ${s.index + 1}`).join(', ')}`,
+    );
+  }
 
   const pics = [...new Set(steps.flatMap((s) => (s.pic ? [s.pic] : [])))];
   const reviewers = [
@@ -174,7 +182,11 @@ export function renderReport(
     }
   }
 
-  return lines.join('\n');
+  // Every rendered field is already cleaned where it carries terminal output;
+  // this final pass guarantees the whole report is plain UTF-8 Markdown — no
+  // NUL/SI/ESC left from names, notes, reasons or commands (Slack and `file`
+  // treat a single NUL as binary).
+  return stripControlChars(lines.join('\n'));
 }
 
 function renderStep(
@@ -186,12 +198,16 @@ function renderStep(
   const stepNum = step.index + 1;
   const firstCmd = step.commands[0];
   const skippedSuffix = step.status === 'skipped' ? ' ⏭ (skipped)' : '';
+  const overriddenSuffix =
+    step.verification?.override && !step.verification.pass
+      ? ' ⚠️ (verification overridden)'
+      : '';
   // The step that was in progress when the operator aborted — flag it so the
   // report makes the stop point obvious instead of looking like a clean step.
   const abortedSuffix =
     step.index === abortedIndex ? ' 🛑 (aborted here — in progress)' : '';
   lines.push(
-    `## Step ${stepNum}: ${step.name}${skippedSuffix}${abortedSuffix}`,
+    `## Step ${stepNum}: ${step.name}${skippedSuffix}${overriddenSuffix}${abortedSuffix}`,
   );
   lines.push('');
 
@@ -258,17 +274,41 @@ function renderStep(
   return lines;
 }
 
+/**
+ * Render the step's FINAL verification state: the latest attempt's checklist
+ * (not one ❌ line per attempt), an attempt count when it was re-verified, and
+ * — when the operator accepted a failure with `o` — who overrode it, when, and
+ * why. An overridden failure reads `⚠️ OVERRIDDEN`, never a bare `❌ FAIL`.
+ */
 function renderVerification(step: StepRecord, redact: Redact): string[] {
   const v = step.verification;
-  if (!v || v.checks.length === 0) return [];
+  if (!v || (v.checks.length === 0 && !v.override)) return [];
   const lines: string[] = [''];
-  lines.push(`**Verification**: ${v.pass ? '✅ PASS' : '❌ FAIL'}`);
+  const state = v.pass ? '✅ PASS' : v.override ? '⚠️ OVERRIDDEN' : '❌ FAIL';
+  const attempts =
+    v.attempts && v.attempts > 1
+      ? ` (${v.attempts} attempts, ${v.failedAttempts ?? 0} failed — last shown)`
+      : '';
+  lines.push(`**Verification**: ${state}${attempts}`);
+  if (v.override) {
+    lines.push(
+      `- ⚠️ Overridden by ${v.override.by} at ${formatTs(v.override.at)} — reason: ${v.override.reason ? redact(v.override.reason) : '_(none given)_'}`,
+    );
+  }
   for (const check of v.checks) {
     const icon = check.pass ? '✅' : '❌';
     const type = check.type ? ` (${check.type})` : '';
     lines.push(
       ...renderCheck(icon, type, check.expected, check.actual, redact),
     );
+  }
+  const output = v.output ? redact(cleanTerminalOutput(v.output)).trim() : '';
+  if (output) {
+    lines.push('- output:');
+    lines.push('');
+    lines.push('  ```');
+    for (const line of output.split('\n')) lines.push(`  ${line}`);
+    lines.push('  ```');
   }
   return lines;
 }

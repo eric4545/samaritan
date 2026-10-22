@@ -243,7 +243,11 @@ export class StepController {
     );
     const result = assertOutput(cleaned, expect);
     const detailed = assertOutputDetailed(cleaned, expect);
+    const checkedOutput = cleaned.trim();
 
+    // One event per verify attempt, carrying the full checklist and the output
+    // once (a check's `actual` is kept only when it differs from that output,
+    // e.g. a line count) so the report can render the final state.
     logger.emit({
       type: 'assert_result',
       step: stepIndex,
@@ -251,6 +255,13 @@ export class StepController {
       actual: result.actual,
       expected: result.expected,
       assertion_type: result.type,
+      output: checkedOutput,
+      checks: detailed.checks.map((c) => ({
+        pass: c.pass,
+        type: c.type,
+        expected: c.expected,
+        ...(c.actual !== checkedOutput ? { actual: c.actual } : {}),
+      })),
     });
 
     return { assertResult: result, detailed };

@@ -12,9 +12,26 @@ export interface VerificationCheck {
   type?: string;
 }
 
+/** An operator's decision to accept a failed verification (`o` override). */
+export interface VerificationOverride {
+  by: string;
+  at: string;
+  reason?: string;
+}
+
 export interface StepVerification {
+  /** Final state: the LATEST verify attempt's result. */
   pass: boolean;
+  /** The latest attempt's checklist (every check, no short-circuit). */
   checks: VerificationCheck[];
+  /** The cleaned output the latest attempt was checked against. */
+  output?: string;
+  /** How many verify attempts ran (`[v]`, re-verify, `expect.retry` polls). */
+  attempts?: number;
+  /** How many of those attempts failed. */
+  failedAttempts?: number;
+  /** Set when the operator overrode a failed verification (`o` + reason). */
+  override?: VerificationOverride;
   verifiedBy?: string;
   verifiedAt?: string;
 }

@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
-import type { RollbackRecord, StepRecord } from '../models/step-record';
+import type {
+  RollbackRecord,
+  StepRecord,
+  VerificationCheck,
+} from '../models/step-record';
 
 export interface SessionEvent {
   ts: string;
@@ -109,7 +113,24 @@ export function foldEvents(events: SessionEvent[]): {
       }
 
       case 'assert_result': {
-        if (currentStep) {
+        if (currentStep && Array.isArray(event.checks)) {
+          // One event = one verify attempt carrying its full checklist. The
+          // record keeps the FINAL state (latest attempt) plus attempt counts,
+          // so a re-verified or overridden step doesn't render every failure.
+          const v = (currentStep.verification ??= { pass: true, checks: [] });
+          const pass = event.pass as boolean;
+          v.pass = pass;
+          v.checks = (event.checks as VerificationCheck[]).map((c) => ({
+            pass: c.pass,
+            actual: c.actual,
+            expected: c.expected,
+            type: c.type,
+          }));
+          v.output = event.output as string | undefined;
+          v.attempts = (v.attempts ?? 0) + 1;
+          v.failedAttempts = (v.failedAttempts ?? 0) + (pass ? 0 : 1);
+        } else if (currentStep) {
+          // Legacy logs: one event per check, folded with AND.
           currentStep.verification ??= { pass: true, checks: [] };
           currentStep.verification.checks.push({
             pass: event.pass as boolean,
@@ -130,6 +151,13 @@ export function foldEvents(events: SessionEvent[]): {
             currentStep.verification ??= { pass: true, checks: [] };
             currentStep.verification.verifiedBy = event.actor as string;
             currentStep.verification.verifiedAt = event.ts;
+          } else if (action === 'override') {
+            currentStep.verification ??= { pass: false, checks: [] };
+            currentStep.verification.override = {
+              by: event.actor as string,
+              at: event.ts,
+              reason: (event.reason as string | undefined) || undefined,
+            };
           } else if (action === 'note') {
             const notes = event.notes as string | undefined;
             if (notes) currentStep.notes.push(notes);

@@ -90,6 +90,59 @@ describe('foldEvents', () => {
     assert.strictEqual(v.checks[1].type, 'contains');
   });
 
+  it('keeps the final verify attempt (with full checklist) and counts attempts', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Verify' }),
+      ev({
+        type: 'assert_result',
+        step: 0,
+        pass: false,
+        output: 'Pending',
+        checks: [{ pass: false, type: 'contains', expected: 'Running' }],
+      }),
+      ev({
+        type: 'assert_result',
+        step: 0,
+        pass: true,
+        output: 'Running',
+        checks: [{ pass: true, type: 'contains', expected: 'Running' }],
+      }),
+    ]);
+    const v = steps[0].verification;
+    assert.ok(v);
+    assert.strictEqual(v.pass, true, 'final state wins');
+    assert.strictEqual(v.attempts, 2);
+    assert.strictEqual(v.failedAttempts, 1);
+    assert.strictEqual(v.output, 'Running');
+    assert.deepStrictEqual(v.checks, [
+      { pass: true, type: 'contains', expected: 'Running', actual: undefined },
+    ]);
+  });
+
+  it('records an override with who/when/reason', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Verify' }),
+      ev({
+        type: 'assert_result',
+        step: 0,
+        pass: false,
+        checks: [{ pass: false, type: 'line_count', expected: '2' }],
+      }),
+      ev({
+        type: 'user_input',
+        action: 'override',
+        step: 0,
+        actor: 'alice',
+        reason: 'prompt line counted',
+      }),
+    ]);
+    assert.deepStrictEqual(steps[0].verification?.override, {
+      by: 'alice',
+      at: steps[0].started_at,
+      reason: 'prompt line counted',
+    });
+  });
+
   it('records an approval decision with approver and rationale', () => {
     const { steps } = foldEvents([
       ev({ type: 'step_start', step: 0, name: 'Gate' }),

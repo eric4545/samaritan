@@ -7,6 +7,7 @@ import {
   renderExpectDescription,
   renderExpectParts,
   stripCommandEcho,
+  stripControlChars,
   stripTrailingPrompt,
 } from '../../src/lib/assertions';
 import { SessionState } from '../../src/lib/session-state';
@@ -495,6 +496,21 @@ describe('SessionState.extractCapture — invalid pattern (security hardening)',
 });
 
 describe('cleanTerminalOutput — raw tmux pipe-pane capture normalization', () => {
+  it('drops NUL, SI, charset-select and keypad escapes (plain text only)', () => {
+    const e = '\u001b';
+    assert.strictEqual(
+      cleanTerminalOutput(`ok\u0000 ${e}(B\u000fdone`),
+      'ok done',
+    );
+    assert.strictEqual(cleanTerminalOutput(`${e}=${e}7x${e}8`), 'x');
+    assert.strictEqual(cleanTerminalOutput(`${e}P1$r0m${e}\\x`), 'x');
+    assert.strictEqual(cleanTerminalOutput('a\u007f\u0085b\tc'), 'ab\tc');
+  });
+
+  it('applies backspaces like the terminal (readline erase)', () => {
+    assert.strictEqual(cleanTerminalOutput('ab\b \bc'), 'ac');
+  });
+
   it('strips ANSI color codes wrapped around expected text', () => {
     const raw = '\u001b[32msuccessfully rolled out\u001b[0m';
     assert.strictEqual(cleanTerminalOutput(raw), 'successfully rolled out');
@@ -751,5 +767,14 @@ describe('stripTrailingPrompt — drop the shell prompt after the output', () =>
 
   it('treats an empty pane prompt as unknown', () => {
     assert.strictEqual(stripTrailingPrompt('a\nb\n$ ', '   '), 'a\nb');
+  });
+});
+
+describe('stripControlChars', () => {
+  it('keeps LF/TAB/CR, drops other C0, DEL and C1', () => {
+    assert.strictEqual(
+      stripControlChars('a\u0000b\n\tc\r\u007f\u009bd'),
+      'ab\n\tc\rd',
+    );
   });
 });

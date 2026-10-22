@@ -204,3 +204,14 @@ command/output/evidence body goes through `cleanTerminalOutput()` then
 `redactLocalPaths()` (`src/lib/path-redact.ts` — home `→ ~`, run dir + operation
 dir stripped to relative tail; only absolute bases of length > 1). Keep any new
 rendered path/command/output field routed through the same clean/redact pair.
+`cleanTerminalOutput` also drops DCS strings, every ESC form (`ESC ( B`, `ESC =`),
+applies backspaces and strips remaining control bytes; `renderReport` ends with
+`stripControlChars` over the whole document so report.md is always plain UTF-8.
+
+**Verification = final state.** `verifyOutput` emits ONE `assert_result` per
+attempt carrying `checks` (full detailed checklist) + `output`; `foldEvents`
+keeps the LATEST attempt (`pass`, `checks`, `output`) and counts
+`attempts`/`failedAttempts`. Legacy events without `checks` still AND-fold one
+check per event. A `user_input`/`override` event sets `verification.override`
+`{by, at, reason}` → rendered `⚠️ OVERRIDDEN` + reason line, a heading suffix
+and a summary line — never a bare `❌ FAIL`.
