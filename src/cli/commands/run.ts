@@ -19,9 +19,10 @@ import { detectMimeType } from '../../evidence/collector';
 import {
   cleanTerminalOutput,
   renderExpectDescription,
+  sliceFromLastCommandEcho,
 } from '../../lib/assertions';
 import { getBuiltinVariables } from '../../lib/builtin-variables';
-import type { CaptureBackend } from '../../lib/capture-backend';
+import type { CaptureBackend, PaneOwner } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
@@ -387,11 +388,11 @@ class OperationRunner {
               context.sessionId,
               options.attach,
             );
-            paneCapture.attach();
+            const { previousOwner } = paneCapture.attach();
             captureBackend = paneCapture;
-            console.log(
-              `🔗 Attached capture to tmux pane: ${options.attach}\n`,
-            );
+            console.log(`🔗 Attached capture to tmux pane: ${options.attach}`);
+            if (previousOwner) console.warn(paneTakeoverWarning(previousOwner));
+            console.log('');
           } else {
             console.warn(
               `⚠️  --attach target "${options.attach}" is not a valid tmux pane; continuing without capture.\n`,
@@ -937,12 +938,39 @@ class OperationRunner {
 
     // Mutable capture reference — allows [t] to swap backends mid-run.
     // stepOffset is per-step and re-baselined at the start of each step or on attach.
+    // `interrupted` is set when the pane's pipe was found closed or taken over
+    // (and re-attached) during the current step: output since stepOffset is
+    // then incomplete, so reads fall back to the pane's scrollback.
     const captureRef: {
       backend: CaptureBackend | undefined;
       stepOffset: number;
+      interrupted: boolean;
     } = {
       backend: captureBackend,
       stepOffset: 0,
+      interrupted: false,
+    };
+
+    // tmux allows one pipe-pane per pane: another samaritan run attached to the
+    // same pane silently takes ours. Detect that (or a closed pipe), re-attach,
+    // and tell the operator. Returns true when the capture had to be repaired.
+    const repairCapture = (sessionName: string): boolean => {
+      const backend = captureRef.backend;
+      const check = backend?.ensureCapture?.(sessionName);
+      if (!backend || check?.status !== 'reattached') return false;
+      const cause = check.takenBy
+        ? `was taken over by ${describePaneOwner(check.takenBy)}`
+        : 'was closed';
+      console.log(
+        `    ⚠️  Capture pipe on ${backend.describeTarget(sessionName)} ${cause} — re-attached. Use one samaritan run per pane.`,
+      );
+      logger.emit({
+        type: 'capture_attach',
+        target: backend.describeTarget(sessionName),
+        actor: state.context.operator,
+        notes: `re-attached: pipe ${cause}`,
+      });
+      return true;
     };
 
     const DIVIDER = '─'.repeat(60);
@@ -1516,6 +1544,11 @@ class OperationRunner {
           return;
         }
 
+        if (!output.trim()) {
+          console.log(
+            '    ℹ️  Nothing captured from the pane since this step started — run the command there first, then [v].',
+          );
+        }
         console.log('    🔍 Checking expected output...');
         const { assertResult, detailed } = controller.verifyOutput(
           step,
@@ -2024,13 +2057,35 @@ class OperationRunner {
           // Baseline the capture offset at the start of each step.
           // Uses captureRef so [t] can swap the backend and this closure stays fresh.
           const sessionName = step.session ?? 'default';
+          // Repair a stolen/closed pipe BEFORE baselining, so this step's
+          // output is captured in full.
+          repairCapture(sessionName);
+          captureRef.interrupted = false;
           captureRef.stepOffset = captureRef.backend?.hasTarget(sessionName)
             ? captureRef.backend.currentOffset(sessionName)
             : 0;
           const captureSinceStepStart = (): string | undefined => {
-            const { backend, stepOffset } = captureRef;
+            const { backend } = captureRef;
             if (!backend || !backend.hasTarget(sessionName)) return undefined;
-            return backend.readOutput(sessionName, stepOffset);
+            if (repairCapture(sessionName)) captureRef.interrupted = true;
+            const slice = backend.readOutput(
+              sessionName,
+              captureRef.stepOffset,
+            );
+            if (!captureRef.interrupted) return slice;
+            // The pipe missed part of this step: read the pane's scrollback
+            // from the last echo of the command instead.
+            const recovered = sliceFromLastCommandEcho(
+              backend.captureHistory?.(sessionName) ?? '',
+              runnableCommand,
+            );
+            if (recovered === undefined) return slice;
+            // Screen rows below the prompt are padding, not output — trim so
+            // the prompt is the last line again (stripTrailingPrompt).
+            console.log(
+              '    ℹ️  Pipe capture was interrupted this step — reading the pane scrollback from the last run of the command.',
+            );
+            return recovered.trimEnd();
           };
 
           let manualNotes = '';
@@ -2182,8 +2237,11 @@ class OperationRunner {
                 `${state.context.sessionId}-${i}`,
                 targetAns,
               );
-              newCapture.attach();
+              const { previousOwner } = newCapture.attach();
+              if (previousOwner)
+                console.warn(`  ${paneTakeoverWarning(previousOwner)}`);
               captureRef.backend = newCapture;
+              captureRef.interrupted = false;
               // Re-baseline the step offset on the new backend
               captureRef.stepOffset = newCapture.currentOffset(sessionName);
               logger.emit({
@@ -2567,6 +2625,16 @@ class OperationRunner {
       console.log(`\n💥 Operation failed: ${event.error}`);
     });
   }
+}
+
+/** `samaritan session <id> (pid N)` — names the run that owns a pane's pipe. */
+function describePaneOwner(owner: PaneOwner): string {
+  return `samaritan session ${owner.captureId} (pid ${owner.pid})`;
+}
+
+/** Warning printed when attaching takes a pane over from another live run. */
+function paneTakeoverWarning(owner: PaneOwner): string {
+  return `⚠️  This pane was captured by ${describePaneOwner(owner)} — tmux allows one capture per pane, so that run's [v] now re-attaches and warns. Use one samaritan run per pane.`;
 }
 
 // Resolve a path the operator drags into the terminal or types — strips the

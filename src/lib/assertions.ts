@@ -147,6 +147,29 @@ export function stripCommandEcho(output: string, command?: string): string {
   return outLines.slice(end).join('\n');
 }
 
+/**
+ * From a pane's scrollback (`capture-pane -S -N`), return the text starting
+ * at the LAST line that echoes `command` (its first non-empty line, matched
+ * with `endsWith` like `stripCommandEcho`) — i.e. the most recent run of the
+ * command and everything after it. Undefined when no command is given or it
+ * was never echoed. The screen fallback for a verify whose pipe slice was lost.
+ */
+export function sliceFromLastCommandEcho(
+  screen: string,
+  command?: string,
+): string | undefined {
+  const first = command
+    ?.split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (!first) return undefined;
+  const lines = screen.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].trimEnd().endsWith(first)) return lines.slice(i).join('\n');
+  }
+  return undefined;
+}
+
 // Characters a shell prompt conventionally ends with (bash `$`/`#`, zsh `%`,
 // PS2/fish `>`, and the common starship/oh-my-zsh glyphs).
 const PROMPT_SIGIL_RE = /[$#%>❯➜»λ]$/;

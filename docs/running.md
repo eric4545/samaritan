@@ -35,7 +35,12 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 
 **Caveats:**
 - `--attach` mode uses a **single capture target** for all steps. Per-step `session:` routing is ignored; all capture reads come from the attached pane.
-- `tmux pipe-pane` replaces any existing pipe on that pane when attaching.
+- tmux allows **one** `pipe-pane` per pane, so attaching replaces any existing pipe on it. Run one samaritan per pane. If a second run attaches to the same pane anyway:
+  - it warns at attach (`This pane was captured by samaritan session <id> (pid N)`)
+  - the first run notices at its next step or `[v]`/`[e]`, prints `Capture pipe on … was taken over by …`, and re-attaches
+  - a verify whose pipe missed part of the step reads the pane scrollback from the last run of the command instead of reporting `missing:` for output that is on screen
+  - a run only closes the pipe on exit while it still owns it, so one run exiting never cuts the other's capture
+- `[v]` with nothing captured since the step began prints a hint to run the command in the pane first.
 - `samaritan` **never kills** your session on exit — only the temporary capture pipe and temp file are cleaned up.
 
 **Step display in sidecar:**

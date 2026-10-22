@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { TmuxPaneCapture } from '../../src/lib/tmux-session.ts';
-import { hasTmux, TmuxDriver } from './tmux-driver.ts';
+import { hasTmux, TmuxDriver, tmux } from './tmux-driver.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const TSX = 'node_modules/.bin/tsx';
@@ -278,6 +278,65 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor('Deploy App', { timeoutMs: 15_000 });
 
         // Clean up: abort the resumed run.
+        d.type('abort');
+        await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'two runs on one pane: the run whose pipe was taken re-attaches and still verifies',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-sidecar.yaml');
+      const d = TmuxDriver.create({ split: true });
+      // A third pane for the second samaritan run (B), below run A.
+      tmux(['split-window', '-t', d.main, '-v']);
+      const paneB = `${d.session}:0.2`;
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_DEPLOY_OK"', { timeoutMs: 40_000 });
+
+        // Run B attaches to the SAME pane — tmux replaces A's pipe-pane.
+        d.type(
+          launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`),
+          paneB,
+        );
+        await d.waitFor('This pane was captured by samaritan session', {
+          pane: paneB,
+          timeoutMs: 40_000,
+        });
+
+        d.type('echo "deploy E2E_DEPLOY_OK"', work);
+        await d.waitFor(/^deploy E2E_DEPLOY_OK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+
+        // A verifies: detects the takeover, re-attaches, reads scrollback.
+        d.key('v');
+        const verified = await d.waitFor('✅ contains: E2E_DEPLOY_OK', {
+          timeoutMs: 15_000,
+        });
+        assert.match(verified, /was taken over by samaritan session/);
+        assert.match(verified, /Pipe capture was interrupted this step/);
+
+        // A now owns the pipe; B's exit must NOT close it.
+        d.type('abort', paneB);
+        await d.waitFor('Run aborted', { pane: paneB, timeoutMs: 15_000 });
+        const pipe = tmux([
+          'display-message',
+          '-p',
+          '-t',
+          work,
+          '#{pane_pipe}',
+        ]);
+        assert.strictEqual(pipe.stdout.trim(), '1', "B left A's pipe open");
+
         d.type('abort');
         await d.waitFor('Run aborted', { timeoutMs: 15_000 });
       } finally {

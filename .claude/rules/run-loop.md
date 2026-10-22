@@ -161,6 +161,22 @@ evaluates ALL checks, no short-circuit; `assertOutput` still short-circuits).
 `VERIFY_OUTPUT_TAIL_LINES=12`). On FAIL, `promptAssertFailureAction` offers
 `o`/`r`/`c` (copy resolved command)/`m` (full output)/`v` (re-capture)/Enter=stop.
 
+## One `pipe-pane` per pane — ownership + repair
+
+tmux allows ONE `pipe-pane` per pane; a second `--attach`/`[t]` to the same
+pane silently replaced ours (A's pipe file stopped growing → every `[v]`
+reported `missing:`). `TmuxPaneCapture.attach()` writes a per-pane owner marker
+(`paneOwnerFile(#{pane_id})` → `{captureId, pid, since}`) and returns the live
+`previousOwner` it took over (printed via `paneTakeoverWarning`).
+`ensureCapture()` (optional on `CaptureBackend`) checks `#{pane_pipe}` + the
+marker and re-attaches when closed or taken (`{status:'reattached', takenBy}`).
+The loop's `repairCapture(sessionName)` runs at step start (before the offset
+baseline) and inside `captureSinceStepStart`; a repair mid-step sets
+`captureRef.interrupted`, and reads then come from `captureHistory()`
+(`capture-pane -S -2000`) via `sliceFromLastCommandEcho` (trimEnd'd so the
+prompt is last again). `teardown()` only closes the pipe + deletes the marker
+while it still owns the pane. e2e: "two runs on one pane".
+
 ## Retryable verification (`expect.retry`)
 
 `StepController.runVerify` polls on a failed assertion: waits `interval`

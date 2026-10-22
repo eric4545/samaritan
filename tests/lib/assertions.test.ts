@@ -6,6 +6,7 @@ import {
   cleanTerminalOutput,
   renderExpectDescription,
   renderExpectParts,
+  sliceFromLastCommandEcho,
   stripCommandEcho,
   stripControlChars,
   stripTrailingPrompt,
@@ -775,6 +776,33 @@ describe('stripControlChars', () => {
     assert.strictEqual(
       stripControlChars('a\u0000b\n\tc\r\u007f\u009bd'),
       'ab\n\tc\rd',
+    );
+  });
+});
+
+describe('sliceFromLastCommandEcho — scrollback fallback for a lost pipe', () => {
+  const screen = [
+    '$ echo MARK',
+    'old MARK',
+    '$ ls',
+    'a b',
+    '$ echo MARK',
+    'MARK',
+    '$ ',
+  ].join('\n');
+
+  it('starts at the LAST echo of the command', () => {
+    assert.strictEqual(
+      sliceFromLastCommandEcho(screen, 'echo MARK'),
+      '$ echo MARK\nMARK\n$ ',
+    );
+  });
+
+  it('is undefined without a command or when it was never run', () => {
+    assert.strictEqual(sliceFromLastCommandEcho(screen), undefined);
+    assert.strictEqual(
+      sliceFromLastCommandEcho(screen, 'kubectl get pods'),
+      undefined,
     );
   });
 });
