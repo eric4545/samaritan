@@ -1,0 +1,27 @@
+name: E2E Sidecar Rollback
+version: 1.0.0
+description: >-
+  Fixture for real-tmux sidecar rollback e2e tests. Rollback commands carry a
+  ${MARK} env variable so the test proves they reach the pane RESOLVED.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      MARK: E2E_RB_MARK
+
+steps:
+  - name: Deploy App
+    type: automatic
+    command: echo "deploy ${MARK}"
+    rollback:
+      - name: Undo deploy
+        command: echo "UNDO_DEPLOY ${MARK}"
+        expect:
+          contains: UNDO_DEPLOY
+
+rollback:
+  aggregate_step_rollbacks: true
+  steps:
+    - name: Restore traffic
+      command: echo "GLOBAL_RESTORE ${MARK}"

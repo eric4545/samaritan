@@ -81,9 +81,26 @@ import type {
   ExecutionMode,
   ExpectConfig,
   Operation,
+  RollbackStep,
   Step,
 } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
+
+/** What an operator-driven rollback achieved (recorded on `rollback_complete`). */
+type RollbackStatus = 'completed' | 'partial' | 'not_executed';
+
+// Single-key answers for a y/n confirmation (fire without Enter on a TTY).
+const CONFIRM_KEYS: ReadonlySet<string> = new Set(['y', 'n']);
+// Single-key actions on the all-steps-done completion screen.
+const COMPLETION_KEYS: ReadonlySet<string> = new Set(['r', 'g']);
+// Single-key actions on an operator-driven rollback step.
+const ROLLBACK_ACTION_KEYS: ReadonlySet<string> = new Set([
+  'p',
+  'c',
+  'v',
+  's',
+  'a',
+]);
 
 // Cap free-form pasted evidence; larger payloads should be file attachments.
 const MAX_PASTED_EVIDENCE_BYTES = 10 * 1024 * 1024;
@@ -724,6 +741,19 @@ class OperationRunner {
     });
     const question = (prompt: string): Promise<string> =>
       new Promise((resolve) => rl.question(prompt, resolve));
+    // stdin reached EOF (piped/scripted input): no further prompt can be read.
+    let rlClosed = false;
+    rl.on('close', () => {
+      rlClosed = true;
+    });
+
+    // Single-key confirmation (y fires immediately on a TTY — no Enter).
+    const confirmKey = async (prompt: string): Promise<boolean> => {
+      const ans = (await readActionKey(CONFIRM_KEYS, prompt))
+        .trim()
+        .toLowerCase();
+      return ans === 'y' || ans === 'yes';
+    };
 
     if (process.stdin.isTTY) emitKeypressEvents(process.stdin);
 
@@ -745,8 +775,13 @@ class OperationRunner {
       'q',
     ]);
 
-    const readActionKey = (): Promise<string> => {
-      if (!process.stdin.isTTY) return question('  > ');
+    // `immediate` = keys that fire on press without Enter (default: the action
+    // bar's); `prompt` = what to print before reading.
+    const readActionKey = (
+      immediate: ReadonlySet<string> = IMMEDIATE_ACTION_CHARS,
+      prompt = '  > ',
+    ): Promise<string> => {
+      if (!process.stdin.isTTY) return question(prompt);
 
       rl.pause();
       // Readline keeps its own keypress listener attached even while paused —
@@ -765,7 +800,7 @@ class OperationRunner {
       // the last live handle — without an explicit resume the event loop
       // drains and the process exits silently at the prompt.
       process.stdin.resume();
-      process.stdout.write('  > ');
+      process.stdout.write(prompt);
 
       return new Promise((resolve) => {
         let buffer = '';
@@ -795,7 +830,7 @@ class OperationRunner {
           const c = ch.toLowerCase();
           buffer += c;
           process.stdout.write(c);
-          if (buffer.length === 1 && IMMEDIATE_ACTION_CHARS.has(c)) {
+          if (buffer.length === 1 && immediate.has(c)) {
             cleanup();
             process.stdout.write('\n');
             resolve(c);
@@ -1035,75 +1070,277 @@ class OperationRunner {
       }
     };
 
+    // Resolve ${VAR} in a rollback tree (command/instruction, recursively) so
+    // what is sent, pasted, shown and logged is what actually runs — never a
+    // literal `${REGION}`. `ownerVars` are the owning step's variables.
+    const resolveRollbackTree = (
+      rbSteps: RollbackStep[],
+      ownerVars?: Record<string, any>,
+    ): RollbackStep[] =>
+      rbSteps.map((rb) => {
+        const scope = { ...ownerVars, ...rb.variables };
+        return {
+          ...rb,
+          command: tryResolve(rb.command, scope),
+          instruction: tryResolve(rb.instruction, scope),
+          sub_steps: rb.sub_steps
+            ? resolveRollbackTree(rb.sub_steps, scope)
+            : undefined,
+        };
+      });
+
+    // Rollback delivery. Only a non-sidecar run with spawn-own tmux sessions
+    // sends rollback commands itself (send + Enter, like its forward steps).
+    // Everything else — sidecar (`--attach`, `[t]`, spawn-own) and manual
+    // without tmux — is OPERATOR-DRIVEN, exactly like a forward step: each
+    // command is shown, `[p]` pastes it into the attached pane (bracketed, no
+    // Enter), `[v]` verifies its `expect`, and the operator confirms it ran.
+    // The recorded status reflects what was confirmed, never an assumed success.
+    const autoSendsRollback = (): boolean =>
+      mode !== 'sidecar' && !!tmuxSession && !!controller;
+
+    const runRollback = async (
+      rbSteps: RollbackStep[],
+      stepIndex: number,
+      context: 'rollback' | 'global' | 'nearest',
+      ownerVars?: Record<string, any>,
+    ): Promise<RollbackStatus> => {
+      const resolved = resolveRollbackTree(rbSteps, ownerVars);
+      if (autoSendsRollback() && controller) {
+        console.log(`    🔄 Sending rollback to tmux...`);
+        await controller.runRollbackSteps(
+          resolved,
+          stepIndex,
+          state.context.operator,
+          context,
+        );
+        console.log('    ↩  Rollback sent.');
+        return 'completed';
+      }
+      return runOperatorRollback(resolved, stepIndex, context, ownerVars);
+    };
+
+    const runOperatorRollback = async (
+      resolved: RollbackStep[],
+      stepIndex: number,
+      context: 'rollback' | 'global' | 'nearest',
+      ownerVars?: Record<string, any>,
+    ): Promise<RollbackStatus> => {
+      const entries = flattenRollbackSteps(resolved).filter(
+        (rb) => rb.command || rb.instruction,
+      );
+      logger.emit({
+        type: 'rollback_start',
+        step: stepIndex,
+        triggered_by: state.context.operator,
+        context,
+      });
+      let executed = 0;
+      let skipped = 0;
+      let aborted = false;
+
+      for (let k = 0; k < entries.length; k++) {
+        const rb = entries[k];
+        const cmd = rb.command;
+        const sessionName = rb.session ?? 'default';
+        repairCapture(sessionName);
+        const backend = captureRef.backend;
+        const canCapture = !!backend?.hasTarget(sessionName);
+        const target = canCapture
+          ? (backend as CaptureBackend).describeTarget(sessionName)
+          : undefined;
+        const offset = canCapture
+          ? (backend as CaptureBackend).currentOffset(sessionName)
+          : 0;
+        const canPaste = !!(cmd && canCapture && backend?.pasteCommand);
+        const rbExpect = rb.expect
+          ? substituteExpectVars(
+              rb.expect,
+              {
+                ...getBuiltinVariables({ startTime: runStartedAt }),
+                ...vars,
+              },
+              { ...ownerVars, ...rb.variables },
+            )
+          : undefined;
+
+        console.log(
+          `\n    ↩  Rollback ${k + 1}/${entries.length}${rb.name ? `: ${rb.name}` : ''}`,
+        );
+        if (rb.instruction) console.log(`    ${rb.instruction}`);
+        if (cmd) console.log(renderCodeBlock(cmd));
+        if (rbExpect)
+          console.log(`    Expected: ${renderExpectDescription(rbExpect)}`);
+        logger.emit({
+          type: 'command_displayed',
+          step: stepIndex,
+          session: target ?? sessionName,
+          command: cmd ?? rb.instruction,
+          context,
+          ...(rb.name ? { name: rb.name } : {}),
+          ...(cmd ? {} : { instruction: true }),
+        });
+
+        let outcome: 'executed' | 'skipped' | 'aborted' | undefined;
+        let verified: boolean | undefined;
+        while (!outcome) {
+          console.log(
+            `\n${renderKeyHints([
+              { key: '↵', label: cmd ? 'done — I ran it' : 'done' },
+              ...(canPaste ? [{ key: 'p', label: 'paste into pane' }] : []),
+              ...(cmd ? [{ key: 'c', label: 'copy' }] : []),
+              ...(rbExpect && canCapture
+                ? [{ key: 'v', label: 'verify' }]
+                : []),
+              { key: 's', label: 'skip' },
+              { key: 'a', label: 'abort rollback' },
+            ])}`,
+          );
+          const choice = (await readActionKey(ROLLBACK_ACTION_KEYS))
+            .trim()
+            .toLowerCase();
+          if (choice === 'p' && canPaste && cmd && backend?.pasteCommand) {
+            if (
+              isMultiLinePaste(cmd) &&
+              !(await confirmKey(
+                '    ⚠️  Multi-line command — it lands as one block only with bracketed paste (bash ≥ 4.4, zsh ≥ 5.1). Paste it? [y / n=cancel]: ',
+              ))
+            ) {
+              console.log('    ↩  Cancelled — nothing pasted.');
+              continue;
+            }
+            backend.pasteCommand(sessionName, cmd);
+            logger.emit({
+              type: 'user_input',
+              action: 'send_to_pane',
+              step: stepIndex,
+              session: target ?? sessionName,
+              command: cmd,
+              actor: state.context.operator,
+              context,
+            });
+            console.log(
+              `    ⌨️  Pasted into ${target} — review it, press Enter there to run, then ${rbExpect ? '[v] to verify or ' : ''}↵ here.`,
+            );
+            continue;
+          }
+          if (choice === 'c' && cmd) {
+            await copyCommand(cmd, '    ');
+            continue;
+          }
+          if (choice === 'v' && rbExpect && canCapture && controller) {
+            const raw = (backend as CaptureBackend).readOutput(
+              sessionName,
+              offset,
+            );
+            try {
+              const { detailed } = controller.verifyOutput(
+                { name: rb.name ?? 'rollback', expect: rbExpect } as Step,
+                stepIndex,
+                raw,
+                cmd,
+                backend?.promptLine?.(sessionName),
+                context,
+              );
+              if (detailed) {
+                verified = detailed.pass;
+                console.log(renderVerifyOutcome(detailed, rbExpect));
+              }
+            } catch (err: any) {
+              console.log(`    ⚠️  Could not verify: ${err.message}`);
+            }
+            continue;
+          }
+          if (choice === 's' || choice === 'skip') outcome = 'skipped';
+          else if (choice === 'a' || choice === 'abort') outcome = 'aborted';
+          else outcome = 'executed';
+        }
+
+        logger.emit({
+          type: 'rollback_step',
+          step: stepIndex,
+          context,
+          index: k,
+          outcome,
+          actor: state.context.operator,
+          ...(verified !== undefined ? { verified } : {}),
+        });
+        if (outcome === 'executed') executed += 1;
+        else if (outcome === 'skipped') skipped += 1;
+        else {
+          aborted = true;
+          break;
+        }
+      }
+
+      const total = entries.length;
+      const status: RollbackStatus =
+        total > 0 && executed === total
+          ? 'completed'
+          : executed === 0
+            ? 'not_executed'
+            : 'partial';
+      logger.emit({
+        type: 'rollback_complete',
+        step: stepIndex,
+        status,
+        context,
+        executed,
+        skipped,
+        total,
+        ...(aborted ? { aborted: true } : {}),
+      });
+      console.log(
+        status === 'completed'
+          ? `    ↩  Rollback complete — ${executed}/${total} step(s) run by the operator.`
+          : `    ⚠️  Rollback NOT complete — ${executed}/${total} step(s) confirmed run${skipped ? `, ${skipped} skipped` : ''}${aborted ? ', aborted' : ''}.`,
+      );
+      return status;
+    };
+
     const doRollback = async (step: Step, i: number): Promise<void> => {
       // Filter rollback entries to those applicable to the current environment.
       const envRollback = filterRollbackByEnv(step.rollback ?? [], targetEnv);
-      const hasRollbackSteps = envRollback.length > 0;
       const stateSteps = executor.getState().steps;
 
-      if (hasRollbackSteps && controller && tmuxSession) {
+      if (envRollback.length > 0) {
         console.log('    🔄 Initiating rollback...');
-        await controller.runRollbackSteps(
-          envRollback,
-          i,
-          state.context.operator,
-          'rollback',
-        );
-        console.log('    ↩  Rollback complete.');
-      } else if (hasRollbackSteps) {
-        // No tmux to send through (sidecar without sessions) — show the
-        // operator what to run; controller still records the audit events.
-        console.log('    🔄 Rollback steps (manual — no tmux session):');
-        for (const rb of envRollback) {
-          console.log(`      $ ${tryResolve(rb.command, step.variables)}`);
-        }
-        await controller?.runRollbackSteps(
-          envRollback,
-          i,
-          state.context.operator,
-          'rollback',
-        );
-      } else {
-        // This step has no rollback applicable to this environment — offer the
-        // nearest upstream step's rollback (needs chain first, else document
-        // order; only completed steps qualify).
-        const nearest = findNearestRollbackSource(
-          stateSteps.map((s) => s.step),
-          i,
-          { graph: depGraph, isCandidate: stepIsCompleted, targetEnv },
-        );
-        if (nearest) {
-          const sourceStep = stateSteps[nearest.stepIndex].step;
-          const label = flatSteps[nearest.stepIndex].label;
-          console.log('\n    This step has no rollback.');
-          for (const rb of flattenRollbackSteps(nearest.rollback)) {
-            if (rb.command)
-              console.log(
-                `      $ ${tryResolve(rb.command, sourceStep.variables)}`,
-              );
-          }
-          const ans = (
-            await question(
-              `    Nearest rollback comes from step [${label}] "${sourceStep.name}" — run it? [y/N]: `,
-            )
-          )
-            .trim()
-            .toLowerCase();
-          if (ans === 'y' || ans === 'yes') {
-            await controller?.runRollbackSteps(
-              nearest.rollback,
-              i,
-              state.context.operator,
-              'nearest',
-            );
-            console.log('    ↩  Nearest rollback complete.');
-            return;
-          }
-          console.log('    ↩  Skipped.');
-        } else {
-          console.log('    ℹ️  No rollback defined for this step.');
-        }
+        await runRollback(envRollback, i, 'rollback', step.variables);
+        return;
       }
+
+      // This step has no rollback applicable to this environment — offer the
+      // nearest upstream step's rollback (needs chain first, else document
+      // order; only completed steps qualify).
+      const nearest = findNearestRollbackSource(
+        stateSteps.map((s) => s.step),
+        i,
+        { graph: depGraph, isCandidate: stepIsCompleted, targetEnv },
+      );
+      if (!nearest) {
+        console.log('    ℹ️  No rollback defined for this step.');
+        return;
+      }
+      const sourceStep = stateSteps[nearest.stepIndex].step;
+      const label = flatSteps[nearest.stepIndex].label;
+      console.log('\n    This step has no rollback.');
+      for (const rb of flattenRollbackSteps(
+        resolveRollbackTree(nearest.rollback, sourceStep.variables),
+      )) {
+        if (rb.command) console.log(`      $ ${rb.command}`);
+      }
+      const ans = (
+        await question(
+          `    Nearest rollback comes from step [${label}] "${sourceStep.name}" — run it? [y/N]: `,
+        )
+      )
+        .trim()
+        .toLowerCase();
+      if (ans === 'y' || ans === 'yes') {
+        await runRollback(nearest.rollback, i, 'nearest', sourceStep.variables);
+        return;
+      }
+      console.log('    ↩  Skipped.');
     };
 
     // Jump to the global rollback: build the consolidated recovery from the
@@ -1130,13 +1367,11 @@ class OperationRunner {
       console.log(
         '\n    🔄 Global rollback will run the following (reverse order):',
       );
-      for (const rb of flattenRollbackSteps(rbSteps)) {
-        // Pass the rollback entry's own variables so a foreach-expanded
-        // rollback's ${LOOP_VAR} resolves in the preview, not just env vars.
+      for (const rb of flattenRollbackSteps(resolveRollbackTree(rbSteps))) {
         const cmd = rb.command
-          ? `$ ${tryResolve(rb.command, rb.variables)}`
+          ? `$ ${rb.command}`
           : rb.instruction
-            ? `(manual) ${tryResolve(rb.instruction, rb.variables)}`
+            ? `(manual) ${rb.instruction}`
             : '';
         const label = rb.name ?? '';
         console.log(
@@ -1144,40 +1379,17 @@ class OperationRunner {
         );
       }
 
-      const confirm = (
-        await question(
+      if (
+        !(await confirmKey(
           '\n    Run global rollback and abort the operation? [y/N]: ',
-        )
-      )
-        .trim()
-        .toLowerCase();
-      if (confirm !== 'y' && confirm !== 'yes') {
+        ))
+      ) {
         console.log('    ↩  Global rollback cancelled.');
         return false;
       }
 
-      if (controller && tmuxSession) {
-        console.log('    🔄 Running global rollback...');
-        await controller.runRollbackSteps(
-          rbSteps,
-          i,
-          state.context.operator,
-          'global',
-        );
-        console.log('    ↩  Global rollback complete.');
-      } else {
-        // No tmux to send through — commands were listed above; record audit
-        // events so the run log still captures the global rollback.
-        console.log(
-          '    🔄 Run the global rollback commands above manually (no tmux session).',
-        );
-        await controller?.runRollbackSteps(
-          rbSteps,
-          i,
-          state.context.operator,
-          'global',
-        );
-      }
+      console.log('    🔄 Running global rollback...');
+      await runRollback(rbSteps, i, 'global');
 
       executor.cancel();
       console.log('\n⛔ Operation aborted after global rollback.');
@@ -2279,12 +2491,7 @@ class OperationRunner {
                 console.log(
                   '    ⚠️  Multi-line command. It lands as one un-run block only if the pane shell supports bracketed paste (bash ≥ 4.4, zsh ≥ 5.1); in sh/dash each line runs as it arrives.',
                 );
-                const ok = (
-                  await question('    Paste it? [y / Enter=cancel]: ')
-                )
-                  .trim()
-                  .toLowerCase();
-                if (ok !== 'y' && ok !== 'yes') {
+                if (!(await confirmKey('    Paste it? [y / n=cancel]: '))) {
                   console.log('    ↩  Cancelled — nothing pasted.');
                   continue;
                 }
@@ -2519,6 +2726,66 @@ class OperationRunner {
           await executor.executeStepManually(i, 'confirmed');
           persistProgress();
           logger.emit({ type: 'step_complete', step: i });
+        }
+      }
+
+      // Finishing the last step must not close the door on rollback: offer
+      // [r]/[g] on a completion screen. Shown only when something can be rolled
+      // back and stdin is still readable (piped/scripted runs end as before).
+      const finalSteps = executor.getState().steps;
+      const rollbackable = finalSteps.flatMap((s, idx) =>
+        s.status === 'completed' &&
+        filterRollbackByEnv(s.step.rollback ?? [], targetEnv).length > 0
+          ? [idx]
+          : [],
+      );
+      const ranToEnd =
+        executor.getState().status !== 'cancelled' &&
+        finalSteps.every((s) => s.status !== 'pending');
+      if (
+        ranToEnd &&
+        !rlClosed &&
+        (hasGlobalRollback || rollbackable.length > 0)
+      ) {
+        const lastIndex = finalSteps.length - 1;
+        while (true) {
+          console.log(`\n${DIVIDER}`);
+          console.log('✅ All steps done.');
+          console.log(
+            `\n${renderKeyHints([
+              { key: '↵', label: 'finish' },
+              ...(rollbackable.length
+                ? [{ key: 'r', label: 'roll back a step' }]
+                : []),
+              ...globalRollbackMenuItem,
+            ])}`,
+          );
+          const choice = (await readActionKey(COMPLETION_KEYS))
+            .trim()
+            .toLowerCase();
+          if (hasGlobalRollback && isGlobalRollback(choice)) {
+            if (await doGlobalRollback(lastIndex)) break;
+            continue;
+          }
+          if (rollbackable.length && isRollback(choice)) {
+            console.log('\n    Roll back which step?');
+            for (const idx of rollbackable) {
+              console.log(
+                `      ${idx + 1}) [${flatSteps[idx].label}] ${finalSteps[idx].step.name}`,
+              );
+            }
+            const ans = (
+              await question('    Step number [Enter to cancel]: ')
+            ).trim();
+            const picked = Number.parseInt(ans, 10) - 1;
+            if (ans && rollbackable.includes(picked)) {
+              await doRollback(finalSteps[picked].step, picked);
+            } else if (ans) {
+              console.log('    ⚠️  Invalid step.');
+            }
+            continue;
+          }
+          break;
         }
       }
 

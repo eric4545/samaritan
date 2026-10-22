@@ -28,7 +28,33 @@ collection is NOT implemented. (Check `ROADMAP.md`.)
   `listTmuxPanes()`), `[p]` send to pane (when step has a command + pane attached).
 - `[b]` back (not on first step), `[j]` jump forward (not on last step),
   `[r]` per-step rollback, `[g]` global rollback (when `operation.rollback`
-  exists), `q`/`quit`/`Ctrl+C` abort.
+  exists), `q`/`quit`/`Ctrl+C` abort. See "Rollback delivery" below.
+
+## Rollback delivery — operator-driven unless non-sidecar spawn-own tmux
+
+`runRollback(rbSteps, i, context, ownerVars)` first `${VAR}`-resolves the
+tree (`resolveRollbackTree`, recursive). ONLY `mode !== 'sidecar'` with a
+spawn-own `tmuxSession` sends via `controller.runRollbackSteps` (send+Enter →
+`status:'success'`). Everything else (sidecar `--attach`/`[t]`/spawn-own, and
+manual without tmux) goes through `runOperatorRollback`: per entry it emits
+`command_displayed` (+`context`), offers `↵` done · `p` paste (same
+`pasteCommand` + multi-line confirm as forward `[p]`; logs
+`user_input/send_to_pane` with `context`) · `c` · `v` (`verifyOutput(...,
+context)` → the `assert_result` folds onto the rollback entry, NOT the step)
+· `s` · `a`, then emits `rollback_step {index, outcome, verified?}`; finally
+`rollback_complete {status: completed|partial|not_executed, executed, skipped,
+total}`. NEVER emit `command_sent` or `success` for something only displayed
+(the original bug: attach mode printed commands, sent nothing, logged
+`command_sent` to a nonexistent `default` session, and `success`).
+`StepController.rollback/runRollbackSteps` without tmux likewise log
+`command_displayed` + `not_executed`. `foldEvents` routes ANY `context` on
+`command_sent`/`command_displayed`/`pane_captured`/`assert_result`/
+`user_input` to the open rollback record. After the loop, if the run reached
+the end and `[r]`/`[g]` have something to undo, an **All steps done** screen
+(`COMPLETION_KEYS`) offers them — skipped when readline is closed (`rlClosed`,
+piped stdin) so scripted runs end as before. Single-key y/n via
+`confirmKey()` (`readActionKey(CONFIRM_KEYS, prompt)`). e2e: "--attach
+rollback" + "completion screen" (`e2e-rollback.yaml`).
 
 ## `[p]` send to pane — bracketed paste, never Enter
 
@@ -50,7 +76,7 @@ command lands WITHOUT a trailing newline.
 rewrites LF→CR, so `\r\n` became `\r\r` — a blank line after each `\`
 continuation and a broken command), trailing newlines stripped (a YAML `|`
 block's final `\n` is an Enter in a non-bracketed shell). A multi-line command
-(`isMultiLinePaste`) asks `Paste it? [y / Enter=cancel]` before pasting —
+(`isMultiLinePaste`) asks `Paste it? [y / n=cancel]` (single key via `confirmKey`) before pasting —
 sh/dash ignore bracketed paste and run each line on arrival, and tmux 3.4
 exposes no pane flag to detect that. e2e regression in
 `tests/e2e/sidecar-tmux.e2e.ts` (CRLF continuation block).

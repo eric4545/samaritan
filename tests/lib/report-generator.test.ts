@@ -375,3 +375,111 @@ describe('renderReport — verification final state + overrides', () => {
     assert.ok(md.includes('- output:'), 'checked output rendered once');
   });
 });
+
+describe('renderReport — rollback events are honest', () => {
+  const base = [
+    ev({ type: 'session_start', op: 'op.yaml' }),
+    ev({ type: 'step_start', step: 1, name: 'Deploy' }),
+  ];
+
+  it('lists what the operator confirmed and a partial status', () => {
+    const md = render([
+      ...base,
+      ev({
+        type: 'rollback_start',
+        step: 1,
+        triggered_by: 'alice',
+        context: 'global',
+      }),
+      ev({
+        type: 'command_displayed',
+        session: 'tmux pane w:0.0',
+        command: 'echo GLOBAL_RB dev',
+        context: 'global',
+      }),
+      ev({ type: 'user_input', action: 'send_to_pane', context: 'global' }),
+      ev({
+        type: 'rollback_step',
+        step: 1,
+        context: 'global',
+        index: 0,
+        outcome: 'executed',
+      }),
+      ev({
+        type: 'command_displayed',
+        session: 'tmux pane w:0.0',
+        command: 'echo ROLLBACK dev',
+        context: 'global',
+        name: '↩ Rollback for "Build"',
+      }),
+      ev({
+        type: 'rollback_step',
+        step: 1,
+        context: 'global',
+        index: 1,
+        outcome: 'skipped',
+      }),
+      ev({
+        type: 'rollback_complete',
+        step: 1,
+        status: 'partial',
+        context: 'global',
+        executed: 1,
+        skipped: 1,
+        total: 2,
+      }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(md.includes('### Global rollback (triggered at Step 2)'), md);
+    assert.ok(
+      md.includes(
+        '- ✅ run by operator: `echo GLOBAL_RB dev` (pasted into pane)',
+      ),
+      md,
+    );
+    assert.ok(
+      md.includes('- ⏭ skipped: ↩ Rollback for "Build" — `echo ROLLBACK dev`'),
+      md,
+    );
+    assert.ok(
+      md.includes(
+        '**Status**: ⚠️ partial — 1/2 step(s) confirmed run, 1 skipped',
+      ),
+      md,
+    );
+    assert.ok(!md.includes('Command sent'), 'rollback is not a step command');
+  });
+
+  it('marks an unconfirmed rollback as NOT executed', () => {
+    const md = render([
+      ...base,
+      ev({
+        type: 'rollback_start',
+        step: 1,
+        triggered_by: 'alice',
+        context: 'rollback',
+      }),
+      ev({
+        type: 'command_displayed',
+        session: 'default',
+        command: 'echo undo',
+        context: 'rollback',
+      }),
+      ev({
+        type: 'rollback_complete',
+        step: 1,
+        status: 'not_executed',
+        context: 'rollback',
+        executed: 0,
+        skipped: 0,
+        total: 1,
+      }),
+    ]);
+    assert.ok(md.includes('- ⚠️ not run: `echo undo`'), md);
+    assert.ok(
+      md.includes('**Status**: ❌ NOT executed — 0/1 step(s) confirmed run'),
+      md,
+    );
+    assert.ok(!md.includes('success'), md);
+  });
+});

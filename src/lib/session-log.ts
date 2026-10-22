@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type {
+  RollbackCommandRecord,
   RollbackRecord,
   StepRecord,
   VerificationCheck,
@@ -71,7 +72,9 @@ export function foldEvents(events: SessionEvent[]): {
       }
 
       case 'command_sent': {
-        if (event.context === 'rollback') {
+        // Any rollback context ('rollback', 'nearest', 'global') belongs to the
+        // open rollback record, never to the step that triggered it.
+        if (event.context) {
           currentRollback?.commands.push({
             session: event.session as string,
             command: event.command as string,
@@ -87,7 +90,16 @@ export function foldEvents(events: SessionEvent[]): {
       }
 
       case 'command_displayed': {
-        if (currentStep) {
+        if (event.context) {
+          currentRollback?.commands.push({
+            session: event.session as string,
+            command: event.command as string,
+            displayed: true,
+            name: event.name as string | undefined,
+            instruction:
+              (event.instruction as boolean | undefined) || undefined,
+          });
+        } else if (currentStep) {
           currentStep.commands.push({
             session: event.session as string,
             command: event.command as string,
@@ -99,7 +111,7 @@ export function foldEvents(events: SessionEvent[]): {
 
       case 'pane_captured': {
         const output = event.output as string;
-        if (event.context === 'rollback') {
+        if (event.context) {
           const last =
             currentRollback?.commands[currentRollback.commands.length - 1];
           if (last) last.output = output;
@@ -113,11 +125,16 @@ export function foldEvents(events: SessionEvent[]): {
       }
 
       case 'assert_result': {
-        if (currentStep && Array.isArray(event.checks)) {
+        if (event.context) {
+          // A rollback command's [v] — record it on that rollback entry.
+          const last = currentRollback?.commands.at(-1);
+          if (last) last.verified = event.pass as boolean;
+        } else if (currentStep && Array.isArray(event.checks)) {
           // One event = one verify attempt carrying its full checklist. The
           // record keeps the FINAL state (latest attempt) plus attempt counts,
           // so a re-verified or overridden step doesn't render every failure.
-          const v = (currentStep.verification ??= { pass: true, checks: [] });
+          currentStep.verification ??= { pass: true, checks: [] };
+          const v = currentStep.verification;
           const pass = event.pass as boolean;
           v.pass = pass;
           v.checks = (event.checks as VerificationCheck[]).map((c) => ({
@@ -145,7 +162,11 @@ export function foldEvents(events: SessionEvent[]): {
       }
 
       case 'user_input': {
-        if (currentStep) {
+        if (event.context) {
+          // `[p]` paste of a rollback command.
+          const last = currentRollback?.commands.at(-1);
+          if (last && event.action === 'send_to_pane') last.pasted = true;
+        } else if (currentStep) {
           const action = event.action as string;
           if (action === 'verify_ok') {
             currentStep.verification ??= { pass: true, checks: [] };
@@ -250,15 +271,31 @@ export function foldEvents(events: SessionEvent[]): {
         currentRollback = {
           step: event.step as number,
           triggeredBy: event.triggered_by as string,
+          context: event.context as string | undefined,
           commands: [],
         };
         rollbacks.push(currentRollback);
         break;
       }
 
+      case 'rollback_step': {
+        const last = currentRollback?.commands.at(-1);
+        if (last) {
+          last.outcome = event.outcome as RollbackCommandRecord['outcome'];
+          if (typeof event.verified === 'boolean')
+            last.verified = event.verified;
+        }
+        break;
+      }
+
       case 'rollback_complete': {
         if (currentRollback) {
           currentRollback.status = event.status as string;
+          if (typeof event.total === 'number') {
+            currentRollback.executed = event.executed as number;
+            currentRollback.skipped = event.skipped as number;
+            currentRollback.total = event.total;
+          }
           currentRollback = null;
         }
         break;

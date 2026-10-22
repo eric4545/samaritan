@@ -4,7 +4,7 @@ Authoring recovery next to the step it undoes, and running one consolidated roll
 
 ## Rollback
 
-Define rollback commands as an ordered list per step. SAMARITAN runs them when the operator presses `[r]` or verify fails:
+Define rollback commands as an ordered list per step. They run when the operator presses `[r]` or chooses rollback after a failed verify (see [Running a rollback](#running-a-rollback)):
 
 ```yaml
 steps:
@@ -128,4 +128,30 @@ rollback:
 
 The full recovery therefore reads top-to-bottom as one Rollback Plan, and each step links down to its own entry. Applies to every output format (Markdown multi-/single-env, Confluence wiki, ADF). With the flag off, rendering is unchanged.
 
-During `samaritan run`, every step prompt offers **`[g]` global rollback**: it previews the consolidated recovery (explicit plan steps + the **completed** steps' rollbacks, reversed), asks for confirmation, runs it (sending via tmux when a session is attached, otherwise listing the commands to run manually), then aborts the operation — a full rollback ends forward progress, and the session is resumable. See `examples/global-rollback-aggregated.yaml`.
+During `samaritan run`, every step prompt offers **`[g]` global rollback**: it previews the consolidated recovery (explicit plan steps + the **completed** steps' rollbacks, reversed), asks for confirmation (a single `y`), runs it as described in [Running a rollback](#running-a-rollback), then aborts the operation — a full rollback ends forward progress, and the session is resumable. See `examples/global-rollback-aggregated.yaml`.
+
+## Running a rollback
+
+How `[r]` / `[g]` deliver rollback commands depends on the run mode:
+
+| Run | Delivery |
+|---|---|
+| `sidecar` (default) — `--attach`, `[t]`, or spawn-own `sessions:` | **Operator-driven**, like a forward step (below) |
+| `manual` with no tmux | **Operator-driven**, without `[p]`/`[v]` |
+| non-sidecar with spawn-own `sessions:` | samaritan sends each command to its tmux session (with Enter) and waits for the prompt |
+
+Operator-driven rollback walks the entries one at a time — `↩ Rollback 1/3: <name>`, then the instruction and the `${VAR}`-resolved command:
+
+| Key | Action |
+|---|---|
+| `↵` | done — I ran it |
+| `p` | paste into the attached pane (bracketed paste, **no Enter** — same as the forward `[p]`) |
+| `c` | copy the command |
+| `v` | verify the entry's `expect` against the pane output since it was shown |
+| `s` | skip this entry |
+| `a` | abort the rest of the rollback |
+
+The run report's **Rollback Events** records what actually happened. Each entry is listed as `✅ run by operator` / `⏭ skipped` / `⛔ not run`, with `pasted into pane` and the `verify ✅/❌` result where they apply. The status is `✅ completed` only when every entry was confirmed run. Otherwise it is `⚠️ partial` or `❌ NOT executed`. A rollback that was only shown is never recorded as a success. Commands in the audit log are resolved (`${REGION}` → `us-east-1`), so the log is replayable.
+
+Finishing the last step does not take rollback away. When anything can be rolled back, the run stops on an **All steps done** screen (`↵ finish · r roll back a step · g global rollback`) before it exits.
+

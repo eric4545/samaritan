@@ -222,6 +222,10 @@ export class StepController {
     // The pane's current prompt line (cursor line). When given, the trailing
     // prompt is stripped exactly; otherwise a prompt-sigil heuristic is used.
     promptLine?: string,
+    // Rollback context ('rollback' | 'global' | 'nearest') when verifying a
+    // rollback command — the event then folds into the rollback record, not
+    // the forward step's verification.
+    context?: string,
   ): {
     assertResult?: ReturnType<typeof assertOutput>;
     detailed?: ReturnType<typeof assertOutputDetailed>;
@@ -256,6 +260,7 @@ export class StepController {
       expected: result.expected,
       assertion_type: result.type,
       output: checkedOutput,
+      ...(context ? { context } : {}),
       checks: detailed.checks.map((c) => ({
         pass: c.pass,
         type: c.type,
@@ -285,31 +290,40 @@ export class StepController {
     for (const rb of rollbackSteps) {
       const sessionName = rb.session ?? step.session ?? 'default';
 
+      if (!tmux) {
+        // Nothing can deliver it: record it as displayed, never as sent.
+        logger.emit({
+          type: 'command_displayed',
+          session: sessionName,
+          command: rb.command,
+          context: 'rollback',
+        });
+        continue;
+      }
+
       logger.emit({
         type: 'command_sent',
         session: sessionName,
         command: rb.command,
         context: 'rollback',
       });
-
-      if (tmux) {
-        tmux.send(sessionName, rb.command);
-        // Wait for operator to confirm each rollback step
-        await tmux.waitForPrompt(sessionName, 60_000);
-        const output = tmux.readOutput(sessionName, 0);
-        logger.emit({
-          type: 'pane_captured',
-          session: sessionName,
-          output,
-          context: 'rollback',
-        });
-      }
+      tmux.send(sessionName, rb.command);
+      // Wait for operator to confirm each rollback step
+      await tmux.waitForPrompt(sessionName, 60_000);
+      const output = tmux.readOutput(sessionName, 0);
+      logger.emit({
+        type: 'pane_captured',
+        session: sessionName,
+        output,
+        context: 'rollback',
+      });
     }
 
     logger.emit({
       type: 'rollback_complete',
       step: stepIndex,
-      status: 'success',
+      // Without tmux nothing was sent — never report a success that didn't happen.
+      status: tmux ? 'success' : 'not_executed',
     });
   }
 
@@ -339,30 +353,40 @@ export class StepController {
       if (!rb.command) continue;
       const sessionName = rb.session ?? 'default';
 
+      if (!tmux) {
+        // Nothing can deliver it: record it as displayed, never as sent.
+        logger.emit({
+          type: 'command_displayed',
+          session: sessionName,
+          command: rb.command,
+          context,
+        });
+        continue;
+      }
+
       logger.emit({
         type: 'command_sent',
         session: sessionName,
         command: rb.command,
         context,
       });
-
-      if (tmux) {
-        tmux.send(sessionName, rb.command);
-        await tmux.waitForPrompt(sessionName, 60_000);
-        const output = tmux.readOutput(sessionName, 0);
-        logger.emit({
-          type: 'pane_captured',
-          session: sessionName,
-          output,
-          context,
-        });
-      }
+      tmux.send(sessionName, rb.command);
+      await tmux.waitForPrompt(sessionName, 60_000);
+      const output = tmux.readOutput(sessionName, 0);
+      logger.emit({
+        type: 'pane_captured',
+        session: sessionName,
+        output,
+        context,
+      });
     }
 
     logger.emit({
       type: 'rollback_complete',
       step: stepIndex,
-      status: 'success',
+      // Without tmux nothing was sent — never report a success that didn't
+      // happen (the run loop drives operator rollbacks itself; see run.ts).
+      status: tmux ? 'success' : 'not_executed',
       context,
     });
   }

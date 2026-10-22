@@ -347,6 +347,140 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
+    '--attach rollback: [g] after the last step pastes each RESOLVED command into the pane and records what the operator ran',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-rollback.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_RB_MARK"', { timeoutMs: 40_000 });
+
+        // Complete the step (global rollback aggregates COMPLETED steps'
+        // rollbacks), then trigger [g] from the all-steps-done screen.
+        d.enter();
+        await d.waitFor('All steps done.', { timeoutMs: 15_000 });
+
+        // Global rollback: preview → single-key y (no Enter) → entry 1/2.
+        d.key('g');
+        await d.waitFor('Run global rollback and abort the operation?');
+        d.key('y');
+        await d.waitFor('Rollback 1/2: Restore traffic', { timeoutMs: 15_000 });
+
+        // [p] pastes the ${MARK}-resolved command WITHOUT running it.
+        d.key('p');
+        await d.waitFor('echo "GLOBAL_RESTORE E2E_RB_MARK"', {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          !/^GLOBAL_RESTORE E2E_RB_MARK$/m.test(d.capture(work)),
+          'paste must not execute the rollback command',
+        );
+        d.enter(work);
+        await d.waitFor(/^GLOBAL_RESTORE E2E_RB_MARK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.enter(); // ↵ done — I ran it
+
+        // Entry 2/2 (aggregated step rollback): paste, run, [v] its expect.
+        await d.waitFor('Rollback 2/2', { timeoutMs: 15_000 });
+        d.key('p');
+        await d.waitFor('echo "UNDO_DEPLOY E2E_RB_MARK"', {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.enter(work);
+        await d.waitFor(/^UNDO_DEPLOY E2E_RB_MARK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.key('v');
+        await d.waitFor('✅ contains: UNDO_DEPLOY', { timeoutMs: 15_000 });
+        d.enter();
+        await d.waitFor('Rollback complete — 2/2 step(s) run by the operator', {
+          timeoutMs: 15_000,
+        });
+        await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+
+        const report = readReport(ws.dir);
+        assert.ok(
+          report.includes(
+            '- ✅ run by operator: Restore traffic — `echo "GLOBAL_RESTORE E2E_RB_MARK"` (pasted into pane)',
+          ),
+          report,
+        );
+        assert.ok(report.includes('(pasted into pane, verify ✅)'), report);
+        assert.ok(
+          report.includes(
+            '**Status**: ✅ completed — 2/2 step(s) confirmed run',
+          ),
+          report,
+        );
+        const events = readFileSync(
+          findFile(ws.dir, 'events.jsonl') as string,
+          'utf8',
+        );
+        assert.ok(
+          !events.includes('${MARK}'),
+          'audit log holds resolved commands',
+        );
+        assert.ok(
+          !events.includes('"command_sent"'),
+          'nothing claimed as sent',
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'completion screen: after the last step, [r] still rolls a step back',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-rollback.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_RB_MARK"', { timeoutMs: 40_000 });
+        d.enter(); // complete the only step
+
+        await d.waitFor('All steps done.', { timeoutMs: 15_000 });
+        d.key('r');
+        await d.waitFor('Roll back which step?');
+        d.type('1');
+        await d.waitFor('Rollback 1/1: Undo deploy', { timeoutMs: 15_000 });
+        d.key('s'); // skip it → rollback NOT complete
+        await d.waitFor(
+          'Rollback NOT complete — 0/1 step(s) confirmed run, 1 skipped',
+          {
+            timeoutMs: 15_000,
+          },
+        );
+        await d.waitFor(/All steps done\.[\s\S]*All steps done\./, {
+          timeoutMs: 15_000,
+        });
+        d.enter(); // finish
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          readReport(ws.dir).includes('**Status**: ❌ NOT executed'),
+          'a skipped rollback is never reported as success',
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
     '[p] paste keeps a CRLF backslash-continuation block intact (no blank line, one command)',
     { skip, timeout: 60_000 },
     async () => {
