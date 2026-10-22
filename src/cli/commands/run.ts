@@ -47,6 +47,7 @@ import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
 import { childStepLabel, describeStepPosition } from '../../lib/step-position';
 import {
   mergeStepVariables,
+  mergeStepVariant,
   shouldRenderStepForEnvironment,
   substituteExpectVars,
 } from '../../lib/step-resolution';
@@ -173,6 +174,10 @@ function stepHasOwnContent(step: Step): boolean {
  *  - inheritFiltered propagates a parent's filter down to its children.
  *  - A parent whose children are ALL env-filtered is ALSO marked filteredByEnv
  *    UNLESS the parent itself carries own-content fields (Issue 1 fix).
+ *
+ * Each step is resolved with `mergeStepVariant(step, targetEnv)` here, once,
+ * so everything downstream — display, `[p]`, `[v]`, evidence, rollback —
+ * sees the same `variants.<env>` overrides `generate manual --env` renders.
  */
 function flattenAndMarkForEnv(
   steps: Step[],
@@ -181,7 +186,8 @@ function flattenAndMarkForEnv(
   inheritFiltered = false,
 ): FlatStep[] {
   const result: FlatStep[] = [];
-  steps.forEach((step, i) => {
+  steps.forEach((authored, i) => {
+    const step = mergeStepVariant(authored, targetEnv);
     const label = childStepLabel(prefix, i);
     const selfFiltered =
       inheritFiltered || !shouldRenderStepForEnvironment(step, targetEnv);

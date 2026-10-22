@@ -55,6 +55,14 @@ sh/dash ignore bracketed paste and run each line on arrival, and tmux 3.4
 exposes no pane flag to detect that. e2e regression in
 `tests/e2e/sidecar-tmux.e2e.ts` (CRLF continuation block).
 
+## `variants.<env>` resolved once, in `flattenAndMarkForEnv`
+
+Every flat step is `mergeStepVariant(step, targetEnv)` before anything else
+reads it, so display, `[c]`/`[p]`, `[v]`, evidence and rollback all see the
+same overrides `generate manual --env` renders. Never read the authored
+`operation.steps` in the loop — use `executor.getState().steps` / `flatSteps`.
+Regression: `run-variants.yaml` + `run command: step variants.<env>`.
+
 ## Step heading — single-env manual numbering
 
 `flattenAndMarkForEnv` labels steps with `childStepLabel` (`src/lib/step-position.ts`):
