@@ -100,11 +100,19 @@ directory or example ships with this repo today.
 
 ## Interactive run loop actions
 
+The bar is a **footer**: on a TTY it is erased and redrawn in place after every
+keypress, so exactly one copy sits under the transcript (the `Expected:` line
+rides in the same block). Piped/redirected output is never erased — it stays
+append-only. Keys the bar does **not** offer are refused inline
+(`⚠️  [v] isn't available on this step.`) instead of falling through to the
+completion branch, where a single character would otherwise mark the step done
+with that letter as the operator's note. Typed sentences are still notes.
+
 Per manual/sidecar step:
 - `[n]` note — free-text annotation
 - `[e]` evidence — capture pane output / attach file / paste text
 - `[x]` remove evidence — only shown once evidence exists
-- `[v]` verify — run `step.expect` against captured pane output
+- `[v]` verify — run `step.expect` against captured pane output; only offered when the step has `expect` **and** a capture is attached (nothing to assert against otherwise). While unavailable, the `Expected:` line carries the reason (`(press [t] to attach a pane, then verify)` in sidecar, `(verify needs an attached capture)` elsewhere)
 - `[t]` attach pane — (sidecar) attach/swap a tmux capture backend mid-run
 - `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command (or a `script:`, whose `bash <path>` invocation is pasted) and a pane is attached. Re-run during verify = `[p]` then `[v]`. Before pasting, CRLF/CR becomes LF and trailing newlines are stripped (tmux LF→CR would otherwise turn a stray `\r` into a blank line that breaks `\` continuations). Multi-line commands first ask `Paste it? [y / Enter=cancel]`, because shells without bracketed paste (sh/dash) run each line as it arrives
 - Step headings read `[Step 10.2 · 34/46]`: the single-env manual number (`generate manual --env`, dotted sub-steps) plus the flat run position (the number `[b]`/`[j]`/`--from-step` use), followed by `Section :` (the parent) and `Next : … (N remaining)` lines

@@ -1,0 +1,16 @@
+name: No Expect Step
+version: 1.0.0
+description: |
+  A single manual step with neither `command` nor `expect`, so the action bar
+  offers no [c] copy and no [v] verify. Used to prove that an action key the
+  bar does NOT offer is rejected instead of falling through to the completion
+  branch, where it would silently complete the step with the key recorded as
+  the operator's note.
+
+environments:
+  - name: default
+
+steps:
+  - name: Read the dashboard
+    type: manual
+    instruction: Confirm every panel on the rollout dashboard is green.

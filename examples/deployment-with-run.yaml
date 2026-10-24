@@ -20,7 +20,19 @@ description: |
     [x] remove evidence — shown once evidence exists for the step; pick a
                    captured item to delete (and remove its on-disk copy)
     [v] verify   — check the step's `expect` against captured pane output
-                   (this is what makes "Verify rollout"'s `expect` actually run)
+                   (this is what makes "Verify rollout"'s `expect` actually run).
+                   Offered only once a pane is attached — with nothing to read,
+                   the `Expected:` line tells you to press [t] first.
+
+  The action bar is a FOOTER: on a terminal it is erased and redrawn in place
+  after every keypress, so one copy stays pinned under your output instead of a
+  new copy scrolling down the screen after each action. The `Expected:` criteria
+  sit in the same block, directly above the keys.
+
+  Only the keys ON the bar are live. Pressing one it doesn't offer (e.g. [v] on
+  a step with no `expect`) is refused with a one-line warning — single keys fire
+  without Enter, so otherwise the letter would be taken as your completion note
+  and mark the step done. Typed sentences are still notes.
 
 # ─── Named tmux sessions ───────────────────────────────────────────────────────
 # SAMARITAN bootstraps one tmux pane per session. SSH sessions open automatically.

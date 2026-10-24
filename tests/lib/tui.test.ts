@@ -10,6 +10,8 @@ import {
 } from '../../src/lib/event-logger';
 import { SessionState } from '../../src/lib/session-state';
 import {
+  countRenderedRows,
+  eraseRenderedBlock,
   getTerminalSize,
   interpolateExpect,
   renderAssertOutcome,
@@ -147,6 +149,66 @@ describe('renderKeyHints', () => {
   it('starts with two-space indent', () => {
     const out = stripAnsi(renderKeyHints([{ key: 'x', label: 'foo' }]));
     assert.ok(out.startsWith('  '), 'starts with two spaces');
+  });
+});
+
+describe('countRenderedRows', () => {
+  it('counts one row per line when nothing wraps', () => {
+    assert.strictEqual(countRenderedRows('a\nb\nc', 80), 3);
+  });
+
+  it('counts a leading blank line as its own row', () => {
+    assert.strictEqual(countRenderedRows('\n  keys', 80), 2);
+  });
+
+  it('counts wrapped rows for a line wider than the terminal', () => {
+    assert.strictEqual(countRenderedRows('x'.repeat(25), 10), 3);
+  });
+
+  it('does not wrap a line that exactly fills the terminal width', () => {
+    assert.strictEqual(countRenderedRows('x'.repeat(10), 10), 1);
+  });
+
+  it('ignores ANSI styling when measuring width', () => {
+    const styled = `\x1b[1mx\x1b[0m`.repeat(10);
+    assert.strictEqual(
+      countRenderedRows(styled, 10),
+      1,
+      'escape bytes must not count toward the wrap width',
+    );
+  });
+
+  it('treats a non-finite width as unbounded (no wrapping)', () => {
+    assert.strictEqual(
+      countRenderedRows('x'.repeat(500), Number.POSITIVE_INFINITY),
+      1,
+    );
+  });
+});
+
+describe('eraseRenderedBlock', () => {
+  it('moves the cursor up by the rendered row count and clears to end of screen', () => {
+    assert.strictEqual(eraseRenderedBlock('a\nb\nc', 80), '\x1b[3A\x1b[0J');
+  });
+
+  it('accounts for wrapped rows', () => {
+    assert.strictEqual(
+      eraseRenderedBlock('x'.repeat(25), 10),
+      '\x1b[3A\x1b[0J',
+    );
+  });
+
+  it('still erases at an unknown width, assuming no wrapping', () => {
+    // A pty opened without a winsize reports no columns; the footer must still
+    // be torn down rather than silently accumulating.
+    assert.strictEqual(
+      eraseRenderedBlock('a\nb', Number.POSITIVE_INFINITY),
+      '\x1b[2A\x1b[0J',
+    );
+  });
+
+  it('returns nothing for empty text', () => {
+    assert.strictEqual(eraseRenderedBlock('', 80), '');
   });
 });
 
