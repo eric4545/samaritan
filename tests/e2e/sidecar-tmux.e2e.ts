@@ -105,6 +105,10 @@ describe('sidecar e2e (real tmux)', () => {
         // line at all proves ${TOKEN} resolved to E2E_DEPLOY_OK.
         await d.waitFor('Deploy App', { timeoutMs: 40_000 });
         await d.waitFor('echo "deploy E2E_DEPLOY_OK"', { timeoutMs: 15_000 });
+        // The capture offset is baselined AFTER the command box renders; the
+        // action bar prints after it. Output typed before the bar can land
+        // before the baseline and [v] then sees nothing.
+        await d.waitFor('v verify', { timeoutMs: 15_000 });
 
         // Operator runs the command in the work pane, then verify.
         d.type('echo "deploy E2E_DEPLOY_OK"', d.work);
@@ -122,7 +126,10 @@ describe('sidecar e2e (real tmux)', () => {
 
         // Complete step 1 → advance to step 2.
         d.enter();
-        await d.waitFor('Verify Health', { timeoutMs: 15_000 });
+        // NOT 'Verify Health': step 1's 'Next : Verify Health' line already
+        // shows it. Wait for step 2's own action bar ('b back' is never on
+        // step 1), which prints after the step-2 capture baseline.
+        await d.waitFor('b back', { timeoutMs: 15_000 });
         d.type('echo "health E2E_HEALTH_OK"', d.work);
         await d.waitFor('E2E_HEALTH_OK', { pane: d.work, timeoutMs: 15_000 });
         d.key('v');
