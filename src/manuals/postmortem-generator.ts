@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { escapeTableText } from '../lib/markdown-table';
 import type {
   ActionItem,
   Postmortem,
@@ -216,9 +217,9 @@ export function generatePostmortemMarkdown(
 function renderTimelineRow(entry: TimelineEntry): string {
   const icon = timelineKindIcon(entry.kind);
   const time = formatPostmortemTs(entry.at);
-  const event = `${icon} ${entry.event}`.replace(/\|/g, '\\|');
-  const who = (entry.by ?? '').replace(/\|/g, '\\|');
-  const ref = (entry.ref ?? '').replace(/\|/g, '\\|');
+  const event = escapeTableText(`${icon} ${entry.event}`);
+  const who = escapeTableText(entry.by ?? '');
+  const ref = escapeTableText(entry.ref ?? '');
   return `| ${time} | ${event} | ${who} | ${ref} |`;
 }
 
@@ -233,7 +234,7 @@ function renderActionRow(item: ActionItem): string {
     item.type ?? '',
     item.ticket ?? '',
     item.due ?? '',
-  ].map((c) => c.replace(/\|/g, '\\|'));
+  ].map(escapeTableText);
   return `| ${cells.join(' | ')} |`;
 }
 

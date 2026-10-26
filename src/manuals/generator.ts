@@ -15,6 +15,11 @@ import {
   type EffectiveRollbackStep,
 } from '../lib/global-rollback';
 import { indexToLetters } from '../lib/letter-sequence';
+import {
+  escapeTableCodePipes,
+  escapeTableText,
+  tableCodeSpan,
+} from '../lib/markdown-table';
 import { groupByPhase } from '../lib/phase-grouping';
 import {
   filterRollbackStepsForEnvironment,
@@ -251,9 +256,10 @@ function formatEvidenceInfo(
               const filePath = path.resolve(operationDir, evidenceResult.file);
               const fileContent = fs.readFileSync(filePath, 'utf-8');
               const language = evidenceLang(evidenceResult.type);
-              const escapedContent = fileContent
-                .replace(/\|/g, '\\|')
-                .replace(/\n/g, '<br>');
+              const escapedContent = escapeTableCodePipes(fileContent).replace(
+                /\n/g,
+                '<br>',
+              );
               result += `<br>\`\`\`${language}<br>${escapedContent}<br>\`\`\``;
             } catch (_error) {
               // Fallback to link if file can't be read
@@ -275,9 +281,9 @@ function formatEvidenceInfo(
           // Inline content - render in code block
           const language = evidenceLang(evidenceResult.type);
           // Escape pipe characters and convert newlines
-          const escapedContent = evidenceResult.content
-            .replace(/\|/g, '\\|')
-            .replace(/\n/g, '<br>');
+          const escapedContent = escapeTableCodePipes(
+            evidenceResult.content,
+          ).replace(/\n/g, '<br>');
           result += `<br>\`\`\`${language}<br>${escapedContent}<br>\`\`\``;
         }
       }
@@ -426,7 +432,7 @@ function renderTableInstruction(
     resolveVariables && substituteVarsEnabled
       ? substituteVariables(instruction, envVars || {}, stepVars)
       : instruction;
-  return `**Instructions:**<br>${display.trim().replace(/\|/g, '\\|').replace(/\n/g, '<br>')}`;
+  return `**Instructions:**<br>${escapeTableText(display.trim()).replace(/\n/g, '<br>')}`;
 }
 
 /**
@@ -488,19 +494,17 @@ function renderRollbackCellMarkdown(
         stepVariables,
       );
     }
-    const cleanCommand = displayCommand
-      .trim()
-      .replace(/\n/g, '<br>')
-      .replace(/\|/g, '\\|')
-      .replace(/`/g, '\\`')
-      .replace(/<br>$/, '');
+    // Code span with pipes escaped for the table (backticks get a longer fence)
+    const commandSpan = tableCodeSpan(
+      displayCommand.trim().replace(/\n/g, '<br>'),
+    );
 
     if (showCommandSeparately && rb.instruction) {
-      cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+      cellContent += `<br><br>**Command:**<br>${commandSpan}`;
     } else if (!rb.instruction) {
-      cellContent += `\`${cleanCommand}\``;
+      cellContent += commandSpan;
     } else {
-      cellContent += `<br><br>\`${cleanCommand}\``;
+      cellContent += `<br><br>${commandSpan}`;
     }
   }
 
@@ -511,11 +515,9 @@ function renderRollbackCellMarkdown(
     if (operationDir) {
       try {
         const scriptPath = path.resolve(operationDir, rb.script);
-        const scriptContent = fs
-          .readFileSync(scriptPath, 'utf-8')
-          .trimEnd()
-          .replace(/\|/g, '\\|')
-          .replace(/\n/g, '<br>');
+        const scriptContent = escapeTableCodePipes(
+          fs.readFileSync(scriptPath, 'utf-8').trimEnd(),
+        ).replace(/\n/g, '<br>');
         cellContent += `<br>\`\`\`bash<br>${scriptContent}<br>\`\`\``;
       } catch {
         cellContent += ` <em>(file not found)</em>`;
@@ -772,22 +774,20 @@ function generateStepRow(
       }
 
       // Wrap in backticks and escape special characters
-      const cleanCommand = displayCommand
-        .trim()
-        .replace(/\n/g, '<br>')
-        .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
-        .replace(/`/g, '\\`')
-        .replace(/<br>$/, ''); // Remove trailing <br> tag
+      // Code span with pipes escaped for the table (backticks get a longer fence)
+      const commandSpan = tableCodeSpan(
+        displayCommand.trim().replace(/\n/g, '<br>'),
+      );
 
       if (showCommandSeparately && effectiveStep.instruction) {
         // Show command separately with label
-        cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+        cellContent += `<br><br>**Command:**<br>${commandSpan}`;
       } else if (!effectiveStep.instruction) {
         // No instruction, just show command
-        cellContent += `\`${cleanCommand}\``;
+        cellContent += commandSpan;
       } else {
         // Both present, inline mode
-        cellContent += `<br><br>\`${cleanCommand}\``;
+        cellContent += `<br><br>${commandSpan}`;
       }
     }
 
@@ -798,11 +798,9 @@ function generateStepRow(
       if (operationDir) {
         try {
           const scriptPath = path.resolve(operationDir, effectiveStep.script);
-          const scriptContent = fs
-            .readFileSync(scriptPath, 'utf-8')
-            .trimEnd()
-            .replace(/\|/g, '\\|')
-            .replace(/\n/g, '<br>');
+          const scriptContent = escapeTableCodePipes(
+            fs.readFileSync(scriptPath, 'utf-8').trimEnd(),
+          ).replace(/\n/g, '<br>');
           cellContent += `<br>\`\`\`bash<br>${scriptContent}<br>\`\`\``;
         } catch {
           cellContent += ` <em>(file not found)</em>`;
@@ -1097,22 +1095,20 @@ function generateSubStepRow(
       }
 
       // Wrap in backticks and escape special characters
-      const cleanCommand = displayCommand
-        .trim()
-        .replace(/\n/g, '<br>')
-        .replace(/\|/g, '\\|') // Escape pipes to prevent table breakage
-        .replace(/`/g, '\\`')
-        .replace(/<br>$/, ''); // Remove trailing <br> tag
+      // Code span with pipes escaped for the table (backticks get a longer fence)
+      const commandSpan = tableCodeSpan(
+        displayCommand.trim().replace(/\n/g, '<br>'),
+      );
 
       if (showCommandSeparately && effectiveStep.instruction) {
         // Show command separately with label
-        cellContent += `<br><br>**Command:**<br>\`${cleanCommand}\``;
+        cellContent += `<br><br>**Command:**<br>${commandSpan}`;
       } else if (!effectiveStep.instruction) {
         // No instruction, just show command
-        cellContent += `\`${cleanCommand}\``;
+        cellContent += commandSpan;
       } else {
         // Both present, inline mode
-        cellContent += `<br><br>\`${cleanCommand}\``;
+        cellContent += `<br><br>${commandSpan}`;
       }
     }
 
@@ -1123,11 +1119,9 @@ function generateSubStepRow(
       if (operationDir) {
         try {
           const scriptPath = path.resolve(operationDir, effectiveStep.script);
-          const scriptContent = fs
-            .readFileSync(scriptPath, 'utf-8')
-            .trimEnd()
-            .replace(/\|/g, '\\|')
-            .replace(/\n/g, '<br>');
+          const scriptContent = escapeTableCodePipes(
+            fs.readFileSync(scriptPath, 'utf-8').trimEnd(),
+          ).replace(/\n/g, '<br>');
           cellContent += `<br>\`\`\`bash<br>${scriptContent}<br>\`\`\``;
         } catch {
           cellContent += ` <em>(file not found)</em>`;
@@ -1436,7 +1430,7 @@ function generateOverviewSection(overview: Record<string, any>): string {
     }
 
     // Escape pipes in value to prevent table breakage
-    formattedValue = formattedValue.replace(/\|/g, '\\|');
+    formattedValue = escapeTableText(formattedValue);
 
     markdown += `| ${key} | ${formattedValue} |\n`;
   });

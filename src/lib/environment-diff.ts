@@ -1,4 +1,5 @@
 import type { Operation, Step } from '../models/operation';
+import { escapeTableText } from './markdown-table';
 import {
   mergeStepVariant,
   shouldRenderStepForEnvironment,
@@ -253,8 +254,8 @@ export function formatDiffAsMarkdown(report: EnvironmentDiffReport): string {
       lines.push(`| Field | ${report.envA} | ${report.envB} |`);
       lines.push('|---|---|---|');
       for (const fieldDiff of entry.fieldDiffs) {
-        const valueA = formatValue(fieldDiff.valueA).replace(/\|/g, '\\|');
-        const valueB = formatValue(fieldDiff.valueB).replace(/\|/g, '\\|');
+        const valueA = escapeTableText(formatValue(fieldDiff.valueA));
+        const valueB = escapeTableText(formatValue(fieldDiff.valueB));
         lines.push(`| ${fieldDiff.field} | ${valueA} | ${valueB} |`);
       }
     }
