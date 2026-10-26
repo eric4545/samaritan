@@ -34,13 +34,19 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 | No sessions, no `--attach` | Prompt-only mode; `[v]` will indicate that you need `[t]` to attach a pane first |
 
 **Caveats:**
-- `--attach` mode uses a **single capture target** for all steps. Per-step `session:` routing is ignored; all capture reads come from the attached pane.
-- `tmux pipe-pane` replaces any existing pipe on that pane when attaching.
+- `--attach` mode uses a **single capture target** for all steps. It takes precedence over `sessions:`: the named sessions are **not** spawned, per-step `session:` routing is ignored, and every step's `[v]`/`[p]` uses the attached pane. Samaritan prints a one-line notice when the operation declares `sessions:`. Press `[t]` to point a step at a different pane (the new pane is used from then on). `resume` keeps the same precedence: it re-attaches the saved pane and does not spawn `sessions:`. To get one pane per named session, run without `--attach` and samaritan spawns them.
+- tmux allows **one** `pipe-pane` per pane, so attaching replaces any existing pipe on it. Run one samaritan per pane. If a second run attaches to the same pane anyway:
+  - it warns at attach (`This pane was captured by samaritan session <id> (pid N)`)
+  - the first run notices at its next step or `[v]`/`[e]`, prints `Capture pipe on … was taken over by …`, and re-attaches
+  - a verify whose pipe missed part of the step reads the pane scrollback from the last run of the command instead of reporting `missing:` for output that is on screen
+  - a run only closes the pipe on exit while it still owns it, so one run exiting never cuts the other's capture
+- `[v]` with nothing captured since the step began prints a hint to run the command in the pane first.
 - `samaritan` **never kills** your session on exit — only the temporary capture pipe and temp file are cleaned up.
 
 **Step display in sidecar:**
 - `type: automatic` steps: Command is displayed prominently; the `command_displayed` event is written to the audit log (not `command_sent`). The report renders it as `**Command (run by operator)**`.
 - `type: manual` steps: Same prompt loop as always.
+- Each step is resolved with its `variants.<env>` overrides before it is shown, so the command, instruction, `[p]` paste and `[v]` verify match `generate manual --env <env>` exactly.
 - **Script-only steps** (`script:` with no inline `command`): the run loop shows `Script: <path>`, embeds the script file's content, and displays the `bash <path>` invocation to run. `[c] copy` and `[p] send to pane` operate on that `bash <path>` invocation.
 - Both types offer `[v] verify` (when `expect` is defined), `[t] attach pane`, and `[p] send to pane` (when the step has a command **or a `script`** and a pane is attached).
 
@@ -83,7 +89,11 @@ Each step heading uses the **same number as the single-environment manual** (`ge
 | `manual` | `✋ Mark done` | `Enter`/notes=confirm, `n`=note, `e`=evidence, `v`=verify, `t`=attach (sidecar), `p`=send to pane (sidecar), `b`=back, `j`=jump, `r`=rollback, `g`=global rollback, `s`=skip, `q`/`abort`=quit |
 | `approval` | `⚡ approve/reject` | `approve`, `reject`, `r`=rollback, `g`=global rollback, `skip` |
 
-`g`=global rollback is only offered when the operation declares a top-level `rollback:` block. It runs the consolidated recovery (see [Group per-step rollbacks into the global rollback](#group-per-step-rollbacks-into-the-global-rollback-aggregate_step_rollbacks)) and then aborts.
+`g`=global rollback is only offered when the operation declares a top-level `rollback:` block. It runs the consolidated recovery (see [Group per-step rollbacks into the global rollback](./rollback.md#group-per-step-rollbacks-into-the-global-rollback-aggregate_step_rollbacks)) and then aborts.
+
+After the last step, when anything can be rolled back, the run shows **All steps done** with `↵ finish · r roll back a step · g global rollback`, so finishing the final step never takes rollback away.
+
+A multi-line `[p]` paste asks `Paste it? [y / n=cancel]`, and the global-rollback confirmation asks `[y/N]`. On a TTY both are answered with a single key, without Enter.
 
 Before each step, samaritan prints `Expected: <criteria>` up front (e.g. `Expected: contains: Running, does not contain: CrashLoopBackOff`) so you know what `[v]` will check before you run anything.
 
@@ -157,10 +167,10 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 - **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's captured evidence (type, description, and stored path), lets you pick one by number to delete, removes it from the session record, and — for file/screenshot/video evidence copied into the session's evidence directory — deletes the copy from disk too (your original source file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event, and the `--report` Markdown omits removed items entirely.
 - **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutputDetailed`/`interpolateExpect` machinery `automatic` steps use), evaluating **every** check (not just the first failure) and rendering the PASS/FAIL checklist + highlighted, line-numbered output described in [Verify output: checklist, highlighting, and the line-number gutter](#verify-output-checklist-highlighting-and-the-line-number-gutter) — and, on failure, the override/rollback/`[m]` more/`[v]` re-verify/stop prompt. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
   - **Auto-capture on pass (closes the `expect` ↔ `evidence` loop):** the first time a step's `[v]` verify **passes**, the verified pane output is automatically saved as a `command_output` evidence item (marked `automatic`/`validated`, `source: verify`) — so the output you checked also becomes the output recorded in the session and `--report`. The evidence is captured from the pane's **rendered screen** (`tmux capture-pane -p -J`), so it reads as clean text in the report instead of the raw terminal byte stream (no ANSI/cursor-move/redraw noise). Re-pressing `[v]` won't record duplicates. `evidence` (the record) and `expect` (the check) stay separate concepts; this just records what you verified.
-- **`[r]` rollback** — runs *this step's* `rollback` (sends each command via tmux, or lists them when there's no session) and stays on the step. If this step has **no rollback**, it offers the **nearest upstream** step's rollback instead — following the `needs` chain if present, otherwise scanning earlier steps in document order (only completed steps are offered).
-- **`[g]` global rollback** — only offered when the operation declares a top-level `rollback:` block. Previews the **consolidated** recovery — the explicit `rollback.steps` plus, when `aggregate_step_rollbacks` is on, every **completed** step's own rollback in reverse order (ordered by reverse-topological order when `needs` are present) — asks for confirmation, runs it, then aborts the operation (the session stays resumable). Use it when a failure means abandoning forward progress and unwinding what's been done so far.
+- **`[r]` rollback** — runs *this step's* `rollback` and stays on the step. In sidecar/manual runs it is operator-driven: each `${VAR}`-resolved command is shown, `[p]` pastes it into the attached pane, `[v]` verifies its `expect`, `↵` confirms you ran it (see [Running a rollback](./rollback.md#running-a-rollback)); a non-sidecar run with spawn-own sessions sends it via tmux. If this step has **no rollback**, it offers the **nearest upstream** step's rollback instead — following the `needs` chain if present, otherwise scanning earlier steps in document order (only completed steps are offered).
+- **`[g]` global rollback** — only offered when the operation declares a top-level `rollback:` block. Previews the **consolidated** recovery — the explicit `rollback.steps` plus, when `aggregate_step_rollbacks` is on, every **completed** step's own rollback in reverse order (ordered by reverse-topological order when `needs` are present) — asks for a single-key `y` confirmation, runs it the same way as `[r]`, then aborts the operation (the session stays resumable). Use it when a failure means abandoning forward progress and unwinding what's been done so far.
 - **Forward gating (`needs`)** — before starting a step whose `needs` aren't all completed (e.g. a dependency was skipped by `[j]` jump or `--from-step`), the run loop warns (`⚠️ This step needs: …`) and prompts `Start anyway? [y=proceed / Enter=go back]`. `y` proceeds and records a `needs_override` audit event; Enter rewinds to the first unmet dependency. A **skipped** dependency counts as unmet.
-- **`[p]` send to pane** (sidecar only) — **pastes** the step's `${VAR}`-resolved command into the attached tmux pane **without** pressing Enter, so you review it at your own prompt and run it yourself. The command is delivered via a tmux paste buffer with **bracketed paste** (`paste-buffer -p`), so a multi-line command (e.g. a heredoc script) lands as **one atomic block** at your prompt and does **not** execute line-by-line — you press Enter once yourself to run it. Only offered when the step has a command and a pane is attached (a spawn-own `sessions:` pane, or one attached via `[t]`/`--attach`); with nothing attached it tells you to `[t]` attach first. Before pasting, line endings are normalized: CRLF or a lone CR becomes LF, and trailing newlines are stripped. tmux rewrites every LF to CR when it pastes. A stray `\r`, for example from a CRLF variable value, would therefore reach the shell as a blank line after each `\` continuation and split the block into separate commands. A trailing newline would act as Enter in a shell without bracketed paste. **Multi-line commands ask `Paste it? [y / Enter=cancel]` first.** They land as one un-run block only when the pane's shell supports bracketed paste (bash ≥ 4.4, zsh ≥ 5.1). In `sh`/`dash`, or with bracketed paste turned off, each line runs as it arrives, and tmux can't report which mode the pane is in. In bash, an empty row after a line that exactly fills the pane width is a readline redraw artifact. The pasted bytes are unchanged. To re-run a command during verify, just press `[p]` again, then `[v]`. Logged as a `user_input`/`send_to_pane` breadcrumb in the JSONL audit log — sidecar still never executes anything on your behalf.
+- **`[p]` send to pane** (sidecar only) — **pastes** the step's `${VAR}`-resolved command into the attached tmux pane **without** pressing Enter, so you review it at your own prompt and run it yourself. The command is delivered via a tmux paste buffer with **bracketed paste** (`paste-buffer -p`), so a multi-line command (e.g. a heredoc script) lands as **one atomic block** at your prompt and does **not** execute line-by-line — you press Enter once yourself to run it. Only offered when the step has a command and a pane is attached (a spawn-own `sessions:` pane, or one attached via `[t]`/`--attach`); with nothing attached it tells you to `[t]` attach first. Before pasting, line endings are normalized: CRLF or a lone CR becomes LF, and trailing newlines are stripped. tmux rewrites every LF to CR when it pastes. A stray `\r`, for example from a CRLF variable value, would therefore reach the shell as a blank line after each `\` continuation and split the block into separate commands. A trailing newline would act as Enter in a shell without bracketed paste. **Multi-line commands ask `Paste it? [y / n=cancel]` first (a single key on a TTY).** They land as one un-run block only when the pane's shell supports bracketed paste (bash ≥ 4.4, zsh ≥ 5.1). In `sh`/`dash`, or with bracketed paste turned off, each line runs as it arrives, and tmux can't report which mode the pane is in. In bash, an empty row after a line that exactly fills the pane width is a readline redraw artifact. The pasted bytes are unchanged. To re-run a command during verify, just press `[p]` again, then `[v]`. Logged as a `user_input`/`send_to_pane` breadcrumb in the JSONL audit log — sidecar still never executes anything on your behalf.
 - **`[b]` back** — go back to an earlier, already-processed step to re-run it (e.g. an external dependency was fixed and you want to retry from there). Shows a numbered picker of the prior steps; the chosen step **and every step after it** are reset to pending and execution resumes from there. The append-only JSONL audit log keeps the full history of the earlier attempt, and the rewound step index is persisted so `resume` stays consistent. Not offered on the first step.
 - **`[j]` jump** — jump **forward** to a later step (e.g. steps 3–5 are irrelevant this run and you want to go straight to step 6). Shows a numbered picker of the steps after the current one; the current step and every step up to (but not including) the target are recorded as **skipped** (⏭) in the run report, and execution resumes at the target. The append-only JSONL audit log keeps the full history. Not offered on the last step. To start a fresh run partway through instead, use `run --from-step <N>` (see below).
 
@@ -237,9 +247,11 @@ samaritan resume <session-id>
 # Or jump to a specific step
 samaritan resume <session-id> --from-step 4
 
-# Resume with capture from one of your own panes (sidecar), like run --attach
-samaritan resume <session-id> --attach mysession:0.0
+# Sidecar: capture from a different pane than the one the run used
+samaritan resume <session-id> --attach work:0.1
 ```
+
+**Sidecar resume re-attaches your pane.** The pane a sidecar run captures from (`--attach` or `[t]`) is saved on the session as tmux's stable pane id (`%3`), so `resume` re-attaches it automatically (`🔗 Re-attached capture to tmux pane: %3`) and `[v]` keeps working. The id is used, not a positional target like `work:0.0`: when a pane closes, tmux renumbers the window, and `work:0.0` could then point at a different pane, even samaritan's own. If the saved pane no longer exists, `resume` warns (`Saved tmux pane "%3" no longer exists — press [t] …`). `--attach` overrides the saved pane. Samaritan also refuses to attach to the pane it is running in.
 
 Quitting a run with `q`, `abort`, or **`Ctrl+C`** stops execution but **saves the session as paused**, prints the resume command, and keeps it listed in `samaritan sessions` — so you can stop mid-operation and pick it back up later. (`Ctrl+C` no longer hard-quits without saving — it now unwinds through the same save path as `abort`.) Resume restores variables, execution mode, and the current step index, then re-enters the interactive loop.
 
@@ -409,6 +421,20 @@ verify:
 | `numeric_gte: 80` | first number in output ≥ value |
 | `jsonpath: "$.status" equals: "ok"` | JSONPath expression equals value |
 | `equals_captured: VAR` | output equals a previously captured variable |
+
+> **Variables in `expect`**: only `${VAR}` operation variables (`variables:`,
+> `common_variables:`, `--var`) resolve in `expect`. A bare shell variable such
+> as `contains: $USER` is **compared literally** — the shell that expanded
+> `$USER` in your command never sees `expect`, and samaritan does not read its
+> own environment (an SSH pane's `$USER` would differ). `samaritan validate`
+> warns (`expect-lint:`) about every such `$NAME`, and a failing `[v]` prints a
+> hint. Use `${USER}` with a variable you define, or a literal value.
+
+> **Shell prompt**: in sidecar capture, the prompt the shell prints after the
+> output (`user@host:~$ `) is stripped before checks run, so `line_count`,
+> `all_lines_match`, `equals` and friends see only the command's output. With
+> an attached pane the pane's current prompt line is removed exactly;
+> otherwise an unterminated last line ending in `$ # % > ❯ ➜ » λ` is dropped.
 
 > **Regex semantics**: `matches`, `all_lines_match`, `any_line_matches`, and
 > `no_line_matches` compile with Node's `new RegExp(pattern)` using **default

@@ -165,6 +165,11 @@ match (anchor with `^...$` for full-line). `samaritan validate` regex-lints
 these: uncompilable patterns are errors, ReDoS-prone ones are warnings
 (errors under `--strict`).
 
+Only `${VAR}` operation variables resolve in `expect` — a bare `$USER` is
+compared as the literal text `$USER` (validate warns `expect-lint:`). In a
+sidecar capture the trailing shell prompt is stripped before checks, so
+`line_count`/`all_lines_match`/`equals` see only the command's output.
+
 ## Templates (DRY reuse)
 
 ```yaml

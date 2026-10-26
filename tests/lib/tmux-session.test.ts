@@ -1,18 +1,22 @@
 import assert from 'node:assert';
-import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { existsSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 import {
   buildPasteBufferArgs,
+  capturePaneCursorLine,
   DEFAULT_TMUX_SESSION_TEMPLATE,
   isLocalSession,
   isMultiLinePaste,
   listTmuxPanes,
   listUnresolvedTmuxSessionVars,
   normalizePasteText,
+  paneOwnerFile,
   parseTmuxPaneList,
   parseWindowPanes,
+  readPaneOwner,
   resolveTmuxSessionName,
   sanitizeSessionName,
   TmuxPaneCapture,
@@ -584,5 +588,134 @@ describe('TmuxSession ownership (reuse of an existing tmux session)', () => {
   it('with no panes registered at all, paneFor keeps the legacy :0.0 target', () => {
     const session = new TmuxSession('own-4', 'samaritan-own-4');
     assert.strictEqual(session.paneFor('x'), 'samaritan-own-4:0.0');
+  });
+});
+
+describe('capturePaneCursorLine', () => {
+  const hasTmux =
+    process.platform !== 'win32' &&
+    spawnSync('tmux', ['-V'], { encoding: 'utf8' }).status === 0;
+
+  it('returns undefined for a pane that does not exist', () => {
+    assert.strictEqual(
+      capturePaneCursorLine('samaritan-no-such-session-xyz:0.0'),
+      undefined,
+    );
+  });
+
+  it(
+    'returns the shell prompt line of a live pane',
+    { skip: !hasTmux },
+    async () => {
+      const session = `sam-cursor-${process.pid}-${Date.now()}`;
+      spawnSync('tmux', [
+        'new-session',
+        '-d',
+        '-s',
+        session,
+        'env PS1="CURSOR_PROMPT\\$ " bash --norc --noprofile',
+      ]);
+      try {
+        let line: string | undefined;
+        for (let i = 0; i < 30; i++) {
+          line = capturePaneCursorLine(`${session}:0.0`);
+          if (line?.includes('CURSOR_PROMPT')) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        assert.strictEqual(line?.trimEnd(), 'CURSOR_PROMPT$');
+      } finally {
+        spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
+      }
+    },
+  );
+});
+
+describe('TmuxPaneCapture — one pipe-pane per pane (ownership)', () => {
+  const hasTmux =
+    process.platform !== 'win32' &&
+    spawnSync('tmux', ['-V'], { encoding: 'utf8' }).status === 0;
+
+  const pipeOn = (target: string): string =>
+    spawnSync('tmux', ['display-message', '-p', '-t', target, '#{pane_pipe}'], {
+      encoding: 'utf8',
+    }).stdout.trim();
+
+  it('ensureCapture reports unavailable when the pane does not exist', () => {
+    const cap = new TmuxPaneCapture('own-missing', 'samaritan-no-such-xyz:0.0');
+    assert.deepStrictEqual(cap.ensureCapture('default'), {
+      status: 'unavailable',
+    });
+  });
+
+  it(
+    'detects a takeover, re-attaches, and never closes another run’s pipe',
+    { skip: !hasTmux },
+    () => {
+      const session = `sam-own-${process.pid}-${Date.now()}`;
+      const target = `${session}:0.0`;
+      spawnSync('tmux', ['new-session', '-d', '-s', session]);
+      // Markers are keyed by tmux server socket + pane id (pane ids restart
+      // at %0 on every server, so the id alone collides across servers).
+      const paneId = spawnSync(
+        'tmux',
+        ['display-message', '-p', '-t', target, '#{socket_path}#{pane_id}'],
+        { encoding: 'utf8' },
+      ).stdout.trim();
+      const a = new TmuxPaneCapture(`own-a-${process.pid}`, target);
+      const b = new TmuxPaneCapture(`own-b-${process.pid}`, target);
+      try {
+        assert.deepStrictEqual(
+          a.attach(),
+          {},
+          'first attach: no previous owner',
+        );
+        assert.deepStrictEqual(a.ensureCapture('default'), { status: 'ok' });
+
+        const { previousOwner } = b.attach();
+        assert.strictEqual(previousOwner?.captureId, `own-a-${process.pid}`);
+        assert.strictEqual(
+          readPaneOwner(paneId)?.captureId,
+          `own-b-${process.pid}`,
+        );
+
+        const check = a.ensureCapture('default');
+        assert.strictEqual(check.status, 'reattached');
+        assert.strictEqual(
+          check.status === 'reattached' ? check.takenBy?.captureId : undefined,
+          `own-b-${process.pid}`,
+        );
+        assert.strictEqual(
+          readPaneOwner(paneId)?.captureId,
+          `own-a-${process.pid}`,
+        );
+
+        // B no longer owns the pane: its teardown must leave A's pipe running.
+        b.teardown();
+        assert.strictEqual(pipeOn(target), '1');
+        assert.ok(existsSync(paneOwnerFile(paneId)));
+
+        // A pipe closed behind our back (pipe-pane with no command) is repaired.
+        spawnSync('tmux', ['pipe-pane', '-t', target]);
+        assert.deepStrictEqual(a.ensureCapture('default'), {
+          status: 'reattached',
+        });
+        assert.strictEqual(pipeOn(target), '1');
+
+        a.teardown();
+        assert.strictEqual(pipeOn(target), '0', 'owner closes its own pipe');
+        assert.ok(!existsSync(paneOwnerFile(paneId)), 'owner marker removed');
+      } finally {
+        spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
+      }
+    },
+  );
+
+  it('keeps owner markers in a private per-user dir, never the shared temp dir', () => {
+    const file = paneOwnerFile('/tmp/tmux-0/default#%0');
+    assert.ok(file.startsWith(join(homedir(), '.samaritan', 'panes')), file);
+    assert.ok(!file.startsWith(tmpdir()), file);
+    if (process.platform !== 'win32') {
+      assert.strictEqual(statSync(dirname(file)).mode & 0o777, 0o700);
+    }
   });
 });

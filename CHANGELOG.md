@@ -50,7 +50,6 @@ All notable changes to this project are documented here. This project follows
 - **`run.default_session`** — the `sessions:` key for steps and rollback steps
   with no `session:`, so `[p]` and `[v]` work for them. Run-time only;
   manuals are unchanged. `validate` errors when it names an undeclared session.
-- **`resume --attach <tmux-target>`** — same as `run --attach`.
 
 ### Fixed
 

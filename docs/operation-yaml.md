@@ -523,6 +523,8 @@ steps:
 
 Fields you can override in `variants`: `instruction`, `command`, `timeout`, `pic`, `reviewer`, `evidence`.
 
+Variants apply everywhere an environment is chosen: `generate manual --env`, `run --env` (the command shown, pasted with `[p]`, and verified with `[v]`), `run --mock`, and `diff`.
+
 See `tests/fixtures/operations/features/when-and-variants.yaml` for a complete example.
 
 ## Foreach Loops (Repeatable Steps)

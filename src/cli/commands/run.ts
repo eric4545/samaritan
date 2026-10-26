@@ -19,13 +19,15 @@ import { detectMimeType } from '../../evidence/collector';
 import {
   cleanTerminalOutput,
   renderExpectDescription,
+  sliceFromLastCommandEcho,
 } from '../../lib/assertions';
 import { getBuiltinVariables } from '../../lib/builtin-variables';
-import type { CaptureBackend } from '../../lib/capture-backend';
+import type { CaptureBackend, PaneOwner } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { applyDefaultSession } from '../../lib/default-session';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
+import { findShellVarRefs } from '../../lib/expect-lint';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { generateReport, renderReport } from '../../lib/report-generator';
@@ -48,6 +50,7 @@ import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
 import { childStepLabel, describeStepPosition } from '../../lib/step-position';
 import {
   mergeStepVariables,
+  mergeStepVariant,
   shouldRenderStepForEnvironment,
   substituteExpectVars,
 } from '../../lib/step-resolution';
@@ -81,9 +84,26 @@ import type {
   ExecutionMode,
   ExpectConfig,
   Operation,
+  RollbackStep,
   Step,
 } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
+
+/** What an operator-driven rollback achieved (recorded on `rollback_complete`). */
+type RollbackStatus = 'completed' | 'partial' | 'not_executed';
+
+// Single-key answers for a y/n confirmation (fire without Enter on a TTY).
+const CONFIRM_KEYS: ReadonlySet<string> = new Set(['y', 'n']);
+// Single-key actions on the all-steps-done completion screen.
+const COMPLETION_KEYS: ReadonlySet<string> = new Set(['r', 'g']);
+// Single-key actions on an operator-driven rollback step.
+const ROLLBACK_ACTION_KEYS: ReadonlySet<string> = new Set([
+  'p',
+  'c',
+  'v',
+  's',
+  'a',
+]);
 
 // Cap free-form pasted evidence; larger payloads should be file attachments.
 const MAX_PASTED_EVIDENCE_BYTES = 10 * 1024 * 1024;
@@ -178,6 +198,10 @@ function stepHasOwnContent(step: Step): boolean {
  *  - inheritFiltered propagates a parent's filter down to its children.
  *  - A parent whose children are ALL env-filtered is ALSO marked filteredByEnv
  *    UNLESS the parent itself carries own-content fields (Issue 1 fix).
+ *
+ * Each step is resolved with `mergeStepVariant(step, targetEnv)` here, once,
+ * so everything downstream — display, `[p]`, `[v]`, evidence, rollback —
+ * sees the same `variants.<env>` overrides `generate manual --env` renders.
  */
 function flattenAndMarkForEnv(
   steps: Step[],
@@ -186,7 +210,8 @@ function flattenAndMarkForEnv(
   inheritFiltered = false,
 ): FlatStep[] {
   const result: FlatStep[] = [];
-  steps.forEach((step, i) => {
+  steps.forEach((authored, i) => {
+    const step = mergeStepVariant(authored, targetEnv);
     const label = childStepLabel(prefix, i);
     const selfFiltered =
       inheritFiltered || !shouldRenderStepForEnvironment(step, targetEnv);
@@ -588,7 +613,7 @@ class OperationRunner {
       operation,
       session.variables || {},
       resumeMode,
-      options.attach,
+      options.attach ?? session.attach_target,
     );
 
     const context = {
@@ -610,12 +635,15 @@ class OperationRunner {
 
     this.setupEventHandlers(executor, { verbose: options.verbose });
 
-    // Same capture setup as `run`: `--attach` pipes an existing pane;
-    // otherwise `sessions:` re-adopts the run's tmux session (left alive by
-    // a Ctrl+C) or brings up a fresh one under the same resolved name.
+    // Same capture setup as `run`. A sidecar run attached to the operator's
+    // pane (`--attach` / `[t]`, saved on the session) re-attaches it and never
+    // comes back on spawned `sessions:` windows; otherwise `sessions:`
+    // re-adopts the run's tmux session (left alive by a Ctrl+C) or brings up a
+    // fresh one under the same resolved name.
     const { tmuxSession, captureBackend } = await this.setupCapture({
       mode: resumeMode,
       attach: options.attach,
+      savedAttach: session.attach_target,
       operation,
       vars: context.variables,
       sessionId: session.id,
@@ -644,6 +672,7 @@ class OperationRunner {
       session.environment,
     );
     executor.finalizeOperation();
+    // Capture backend first (never kills the operator's pane), then spawn-own.
     if (captureBackend && captureBackend !== tmuxSession) {
       captureBackend.teardown();
     }
@@ -671,6 +700,8 @@ class OperationRunner {
   private async setupCapture(opts: {
     mode: ExecutionMode;
     attach?: string;
+    /** `resume`: the pane the run was attached to (`session.attach_target`). */
+    savedAttach?: string;
     operation: Operation;
     vars: Record<string, any>;
     sessionId: string;
@@ -687,17 +718,25 @@ class OperationRunner {
       );
     }
 
-    if (mode === 'sidecar' && attach) {
-      if (!validateTmuxTarget(attach)) {
+    // An attached pane (`--attach`, or the one saved on a resumed session)
+    // wins: `sessions:` are then never spawned, even if the pane is gone.
+    const target =
+      mode === 'sidecar' ? (attach ?? opts.savedAttach) : undefined;
+    if (target) {
+      const capture = attachSidecarPane(
+        opts.sessionId,
+        target,
+        attach ? 'Attached' : 'Re-attached',
+        operation.sessions,
+      );
+      if (!capture) {
         console.warn(
-          `⚠️  --attach target "${attach}" is not a valid tmux pane; continuing without capture.\n`,
+          attach
+            ? `⚠️  --attach target "${target}" is not a valid tmux pane; continuing without capture.\n`
+            : `⚠️  Saved tmux pane "${target}" no longer exists — press [t] to attach a pane for [v] verify.\n`,
         );
-        return {};
       }
-      const paneCapture = new TmuxPaneCapture(opts.sessionId, attach);
-      paneCapture.attach();
-      console.log(`🔗 Attached capture to tmux pane: ${attach}\n`);
-      return { captureBackend: paneCapture };
+      return { captureBackend: capture };
     }
 
     if (operation.sessions && Object.keys(operation.sessions).length > 0) {
@@ -793,6 +832,19 @@ class OperationRunner {
     });
     const question = (prompt: string): Promise<string> =>
       new Promise((resolve) => rl.question(prompt, resolve));
+    // stdin reached EOF (piped/scripted input): no further prompt can be read.
+    let rlClosed = false;
+    rl.on('close', () => {
+      rlClosed = true;
+    });
+
+    // Single-key confirmation (y fires immediately on a TTY — no Enter).
+    const confirmKey = async (prompt: string): Promise<boolean> => {
+      const ans = (await readActionKey(CONFIRM_KEYS, prompt))
+        .trim()
+        .toLowerCase();
+      return ans === 'y' || ans === 'yes';
+    };
 
     if (process.stdin.isTTY) emitKeypressEvents(process.stdin);
 
@@ -814,8 +866,13 @@ class OperationRunner {
       'q',
     ]);
 
-    const readActionKey = (): Promise<string> => {
-      if (!process.stdin.isTTY) return question('  > ');
+    // `immediate` = keys that fire on press without Enter (default: the action
+    // bar's); `prompt` = what to print before reading.
+    const readActionKey = (
+      immediate: ReadonlySet<string> = IMMEDIATE_ACTION_CHARS,
+      prompt = '  > ',
+    ): Promise<string> => {
+      if (!process.stdin.isTTY) return question(prompt);
 
       rl.pause();
       // Readline keeps its own keypress listener attached even while paused —
@@ -834,7 +891,7 @@ class OperationRunner {
       // the last live handle — without an explicit resume the event loop
       // drains and the process exits silently at the prompt.
       process.stdin.resume();
-      process.stdout.write('  > ');
+      process.stdout.write(prompt);
 
       return new Promise((resolve) => {
         let buffer = '';
@@ -864,7 +921,7 @@ class OperationRunner {
           const c = ch.toLowerCase();
           buffer += c;
           process.stdout.write(c);
-          if (buffer.length === 1 && IMMEDIATE_ACTION_CHARS.has(c)) {
+          if (buffer.length === 1 && immediate.has(c)) {
             cleanup();
             process.stdout.write('\n');
             resolve(c);
@@ -1007,12 +1064,39 @@ class OperationRunner {
 
     // Mutable capture reference — allows [t] to swap backends mid-run.
     // stepOffset is per-step and re-baselined at the start of each step or on attach.
+    // `interrupted` is set when the pane's pipe was found closed or taken over
+    // (and re-attached) during the current step: output since stepOffset is
+    // then incomplete, so reads fall back to the pane's scrollback.
     const captureRef: {
       backend: CaptureBackend | undefined;
       stepOffset: number;
+      interrupted: boolean;
     } = {
       backend: captureBackend,
       stepOffset: 0,
+      interrupted: false,
+    };
+
+    // tmux allows one pipe-pane per pane: another samaritan run attached to the
+    // same pane silently takes ours. Detect that (or a closed pipe), re-attach,
+    // and tell the operator. Returns true when the capture had to be repaired.
+    const repairCapture = (sessionName: string): boolean => {
+      const backend = captureRef.backend;
+      const check = backend?.ensureCapture?.(sessionName);
+      if (!backend || check?.status !== 'reattached') return false;
+      const cause = check.takenBy
+        ? `was taken over by ${describePaneOwner(check.takenBy)}`
+        : 'was closed';
+      console.log(
+        `    ⚠️  Capture pipe on ${backend.describeTarget(sessionName)} ${cause} — re-attached. Use one samaritan run per pane.`,
+      );
+      logger.emit({
+        type: 'capture_attach',
+        target: backend.describeTarget(sessionName),
+        actor: state.context.operator,
+        notes: `re-attached: pipe ${cause}`,
+      });
+      return true;
     };
 
     const DIVIDER = '─'.repeat(60);
@@ -1077,75 +1161,277 @@ class OperationRunner {
       }
     };
 
+    // Resolve ${VAR} in a rollback tree (command/instruction, recursively) so
+    // what is sent, pasted, shown and logged is what actually runs — never a
+    // literal `${REGION}`. `ownerVars` are the owning step's variables.
+    const resolveRollbackTree = (
+      rbSteps: RollbackStep[],
+      ownerVars?: Record<string, any>,
+    ): RollbackStep[] =>
+      rbSteps.map((rb) => {
+        const scope = { ...ownerVars, ...rb.variables };
+        return {
+          ...rb,
+          command: tryResolve(rb.command, scope),
+          instruction: tryResolve(rb.instruction, scope),
+          sub_steps: rb.sub_steps
+            ? resolveRollbackTree(rb.sub_steps, scope)
+            : undefined,
+        };
+      });
+
+    // Rollback delivery. Only a non-sidecar run with spawn-own tmux sessions
+    // sends rollback commands itself (send + Enter, like its forward steps).
+    // Everything else — sidecar (`--attach`, `[t]`, spawn-own) and manual
+    // without tmux — is OPERATOR-DRIVEN, exactly like a forward step: each
+    // command is shown, `[p]` pastes it into the attached pane (bracketed, no
+    // Enter), `[v]` verifies its `expect`, and the operator confirms it ran.
+    // The recorded status reflects what was confirmed, never an assumed success.
+    const autoSendsRollback = (): boolean =>
+      mode !== 'sidecar' && !!tmuxSession && !!controller;
+
+    const runRollback = async (
+      rbSteps: RollbackStep[],
+      stepIndex: number,
+      context: 'rollback' | 'global' | 'nearest',
+      ownerVars?: Record<string, any>,
+    ): Promise<RollbackStatus> => {
+      const resolved = resolveRollbackTree(rbSteps, ownerVars);
+      if (autoSendsRollback() && controller) {
+        console.log(`    🔄 Sending rollback to tmux...`);
+        await controller.runRollbackSteps(
+          resolved,
+          stepIndex,
+          state.context.operator,
+          context,
+        );
+        console.log('    ↩  Rollback sent.');
+        return 'completed';
+      }
+      return runOperatorRollback(resolved, stepIndex, context, ownerVars);
+    };
+
+    const runOperatorRollback = async (
+      resolved: RollbackStep[],
+      stepIndex: number,
+      context: 'rollback' | 'global' | 'nearest',
+      ownerVars?: Record<string, any>,
+    ): Promise<RollbackStatus> => {
+      const entries = flattenRollbackSteps(resolved).filter(
+        (rb) => rb.command || rb.instruction,
+      );
+      logger.emit({
+        type: 'rollback_start',
+        step: stepIndex,
+        triggered_by: state.context.operator,
+        context,
+      });
+      let executed = 0;
+      let skipped = 0;
+      let aborted = false;
+
+      for (let k = 0; k < entries.length; k++) {
+        const rb = entries[k];
+        const cmd = rb.command;
+        const sessionName = rb.session ?? 'default';
+        repairCapture(sessionName);
+        const backend = captureRef.backend;
+        const canCapture = !!backend?.hasTarget(sessionName);
+        const target = canCapture
+          ? (backend as CaptureBackend).describeTarget(sessionName)
+          : undefined;
+        const offset = canCapture
+          ? (backend as CaptureBackend).currentOffset(sessionName)
+          : 0;
+        const canPaste = !!(cmd && canCapture && backend?.pasteCommand);
+        const rbExpect = rb.expect
+          ? substituteExpectVars(
+              rb.expect,
+              {
+                ...getBuiltinVariables({ startTime: runStartedAt }),
+                ...vars,
+              },
+              { ...ownerVars, ...rb.variables },
+            )
+          : undefined;
+
+        console.log(
+          `\n    ↩  Rollback ${k + 1}/${entries.length}${rb.name ? `: ${rb.name}` : ''}`,
+        );
+        if (rb.instruction) console.log(`    ${rb.instruction}`);
+        if (cmd) console.log(renderCodeBlock(cmd));
+        if (rbExpect)
+          console.log(`    Expected: ${renderExpectDescription(rbExpect)}`);
+        logger.emit({
+          type: 'command_displayed',
+          step: stepIndex,
+          session: target ?? sessionName,
+          command: cmd ?? rb.instruction,
+          context,
+          ...(rb.name ? { name: rb.name } : {}),
+          ...(cmd ? {} : { instruction: true }),
+        });
+
+        let outcome: 'executed' | 'skipped' | 'aborted' | undefined;
+        let verified: boolean | undefined;
+        while (!outcome) {
+          console.log(
+            `\n${renderKeyHints([
+              { key: '↵', label: cmd ? 'done — I ran it' : 'done' },
+              ...(canPaste ? [{ key: 'p', label: 'paste into pane' }] : []),
+              ...(cmd ? [{ key: 'c', label: 'copy' }] : []),
+              ...(rbExpect && canCapture
+                ? [{ key: 'v', label: 'verify' }]
+                : []),
+              { key: 's', label: 'skip' },
+              { key: 'a', label: 'abort rollback' },
+            ])}`,
+          );
+          const choice = (await readActionKey(ROLLBACK_ACTION_KEYS))
+            .trim()
+            .toLowerCase();
+          if (choice === 'p' && canPaste && cmd && backend?.pasteCommand) {
+            if (
+              isMultiLinePaste(cmd) &&
+              !(await confirmKey(
+                '    ⚠️  Multi-line command — it lands as one block only with bracketed paste (bash ≥ 4.4, zsh ≥ 5.1). Paste it? [y / n=cancel]: ',
+              ))
+            ) {
+              console.log('    ↩  Cancelled — nothing pasted.');
+              continue;
+            }
+            backend.pasteCommand(sessionName, cmd);
+            logger.emit({
+              type: 'user_input',
+              action: 'send_to_pane',
+              step: stepIndex,
+              session: target ?? sessionName,
+              command: cmd,
+              actor: state.context.operator,
+              context,
+            });
+            console.log(
+              `    ⌨️  Pasted into ${target} — review it, press Enter there to run, then ${rbExpect ? '[v] to verify or ' : ''}↵ here.`,
+            );
+            continue;
+          }
+          if (choice === 'c' && cmd) {
+            await copyCommand(cmd, '    ');
+            continue;
+          }
+          if (choice === 'v' && rbExpect && canCapture && controller) {
+            const raw = (backend as CaptureBackend).readOutput(
+              sessionName,
+              offset,
+            );
+            try {
+              const { detailed } = controller.verifyOutput(
+                { name: rb.name ?? 'rollback', expect: rbExpect } as Step,
+                stepIndex,
+                raw,
+                cmd,
+                backend?.promptLine?.(sessionName),
+                context,
+              );
+              if (detailed) {
+                verified = detailed.pass;
+                console.log(renderVerifyOutcome(detailed, rbExpect));
+              }
+            } catch (err: any) {
+              console.log(`    ⚠️  Could not verify: ${err.message}`);
+            }
+            continue;
+          }
+          if (choice === 's' || choice === 'skip') outcome = 'skipped';
+          else if (choice === 'a' || choice === 'abort') outcome = 'aborted';
+          else outcome = 'executed';
+        }
+
+        logger.emit({
+          type: 'rollback_step',
+          step: stepIndex,
+          context,
+          index: k,
+          outcome,
+          actor: state.context.operator,
+          ...(verified !== undefined ? { verified } : {}),
+        });
+        if (outcome === 'executed') executed += 1;
+        else if (outcome === 'skipped') skipped += 1;
+        else {
+          aborted = true;
+          break;
+        }
+      }
+
+      const total = entries.length;
+      const status: RollbackStatus =
+        total > 0 && executed === total
+          ? 'completed'
+          : executed === 0
+            ? 'not_executed'
+            : 'partial';
+      logger.emit({
+        type: 'rollback_complete',
+        step: stepIndex,
+        status,
+        context,
+        executed,
+        skipped,
+        total,
+        ...(aborted ? { aborted: true } : {}),
+      });
+      console.log(
+        status === 'completed'
+          ? `    ↩  Rollback complete — ${executed}/${total} step(s) run by the operator.`
+          : `    ⚠️  Rollback NOT complete — ${executed}/${total} step(s) confirmed run${skipped ? `, ${skipped} skipped` : ''}${aborted ? ', aborted' : ''}.`,
+      );
+      return status;
+    };
+
     const doRollback = async (step: Step, i: number): Promise<void> => {
       // Filter rollback entries to those applicable to the current environment.
       const envRollback = filterRollbackByEnv(step.rollback ?? [], targetEnv);
-      const hasRollbackSteps = envRollback.length > 0;
       const stateSteps = executor.getState().steps;
 
-      if (hasRollbackSteps && controller && tmuxSession) {
+      if (envRollback.length > 0) {
         console.log('    🔄 Initiating rollback...');
-        await controller.runRollbackSteps(
-          envRollback,
-          i,
-          state.context.operator,
-          'rollback',
-        );
-        console.log('    ↩  Rollback complete.');
-      } else if (hasRollbackSteps) {
-        // No tmux to send through (sidecar without sessions) — show the
-        // operator what to run; controller still records the audit events.
-        console.log('    🔄 Rollback steps (manual — no tmux session):');
-        for (const rb of envRollback) {
-          console.log(`      $ ${tryResolve(rb.command, step.variables)}`);
-        }
-        await controller?.runRollbackSteps(
-          envRollback,
-          i,
-          state.context.operator,
-          'rollback',
-        );
-      } else {
-        // This step has no rollback applicable to this environment — offer the
-        // nearest upstream step's rollback (needs chain first, else document
-        // order; only completed steps qualify).
-        const nearest = findNearestRollbackSource(
-          stateSteps.map((s) => s.step),
-          i,
-          { graph: depGraph, isCandidate: stepIsCompleted, targetEnv },
-        );
-        if (nearest) {
-          const sourceStep = stateSteps[nearest.stepIndex].step;
-          const label = flatSteps[nearest.stepIndex].label;
-          console.log('\n    This step has no rollback.');
-          for (const rb of flattenRollbackSteps(nearest.rollback)) {
-            if (rb.command)
-              console.log(
-                `      $ ${tryResolve(rb.command, sourceStep.variables)}`,
-              );
-          }
-          const ans = (
-            await question(
-              `    Nearest rollback comes from step [${label}] "${sourceStep.name}" — run it? [y/N]: `,
-            )
-          )
-            .trim()
-            .toLowerCase();
-          if (ans === 'y' || ans === 'yes') {
-            await controller?.runRollbackSteps(
-              nearest.rollback,
-              i,
-              state.context.operator,
-              'nearest',
-            );
-            console.log('    ↩  Nearest rollback complete.');
-            return;
-          }
-          console.log('    ↩  Skipped.');
-        } else {
-          console.log('    ℹ️  No rollback defined for this step.');
-        }
+        await runRollback(envRollback, i, 'rollback', step.variables);
+        return;
       }
+
+      // This step has no rollback applicable to this environment — offer the
+      // nearest upstream step's rollback (needs chain first, else document
+      // order; only completed steps qualify).
+      const nearest = findNearestRollbackSource(
+        stateSteps.map((s) => s.step),
+        i,
+        { graph: depGraph, isCandidate: stepIsCompleted, targetEnv },
+      );
+      if (!nearest) {
+        console.log('    ℹ️  No rollback defined for this step.');
+        return;
+      }
+      const sourceStep = stateSteps[nearest.stepIndex].step;
+      const label = flatSteps[nearest.stepIndex].label;
+      console.log('\n    This step has no rollback.');
+      for (const rb of flattenRollbackSteps(
+        resolveRollbackTree(nearest.rollback, sourceStep.variables),
+      )) {
+        if (rb.command) console.log(`      $ ${rb.command}`);
+      }
+      const ans = (
+        await question(
+          `    Nearest rollback comes from step [${label}] "${sourceStep.name}" — run it? [y/N]: `,
+        )
+      )
+        .trim()
+        .toLowerCase();
+      if (ans === 'y' || ans === 'yes') {
+        await runRollback(nearest.rollback, i, 'nearest', sourceStep.variables);
+        return;
+      }
+      console.log('    ↩  Skipped.');
     };
 
     // Jump to the global rollback: build the consolidated recovery from the
@@ -1172,13 +1458,11 @@ class OperationRunner {
       console.log(
         '\n    🔄 Global rollback will run the following (reverse order):',
       );
-      for (const rb of flattenRollbackSteps(rbSteps)) {
-        // Pass the rollback entry's own variables so a foreach-expanded
-        // rollback's ${LOOP_VAR} resolves in the preview, not just env vars.
+      for (const rb of flattenRollbackSteps(resolveRollbackTree(rbSteps))) {
         const cmd = rb.command
-          ? `$ ${tryResolve(rb.command, rb.variables)}`
+          ? `$ ${rb.command}`
           : rb.instruction
-            ? `(manual) ${tryResolve(rb.instruction, rb.variables)}`
+            ? `(manual) ${rb.instruction}`
             : '';
         const label = rb.name ?? '';
         console.log(
@@ -1186,40 +1470,17 @@ class OperationRunner {
         );
       }
 
-      const confirm = (
-        await question(
+      if (
+        !(await confirmKey(
           '\n    Run global rollback and abort the operation? [y/N]: ',
-        )
-      )
-        .trim()
-        .toLowerCase();
-      if (confirm !== 'y' && confirm !== 'yes') {
+        ))
+      ) {
         console.log('    ↩  Global rollback cancelled.');
         return false;
       }
 
-      if (controller && tmuxSession) {
-        console.log('    🔄 Running global rollback...');
-        await controller.runRollbackSteps(
-          rbSteps,
-          i,
-          state.context.operator,
-          'global',
-        );
-        console.log('    ↩  Global rollback complete.');
-      } else {
-        // No tmux to send through — commands were listed above; record audit
-        // events so the run log still captures the global rollback.
-        console.log(
-          '    🔄 Run the global rollback commands above manually (no tmux session).',
-        );
-        await controller?.runRollbackSteps(
-          rbSteps,
-          i,
-          state.context.operator,
-          'global',
-        );
-      }
+      console.log('    🔄 Running global rollback...');
+      await runRollback(rbSteps, i, 'global');
 
       executor.cancel();
       console.log('\n⛔ Operation aborted after global rollback.');
@@ -1569,6 +1830,9 @@ class OperationRunner {
       // Captures the pane's rendered screen for the auto-recorded evidence, so
       // the report keeps clean output instead of the raw pipe-pane slice.
       captureScreen?: () => string | undefined,
+      // Reads the pane's current prompt line so the trailing prompt is
+      // stripped exactly before line-based checks (see stripTrailingPrompt).
+      readPromptLine?: () => string | undefined,
     ): Promise<void> => {
       if (!step.expect) return;
 
@@ -1583,12 +1847,18 @@ class OperationRunner {
           return;
         }
 
+        if (!output.trim()) {
+          console.log(
+            '    ℹ️  Nothing captured from the pane since this step started — run the command there first, then [v].',
+          );
+        }
         console.log('    🔍 Checking expected output...');
         const { assertResult, detailed } = controller.verifyOutput(
           step,
           stepIndex,
           output,
           commandToCopy,
+          readPromptLine?.(),
         );
 
         if (!assertResult || !detailed) return;
@@ -1605,6 +1875,21 @@ class OperationRunner {
             '    ✅ Verify passed — press [v] again any time to re-check.',
           );
           return;
+        }
+
+        // A `$NAME` still in a failing check survived interpolation, so it is
+        // not an operation variable and was compared as literal text.
+        const literalShellVars = [
+          ...new Set(
+            detailed.checks
+              .filter((c) => !c.pass)
+              .flatMap((c) => findShellVarRefs(c.needle ?? c.expected)),
+          ),
+        ];
+        if (literalShellVars.length > 0) {
+          console.log(
+            `    ℹ️  ${literalShellVars.map((n) => `$${n}`).join(', ')} compared literally — expect does not expand shell variables; use \${VAR} with a variables:/--var value.`,
+          );
         }
 
         const action = await promptAssertFailureAction(stepIndex, {
@@ -2075,13 +2360,35 @@ class OperationRunner {
           // Baseline the capture offset at the start of each step.
           // Uses captureRef so [t] can swap the backend and this closure stays fresh.
           const sessionName = step.session ?? 'default';
+          // Repair a stolen/closed pipe BEFORE baselining, so this step's
+          // output is captured in full.
+          repairCapture(sessionName);
+          captureRef.interrupted = false;
           captureRef.stepOffset = captureRef.backend?.hasTarget(sessionName)
             ? captureRef.backend.currentOffset(sessionName)
             : 0;
           const captureSinceStepStart = (): string | undefined => {
-            const { backend, stepOffset } = captureRef;
+            const { backend } = captureRef;
             if (!backend || !backend.hasTarget(sessionName)) return undefined;
-            return backend.readOutput(sessionName, stepOffset);
+            if (repairCapture(sessionName)) captureRef.interrupted = true;
+            const slice = backend.readOutput(
+              sessionName,
+              captureRef.stepOffset,
+            );
+            if (!captureRef.interrupted) return slice;
+            // The pipe missed part of this step: read the pane's scrollback
+            // from the last echo of the command instead.
+            const recovered = sliceFromLastCommandEcho(
+              backend.captureHistory?.(sessionName) ?? '',
+              runnableCommand,
+            );
+            if (recovered === undefined) return slice;
+            // Screen rows below the prompt are padding, not output — trim so
+            // the prompt is the last line again (stripTrailingPrompt).
+            console.log(
+              '    ℹ️  Pipe capture was interrupted this step — reading the pane scrollback from the last run of the command.',
+            );
+            return recovered.trimEnd();
           };
 
           let manualNotes = '';
@@ -2176,6 +2483,7 @@ class OperationRunner {
                 resolvedExpect,
                 runnableCommand,
                 () => captureRef.backend?.captureScreen?.(sessionName),
+                () => captureRef.backend?.promptLine?.(sessionName),
               );
               continue;
             }
@@ -2232,8 +2540,22 @@ class OperationRunner {
                 `${state.context.sessionId}-${i}`,
                 targetAns,
               );
-              newCapture.attach();
+              const newPaneId = newCapture.resolvePaneId();
+              if (isOwnPane(newPaneId)) {
+                console.log(
+                  '    ⚠️  That is the pane samaritan runs in — pick the pane where you run commands.',
+                );
+                continue;
+              }
+              const { previousOwner } = newCapture.attach();
+              if (previousOwner)
+                console.warn(`  ${paneTakeoverWarning(previousOwner)}`);
               captureRef.backend = newCapture;
+              captureRef.interrupted = false;
+              sessionManager.setAttachTarget(
+                state.context.sessionId,
+                newPaneId ?? targetAns,
+              );
               // Re-baseline the step offset on the new backend
               captureRef.stepOffset = newCapture.currentOffset(sessionName);
               logger.emit({
@@ -2271,12 +2593,7 @@ class OperationRunner {
                 console.log(
                   '    ⚠️  Multi-line command. It lands as one un-run block only if the pane shell supports bracketed paste (bash ≥ 4.4, zsh ≥ 5.1); in sh/dash each line runs as it arrives.',
                 );
-                const ok = (
-                  await question('    Paste it? [y / Enter=cancel]: ')
-                )
-                  .trim()
-                  .toLowerCase();
-                if (ok !== 'y' && ok !== 'yes') {
+                if (!(await confirmKey('    Paste it? [y / n=cancel]: '))) {
                   console.log('    ↩  Cancelled — nothing pasted.');
                   continue;
                 }
@@ -2514,6 +2831,66 @@ class OperationRunner {
         }
       }
 
+      // Finishing the last step must not close the door on rollback: offer
+      // [r]/[g] on a completion screen. Shown only when something can be rolled
+      // back and stdin is still readable (piped/scripted runs end as before).
+      const finalSteps = executor.getState().steps;
+      const rollbackable = finalSteps.flatMap((s, idx) =>
+        s.status === 'completed' &&
+        filterRollbackByEnv(s.step.rollback ?? [], targetEnv).length > 0
+          ? [idx]
+          : [],
+      );
+      const ranToEnd =
+        executor.getState().status !== 'cancelled' &&
+        finalSteps.every((s) => s.status !== 'pending');
+      if (
+        ranToEnd &&
+        !rlClosed &&
+        (hasGlobalRollback || rollbackable.length > 0)
+      ) {
+        const lastIndex = finalSteps.length - 1;
+        while (true) {
+          console.log(`\n${DIVIDER}`);
+          console.log('✅ All steps done.');
+          console.log(
+            `\n${renderKeyHints([
+              { key: '↵', label: 'finish' },
+              ...(rollbackable.length
+                ? [{ key: 'r', label: 'roll back a step' }]
+                : []),
+              ...globalRollbackMenuItem,
+            ])}`,
+          );
+          const choice = (await readActionKey(COMPLETION_KEYS))
+            .trim()
+            .toLowerCase();
+          if (hasGlobalRollback && isGlobalRollback(choice)) {
+            if (await doGlobalRollback(lastIndex)) break;
+            continue;
+          }
+          if (rollbackable.length && isRollback(choice)) {
+            console.log('\n    Roll back which step?');
+            for (const idx of rollbackable) {
+              console.log(
+                `      ${idx + 1}) [${flatSteps[idx].label}] ${finalSteps[idx].step.name}`,
+              );
+            }
+            const ans = (
+              await question('    Step number [Enter to cancel]: ')
+            ).trim();
+            const picked = Number.parseInt(ans, 10) - 1;
+            if (ans && rollbackable.includes(picked)) {
+              await doRollback(finalSteps[picked].step, picked);
+            } else if (ans) {
+              console.log('    ⚠️  Invalid step.');
+            }
+            continue;
+          }
+          break;
+        }
+      }
+
       console.log(`\n${DIVIDER}`);
     } finally {
       process.removeListener('SIGINT', onAbortSignal);
@@ -2617,6 +2994,60 @@ class OperationRunner {
       console.log(`\n💥 Operation failed: ${event.error}`);
     });
   }
+}
+
+/**
+ * Attach a sidecar capture to an operator-owned pane (`run --attach`, `resume`):
+ * validates the target, attaches, warns on a takeover from another live run,
+ * and remembers the pane on the session so a later `resume` re-attaches.
+ * Returns undefined when the target is not a live tmux pane.
+ */
+function attachSidecarPane(
+  sessionId: string,
+  target: string,
+  verb: 'Attached' | 'Re-attached',
+  sessions?: Operation['sessions'],
+): TmuxPaneCapture | undefined {
+  if (!validateTmuxTarget(target)) return undefined;
+  const capture = new TmuxPaneCapture(sessionId, target);
+  const paneId = capture.resolvePaneId();
+  if (isOwnPane(paneId)) {
+    console.warn(
+      `⚠️  "${target}" is the pane samaritan itself runs in — attach the pane where you run commands (press [t] to pick one).\n`,
+    );
+    return undefined;
+  }
+  const { previousOwner } = capture.attach();
+  // Save the stable pane id, never the positional target: after a pane closes
+  // `work:0.0` can renumber onto a different pane (even samaritan's own).
+  sessionManager.setAttachTarget(sessionId, paneId ?? target);
+  console.log(`🔗 ${verb} capture to tmux pane: ${target}`);
+  const names = Object.keys(sessions ?? {});
+  if (names.length > 0) {
+    // One attached pane serves every step: `sessions:` are not spawned and a
+    // step's `session:` does not pick a different pane.
+    console.log(
+      `   ℹ️  sessions: (${names.join(', ')}) are not spawned with an attached pane — every step's [v]/[p] uses this pane. Press [t] to switch panes for a step.`,
+    );
+  }
+  if (previousOwner) console.warn(paneTakeoverWarning(previousOwner));
+  console.log('');
+  return capture;
+}
+
+/** True when `paneId` is the tmux pane this samaritan process runs in. */
+function isOwnPane(paneId: string | undefined): boolean {
+  return !!paneId && paneId === process.env.TMUX_PANE;
+}
+
+/** `samaritan session <id> (pid N)` — names the run that owns a pane's pipe. */
+function describePaneOwner(owner: PaneOwner): string {
+  return `samaritan session ${owner.captureId} (pid ${owner.pid})`;
+}
+
+/** Warning printed when attaching takes a pane over from another live run. */
+function paneTakeoverWarning(owner: PaneOwner): string {
+  return `⚠️  This pane was captured by ${describePaneOwner(owner)} — tmux allows one capture per pane, so that run's [v] now re-attaches and warns. Use one samaritan run per pane.`;
 }
 
 // Resolve a path the operator drags into the terminal or types — strips the
@@ -2758,7 +3189,7 @@ const resumeCommand = new Command('resume')
   .option('--from-step <number>', 'Resume from specific step number', parseInt)
   .option(
     '--attach <tmux-target>',
-    'Attach to an existing tmux pane for sidecar capture (e.g. mysession:0.0), instead of the operation sessions: windows',
+    'Sidecar: capture from this tmux pane (default: the pane the run was attached to)',
   )
   .option(
     '--no-require-evidence',

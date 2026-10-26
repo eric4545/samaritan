@@ -8,6 +8,7 @@ import {
   isPrimitiveExpectShorthand,
   renderExpectParts,
   stripCommandEcho,
+  stripTrailingPrompt,
 } from './assertions';
 import type { EventLogger } from './event-logger';
 import { extractRetryConfig, parseInterval, shouldRetry } from './retry-assert';
@@ -155,6 +156,7 @@ export class StepController {
         stepIndex,
         output,
         command,
+        tmux.promptLine?.(sessionName),
       );
 
       // expect.retry: poll for eventual consistency. On a failed assertion,
@@ -189,6 +191,7 @@ export class StepController {
             stepIndex,
             latest,
             command,
+            tmux.promptLine?.(sessionName),
           ).assertResult;
           attempt += 1;
         }
@@ -216,6 +219,13 @@ export class StepController {
     // echoed copy is stripped from the pane slice so the assertion and the
     // highlighted output target the command's OUTPUT, not the command text.
     command?: string,
+    // The pane's current prompt line (cursor line). When given, the trailing
+    // prompt is stripped exactly; otherwise a prompt-sigil heuristic is used.
+    promptLine?: string,
+    // Rollback context ('rollback' | 'global' | 'nearest') when verifying a
+    // rollback command — the event then folds into the rollback record, not
+    // the forward step's verification.
+    context?: string,
   ): {
     assertResult?: ReturnType<typeof assertOutput>;
     detailed?: ReturnType<typeof assertOutputDetailed>;
@@ -229,11 +239,19 @@ export class StepController {
       : step.expect;
     // Pane captures are raw terminal bytes — strip ANSI codes and resolve
     // \r overwrites so assertions match what the operator actually sees, then
-    // drop the echoed command so checks/highlights hit the output, not the echo.
-    const cleaned = stripCommandEcho(cleanTerminalOutput(output), command);
+    // drop the echoed command so checks/highlights hit the output, not the echo,
+    // and the trailing shell prompt so line-based checks count output lines only.
+    const cleaned = stripTrailingPrompt(
+      stripCommandEcho(cleanTerminalOutput(output), command),
+      promptLine,
+    );
     const result = assertOutput(cleaned, expect);
     const detailed = assertOutputDetailed(cleaned, expect);
+    const checkedOutput = cleaned.trim();
 
+    // One event per verify attempt, carrying the full checklist and the output
+    // once (a check's `actual` is kept only when it differs from that output,
+    // e.g. a line count) so the report can render the final state.
     logger.emit({
       type: 'assert_result',
       step: stepIndex,
@@ -241,6 +259,14 @@ export class StepController {
       actual: result.actual,
       expected: result.expected,
       assertion_type: result.type,
+      output: checkedOutput,
+      ...(context ? { context } : {}),
+      checks: detailed.checks.map((c) => ({
+        pass: c.pass,
+        type: c.type,
+        expected: c.expected,
+        ...(c.actual !== checkedOutput ? { actual: c.actual } : {}),
+      })),
     });
 
     return { assertResult: result, detailed };
@@ -264,31 +290,40 @@ export class StepController {
     for (const rb of rollbackSteps) {
       const sessionName = rb.session ?? step.session ?? 'default';
 
+      if (!tmux) {
+        // Nothing can deliver it: record it as displayed, never as sent.
+        logger.emit({
+          type: 'command_displayed',
+          session: sessionName,
+          command: rb.command,
+          context: 'rollback',
+        });
+        continue;
+      }
+
       logger.emit({
         type: 'command_sent',
         session: sessionName,
         command: rb.command,
         context: 'rollback',
       });
-
-      if (tmux) {
-        tmux.send(sessionName, rb.command);
-        // Wait for operator to confirm each rollback step
-        await tmux.waitForPrompt(sessionName, 60_000);
-        const output = tmux.readOutput(sessionName, 0);
-        logger.emit({
-          type: 'pane_captured',
-          session: sessionName,
-          output,
-          context: 'rollback',
-        });
-      }
+      tmux.send(sessionName, rb.command);
+      // Wait for operator to confirm each rollback step
+      await tmux.waitForPrompt(sessionName, 60_000);
+      const output = tmux.readOutput(sessionName, 0);
+      logger.emit({
+        type: 'pane_captured',
+        session: sessionName,
+        output,
+        context: 'rollback',
+      });
     }
 
     logger.emit({
       type: 'rollback_complete',
       step: stepIndex,
-      status: 'success',
+      // Without tmux nothing was sent — never report a success that didn't happen.
+      status: tmux ? 'success' : 'not_executed',
     });
   }
 
@@ -318,30 +353,40 @@ export class StepController {
       if (!rb.command) continue;
       const sessionName = rb.session ?? 'default';
 
+      if (!tmux) {
+        // Nothing can deliver it: record it as displayed, never as sent.
+        logger.emit({
+          type: 'command_displayed',
+          session: sessionName,
+          command: rb.command,
+          context,
+        });
+        continue;
+      }
+
       logger.emit({
         type: 'command_sent',
         session: sessionName,
         command: rb.command,
         context,
       });
-
-      if (tmux) {
-        tmux.send(sessionName, rb.command);
-        await tmux.waitForPrompt(sessionName, 60_000);
-        const output = tmux.readOutput(sessionName, 0);
-        logger.emit({
-          type: 'pane_captured',
-          session: sessionName,
-          output,
-          context,
-        });
-      }
+      tmux.send(sessionName, rb.command);
+      await tmux.waitForPrompt(sessionName, 60_000);
+      const output = tmux.readOutput(sessionName, 0);
+      logger.emit({
+        type: 'pane_captured',
+        session: sessionName,
+        output,
+        context,
+      });
     }
 
     logger.emit({
       type: 'rollback_complete',
       step: stepIndex,
-      status: 'success',
+      // Without tmux nothing was sent — never report a success that didn't
+      // happen (the run loop drives operator rollbacks itself; see run.ts).
+      status: tmux ? 'success' : 'not_executed',
       context,
     });
   }

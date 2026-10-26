@@ -259,3 +259,227 @@ describe('renderReport — operator-local path redaction', () => {
     assert.ok(md.includes('~/notes.txt'), 'home collapsed to ~');
   });
 });
+
+describe('renderReport — plain UTF-8 (no control bytes)', () => {
+  it('drops NUL / SI / charset escapes from verify output, notes and commands', () => {
+    const noisy = `ok\u0000 ${ESC}(B\u000fdone`;
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml' }),
+      ev({ type: 'step_start', step: 0, name: 'Noisy\u0000' }),
+      ev({
+        type: 'command_displayed',
+        session: 'default',
+        command: 'printf x\u0007',
+      }),
+      ev({
+        type: 'assert_result',
+        step: 0,
+        pass: false,
+        actual: noisy,
+        expected: 'nothing-here',
+        assertion_type: 'contains',
+      }),
+      ev({
+        type: 'user_input',
+        action: 'note',
+        step: 0,
+        notes: `see ${ESC}[31mred\u0000`,
+      }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    const control = [...md].filter((ch) => {
+      const c = ch.charCodeAt(0);
+      return (c < 0x20 && ch !== '\n' && ch !== '\t') || c === 0x7f;
+    });
+    assert.deepStrictEqual(control, [], 'report holds no control bytes');
+    assert.ok(md.includes('ok done'), 'readable text preserved');
+  });
+});
+
+describe('renderReport — verification final state + overrides', () => {
+  const attempt = (pass: boolean, extra: Record<string, unknown> = {}) =>
+    ev({
+      type: 'assert_result',
+      step: 0,
+      pass,
+      actual: pass ? 'a\nb' : '3',
+      expected: pass ? '(all checks passed)' : '2',
+      assertion_type: pass ? 'all' : 'line_count',
+      output: 'a\nb',
+      checks: [
+        { pass, type: 'line_count', expected: '2', actual: pass ? '2' : '3' },
+        { pass: true, type: 'contains', expected: 'a' },
+      ],
+      ...extra,
+    });
+
+  it('renders ⚠️ OVERRIDDEN with who/when/reason instead of one ❌ per attempt', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml', total_steps: 1 }),
+      ev({ type: 'step_start', step: 0, name: 'Two lines' }),
+      attempt(false),
+      attempt(false),
+      ev({
+        ts: '2026-07-06T00:05:00.000Z',
+        type: 'user_input',
+        action: 'override',
+        step: 0,
+        actor: 'alice',
+        reason: 'prompt line counted',
+      }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    assert.ok(
+      md.includes(
+        '**Verification**: ⚠️ OVERRIDDEN (2 attempts, 2 failed — last shown)',
+      ),
+      md,
+    );
+    assert.ok(
+      md.includes(
+        '- ⚠️ Overridden by alice at Mon, 06 Jul 2026 00:05:00 UTC — reason: prompt line counted',
+      ),
+      md,
+    );
+    assert.ok(!md.includes('❌ FAIL'), 'no bare FAIL for an overridden step');
+    assert.strictEqual(
+      md.split('❌ (line_count)').length - 1,
+      1,
+      'only the last attempt is listed',
+    );
+    assert.ok(md.includes('## Step 1: Two lines ⚠️ (verification overridden)'));
+    assert.ok(md.includes('- Verification overridden: Step 1'));
+  });
+
+  it('shows the final PASS after earlier failed attempts', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml' }),
+      ev({ type: 'step_start', step: 0, name: 'Settles' }),
+      attempt(false),
+      attempt(true),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    assert.ok(
+      md.includes(
+        '**Verification**: ✅ PASS (2 attempts, 1 failed — last shown)',
+      ),
+      md,
+    );
+    assert.ok(
+      !md.includes('❌'),
+      'the earlier failure is summarized, not listed',
+    );
+    assert.ok(md.includes('- output:'), 'checked output rendered once');
+  });
+});
+
+describe('renderReport — rollback events are honest', () => {
+  const base = [
+    ev({ type: 'session_start', op: 'op.yaml' }),
+    ev({ type: 'step_start', step: 1, name: 'Deploy' }),
+  ];
+
+  it('lists what the operator confirmed and a partial status', () => {
+    const md = render([
+      ...base,
+      ev({
+        type: 'rollback_start',
+        step: 1,
+        triggered_by: 'alice',
+        context: 'global',
+      }),
+      ev({
+        type: 'command_displayed',
+        session: 'tmux pane w:0.0',
+        command: 'echo GLOBAL_RB dev',
+        context: 'global',
+      }),
+      ev({ type: 'user_input', action: 'send_to_pane', context: 'global' }),
+      ev({
+        type: 'rollback_step',
+        step: 1,
+        context: 'global',
+        index: 0,
+        outcome: 'executed',
+      }),
+      ev({
+        type: 'command_displayed',
+        session: 'tmux pane w:0.0',
+        command: 'echo ROLLBACK dev',
+        context: 'global',
+        name: '↩ Rollback for "Build"',
+      }),
+      ev({
+        type: 'rollback_step',
+        step: 1,
+        context: 'global',
+        index: 1,
+        outcome: 'skipped',
+      }),
+      ev({
+        type: 'rollback_complete',
+        step: 1,
+        status: 'partial',
+        context: 'global',
+        executed: 1,
+        skipped: 1,
+        total: 2,
+      }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(md.includes('### Global rollback (triggered at Step 2)'), md);
+    assert.ok(
+      md.includes(
+        '- ✅ run by operator: `echo GLOBAL_RB dev` (pasted into pane)',
+      ),
+      md,
+    );
+    assert.ok(
+      md.includes('- ⏭ skipped: ↩ Rollback for "Build" — `echo ROLLBACK dev`'),
+      md,
+    );
+    assert.ok(
+      md.includes(
+        '**Status**: ⚠️ partial — 1/2 step(s) confirmed run, 1 skipped',
+      ),
+      md,
+    );
+    assert.ok(!md.includes('Command sent'), 'rollback is not a step command');
+  });
+
+  it('marks an unconfirmed rollback as NOT executed', () => {
+    const md = render([
+      ...base,
+      ev({
+        type: 'rollback_start',
+        step: 1,
+        triggered_by: 'alice',
+        context: 'rollback',
+      }),
+      ev({
+        type: 'command_displayed',
+        session: 'default',
+        command: 'echo undo',
+        context: 'rollback',
+      }),
+      ev({
+        type: 'rollback_complete',
+        step: 1,
+        status: 'not_executed',
+        context: 'rollback',
+        executed: 0,
+        skipped: 0,
+        total: 1,
+      }),
+    ]);
+    assert.ok(md.includes('- ⚠️ not run: `echo undo`'), md);
+    assert.ok(
+      md.includes('**Status**: ❌ NOT executed — 0/1 step(s) confirmed run'),
+      md,
+    );
+    assert.ok(!md.includes('success'), md);
+  });
+});

@@ -83,6 +83,9 @@ function findFile(dir: string, name: string): string | undefined {
   return undefined;
 }
 
+// The resume hint an abort prints (`samaritan resume <session-id>`).
+const RESUME_HINT = /samaritan resume ([0-9a-f-]{36})/;
+
 const sleep = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
 
@@ -327,8 +330,10 @@ describe('sidecar e2e (real tmux)', () => {
 
         // Abort at step 1 → paused + resume hint.
         d.type('abort');
-        const aborted = await d.waitFor('Run aborted', { timeoutMs: 15_000 });
-        const m = aborted.match(/samaritan resume ([0-9a-f-]{36})/);
+        // Wait for the resume HINT itself, not "Run aborted" (printed one line
+        // earlier): tmux can capture the screen between the two writes.
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 15_000 });
+        const m = aborted.match(RESUME_HINT);
         assert.ok(
           m,
           `abort must print a resume hint with a session id; got:\n${aborted.slice(-400)}`,
@@ -350,6 +355,324 @@ describe('sidecar e2e (real tmux)', () => {
         // Clean up: abort the resumed run.
         d.type('abort');
         await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'abort → resume re-attaches the --attach pane (by stable pane id) so [v] still verifies',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-sidecar.yaml');
+      const d = TmuxDriver.create({ split: true });
+      const paneId = (target: string): string =>
+        tmux([
+          'display-message',
+          '-p',
+          '-t',
+          target,
+          '#{pane_id}',
+        ]).stdout.trim();
+      try {
+        const work = d.work as string;
+        // The session saves the STABLE pane id, never the positional target.
+        const workId = paneId(work);
+        const main = paneId(d.main);
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_DEPLOY_OK"', { timeoutMs: 40_000 });
+        d.type('abort');
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 15_000 });
+        const id = aborted.match(RESUME_HINT)?.[1];
+        assert.ok(id, 'abort prints the resume hint');
+
+        // No --attach on resume: the saved pane is re-attached automatically.
+        d.type(launch(ws.dir, `resume ${id}`));
+        await d.waitFor(`Re-attached capture to tmux pane: ${workId}`, {
+          timeoutMs: 30_000,
+        });
+        await d.waitFor(/Resuming operation execution[\s\S]*abort abort/, {
+          timeoutMs: 15_000,
+        });
+        d.type('echo "deploy E2E_DEPLOY_OK"', work);
+        await d.waitFor(/^deploy E2E_DEPLOY_OK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.key('v');
+        const verified = await d.waitFor('✅ contains: E2E_DEPLOY_OK', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(!verified.includes('Verify requires an attached capture'));
+        d.type('abort');
+        await d.waitFor(/(Run aborted[\s\S]*){2}/, { timeoutMs: 15_000 });
+
+        // Close the work pane: tmux renumbers the window, so the old positional
+        // target (`:0.0`) now names samaritan's OWN pane. The saved id does not
+        // — resume must warn that the pane is gone, never attach to itself.
+        tmux(['kill-pane', '-t', workId]);
+        d.type(launch(ws.dir, `resume ${id}`), main);
+        await d.waitFor(`Saved tmux pane "${workId}" no longer exists`, {
+          pane: main,
+          timeoutMs: 30_000,
+        });
+        d.type('abort', main);
+        await d.waitFor(/(Run aborted[\s\S]*){3}/, {
+          pane: main,
+          timeoutMs: 15_000,
+        });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'resume of an --attach run on an operation with sessions: re-attaches the pane, never spawns',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-sessions-local.yaml');
+      const d = TmuxDriver.create({ split: true });
+      const spawned = (): string[] =>
+        TmuxDriver.listSessions().filter((s) => s.startsWith('samaritan-'));
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        // --attach wins over sessions: — told once, nothing spawned.
+        await d.waitFor(
+          'sessions: (work) are not spawned with an attached pane',
+          {
+            timeoutMs: 40_000,
+          },
+        );
+        await d.waitFor('echo "built v1 E2E_BUILD_OK"', { timeoutMs: 15_000 });
+        assert.deepStrictEqual(spawned(), [], 'run --attach spawns nothing');
+        d.type('abort');
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 15_000 });
+        const id = aborted.match(RESUME_HINT)?.[1];
+        assert.ok(id, 'abort prints the resume hint');
+
+        d.type(launch(ws.dir, `resume ${id}`));
+        const resumed = await d.waitFor(
+          /Re-attached capture to tmux pane: %\d+/,
+          {
+            timeoutMs: 30_000,
+          },
+        );
+        assert.ok(
+          !resumed.includes('Bootstrapping tmux sessions'),
+          'resume must not spawn sessions: for an attached run',
+        );
+        assert.deepStrictEqual(spawned(), [], 'resume spawns nothing');
+        await d.waitFor(/Resuming operation execution[\s\S]*abort abort/, {
+          timeoutMs: 15_000,
+        });
+        d.type('echo "built v1 E2E_BUILD_OK"', work);
+        await d.waitFor(/^built v1 E2E_BUILD_OK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.key('v');
+        await d.waitFor('✅ contains: E2E_BUILD_OK', { timeoutMs: 15_000 });
+        d.type('abort');
+        await d.waitFor(/(Run aborted[\s\S]*){2}/, { timeoutMs: 15_000 });
+      } finally {
+        for (const s of spawned()) tmux(['kill-session', '-t', s]);
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'two runs on one pane: the run whose pipe was taken re-attaches and still verifies',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-sidecar.yaml');
+      const d = TmuxDriver.create({ split: true });
+      // A third pane for the second samaritan run (B), below run A.
+      tmux(['split-window', '-t', d.main, '-v']);
+      const paneB = `${d.session}:0.2`;
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_DEPLOY_OK"', { timeoutMs: 40_000 });
+
+        // Run B attaches to the SAME pane — tmux replaces A's pipe-pane.
+        d.type(
+          launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`),
+          paneB,
+        );
+        await d.waitFor('This pane was captured by samaritan session', {
+          pane: paneB,
+          timeoutMs: 40_000,
+        });
+
+        d.type('echo "deploy E2E_DEPLOY_OK"', work);
+        await d.waitFor(/^deploy E2E_DEPLOY_OK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+
+        // A verifies: detects the takeover, re-attaches, reads scrollback.
+        d.key('v');
+        const verified = await d.waitFor('✅ contains: E2E_DEPLOY_OK', {
+          timeoutMs: 15_000,
+        });
+        assert.match(verified, /was taken over by samaritan session/);
+        assert.match(verified, /Pipe capture was interrupted this step/);
+
+        // A now owns the pipe; B's exit must NOT close it.
+        d.type('abort', paneB);
+        await d.waitFor('Run aborted', { pane: paneB, timeoutMs: 15_000 });
+        const pipe = tmux([
+          'display-message',
+          '-p',
+          '-t',
+          work,
+          '#{pane_pipe}',
+        ]);
+        assert.strictEqual(pipe.stdout.trim(), '1', "B left A's pipe open");
+
+        d.type('abort');
+        await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '--attach rollback: [g] after the last step pastes each RESOLVED command into the pane and records what the operator ran',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-rollback.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_RB_MARK"', { timeoutMs: 40_000 });
+
+        // Complete the step (global rollback aggregates COMPLETED steps'
+        // rollbacks), then trigger [g] from the all-steps-done screen.
+        d.enter();
+        await d.waitFor('All steps done.', { timeoutMs: 15_000 });
+
+        // Global rollback: preview → single-key y (no Enter) → entry 1/2.
+        d.key('g');
+        await d.waitFor('Run global rollback and abort the operation?');
+        d.key('y');
+        await d.waitFor('Rollback 1/2: Restore traffic', { timeoutMs: 15_000 });
+
+        // [p] pastes the ${MARK}-resolved command WITHOUT running it.
+        d.key('p');
+        await d.waitFor('echo "GLOBAL_RESTORE E2E_RB_MARK"', {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          !/^GLOBAL_RESTORE E2E_RB_MARK$/m.test(d.capture(work)),
+          'paste must not execute the rollback command',
+        );
+        d.enter(work);
+        await d.waitFor(/^GLOBAL_RESTORE E2E_RB_MARK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.enter(); // ↵ done — I ran it
+
+        // Entry 2/2 (aggregated step rollback): paste, run, [v] its expect.
+        await d.waitFor('Rollback 2/2', { timeoutMs: 15_000 });
+        d.key('p');
+        await d.waitFor('echo "UNDO_DEPLOY E2E_RB_MARK"', {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.enter(work);
+        await d.waitFor(/^UNDO_DEPLOY E2E_RB_MARK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.key('v');
+        await d.waitFor('✅ contains: UNDO_DEPLOY', { timeoutMs: 15_000 });
+        d.enter();
+        await d.waitFor('Rollback complete — 2/2 step(s) run by the operator', {
+          timeoutMs: 15_000,
+        });
+        await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+
+        const report = readReport(ws.dir);
+        assert.ok(
+          report.includes(
+            '- ✅ run by operator: Restore traffic — `echo "GLOBAL_RESTORE E2E_RB_MARK"` (pasted into pane)',
+          ),
+          report,
+        );
+        assert.ok(report.includes('(pasted into pane, verify ✅)'), report);
+        assert.ok(
+          report.includes(
+            '**Status**: ✅ completed — 2/2 step(s) confirmed run',
+          ),
+          report,
+        );
+        const events = readFileSync(
+          findFile(ws.dir, 'events.jsonl') as string,
+          'utf8',
+        );
+        assert.ok(
+          !events.includes('${MARK}'),
+          'audit log holds resolved commands',
+        );
+        assert.ok(
+          !events.includes('"command_sent"'),
+          'nothing claimed as sent',
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'completion screen: after the last step, [r] still rolls a step back',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-rollback.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_RB_MARK"', { timeoutMs: 40_000 });
+        d.enter(); // complete the only step
+
+        await d.waitFor('All steps done.', { timeoutMs: 15_000 });
+        d.key('r');
+        await d.waitFor('Roll back which step?');
+        d.type('1');
+        await d.waitFor('Rollback 1/1: Undo deploy', { timeoutMs: 15_000 });
+        d.key('s'); // skip it → rollback NOT complete
+        await d.waitFor(
+          'Rollback NOT complete — 0/1 step(s) confirmed run, 1 skipped',
+          {
+            timeoutMs: 15_000,
+          },
+        );
+        await d.waitFor(/All steps done\.[\s\S]*All steps done\./, {
+          timeoutMs: 15_000,
+        });
+        d.enter(); // finish
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          readReport(ws.dir).includes('**Status**: ❌ NOT executed'),
+          'a skipped rollback is never reported as success',
+        );
       } finally {
         d.kill();
         ws.cleanup();

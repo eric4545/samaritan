@@ -526,6 +526,71 @@ describe('StepController.verifyOutput — raw terminal capture cleaning', () => 
     assert.strictEqual(assertResult?.pass, true);
     cleanLogger(logger);
   });
+
+  // A real sidecar slice: the echoed command, its output, then the next shell
+  // prompt (not newline-terminated). The prompt must not count as a line.
+  const SIDECAR_SLICE =
+    "printf 'a\\nb\\n'\r\na\r\nb\r\n\u001b[?2004hroot@vm:/srv# ";
+
+  it('line_count / all_lines_match ignore the trailing shell prompt (pane prompt known)', () => {
+    const logger = makeLogger('verify-prompt-1');
+    const ctrl = makeController(logger);
+    const step = {
+      name: 'Two lines',
+      expect: { line_count: 2, all_lines_match: '^[ab]$' },
+    } as any;
+
+    const { assertResult, detailed } = ctrl.verifyOutput(
+      step,
+      0,
+      SIDECAR_SLICE,
+      "printf 'a\\nb\\n'",
+      'root@vm:/srv# ',
+    );
+
+    assert.strictEqual(assertResult?.pass, true);
+    assert.deepStrictEqual(
+      detailed?.checks.map((c) => [c.type, c.pass]),
+      [
+        ['all_lines_match', true],
+        ['line_count', true],
+      ],
+    );
+    cleanLogger(logger);
+  });
+
+  it('strips a sigil-terminated trailing prompt when the pane prompt is unknown', () => {
+    const logger = makeLogger('verify-prompt-2');
+    const ctrl = makeController(logger);
+    const step = { name: 'Two lines', expect: { line_count: 2 } } as any;
+
+    const { assertResult } = ctrl.verifyOutput(
+      step,
+      0,
+      SIDECAR_SLICE,
+      "printf 'a\\nb\\n'",
+    );
+
+    assert.strictEqual(assertResult?.pass, true);
+    cleanLogger(logger);
+  });
+
+  it('equals sees the output without the prompt', () => {
+    const logger = makeLogger('verify-prompt-3');
+    const ctrl = makeController(logger);
+    const step = { name: 'Check', expect: { equals: 'healthy' } } as any;
+
+    const { assertResult } = ctrl.verifyOutput(
+      step,
+      0,
+      'curl -s /health\r\nhealthy\r\nuser@host ~ % ',
+      'curl -s /health',
+      'user@host ~ % ',
+    );
+
+    assert.strictEqual(assertResult?.pass, true);
+    cleanLogger(logger);
+  });
 });
 
 describe('renderAssertOutcome', () => {
