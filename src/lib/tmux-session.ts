@@ -1,12 +1,13 @@
 import { spawnSync } from 'node:child_process';
 import {
   existsSync,
+  mkdirSync,
   readFileSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SessionConfig } from '../models/operation';
 import type {
@@ -389,16 +390,28 @@ function isProcessAlive(pid: number): boolean {
 
 /**
  * The marker file recording which samaritan capture owns a pane's single
- * `pipe-pane` slot, keyed by the stable pane id (`%3`).
+ * `pipe-pane` slot. It lives in a private per-user directory
+ * (`~/.samaritan/panes`, mode 0700) — never the shared, world-writable temp
+ * dir, where a predictable name invites a planted symlink. The key is the tmux
+ * server's socket plus the stable pane id (`%3`): pane ids restart at `%0` on
+ * every server, so the id alone would collide across servers.
  */
-export function paneOwnerFile(paneId: string): string {
-  return join(tmpdir(), `samaritan-pane-${sanitizeSessionName(paneId)}.owner`);
+export function paneOwnerFile(paneKey: string): string {
+  const dir = join(homedir(), '.samaritan', 'panes');
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return join(dir, `${sanitizeSessionName(paneKey)}.owner`);
 }
 
-/** Read a pane's owner marker; undefined when absent or unreadable. */
-export function readPaneOwner(paneId: string): PaneOwner | undefined {
+/** `<tmux socket>#<pane id>` — the pane's identity across tmux servers. */
+function paneKeyOf(target: string): string | undefined {
+  const key = paneFormat(target, '#{socket_path}#{pane_id}');
+  return key?.includes('%') ? key : undefined;
+}
+
+/** Read a pane's owner marker (by `paneKeyOf`); undefined when absent/unreadable. */
+export function readPaneOwner(paneKey: string): PaneOwner | undefined {
   try {
-    const owner = JSON.parse(readFileSync(paneOwnerFile(paneId), 'utf-8'));
+    const owner = JSON.parse(readFileSync(paneOwnerFile(paneKey), 'utf-8'));
     return typeof owner?.captureId === 'string' &&
       typeof owner?.pid === 'number'
       ? owner
@@ -417,7 +430,7 @@ export function readPaneOwner(paneId: string): PaneOwner | undefined {
  *
  * tmux allows ONE `pipe-pane` per pane, so a second samaritan run attached to
  * the same pane silently replaces ours. Ownership is recorded in a per-pane
- * marker (`paneOwnerFile`), so `ensureCapture()` can tell the pipe was taken
+ * marker (`paneOwnerFile`, private per-user dir), so `ensureCapture()` can tell the pipe was taken
  * (or closed) and re-attach, and `teardown()` never closes another run's pipe.
  */
 export class TmuxPaneCapture implements CaptureBackend {
@@ -425,6 +438,7 @@ export class TmuxPaneCapture implements CaptureBackend {
   private pipeFile: string;
   private captureId: string;
   private paneId: string | undefined;
+  private paneKey: string | undefined;
 
   constructor(captureId: string, target: string) {
     this.target = target;
@@ -443,8 +457,8 @@ export class TmuxPaneCapture implements CaptureBackend {
    * caller can warn that it is taking the pane over.
    */
   attach(): { previousOwner?: PaneOwner } {
-    this.paneId ??= paneFormat(this.target, '#{pane_id}');
-    const previous = this.paneId ? readPaneOwner(this.paneId) : undefined;
+    const key = this.ownerKey();
+    const previous = key ? readPaneOwner(key) : undefined;
     const previousOwner =
       previous &&
       previous.captureId !== this.captureId &&
@@ -458,14 +472,16 @@ export class TmuxPaneCapture implements CaptureBackend {
       // Quoted: tmpdir() may contain spaces (e.g. macOS /var/folders/...)
       `cat >> '${this.pipeFile}'`,
     ]);
-    if (this.paneId) {
+    if (key) {
       const owner: PaneOwner = {
         captureId: this.captureId,
         pid: process.pid,
         since: new Date().toISOString(),
       };
       try {
-        writeFileSync(paneOwnerFile(this.paneId), JSON.stringify(owner));
+        writeFileSync(paneOwnerFile(key), JSON.stringify(owner), {
+          mode: 0o600,
+        });
       } catch {
         // best effort — without the marker we just can't detect a takeover
       }
@@ -482,8 +498,8 @@ export class TmuxPaneCapture implements CaptureBackend {
   ensureCapture(_sessionName: string): CaptureCheck {
     const pipe = paneFormat(this.target, '#{pane_pipe}');
     if (pipe === undefined) return { status: 'unavailable' };
-    this.paneId ??= paneFormat(this.target, '#{pane_id}');
-    const owner = this.paneId ? readPaneOwner(this.paneId) : undefined;
+    const key = this.ownerKey();
+    const owner = key ? readPaneOwner(key) : undefined;
     const takenBy =
       owner && owner.captureId !== this.captureId ? owner : undefined;
     if (pipe === '1' && !takenBy) return { status: 'ok' };
@@ -503,11 +519,17 @@ export class TmuxPaneCapture implements CaptureBackend {
     return this.paneId;
   }
 
+  /** The owner-marker key for this pane (`paneKeyOf`), resolved once. */
+  private ownerKey(): string | undefined {
+    this.paneKey ??= paneKeyOf(this.target);
+    return this.paneKey;
+  }
+
   /** Whether this capture still owns the pane's pipe (or nobody recorded one). */
   private ownsPane(): boolean {
-    this.paneId ??= paneFormat(this.target, '#{pane_id}');
-    if (!this.paneId) return true;
-    const owner = readPaneOwner(this.paneId);
+    const key = this.ownerKey();
+    if (!key) return true;
+    const owner = readPaneOwner(key);
     return !owner || owner.captureId === this.captureId;
   }
 
@@ -570,9 +592,10 @@ export class TmuxPaneCapture implements CaptureBackend {
       } catch {
         // best effort
       }
-      if (this.paneId) {
+      const key = this.ownerKey();
+      if (key) {
         try {
-          unlinkSync(paneOwnerFile(this.paneId));
+          unlinkSync(paneOwnerFile(key));
         } catch {
           // best effort
         }

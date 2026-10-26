@@ -192,7 +192,11 @@ evaluates ALL checks, no short-circuit; `assertOutput` still short-circuits).
 tmux allows ONE `pipe-pane` per pane; a second `--attach`/`[t]` to the same
 pane silently replaced ours (A's pipe file stopped growing → every `[v]`
 reported `missing:`). `TmuxPaneCapture.attach()` writes a per-pane owner marker
-(`paneOwnerFile(#{pane_id})` → `{captureId, pid, since}`) and returns the live
+(`paneOwnerFile(<#{socket_path}#{pane_id}>)` → `{captureId, pid, since}`,
+mode 0600) in the PRIVATE `~/.samaritan/panes/` (0700) — never `tmpdir()`
+(CodeQL js/insecure-temporary-file: predictable names in a world-writable dir
+invite planted symlinks; and pane ids restart at `%0` per tmux server, hence
+the socket in the key) — and returns the live
 `previousOwner` it took over (printed via `paneTakeoverWarning`).
 `ensureCapture()` (optional on `CaptureBackend`) checks `#{pane_pipe}` + the
 marker and re-attaches when closed or taken (`{status:'reattached', takenBy}`).

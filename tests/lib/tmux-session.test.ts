@@ -1,8 +1,8 @@
 import assert from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { existsSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 import {
   buildPasteBufferArgs,
@@ -491,9 +491,11 @@ describe('TmuxPaneCapture — one pipe-pane per pane (ownership)', () => {
       const session = `sam-own-${process.pid}-${Date.now()}`;
       const target = `${session}:0.0`;
       spawnSync('tmux', ['new-session', '-d', '-s', session]);
+      // Markers are keyed by tmux server socket + pane id (pane ids restart
+      // at %0 on every server, so the id alone collides across servers).
       const paneId = spawnSync(
         'tmux',
-        ['display-message', '-p', '-t', target, '#{pane_id}'],
+        ['display-message', '-p', '-t', target, '#{socket_path}#{pane_id}'],
         { encoding: 'utf8' },
       ).stdout.trim();
       const a = new TmuxPaneCapture(`own-a-${process.pid}`, target);
@@ -544,4 +546,13 @@ describe('TmuxPaneCapture — one pipe-pane per pane (ownership)', () => {
       }
     },
   );
+
+  it('keeps owner markers in a private per-user dir, never the shared temp dir', () => {
+    const file = paneOwnerFile('/tmp/tmux-0/default#%0');
+    assert.ok(file.startsWith(join(homedir(), '.samaritan', 'panes')), file);
+    assert.ok(!file.startsWith(tmpdir()), file);
+    if (process.platform !== 'win32') {
+      assert.strictEqual(statSync(dirname(file)).mode & 0o777, 0o700);
+    }
+  });
 });
