@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { after, describe, it } from 'node:test';
 import { getFixturePath } from '../fixtures/fixtures';
@@ -15,8 +15,9 @@ describe('Diff Command', () => {
   });
 
   it('should print a terminal report comparing two environments', () => {
-    const result = execSync(
-      `npx tsx src/cli/index.ts diff ${fixturePath} staging prod`,
+    const result = execFileSync(
+      'npx',
+      ['tsx', 'src/cli/index.ts', 'diff', fixturePath, 'staging', 'prod'],
       { cwd: process.cwd(), encoding: 'utf-8' },
     );
 
@@ -27,8 +28,9 @@ describe('Diff Command', () => {
   });
 
   it('should report 0 differences when comparing an environment to itself', () => {
-    const result = execSync(
-      `npx tsx src/cli/index.ts diff ${fixturePath} staging staging`,
+    const result = execFileSync(
+      'npx',
+      ['tsx', 'src/cli/index.ts', 'diff', fixturePath, 'staging', 'staging'],
       { cwd: process.cwd(), encoding: 'utf-8' },
     );
 
@@ -37,8 +39,18 @@ describe('Diff Command', () => {
   });
 
   it('should write a Markdown report file with --output', () => {
-    const result = execSync(
-      `npx tsx src/cli/index.ts diff ${fixturePath} staging prod --output ${outputPath}`,
+    const result = execFileSync(
+      'npx',
+      [
+        'tsx',
+        'src/cli/index.ts',
+        'diff',
+        fixturePath,
+        'staging',
+        'prod',
+        '--output',
+        outputPath,
+      ],
       { cwd: process.cwd(), encoding: 'utf-8' },
     );
 
@@ -52,11 +64,15 @@ describe('Diff Command', () => {
 
   it('should fail with a clear error for an unknown environment', () => {
     assert.throws(() => {
-      execSync(`npx tsx src/cli/index.ts diff ${fixturePath} staging bogus`, {
-        cwd: process.cwd(),
-        encoding: 'utf-8',
-        stdio: 'pipe',
-      });
+      execFileSync(
+        'npx',
+        ['tsx', 'src/cli/index.ts', 'diff', fixturePath, 'staging', 'bogus'],
+        {
+          cwd: process.cwd(),
+          encoding: 'utf-8',
+          stdio: 'pipe',
+        },
+      );
     }, /Environment not found in operation: bogus/);
   });
 });

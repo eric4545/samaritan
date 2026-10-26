@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { execSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { after, describe, it } from 'node:test';
 import { renderExpectDescription } from '../../src/lib/assertions';
@@ -71,8 +71,9 @@ describe('CLI --env flag', () => {
   describe('validate: --env flag', () => {
     it('accepts --env flag', () => {
       const fixture = getFixturePath('minimal');
-      const result = execSync(
-        `node_modules/.bin/tsx src/cli/index.ts validate ${fixture} --env default`,
+      const result = execFileSync(
+        'node_modules/.bin/tsx',
+        ['src/cli/index.ts', 'validate', fixture, '--env', 'default'],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
       assert.ok(result.includes('YAML syntax valid'));
@@ -80,8 +81,9 @@ describe('CLI --env flag', () => {
 
     it('accepts -e short flag', () => {
       const fixture = getFixturePath('minimal');
-      const result = execSync(
-        `node_modules/.bin/tsx src/cli/index.ts validate ${fixture} -e default`,
+      const result = execFileSync(
+        'node_modules/.bin/tsx',
+        ['src/cli/index.ts', 'validate', fixture, '-e', 'default'],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
       assert.ok(result.includes('YAML syntax valid'));
@@ -118,8 +120,18 @@ describe('CLI --env flag', () => {
   describe('generate manual --env: single-env heading format', () => {
     it('generates heading-based manual (not table)', () => {
       const fixture = getFixturePath('minimal');
-      execSync(
-        `node_modules/.bin/tsx src/cli/index.ts generate manual ${fixture} --env default --output ${outputPath}`,
+      execFileSync(
+        'node_modules/.bin/tsx',
+        [
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          fixture,
+          '--env',
+          'default',
+          '--output',
+          outputPath,
+        ],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
       assert.ok(existsSync(outputPath));
@@ -130,8 +142,18 @@ describe('CLI --env flag', () => {
 
     it('renders sub_steps as hierarchical headings', () => {
       const fixture = getFixturePath('nestedSubSteps2Levels');
-      execSync(
-        `node_modules/.bin/tsx src/cli/index.ts generate manual ${fixture} --env staging --output ${outputPath}`,
+      execFileSync(
+        'node_modules/.bin/tsx',
+        [
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          fixture,
+          '--env',
+          'staging',
+          '--output',
+          outputPath,
+        ],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
       const content = readFileSync(outputPath, 'utf-8');
@@ -146,8 +168,18 @@ describe('CLI --env flag', () => {
 
     it('includes sub_step commands in output', () => {
       const fixture = getFixturePath('nestedSubSteps2Levels');
-      execSync(
-        `node_modules/.bin/tsx src/cli/index.ts generate manual ${fixture} --env staging --output ${outputPath}`,
+      execFileSync(
+        'node_modules/.bin/tsx',
+        [
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          fixture,
+          '--env',
+          'staging',
+          '--output',
+          outputPath,
+        ],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
       const content = readFileSync(outputPath, 'utf-8');

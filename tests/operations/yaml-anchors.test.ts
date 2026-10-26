@@ -1,7 +1,14 @@
 import assert from 'node:assert';
-import fs from 'node:fs';
-import { describe, it } from 'node:test';
+import fs, { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, describe, it } from 'node:test';
 import { parseOperation } from '../../src/operations/parser';
+
+// Private scratch dir (mkdtemp: random name, mode 0700) rather than fixed
+// names in the shared temp dir, which another local user could pre-create.
+const TMP = mkdtempSync(join(tmpdir(), 'samaritan-yaml-anchors-test-'));
+after(() => rmSync(TMP, { recursive: true, force: true }));
 
 describe('YAML Anchors and Aliases Support', () => {
   it('should support scalar anchors and aliases', async () => {
@@ -26,7 +33,7 @@ steps:
     instruction: Connect to database server
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-scalar-anchors.yaml`;
+    const tempFile = join(TMP, 'scalar-anchors.yaml');
     fs.writeFileSync(tempFile, yaml);
 
     try {
@@ -80,7 +87,7 @@ steps:
       types: [screenshot]  # Override
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-object-anchors.yaml`;
+    const tempFile = join(TMP, 'object-anchors.yaml');
     fs.writeFileSync(tempFile, yaml);
 
     try {
@@ -124,7 +131,7 @@ steps:
     instruction: Deploy app
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-array-anchors.yaml`;
+    const tempFile = join(TMP, 'array-anchors.yaml');
     fs.writeFileSync(tempFile, yaml);
 
     try {
@@ -172,7 +179,7 @@ steps:
       Deploy to \${NAMESPACE} with \${REPLICAS} replicas
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-nested-env-anchors.yaml`;
+    const tempFile = join(TMP, 'nested-env-anchors.yaml');
     fs.writeFileSync(tempFile, yaml);
 
     try {
@@ -246,7 +253,7 @@ steps:
     timeout: 600  # Override timeout
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-reusable-steps.yaml`;
+    const tempFile = join(TMP, 'reusable-steps.yaml');
     fs.writeFileSync(tempFile, yaml);
 
     try {
@@ -365,7 +372,7 @@ steps:
     retry: *retry_standard
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-complex-dry.yaml`;
+    const tempFile = join(TMP, 'complex-dry.yaml');
     fs.writeFileSync(tempFile, yaml);
 
     try {
@@ -470,7 +477,7 @@ steps:
       command: kubectl rollout undo deployment/worker
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-rollback-anchors.yaml`;
+    const tempFile = join(TMP, 'rollback-anchors.yaml');
     fs.writeFileSync(tempFile, yaml);
 
     try {

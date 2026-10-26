@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import { after, describe, it } from 'node:test';
 import { getFixturePath } from '../fixtures/fixtures';
@@ -17,9 +17,21 @@ describe('Manual Generation CLI Command', () => {
 
   it('should generate a Markdown manual with environment-specific details and substituted variables', (_t) => {
     // Run the CLI command with --resolve-vars to match test expectations
-    const command = `npx tsx src/cli/index.ts generate manual ${testInputFilePath} --output ${outputFilePath} --resolve-vars`;
     try {
-      execSync(command, { stdio: 'pipe' });
+      execFileSync(
+        'npx',
+        [
+          'tsx',
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          testInputFilePath,
+          '--output',
+          outputFilePath,
+          '--resolve-vars',
+        ],
+        { stdio: 'pipe' },
+      );
     } catch (error) {
       const err = error as { stdout: Buffer; stderr: Buffer };
       console.error('CLI command failed:', err.stderr.toString());

@@ -1,7 +1,15 @@
 import assert from 'node:assert';
-import { describe, it } from 'node:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, describe, it } from 'node:test';
 import { parseOperation } from '../../src/operations/parser';
 import { getFixturePath, parseFixture } from '../fixtures/fixtures';
+
+// Private scratch dir (mkdtemp: random name, mode 0700) rather than fixed
+// names in the shared temp dir, which another local user could pre-create.
+const TMP = mkdtempSync(join(tmpdir(), 'samaritan-parser-test-'));
+after(() => rmSync(TMP, { recursive: true, force: true }));
 
 describe('Enhanced Operation Parser', () => {
   it('should parse legacy deployment.yaml with backward compatibility', async () => {
@@ -852,7 +860,7 @@ steps:
       MANIFEST_PATH: ./k8s/deployment.yaml
 `;
       const { writeFileSync, unlinkSync } = await import('node:fs');
-      const tmpPath = '/tmp/samaritan-sub-steps-test.yaml';
+      const tmpPath = join(TMP, 'sub-steps-test.yaml');
       writeFileSync(tmpPath, yamlContent);
       try {
         const operation = await parseOperation(tmpPath);
@@ -940,7 +948,7 @@ steps:
   - uses: ${templateAbsPath}
 `;
       const { writeFileSync, unlinkSync } = await import('node:fs');
-      const tmpPath = '/tmp/samaritan-no-vars-test.yaml';
+      const tmpPath = join(TMP, 'no-vars-test.yaml');
       writeFileSync(tmpPath, yamlContent);
       try {
         const operation = await parseOperation(tmpPath);
@@ -1002,7 +1010,7 @@ steps:
       TOOL_NAME: kubectl
 `;
       const { writeFileSync, unlinkSync } = await import('node:fs');
-      const tmpPath = '/tmp/samaritan-phase-test.yaml';
+      const tmpPath = join(TMP, 'phase-test.yaml');
       writeFileSync(tmpPath, yamlContent);
       try {
         const operation = await parseOperation(tmpPath);
@@ -1048,7 +1056,7 @@ steps:
     command: echo done
 `;
       const { writeFileSync, unlinkSync } = await import('node:fs');
-      const tmpPath = '/tmp/samaritan-usesgroup-test.yaml';
+      const tmpPath = join(TMP, 'usesgroup-test.yaml');
       writeFileSync(tmpPath, yamlContent);
       try {
         const operation = await parseOperation(tmpPath);
@@ -1186,7 +1194,7 @@ steps:
         new Response(remoteTemplateYaml, { status: 200 });
 
       const { writeFileSync, unlinkSync } = await import('node:fs');
-      const tmpPath = '/tmp/samaritan-remote-template-test.yaml';
+      const tmpPath = join(TMP, 'remote-template-test.yaml');
       writeFileSync(
         tmpPath,
         `name: Remote Template Test
@@ -1230,7 +1238,7 @@ steps:
       ENDPOINT: https://staging.example.com
 `;
       const { writeFileSync, unlinkSync } = await import('node:fs');
-      const tmpPath = '/tmp/samaritan-defaults-test.yaml';
+      const tmpPath = join(TMP, 'defaults-test.yaml');
       writeFileSync(tmpPath, yamlContent);
       try {
         const operation = await parseOperation(tmpPath);
@@ -1262,7 +1270,7 @@ steps:
       RETRIES: 10
 `;
       const { writeFileSync, unlinkSync } = await import('node:fs');
-      const tmpPath = '/tmp/samaritan-override-test.yaml';
+      const tmpPath = join(TMP, 'override-test.yaml');
       writeFileSync(tmpPath, yamlContent);
       try {
         const operation = await parseOperation(tmpPath);
@@ -1298,7 +1306,7 @@ steps:
       TIMEOUT: 60
 `;
       const { writeFileSync, unlinkSync } = await import('node:fs');
-      const tmpPath = '/tmp/samaritan-partial-test.yaml';
+      const tmpPath = join(TMP, 'partial-test.yaml');
       writeFileSync(tmpPath, yamlContent);
       try {
         const operation = await parseOperation(tmpPath);
@@ -1329,7 +1337,7 @@ steps:
   - uses: ${circularAPath}
 `;
       const { writeFileSync, unlinkSync } = await import('node:fs');
-      const tmpPath = '/tmp/samaritan-circular-test.yaml';
+      const tmpPath = join(TMP, 'circular-test.yaml');
       writeFileSync(tmpPath, yamlContent);
       try {
         await assert.rejects(
@@ -1366,8 +1374,8 @@ steps:
       ].join('\n');
 
       const { writeFileSync, unlinkSync } = await import('node:fs');
-      const templatePath = '/tmp/samaritan-foreach-template.yaml';
-      const opPath = '/tmp/samaritan-foreach-op.yaml';
+      const templatePath = join(TMP, 'foreach-template.yaml');
+      const opPath = join(TMP, 'foreach-op.yaml');
       writeFileSync(templatePath, templateYaml);
       writeFileSync(
         opPath,
@@ -1419,7 +1427,7 @@ steps:
     instruction: noop
 `;
     const { writeFileSync, unlinkSync } = await import('node:fs');
-    const tmpPath = '/tmp/samaritan-proto-guard-test.yaml';
+    const tmpPath = join(TMP, 'proto-guard-test.yaml');
     writeFileSync(tmpPath, yamlContent);
     try {
       await assert.rejects(
@@ -1445,7 +1453,7 @@ steps:
     instruction: noop
 `;
     const { writeFileSync, unlinkSync } = await import('node:fs');
-    const tmpPath = '/tmp/samaritan-proto-guard-test2.yaml';
+    const tmpPath = join(TMP, 'proto-guard-test2.yaml');
     writeFileSync(tmpPath, yamlContent);
     try {
       await assert.rejects(
