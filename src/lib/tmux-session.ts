@@ -7,7 +7,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { SessionConfig } from '../models/operation';
 import type {
@@ -243,9 +243,8 @@ export class TmuxSession implements CaptureBackend {
 
   getPipeFilePath(sessionName: string): string {
     // Sanitize both parts: the path is embedded in a shell command via pipe-pane
-    return join(
-      tmpdir(),
-      `samaritan-${sanitizeSessionName(this.sessionId)}-${sanitizeSessionName(sessionName)}.pipe`,
+    return capturePipeFile(
+      `${sanitizeSessionName(this.sessionId)}-${sanitizeSessionName(sessionName)}`,
     );
   }
 
@@ -389,6 +388,29 @@ function isProcessAlive(pid: number): boolean {
 }
 
 /**
+ * The file a `pipe-pane` capture appends pane output to. Like the owner
+ * markers below it lives in a private per-user directory
+ * (`~/.samaritan/pipes`, mode 0700), never the shared temp dir: `cat >>`
+ * creates it with the default umask (usually world-readable), and the pane
+ * output can hold secrets; a predictable name there also invites a planted
+ * symlink that would redirect the append. `name` must already be sanitized.
+ */
+export function capturePipeFile(name: string): string {
+  const dir = join(homedir(), '.samaritan', 'pipes');
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return join(dir, `samaritan-${name}.pipe`);
+}
+
+/**
+ * Quote `path` for the `sh -c` command tmux runs for `pipe-pane`: single
+ * quotes, with any embedded `'` closed, escaped and reopened, so a home or
+ * temp dir containing spaces or quotes stays one word.
+ */
+function shellQuotePath(path: string): string {
+  return `'${path.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
  * The marker file recording which samaritan capture owns a pane's single
  * `pipe-pane` slot. It lives in a private per-user directory
  * (`~/.samaritan/panes`, mode 0700) — never the shared, world-writable temp
@@ -443,10 +465,14 @@ export class TmuxPaneCapture implements CaptureBackend {
   constructor(captureId: string, target: string) {
     this.target = target;
     this.captureId = captureId;
-    this.pipeFile = join(
-      tmpdir(),
-      `samaritan-${sanitizeSessionName(captureId)}-attached.pipe`,
+    this.pipeFile = capturePipeFile(
+      `${sanitizeSessionName(captureId)}-attached`,
     );
+  }
+
+  /** The file this capture's `pipe-pane` appends the pane output to. */
+  getPipeFilePath(): string {
+    return this.pipeFile;
   }
 
   /**
@@ -469,8 +495,7 @@ export class TmuxPaneCapture implements CaptureBackend {
       'pipe-pane',
       '-t',
       this.target,
-      // Quoted: tmpdir() may contain spaces (e.g. macOS /var/folders/...)
-      `cat >> '${this.pipeFile}'`,
+      `cat >> ${shellQuotePath(this.pipeFile)}`,
     ]);
     if (key) {
       const owner: PaneOwner = {
@@ -643,7 +668,7 @@ export async function bootstrapSessions(
       '-t',
       paneTarget,
       '-o',
-      `cat >> '${pipeFile}'`,
+      `cat >> ${shellQuotePath(pipeFile)}`,
     ]);
 
     tmuxSession.registerPane(name, paneTarget);

@@ -197,7 +197,12 @@ mode 0600) in the PRIVATE `~/.samaritan/panes/` (0700) — never `tmpdir()`
 (CodeQL js/insecure-temporary-file: predictable names in a world-writable dir
 invite planted symlinks; and pane ids restart at `%0` per tmux server, hence
 the socket in the key) — and returns the live
-`previousOwner` it took over (printed via `paneTakeoverWarning`).
+`previousOwner` it took over (printed via `paneTakeoverWarning`). The
+`pipe-pane` capture files themselves (`TmuxSession.getPipeFilePath`,
+`TmuxPaneCapture.getPipeFilePath`, both via `capturePipeFile()`) live in the
+equally private `~/.samaritan/pipes/` (0700): `cat >>` creates them with the
+default umask, and pane output can hold secrets. The path is single-quoted
+for tmux's `sh -c` by `shellQuotePath` (a home dir may contain `'`).
 `ensureCapture()` (optional on `CaptureBackend`) checks `#{pane_pipe}` + the
 marker and re-attaches when closed or taken (`{status:'reattached', takenBy}`).
 The loop's `repairCapture(sessionName)` runs at step start (before the offset
