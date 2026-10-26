@@ -18,6 +18,7 @@ export type EventType =
   | 'step_failed'
   | 'step_timeout'
   | 'rollback_start'
+  | 'rollback_step'
   | 'rollback_complete'
   | 'session_end'
   | 'iterm2_pane_opened'

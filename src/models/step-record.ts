@@ -12,9 +12,26 @@ export interface VerificationCheck {
   type?: string;
 }
 
+/** An operator's decision to accept a failed verification (`o` override). */
+export interface VerificationOverride {
+  by: string;
+  at: string;
+  reason?: string;
+}
+
 export interface StepVerification {
+  /** Final state: the LATEST verify attempt's result. */
   pass: boolean;
+  /** The latest attempt's checklist (every check, no short-circuit). */
   checks: VerificationCheck[];
+  /** The cleaned output the latest attempt was checked against. */
+  output?: string;
+  /** How many verify attempts ran (`[v]`, re-verify, `expect.retry` polls). */
+  attempts?: number;
+  /** How many of those attempts failed. */
+  failedAttempts?: number;
+  /** Set when the operator overrode a failed verification (`o` + reason). */
+  override?: VerificationOverride;
   verifiedBy?: string;
   verifiedAt?: string;
 }
@@ -62,9 +79,36 @@ export interface StepRecord {
   failedReason?: string;
 }
 
+export interface RollbackCommandRecord {
+  session: string;
+  command: string;
+  output?: string;
+  /** Rollback entry name (e.g. `↩ Rollback for "Deploy"`). */
+  name?: string;
+  /** Shown to the operator (operator-driven) rather than sent by samaritan. */
+  displayed?: boolean;
+  /** An instruction-only entry (no command). */
+  instruction?: boolean;
+  /** Pasted into the attached pane with `[p]` (never with Enter). */
+  pasted?: boolean;
+  /** The operator's answer: ran it (`executed`), `skipped`, or `aborted`. */
+  outcome?: 'executed' | 'skipped' | 'aborted';
+  /** Result of `[v]` against this entry's `expect`, when verified. */
+  verified?: boolean;
+}
+
 export interface RollbackRecord {
   step: number;
   triggeredBy: string;
-  commands: Array<{ session: string; command: string; output?: string }>;
+  /** `rollback` (step `[r]`), `nearest` (upstream fallback) or `global` (`[g]`). */
+  context?: string;
+  commands: RollbackCommandRecord[];
+  /**
+   * `completed` | `partial` | `not_executed` for operator-driven rollbacks;
+   * `success` when samaritan sent every command itself (spawn-own tmux).
+   */
   status?: string;
+  executed?: number;
+  skipped?: number;
+  total?: number;
 }

@@ -1,0 +1,15 @@
+name: run-variants
+version: 1.0.0
+description: run must apply variants.<env> exactly like generate manual --env
+environments:
+  - name: dev
+  - name: sbx
+steps:
+  - name: Show target
+    type: manual
+    instruction: Base instruction
+    command: echo base-command
+    variants:
+      sbx:
+        instruction: Sandbox instruction
+        command: echo variant-command

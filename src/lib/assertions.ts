@@ -22,12 +22,48 @@ const OSC_RE = new RegExp(
 );
 // CSI sequences (colors, cursor movement): ESC [ params final-byte
 const CSI_RE = new RegExp(`${ESC}\\[[0-9;?]*[ -/]*[@-~]`, 'g');
-// Remaining two-character escapes: ESC followed by a single 0x40–0x5F byte
-const SIMPLE_ESC_RE = new RegExp(`${ESC}[@-_]`, 'g');
+// DCS / SOS / PM / APC strings: ESC P|X|^|_ ... terminated by ESC \ (or BEL)
+const STRING_ESC_RE = new RegExp(
+  `${ESC}[PX^_][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)`,
+  'g',
+);
+// Every other escape: ESC, optional intermediate bytes (0x20–0x2F), one final
+// byte (0x30–0x7E) — covers charset selection (`ESC ( B`, emitted by
+// `tput sgr0`), keypad mode (`ESC =`), save/restore cursor (`ESC 7`), …
+const SIMPLE_ESC_RE = new RegExp(`${ESC}[ -/]*[0-~]`, 'g');
+// C0 controls except TAB/LF/CR, DEL, and the C1 range — none of them are text.
+// Built via the constructor for the same lint reason as ESC above.
+const CONTROL_CHARS_RE = new RegExp(
+  `[${String.fromCharCode(0)}-${String.fromCharCode(8)}${String.fromCharCode(0x0b)}-${String.fromCharCode(0x0c)}${String.fromCharCode(0x0e)}-${String.fromCharCode(0x1f)}${String.fromCharCode(0x7f)}-${String.fromCharCode(0x9f)}]`,
+  'g',
+);
+const BACKSPACE = String.fromCharCode(0x08);
+
+/**
+ * Remove every control character except TAB, LF and CR (NUL, SI, a stray
+ * ESC, DEL, C1 …) so the text is plain UTF-8. Used as the final pass over the
+ * run report — `file` and Slack treat a single NUL as binary data.
+ */
+export function stripControlChars(text: string): string {
+  return text.replace(CONTROL_CHARS_RE, '');
+}
+
+/** Apply backspaces the way a terminal does: each one erases the char before it. */
+function applyBackspaces(line: string): string {
+  if (!line.includes(BACKSPACE)) return line;
+  const out: string[] = [];
+  for (const ch of line) {
+    if (ch === BACKSPACE) out.pop();
+    else out.push(ch);
+  }
+  return out.join('');
+}
 
 /**
  * Clean raw terminal capture (tmux pipe-pane output) before asserting:
- * - strips ANSI/VT100 escape sequences (colors, cursor movement, OSC titles)
+ * - strips ANSI/VT100 escape sequences (colors, cursor movement, OSC titles,
+ *   DCS strings, charset selection) and any other control byte (NUL, SI, …)
+ * - applies backspaces
  * - resolves carriage-return overwrites (`\r\n` line endings, progress bars)
  *
  * Without this, expected text that is visibly on screen fails `contains` /
@@ -36,6 +72,7 @@ const SIMPLE_ESC_RE = new RegExp(`${ESC}[@-_]`, 'g');
 export function cleanTerminalOutput(raw: string): string {
   const noAnsi = raw
     .replace(OSC_RE, '')
+    .replace(STRING_ESC_RE, '')
     .replace(CSI_RE, '')
     .replace(SIMPLE_ESC_RE, '');
   return noAnsi
@@ -45,7 +82,11 @@ export function cleanTerminalOutput(raw: string): string {
       // last remaining \r — emulating how the terminal overwrites the line.
       const stripped = line.endsWith('\r') ? line.slice(0, -1) : line;
       const overwriteIdx = stripped.lastIndexOf('\r');
-      return overwriteIdx === -1 ? stripped : stripped.slice(overwriteIdx + 1);
+      const visible =
+        overwriteIdx === -1 ? stripped : stripped.slice(overwriteIdx + 1);
+      // Backspaces erase (readline redraws, `\b \b`), then any remaining
+      // control byte (NUL, SI, a lone ESC, …) is dropped — none is text.
+      return stripControlChars(applyBackspaces(visible));
     })
     .join('\n');
 }
@@ -104,6 +145,70 @@ export function stripCommandEcho(output: string, command?: string): string {
     end += cmdLines.length;
   }
   return outLines.slice(end).join('\n');
+}
+
+/**
+ * From a pane's scrollback (`capture-pane -S -N`), return the text starting
+ * at the LAST line that echoes `command` (its first non-empty line, matched
+ * with `endsWith` like `stripCommandEcho`) — i.e. the most recent run of the
+ * command and everything after it. Undefined when no command is given or it
+ * was never echoed. The screen fallback for a verify whose pipe slice was lost.
+ */
+export function sliceFromLastCommandEcho(
+  screen: string,
+  command?: string,
+): string | undefined {
+  const first = command
+    ?.split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (!first) return undefined;
+  const lines = screen.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].trimEnd().endsWith(first)) return lines.slice(i).join('\n');
+  }
+  return undefined;
+}
+
+// Characters a shell prompt conventionally ends with (bash `$`/`#`, zsh `%`,
+// PS2/fish `>`, and the common starship/oh-my-zsh glyphs).
+const PROMPT_SIGIL_RE = /[$#%>❯➜»λ]$/;
+
+/**
+ * Drop the shell prompt the pane prints AFTER a command's output, so
+ * line-based checks (`line_count`, `all_lines_match`, …) and `equals` see only
+ * the output. A finished command's output lines are newline-terminated; the
+ * prompt that follows is not — so only a non-empty LAST line is a candidate.
+ *
+ * - `promptLine` (the pane's current cursor line, e.g. `user@host:~$ `) is the
+ *   exact prompt: it is removed as a suffix, so output that lacked a trailing
+ *   newline (`printf abc` → `abcuser@host:~$ `) keeps its `abc`.
+ * - Without it (no live pane), the line is dropped only when it ends with a
+ *   prompt sigil (`$ # % > ❯ ➜ » λ`).
+ *
+ * Returns `output` unchanged when the last line is newline-terminated or does
+ * not look like a prompt, so it never makes a working capture worse.
+ */
+export function stripTrailingPrompt(
+  output: string,
+  promptLine?: string,
+): string {
+  const lines = output.split('\n');
+  const last = lines[lines.length - 1].trimEnd();
+  if (!last.trim()) return output;
+
+  const prompt = promptLine?.trimEnd();
+  let rest: string | undefined;
+  if (prompt?.trim()) {
+    if (last.endsWith(prompt)) rest = last.slice(0, -prompt.length);
+  } else if (PROMPT_SIGIL_RE.test(last)) {
+    rest = '';
+  }
+  if (rest === undefined) return output;
+
+  const kept = lines.slice(0, -1);
+  if (rest.trim()) kept.push(rest);
+  return kept.join('\n');
 }
 
 export interface AssertResult {

@@ -90,6 +90,178 @@ describe('foldEvents', () => {
     assert.strictEqual(v.checks[1].type, 'contains');
   });
 
+  it('keeps the final verify attempt (with full checklist) and counts attempts', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Verify' }),
+      ev({
+        type: 'assert_result',
+        step: 0,
+        pass: false,
+        output: 'Pending',
+        checks: [{ pass: false, type: 'contains', expected: 'Running' }],
+      }),
+      ev({
+        type: 'assert_result',
+        step: 0,
+        pass: true,
+        output: 'Running',
+        checks: [{ pass: true, type: 'contains', expected: 'Running' }],
+      }),
+    ]);
+    const v = steps[0].verification;
+    assert.ok(v);
+    assert.strictEqual(v.pass, true, 'final state wins');
+    assert.strictEqual(v.attempts, 2);
+    assert.strictEqual(v.failedAttempts, 1);
+    assert.strictEqual(v.output, 'Running');
+    assert.deepStrictEqual(v.checks, [
+      { pass: true, type: 'contains', expected: 'Running', actual: undefined },
+    ]);
+  });
+
+  it('records an override with who/when/reason', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Verify' }),
+      ev({
+        type: 'assert_result',
+        step: 0,
+        pass: false,
+        checks: [{ pass: false, type: 'line_count', expected: '2' }],
+      }),
+      ev({
+        type: 'user_input',
+        ts: '2026-10-22T18:14:46.882Z',
+        action: 'override',
+        step: 0,
+        actor: 'alice',
+        reason: 'prompt line counted',
+      }),
+    ]);
+    assert.deepStrictEqual(steps[0].verification?.override, {
+      by: 'alice',
+      at: '2026-10-22T18:14:46.882Z',
+      reason: 'prompt line counted',
+    });
+  });
+
+  it('folds a global/nearest rollback into the rollback record, not the step', () => {
+    const { steps, rollbacks } = foldEvents([
+      ev({ type: 'step_start', step: 1, name: 'Deploy' }),
+      ev({
+        type: 'rollback_start',
+        step: 1,
+        triggered_by: 'alice',
+        context: 'global',
+      }),
+      ev({
+        type: 'command_sent',
+        session: 'execution',
+        command: 'echo undo',
+        context: 'global',
+      }),
+      ev({
+        type: 'rollback_complete',
+        step: 1,
+        status: 'success',
+        context: 'global',
+      }),
+    ]);
+    assert.deepStrictEqual(steps[0].commands, [], 'not a step command');
+    assert.strictEqual(rollbacks[0].context, 'global');
+    assert.strictEqual(rollbacks[0].commands[0].command, 'echo undo');
+  });
+
+  it('records operator-driven rollback outcomes (pasted, verified, skipped)', () => {
+    const { steps, rollbacks } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({
+        type: 'rollback_start',
+        step: 0,
+        triggered_by: 'alice',
+        context: 'rollback',
+      }),
+      ev({
+        type: 'command_displayed',
+        session: 'tmux pane w:0.0',
+        command: 'echo undo dev',
+        context: 'rollback',
+        name: 'Undo',
+      }),
+      ev({
+        type: 'user_input',
+        action: 'send_to_pane',
+        command: 'echo undo dev',
+        context: 'rollback',
+      }),
+      ev({
+        type: 'assert_result',
+        step: 0,
+        pass: true,
+        checks: [{ pass: true, type: 'contains', expected: 'undo' }],
+        context: 'rollback',
+      }),
+      ev({
+        type: 'rollback_step',
+        step: 0,
+        context: 'rollback',
+        index: 0,
+        outcome: 'executed',
+        verified: true,
+      }),
+      ev({
+        type: 'command_displayed',
+        session: 'tmux pane w:0.0',
+        command: 'Tell the on-call',
+        context: 'rollback',
+        instruction: true,
+      }),
+      ev({
+        type: 'rollback_step',
+        step: 0,
+        context: 'rollback',
+        index: 1,
+        outcome: 'skipped',
+      }),
+      ev({
+        type: 'rollback_complete',
+        step: 0,
+        status: 'partial',
+        context: 'rollback',
+        executed: 1,
+        skipped: 1,
+        total: 2,
+      }),
+    ]);
+    assert.strictEqual(
+      steps[0].verification,
+      undefined,
+      'rollback [v] stays off the step',
+    );
+    assert.deepStrictEqual(rollbacks[0].commands, [
+      {
+        session: 'tmux pane w:0.0',
+        command: 'echo undo dev',
+        displayed: true,
+        name: 'Undo',
+        instruction: undefined,
+        pasted: true,
+        verified: true,
+        outcome: 'executed',
+      },
+      {
+        session: 'tmux pane w:0.0',
+        command: 'Tell the on-call',
+        displayed: true,
+        name: undefined,
+        instruction: true,
+        outcome: 'skipped',
+      },
+    ]);
+    assert.strictEqual(rollbacks[0].status, 'partial');
+    assert.strictEqual(rollbacks[0].executed, 1);
+    assert.strictEqual(rollbacks[0].total, 2);
+  });
+
   it('records an approval decision with approver and rationale', () => {
     const { steps } = foldEvents([
       ev({ type: 'step_start', step: 0, name: 'Gate' }),

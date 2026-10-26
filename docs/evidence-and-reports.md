@@ -206,6 +206,18 @@ samaritan report /tmp/samaritan-f3a9b2.jsonl --output evidence-report.md
 
 The report includes a summary (steps, duration, PIC/reviewer), per-step command + output, verification sign-offs, and a dedicated rollback events section. Attach it directly to a change ticket.
 
+**Verification shows the final state.** Each step renders its *last* verify attempt (the full checklist plus the output it was checked against), with an attempt count when it was re-verified. A failure the operator accepted with `o` reads as overridden, with who, when and the reason. It is also flagged in the step heading and listed in the summary:
+
+```markdown
+## Step 1: two lines ⚠️ (verification overridden)
+
+**Verification**: ⚠️ OVERRIDDEN (2 attempts, 2 failed — last shown)
+- ⚠️ Overridden by alice at Thu, 22 Oct 2026 18:14:46 UTC — reason: prompt line counted
+- ❌ (line_count) — expected: `2`, actual: `3`
+```
+
+The report is plain UTF-8 Markdown: terminal escapes are stripped and any remaining control byte (NUL, SI, a stray ESC, …) is removed, so Slack, GitHub and `file` treat it as text.
+
 When several operators each ran their own slice of one operation with
 `run --pic`, merge their partial runs into a single consolidated report — each
 step attributed to the operator who actually ran it (see [Multi-operator focus mode](#multi-operator-focus-mode-run---pic)):

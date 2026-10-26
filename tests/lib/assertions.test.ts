@@ -6,7 +6,10 @@ import {
   cleanTerminalOutput,
   renderExpectDescription,
   renderExpectParts,
+  sliceFromLastCommandEcho,
   stripCommandEcho,
+  stripControlChars,
+  stripTrailingPrompt,
 } from '../../src/lib/assertions';
 import { SessionState } from '../../src/lib/session-state';
 
@@ -494,6 +497,21 @@ describe('SessionState.extractCapture — invalid pattern (security hardening)',
 });
 
 describe('cleanTerminalOutput — raw tmux pipe-pane capture normalization', () => {
+  it('drops NUL, SI, charset-select and keypad escapes (plain text only)', () => {
+    const e = '\u001b';
+    assert.strictEqual(
+      cleanTerminalOutput(`ok\u0000 ${e}(B\u000fdone`),
+      'ok done',
+    );
+    assert.strictEqual(cleanTerminalOutput(`${e}=${e}7x${e}8`), 'x');
+    assert.strictEqual(cleanTerminalOutput(`${e}P1$r0m${e}\\x`), 'x');
+    assert.strictEqual(cleanTerminalOutput('a\u007f\u0085b\tc'), 'ab\tc');
+  });
+
+  it('applies backspaces like the terminal (readline erase)', () => {
+    assert.strictEqual(cleanTerminalOutput('ab\b \bc'), 'ac');
+  });
+
   it('strips ANSI color codes wrapped around expected text', () => {
     const raw = '\u001b[32msuccessfully rolled out\u001b[0m';
     assert.strictEqual(cleanTerminalOutput(raw), 'successfully rolled out');
@@ -707,5 +725,84 @@ describe('assertOutput still short-circuits on array expect', () => {
     ]);
     assert.strictEqual(r.pass, true);
     assert.strictEqual(r.type, 'all');
+  });
+});
+
+describe('stripTrailingPrompt — drop the shell prompt after the output', () => {
+  it('removes the exact pane prompt from the unterminated last line', () => {
+    assert.strictEqual(
+      stripTrailingPrompt('a\nb\nroot@vm:/srv# ', 'root@vm:/srv# '),
+      'a\nb',
+    );
+  });
+
+  it('keeps output that lacked a trailing newline (printf abc)', () => {
+    assert.strictEqual(
+      stripTrailingPrompt('abcroot@vm:/srv# ', 'root@vm:/srv# '),
+      'abc',
+    );
+  });
+
+  it('leaves a newline-terminated capture alone (no prompt captured yet)', () => {
+    assert.strictEqual(stripTrailingPrompt('a\nb\n', 'x$ '), 'a\nb\n');
+    assert.strictEqual(stripTrailingPrompt('a\nb\n'), 'a\nb\n');
+  });
+
+  it('does not strip a last line that is not the pane prompt', () => {
+    assert.strictEqual(
+      stripTrailingPrompt('a\nstill running', 'root@vm:/srv# '),
+      'a\nstill running',
+    );
+  });
+
+  it('falls back to prompt sigils when the pane prompt is unknown', () => {
+    for (const prompt of ['user@host:~$ ', 'root# ', 'host% ', '❯ ', '> ']) {
+      assert.strictEqual(stripTrailingPrompt(`a\nb\n${prompt}`), 'a\nb');
+    }
+    assert.strictEqual(
+      stripTrailingPrompt('a\nprogress 40'),
+      'a\nprogress 40',
+      'no sigil → kept',
+    );
+  });
+
+  it('treats an empty pane prompt as unknown', () => {
+    assert.strictEqual(stripTrailingPrompt('a\nb\n$ ', '   '), 'a\nb');
+  });
+});
+
+describe('stripControlChars', () => {
+  it('keeps LF/TAB/CR, drops other C0, DEL and C1', () => {
+    assert.strictEqual(
+      stripControlChars('a\u0000b\n\tc\r\u007f\u009bd'),
+      'ab\n\tc\rd',
+    );
+  });
+});
+
+describe('sliceFromLastCommandEcho — scrollback fallback for a lost pipe', () => {
+  const screen = [
+    '$ echo MARK',
+    'old MARK',
+    '$ ls',
+    'a b',
+    '$ echo MARK',
+    'MARK',
+    '$ ',
+  ].join('\n');
+
+  it('starts at the LAST echo of the command', () => {
+    assert.strictEqual(
+      sliceFromLastCommandEcho(screen, 'echo MARK'),
+      '$ echo MARK\nMARK\n$ ',
+    );
+  });
+
+  it('is undefined without a command or when it was never run', () => {
+    assert.strictEqual(sliceFromLastCommandEcho(screen), undefined);
+    assert.strictEqual(
+      sliceFromLastCommandEcho(screen, 'kubectl get pods'),
+      undefined,
+    );
   });
 });

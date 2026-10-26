@@ -1,3 +1,19 @@
+/** The samaritan capture recorded as owning a pane's single `pipe-pane`. */
+export interface PaneOwner {
+  /** Capture id — the run's session id (plus `-<step>` for a `[t]` attach). */
+  captureId: string;
+  pid: number;
+  since: string;
+}
+
+/** Result of `CaptureBackend.ensureCapture()`. */
+export type CaptureCheck =
+  | { status: 'ok' }
+  /** The pipe was closed or taken over and has been re-attached. */
+  | { status: 'reattached'; takenBy?: PaneOwner }
+  /** tmux or the pane is gone — nothing to capture from. */
+  | { status: 'unavailable' };
+
 /**
  * CaptureBackend — minimal interface for reading pane output.
  *
@@ -30,6 +46,23 @@ export interface CaptureBackend {
    * when the backend cannot produce a screen (e.g. tmux unavailable).
    */
   captureScreen?(sessionName: string): string | undefined;
+  /**
+   * Optional: the pane's current cursor line — the shell prompt once a command
+   * has finished. Used to strip the trailing prompt from a capture before
+   * line-based `expect` checks. Undefined when unavailable.
+   */
+  promptLine?(sessionName: string): string | undefined;
+  /**
+   * Optional: verify the capture still receives the pane's output and repair
+   * it if not (tmux allows one `pipe-pane` per pane — another run attached to
+   * the same pane replaces ours). Called at step start and before each read.
+   */
+  ensureCapture?(sessionName: string): CaptureCheck;
+  /**
+   * Optional: the pane's scrollback + screen as clean text — the fallback for
+   * a verify whose pipe slice was lost while the capture was detached.
+   */
+  captureHistory?(sessionName: string): string | undefined;
   /**
    * Tear down this backend (close pipe, unlink temp files, etc.).
    * MUST NOT kill-session when the pane belongs to the operator (TmuxPaneCapture).

@@ -29,4 +29,5 @@ export interface OperationSession {
   operator?: string; // Primary operator running the session
   completion_percentage?: number; // Calculated progress
   step_log?: StepRecord[]; // Structured per-step record derived from the JSONL event log
+  attach_target?: string; // Sidecar tmux pane attached via --attach / [t] — re-attached on resume
 }

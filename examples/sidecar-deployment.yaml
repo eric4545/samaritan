@@ -15,6 +15,13 @@
 #
 # Mid-flight: press [t] at any step to attach a tmux pane for [v] verify.
 # Press [v] after running the step's command to validate expected output.
+#
+# Rollback in sidecar mode is operator-driven, exactly like a forward step:
+# [r] (this step) or [g] (global, below) shows each ${VAR}-resolved rollback
+# command, [p] pastes it into the attached pane (no Enter), [v] checks its
+# `expect`, and ↵ confirms you ran it. The report records what you confirmed
+# (completed / partial / NOT executed) — never an assumed success. After the
+# last step, the "All steps done" screen still offers [r]/[g].
 
 name: Sidecar Deployment Example
 version: 1.0.0
@@ -47,6 +54,14 @@ environments:
       IMAGE_TAG: v2.3.1
       HEALTH_URL: https://production.example.com/health
     approval_required: true
+
+# Global rollback ([g]): the explicit steps below, then every COMPLETED step's
+# own rollback in reverse order.
+rollback:
+  aggregate_step_rollbacks: true
+  steps:
+    - name: Drain traffic
+      instruction: Shift traffic away from ${NAMESPACE} before undoing the deploy.
 
 steps:
   # ─── Preflight checks ──────────────────────────────────────────────────────
@@ -103,8 +118,11 @@ steps:
     expect:
       contains: successfully rolled out
     rollback:
-      - command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
+      - name: Undo rollout
+        command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
         session: execution
+        expect:
+          contains: rolled back
 
   # ─── Verification ──────────────────────────────────────────────────────────
 

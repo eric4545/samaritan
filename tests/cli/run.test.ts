@@ -39,6 +39,7 @@ function fixturePath(name: string): string {
     needsGate: 'tests/fixtures/operations/features/needs-gate.yaml',
     nearestRollback: 'tests/fixtures/operations/features/nearest-rollback.yaml',
     whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
+    runVariants: 'tests/fixtures/operations/features/run-variants.yaml',
   };
   return resolve(map[name]);
 }
@@ -1746,5 +1747,48 @@ describe('run command: when-gated step filtering by environment', () => {
       !combined.includes('Undo only in dev'),
       `dev-only rollback instruction must not appear in stg; output:\n${combined.slice(-800)}`,
     );
+  });
+});
+
+// ─── variants.<env> ──────────────────────────────────────────────────────────
+
+describe('run command: step variants.<env>', () => {
+  it('shows the variant command + instruction in the variant env (matches generate manual --env)', () => {
+    const fixture = fixturePath('runVariants');
+    const result = runCli(['run', fixture, '--env', 'sbx'], { input: 'q\n' });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('echo variant-command'),
+      `sbx run must show the variant command; output:\n${combined.slice(-800)}`,
+    );
+    assert.ok(
+      combined.includes('Sandbox instruction'),
+      `sbx run must show the variant instruction; output:\n${combined.slice(-800)}`,
+    );
+    assert.ok(
+      !combined.includes('echo base-command'),
+      `sbx run must not show the base command; output:\n${combined.slice(-800)}`,
+    );
+
+    const outDir = mkdtempSync(join(tmpdir(), 'samaritan-variants-'));
+    try {
+      const out = join(outDir, 'manual.md');
+      runCli(['generate', 'manual', fixture, '--env', 'sbx', '--output', out]);
+      assert.ok(
+        readFileSync(out, 'utf8').includes('echo variant-command'),
+        'generate manual --env sbx renders the same variant command',
+      );
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the base command in an env without a variant', () => {
+    const fixture = fixturePath('runVariants');
+    const result = runCli(['run', fixture, '--env', 'dev'], { input: 'q\n' });
+    const combined = result.stdout + result.stderr;
+    assert.ok(combined.includes('echo base-command'));
+    assert.ok(combined.includes('Base instruction'));
+    assert.ok(!combined.includes('echo variant-command'));
   });
 });

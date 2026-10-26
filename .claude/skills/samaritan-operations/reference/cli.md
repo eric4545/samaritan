@@ -72,7 +72,7 @@ directory or example ships with this repo today.
 - Other modes: `manual`, `automatic` (tmux-backed send/verify), `hybrid`.
 - `--mock` — replay each step's `expect` against `evidence.results[<env>]` output;
   prints PASS/FAIL/SKIP, exits non-zero on failure. No tmux/execution.
-- `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning.
+- `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning. It wins over `sessions:`: named sessions are not spawned and every step (whatever its `session:`) captures from / pastes into this one pane; `[t]` switches the pane mid-run; `resume` re-attaches it the same way. One samaritan run per pane: tmux allows one `pipe-pane`, so a second run on the same pane takes it over (warned); the first run detects that at its next step/`[v]`, re-attaches, and verifies from the pane scrollback.
 - `--from-step <N>` — start at step N; earlier steps are recorded as **skipped**
   (distinct from `resume --from-step`, which marks earlier steps completed).
 - `--report <dir>` — write an extra copy of the run report.
@@ -106,13 +106,13 @@ Per manual/sidecar step:
 - `[x]` remove evidence — only shown once evidence exists
 - `[v]` verify — run `step.expect` against captured pane output
 - `[t]` attach pane — (sidecar) attach/swap a tmux capture backend mid-run
-- `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command (or a `script:`, whose `bash <path>` invocation is pasted) and a pane is attached. Re-run during verify = `[p]` then `[v]`. Before pasting, CRLF/CR becomes LF and trailing newlines are stripped (tmux LF→CR would otherwise turn a stray `\r` into a blank line that breaks `\` continuations). Multi-line commands first ask `Paste it? [y / Enter=cancel]`, because shells without bracketed paste (sh/dash) run each line as it arrives
+- `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command (or a `script:`, whose `bash <path>` invocation is pasted) and a pane is attached. Re-run during verify = `[p]` then `[v]`. Before pasting, CRLF/CR becomes LF and trailing newlines are stripped (tmux LF→CR would otherwise turn a stray `\r` into a blank line that breaks `\` continuations). Multi-line commands first ask `Paste it? [y / n=cancel]` (single key), because shells without bracketed paste (sh/dash) run each line as it arrives
 - Step headings read `[Step 10.2 · 34/46]`: the single-env manual number (`generate manual --env`, dotted sub-steps) plus the flat run position (the number `[b]`/`[j]`/`--from-step` use), followed by `Section :` (the parent) and `Next : … (N remaining)` lines
 - A **script-only step** (`script:` with no inline `command`) displays `Script: <path>`, the embedded script content, and a `bash <path>` runnable; `[c]` copy and `[p]` send-to-pane act on that `bash <path>` invocation
 - `[b]` back — go back to an earlier step and re-run from there (resets it + later steps to pending; audit log keeps the prior attempt); not offered on the first step
 - `[j]` jump — jump **forward** to a later step; the current step through the target are recorded as **skipped** (⏭) in the report, execution resumes at the target; not offered on the last step. Startup equivalent: `run --from-step <N>`
-- `[r]` rollback — run *this step's* `rollback`, stay on the step. When this step has no rollback of its own, offers the **nearest upstream** step's rollback instead (needs chain first, else document order; only completed steps qualify).
-- `[g]` global rollback — only when the operation declares a top-level `rollback:`. Previews + runs the consolidated recovery (explicit `rollback.steps` + every **completed** step's rollback in reverse order when `aggregate_step_rollbacks: true`; ordered by reverse-topological order when `needs` are present), then aborts the operation
+- `[r]` rollback — run *this step's* `rollback`, stay on the step. Sidecar/manual rollback is operator-driven per entry: `↵` done — I ran it · `p` paste into pane (no Enter) · `c` copy · `v` verify its `expect` · `s` skip · `a` abort rollback; commands are `${VAR}`-resolved and the report records completed / partial / NOT executed (never an assumed success). Only non-sidecar spawn-own `sessions:` runs send rollback commands via tmux. When this step has no rollback of its own, offers the **nearest upstream** step's rollback instead (needs chain first, else document order; only completed steps qualify).
+- `[g]` global rollback — only when the operation declares a top-level `rollback:`. Previews + runs the consolidated recovery (explicit `rollback.steps` + every **completed** step's rollback in reverse order when `aggregate_step_rollbacks: true`; ordered by reverse-topological order when `needs` are present) after a single-key `y`, then aborts the operation. After the last step an **All steps done** screen still offers `r`/`g` before the run exits
 - `q` / `quit` / `Ctrl+C` — **aborts** the operation, persists session as `paused` (resumable) and prints a resume hint (`Ctrl+C` saves too — it no longer hard-quits without saving)
 
 ## Evidence-required gate
@@ -137,4 +137,7 @@ Each `run`/`resume` writes a black box beside the operation at
 - `report.md` — always-on per-step verification ledger + approval trail; terminal-escape noise is cleaned from captured output and operator-local path prefixes (home `→ ~`, run dir, operation dir) are stripped so it's safe to share. Counts only genuinely completed steps (`Steps completed: N/total`); an aborted/cancelled run flags where it stopped — an `Aborted at step N: <name>` summary line plus a `🛑 (aborted here — in progress)` marker on the in-progress step's heading
 
 `.samaritan-runs/` is gitignored (force-add to commit a run). Sessions also
-persist to `~/.samaritan/sessions/<id>.json` for `resume`.
+persist to `~/.samaritan/sessions/<id>.json` for `resume`. A sidecar session
+saves its attached pane (`--attach`/`[t]`) as the stable pane id (`%3`) in
+`attach_target`; `resume` re-attaches it (warns if the pane is gone), and
+`resume --attach <pane>` overrides it. Samaritan never attaches to its own pane.

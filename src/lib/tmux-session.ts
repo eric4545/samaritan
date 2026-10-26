@@ -1,9 +1,20 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SessionConfig } from '../models/operation';
-import type { CaptureBackend } from './capture-backend';
+import type {
+  CaptureBackend,
+  CaptureCheck,
+  PaneOwner,
+} from './capture-backend';
 
 export function isLocalSession(config: SessionConfig | undefined): boolean {
   return !config?.host;
@@ -81,6 +92,9 @@ function pasteBufferTo(target: string, command: string): void {
   }
 }
 
+/** Scrollback depth for the screen fallback when the pipe slice is lost. */
+const PANE_HISTORY_LINES = 2000;
+
 /**
  * Capture the rendered screen of a tmux pane as clean text — `-p` prints to
  * stdout, `-J` joins wrapped lines and trims trailing whitespace, and the
@@ -89,17 +103,57 @@ function pasteBufferTo(target: string, command: string): void {
  * evidence so the report shows readable output instead of the raw pipe-pane
  * byte stream (ANSI/cursor-move/redraw noise).
  */
-export function capturePaneScreen(target: string): string | undefined {
+export function capturePaneScreen(
+  target: string,
+  historyLines?: number,
+): string | undefined {
   try {
     const result = spawnSync('tmux', [
       'capture-pane',
       '-p',
       '-J',
+      // -S -N: include N lines of scrollback above the visible screen.
+      ...(historyLines ? ['-S', `-${historyLines}`] : []),
       '-t',
       target,
     ]);
     if (result.status !== 0) return undefined;
     return result.stdout?.toString('utf-8');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Read the line the pane's cursor is on — the shell prompt (plus anything typed
+ * after it) once a command has finished. `capture-pane -S y -E y` with the
+ * cursor row from `#{cursor_y}`; no `-e`, so no escape sequences. Returns
+ * undefined when tmux is unavailable or the target is gone.
+ */
+export function capturePaneCursorLine(target: string): string | undefined {
+  try {
+    const pos = spawnSync('tmux', [
+      'display-message',
+      '-p',
+      '-t',
+      target,
+      '#{cursor_y}',
+    ]);
+    if (pos.status !== 0) return undefined;
+    const y = pos.stdout?.toString('utf-8').trim();
+    if (!y || !/^\d+$/.test(y)) return undefined;
+    const line = spawnSync('tmux', [
+      'capture-pane',
+      '-p',
+      '-t',
+      target,
+      '-S',
+      y,
+      '-E',
+      y,
+    ]);
+    if (line.status !== 0) return undefined;
+    return line.stdout?.toString('utf-8').replace(/\n+$/, '');
   } catch {
     return undefined;
   }
@@ -215,6 +269,12 @@ export class TmuxSession implements CaptureBackend {
     return capturePaneScreen(pane);
   }
 
+  /** The pane's current cursor line (the prompt once a command finished). */
+  promptLine(sessionName: string): string | undefined {
+    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    return capturePaneCursorLine(pane);
+  }
+
   hasTarget(sessionName: string): boolean {
     return this.paneMap.has(sessionName);
   }
@@ -301,19 +361,88 @@ export class TmuxSession implements CaptureBackend {
   }
 }
 
+/** Read a tmux format string for a pane; undefined when tmux/the pane is gone. */
+function paneFormat(target: string, format: string): string | undefined {
+  try {
+    const r = spawnSync('tmux', [
+      'display-message',
+      '-p',
+      '-t',
+      target,
+      format,
+    ]);
+    if (r.status !== 0) return undefined;
+    return r.stdout?.toString('utf-8').trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/** True while `pid` is a running process (EPERM = alive, owned by another user). */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err: any) {
+    return err?.code === 'EPERM';
+  }
+}
+
+/**
+ * The marker file recording which samaritan capture owns a pane's single
+ * `pipe-pane` slot. It lives in a private per-user directory
+ * (`~/.samaritan/panes`, mode 0700) — never the shared, world-writable temp
+ * dir, where a predictable name invites a planted symlink. The key is the tmux
+ * server's socket plus the stable pane id (`%3`): pane ids restart at `%0` on
+ * every server, so the id alone would collide across servers.
+ */
+export function paneOwnerFile(paneKey: string): string {
+  const dir = join(homedir(), '.samaritan', 'panes');
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return join(dir, `${sanitizeSessionName(paneKey)}.owner`);
+}
+
+/** `<tmux socket>#<pane id>` — the pane's identity across tmux servers. */
+function paneKeyOf(target: string): string | undefined {
+  const key = paneFormat(target, '#{socket_path}#{pane_id}');
+  return key?.includes('%') ? key : undefined;
+}
+
+/** Read a pane's owner marker (by `paneKeyOf`); undefined when absent/unreadable. */
+export function readPaneOwner(paneKey: string): PaneOwner | undefined {
+  try {
+    const owner = JSON.parse(readFileSync(paneOwnerFile(paneKey), 'utf-8'));
+    return typeof owner?.captureId === 'string' &&
+      typeof owner?.pid === 'number'
+      ? owner
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * TmuxPaneCapture — attach samaritan's capture pipe to an operator-owned pane.
  *
  * The operator pane is NEVER killed; teardown() only closes the pipe and
  * removes the temp file. Per-step `session:` routing is ignored in attach mode
  * (all reads come from the single attached pane).
+ *
+ * tmux allows ONE `pipe-pane` per pane, so a second samaritan run attached to
+ * the same pane silently replaces ours. Ownership is recorded in a per-pane
+ * marker (`paneOwnerFile`, private per-user dir), so `ensureCapture()` can tell the pipe was taken
+ * (or closed) and re-attach, and `teardown()` never closes another run's pipe.
  */
 export class TmuxPaneCapture implements CaptureBackend {
   private target: string;
   private pipeFile: string;
+  private captureId: string;
+  private paneId: string | undefined;
+  private paneKey: string | undefined;
 
   constructor(captureId: string, target: string) {
     this.target = target;
+    this.captureId = captureId;
     this.pipeFile = join(
       tmpdir(),
       `samaritan-${sanitizeSessionName(captureId)}-attached.pipe`,
@@ -321,11 +450,21 @@ export class TmuxPaneCapture implements CaptureBackend {
   }
 
   /**
-   * Start piping the pane output to our temp file.
+   * Start piping the pane output to our temp file and record ownership.
    * No `-o` flag: any existing pipe on the pane is replaced so attach is
    * deterministic (`-o` would silently skip opening when a pipe exists).
+   * Returns the live samaritan run that owned the pane before, if any, so the
+   * caller can warn that it is taking the pane over.
    */
-  attach(): void {
+  attach(): { previousOwner?: PaneOwner } {
+    const key = this.ownerKey();
+    const previous = key ? readPaneOwner(key) : undefined;
+    const previousOwner =
+      previous &&
+      previous.captureId !== this.captureId &&
+      isProcessAlive(previous.pid)
+        ? previous
+        : undefined;
     spawnSync('tmux', [
       'pipe-pane',
       '-t',
@@ -333,6 +472,65 @@ export class TmuxPaneCapture implements CaptureBackend {
       // Quoted: tmpdir() may contain spaces (e.g. macOS /var/folders/...)
       `cat >> '${this.pipeFile}'`,
     ]);
+    if (key) {
+      const owner: PaneOwner = {
+        captureId: this.captureId,
+        pid: process.pid,
+        since: new Date().toISOString(),
+      };
+      try {
+        writeFileSync(paneOwnerFile(key), JSON.stringify(owner), {
+          mode: 0o600,
+        });
+      } catch {
+        // best effort — without the marker we just can't detect a takeover
+      }
+    }
+    return previousOwner ? { previousOwner } : {};
+  }
+
+  /**
+   * Make sure our pipe still feeds this pane's output. When the pane's pipe
+   * was closed (`#{pane_pipe}` = 0) or another samaritan run's marker replaced
+   * ours, re-attach and report who had it — output produced while detached is
+   * NOT in our pipe file. `unavailable` when tmux or the pane is gone.
+   */
+  ensureCapture(_sessionName: string): CaptureCheck {
+    const pipe = paneFormat(this.target, '#{pane_pipe}');
+    if (pipe === undefined) return { status: 'unavailable' };
+    const key = this.ownerKey();
+    const owner = key ? readPaneOwner(key) : undefined;
+    const takenBy =
+      owner && owner.captureId !== this.captureId ? owner : undefined;
+    if (pipe === '1' && !takenBy) return { status: 'ok' };
+    this.attach();
+    return takenBy
+      ? { status: 'reattached', takenBy }
+      : { status: 'reattached' };
+  }
+
+  /**
+   * The pane's stable id (`%3`). Unlike a positional target (`work:0.1`) it
+   * never shifts to another pane when the window's panes are renumbered, so
+   * it is what a session saves for `resume`. Undefined when tmux is gone.
+   */
+  resolvePaneId(): string | undefined {
+    this.paneId ??= paneFormat(this.target, '#{pane_id}');
+    return this.paneId;
+  }
+
+  /** The owner-marker key for this pane (`paneKeyOf`), resolved once. */
+  private ownerKey(): string | undefined {
+    this.paneKey ??= paneKeyOf(this.target);
+    return this.paneKey;
+  }
+
+  /** Whether this capture still owns the pane's pipe (or nobody recorded one). */
+  private ownsPane(): boolean {
+    const key = this.ownerKey();
+    if (!key) return true;
+    const owner = readPaneOwner(key);
+    return !owner || owner.captureId === this.captureId;
   }
 
   /** Always true — single capture target; session name is ignored. */
@@ -371,16 +569,37 @@ export class TmuxPaneCapture implements CaptureBackend {
     return capturePaneScreen(this.target);
   }
 
+  /** The attached pane's cursor line (the prompt once a command finished). */
+  promptLine(_sessionName: string): string | undefined {
+    return capturePaneCursorLine(this.target);
+  }
+
+  /** Scrollback + screen of the attached pane as clean text (no escapes). */
+  captureHistory(_sessionName: string): string | undefined {
+    return capturePaneScreen(this.target, PANE_HISTORY_LINES);
+  }
+
   /**
-   * Close the pipe and remove the temp file.
-   * NEVER kills the tmux session — the pane belongs to the operator.
+   * Close the pipe and remove the temp file — but only close the pipe while
+   * we still own it: another samaritan run that took the pane over keeps its
+   * capture. NEVER kills the tmux session — the pane belongs to the operator.
    */
   teardown(): void {
-    // Close the pipe by running pipe-pane without a command argument
-    try {
-      spawnSync('tmux', ['pipe-pane', '-t', this.target]);
-    } catch {
-      // best effort
+    if (this.ownsPane()) {
+      // Close the pipe by running pipe-pane without a command argument
+      try {
+        spawnSync('tmux', ['pipe-pane', '-t', this.target]);
+      } catch {
+        // best effort
+      }
+      const key = this.ownerKey();
+      if (key) {
+        try {
+          unlinkSync(paneOwnerFile(key));
+        } catch {
+          // best effort
+        }
+      }
     }
     try {
       if (existsSync(this.pipeFile)) {

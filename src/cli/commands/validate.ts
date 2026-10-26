@@ -5,6 +5,10 @@ import {
   findDiscardedVerifyKeysInFile,
   formatDiscardedVerifyFinding,
 } from '../../lib/deprecated-verify';
+import {
+  formatExpectShellVarFinding,
+  lintExpectShellVars,
+} from '../../lib/expect-lint';
 import { formatRegexFinding, lintOperationRegex } from '../../lib/regex-lint';
 import {
   formatFinding,
@@ -70,6 +74,7 @@ class OperationValidator {
       this.validateSteps(operation, result, options);
       this.validateVariables(operation, result, options);
       this.validateExpectRegex(operation, result, options);
+      this.validateExpectShellVars(operation, result);
 
       if (options.strict) {
         this.strictValidation(operation, result, options);
@@ -410,6 +415,19 @@ class OperationValidator {
       } else {
         result.warnings.push(message);
       }
+    }
+  }
+
+  private validateExpectShellVars(
+    operation: Operation,
+    result: ValidationResult,
+  ): void {
+    // `expect: { contains: $USER }` checks for the literal text "$USER": only
+    // operation variables resolve in expect, never the shell's environment.
+    for (const finding of lintExpectShellVars(operation)) {
+      result.warnings.push(
+        `expect-lint: ${formatExpectShellVarFinding(finding)}`,
+      );
     }
   }
 
