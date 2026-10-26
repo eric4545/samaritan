@@ -83,6 +83,9 @@ function findFile(dir: string, name: string): string | undefined {
   return undefined;
 }
 
+// The resume hint an abort prints (`samaritan resume <session-id>`).
+const RESUME_HINT = /samaritan resume ([0-9a-f-]{36})/;
+
 const sleep = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
 
@@ -257,8 +260,10 @@ describe('sidecar e2e (real tmux)', () => {
 
         // Abort at step 1 → paused + resume hint.
         d.type('abort');
-        const aborted = await d.waitFor('Run aborted', { timeoutMs: 15_000 });
-        const m = aborted.match(/samaritan resume ([0-9a-f-]{36})/);
+        // Wait for the resume HINT itself, not "Run aborted" (printed one line
+        // earlier): tmux can capture the screen between the two writes.
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 15_000 });
+        const m = aborted.match(RESUME_HINT);
         assert.ok(
           m,
           `abort must print a resume hint with a session id; got:\n${aborted.slice(-400)}`,
@@ -309,8 +314,8 @@ describe('sidecar e2e (real tmux)', () => {
         d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
         await d.waitFor('echo "deploy E2E_DEPLOY_OK"', { timeoutMs: 40_000 });
         d.type('abort');
-        const aborted = await d.waitFor('Run aborted', { timeoutMs: 15_000 });
-        const id = aborted.match(/samaritan resume ([0-9a-f-]{36})/)?.[1];
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 15_000 });
+        const id = aborted.match(RESUME_HINT)?.[1];
         assert.ok(id, 'abort prints the resume hint');
 
         // No --attach on resume: the saved pane is re-attached automatically.
@@ -376,8 +381,8 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor('echo "built v1 E2E_BUILD_OK"', { timeoutMs: 15_000 });
         assert.deepStrictEqual(spawned(), [], 'run --attach spawns nothing');
         d.type('abort');
-        const aborted = await d.waitFor('Run aborted', { timeoutMs: 15_000 });
-        const id = aborted.match(/samaritan resume ([0-9a-f-]{36})/)?.[1];
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 15_000 });
+        const id = aborted.match(RESUME_HINT)?.[1];
         assert.ok(id, 'abort prints the resume hint');
 
         d.type(launch(ws.dir, `resume ${id}`));
