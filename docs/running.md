@@ -34,7 +34,7 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 | No sessions, no `--attach` | Prompt-only mode; `[v]` will indicate that you need `[t]` to attach a pane first |
 
 **Caveats:**
-- `--attach` mode uses a **single capture target** for all steps. Per-step `session:` routing is ignored; all capture reads come from the attached pane.
+- `--attach` mode uses a **single capture target** for all steps. It takes precedence over `sessions:`: the named sessions are **not** spawned, per-step `session:` routing is ignored, and every step's `[v]`/`[p]` uses the attached pane. Samaritan prints a one-line notice when the operation declares `sessions:`. Press `[t]` to point a step at a different pane (the new pane is used from then on). `resume` keeps the same precedence: it re-attaches the saved pane and does not spawn `sessions:`. To get one pane per named session, run without `--attach` and samaritan spawns them.
 - tmux allows **one** `pipe-pane` per pane, so attaching replaces any existing pipe on it. Run one samaritan per pane. If a second run attaches to the same pane anyway:
   - it warns at attach (`This pane was captured by samaritan session <id> (pid N)`)
   - the first run notices at its next step or `[v]`/`[e]`, prints `Capture pipe on … was taken over by …`, and re-attaches

@@ -356,6 +356,63 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
+    'resume of an --attach run on an operation with sessions: re-attaches the pane, never spawns',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-sessions-local.yaml');
+      const d = TmuxDriver.create({ split: true });
+      const spawned = (): string[] =>
+        TmuxDriver.listSessions().filter((s) => s.startsWith('samaritan-'));
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        // --attach wins over sessions: — told once, nothing spawned.
+        await d.waitFor(
+          'sessions: (work) are not spawned with an attached pane',
+          {
+            timeoutMs: 40_000,
+          },
+        );
+        await d.waitFor('echo "built v1 E2E_BUILD_OK"', { timeoutMs: 15_000 });
+        assert.deepStrictEqual(spawned(), [], 'run --attach spawns nothing');
+        d.type('abort');
+        const aborted = await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+        const id = aborted.match(/samaritan resume ([0-9a-f-]{36})/)?.[1];
+        assert.ok(id, 'abort prints the resume hint');
+
+        d.type(launch(ws.dir, `resume ${id}`));
+        const resumed = await d.waitFor(
+          /Re-attached capture to tmux pane: %\d+/,
+          {
+            timeoutMs: 30_000,
+          },
+        );
+        assert.ok(
+          !resumed.includes('Bootstrapping tmux sessions'),
+          'resume must not spawn sessions: for an attached run',
+        );
+        assert.deepStrictEqual(spawned(), [], 'resume spawns nothing');
+        await d.waitFor(/Resuming operation execution[\s\S]*abort abort/, {
+          timeoutMs: 15_000,
+        });
+        d.type('echo "built v1 E2E_BUILD_OK"', work);
+        await d.waitFor(/^built v1 E2E_BUILD_OK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.key('v');
+        await d.waitFor('✅ contains: E2E_BUILD_OK', { timeoutMs: 15_000 });
+        d.type('abort');
+        await d.waitFor(/(Run aborted[\s\S]*){2}/, { timeoutMs: 15_000 });
+      } finally {
+        for (const s of spawned()) tmux(['kill-session', '-t', s]);
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
     'two runs on one pane: the run whose pipe was taken re-attaches and still verifies',
     { skip, timeout: 150_000 },
     async () => {

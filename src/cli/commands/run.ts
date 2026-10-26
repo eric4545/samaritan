@@ -405,6 +405,7 @@ class OperationRunner {
             context.sessionId,
             options.attach,
             'Attached',
+            operation.sessions,
           );
           if (!captureBackend) {
             console.warn(
@@ -647,9 +648,23 @@ class OperationRunner {
 
     this.setupEventHandlers(executor, { verbose: options.verbose });
 
+    const resumeMode: ExecutionMode =
+      (session.mode as ExecutionMode | undefined) ?? 'sidecar';
+    // Same precedence as `run`: a sidecar run attached to the operator's pane
+    // (`--attach` / `[t]`, saved on the session, or `resume --attach`)
+    // re-attaches it — it must not come back on spawned `sessions:` windows.
+    const attachTarget =
+      resumeMode === 'sidecar'
+        ? (options.attach ?? session.attach_target)
+        : undefined;
+
     // Bootstrap tmux if the operation uses sessions
     let tmuxSession: TmuxSession | undefined;
-    if (operation.sessions && Object.keys(operation.sessions).length > 0) {
+    if (
+      !attachTarget &&
+      operation.sessions &&
+      Object.keys(operation.sessions).length > 0
+    ) {
       console.log('\n🖥️  Bootstrapping tmux sessions...');
       try {
         tmuxSession = await bootstrapSessions(session.id, operation.sessions);
@@ -663,18 +678,15 @@ class OperationRunner {
       }
     }
 
-    const resumeMode: ExecutionMode =
-      (session.mode as ExecutionMode | undefined) ?? 'sidecar';
-
     // Sidecar: re-attach the pane the run was capturing from (`--attach` /
     // `[t]`, saved on the session), or the one given with `resume --attach`.
     let captureBackend: CaptureBackend | undefined = tmuxSession;
-    const attachTarget = options.attach ?? session.attach_target;
-    if (resumeMode === 'sidecar' && !tmuxSession && attachTarget) {
+    if (attachTarget) {
       captureBackend = attachSidecarPane(
         session.id,
         attachTarget,
         options.attach ? 'Attached' : 'Re-attached',
+        operation.sessions,
       );
       if (!captureBackend) {
         console.warn(
@@ -2935,6 +2947,7 @@ function attachSidecarPane(
   sessionId: string,
   target: string,
   verb: 'Attached' | 'Re-attached',
+  sessions?: Operation['sessions'],
 ): TmuxPaneCapture | undefined {
   if (!validateTmuxTarget(target)) return undefined;
   const capture = new TmuxPaneCapture(sessionId, target);
@@ -2950,6 +2963,14 @@ function attachSidecarPane(
   // `work:0.0` can renumber onto a different pane (even samaritan's own).
   sessionManager.setAttachTarget(sessionId, paneId ?? target);
   console.log(`🔗 ${verb} capture to tmux pane: ${target}`);
+  const names = Object.keys(sessions ?? {});
+  if (names.length > 0) {
+    // One attached pane serves every step: `sessions:` are not spawned and a
+    // step's `session:` does not pick a different pane.
+    console.log(
+      `   ℹ️  sessions: (${names.join(', ')}) are not spawned with an attached pane — every step's [v]/[p] uses this pane. Press [t] to switch panes for a step.`,
+    );
+  }
   if (previousOwner) console.warn(paneTakeoverWarning(previousOwner));
   console.log('');
   return capture;

@@ -216,7 +216,10 @@ is samaritan's own pane (`isOwnPane`, `$TMUX_PANE`) → `attach()` →
 persist the STABLE `#{pane_id}` (`%3`), never the positional target: closing a
 pane renumbers the window, and the old `work:0.0` then resolved to samaritan's
 OWN pane (caught by the e2e). `resume` uses `--attach` ?? `session.attach_target`
-(sidecar, no spawn-own tmux), warns `Saved tmux pane … no longer exists` when
+(sidecar) and, like `run`, then SKIPS `bootstrapSessions` — an attached run
+must not come back on spawned `sessions:` windows. With `sessions:` declared,
+`attachSidecarPane` prints that they are not spawned and every step uses the
+one pane (per-step `session:` ignored). Warns `Saved tmux pane … no longer exists` when
 gone, passes the backend to the loop and tears it down after. e2e: "abort →
 resume re-attaches the --attach pane".
 
