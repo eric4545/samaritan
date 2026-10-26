@@ -130,6 +130,7 @@ describe('foldEvents', () => {
       }),
       ev({
         type: 'user_input',
+        ts: '2026-10-22T18:14:46.882Z',
         action: 'override',
         step: 0,
         actor: 'alice',
@@ -138,7 +139,7 @@ describe('foldEvents', () => {
     ]);
     assert.deepStrictEqual(steps[0].verification?.override, {
       by: 'alice',
-      at: steps[0].started_at,
+      at: '2026-10-22T18:14:46.882Z',
       reason: 'prompt line counted',
     });
   });
