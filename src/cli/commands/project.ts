@@ -1,5 +1,11 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import {
+  appendFile,
+  mkdir,
+  readdir,
+  readFile,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { Command } from 'commander';
 
@@ -220,6 +226,25 @@ async function createDirectory(path: string): Promise<void> {
   }
 }
 
+/**
+ * Create `path` with `content` only if it does not exist yet. The exclusive
+ * `wx` open makes the existence check and the write one atomic step, so a
+ * file that appears in between is never overwritten. Returns false when the
+ * file already existed.
+ */
+async function createFileIfAbsent(
+  path: string,
+  content: string,
+): Promise<boolean> {
+  try {
+    await writeFile(path, content, { flag: 'wx' });
+    return true;
+  } catch (error: any) {
+    if (error.code === 'EEXIST') return false;
+    throw error;
+  }
+}
+
 async function initProject(existing: boolean = false): Promise<void> {
   console.log('🚀 Initializing SAMARITAN project...\n');
 
@@ -258,21 +283,28 @@ async function initProject(existing: boolean = false): Promise<void> {
   }
 
   // Create config file
-  if (!existsSync('samaritan.config.yaml')) {
-    await writeFile('samaritan.config.yaml', DEFAULT_CONFIG);
+  if (await createFileIfAbsent('samaritan.config.yaml', DEFAULT_CONFIG)) {
     console.log('📄 Created: samaritan.config.yaml');
   } else {
     console.log('📄 Found existing: samaritan.config.yaml');
   }
 
   // Create example files
-  if (!existsSync('operations/example-deployment.yaml')) {
-    await writeFile('operations/example-deployment.yaml', EXAMPLE_OPERATION);
+  if (
+    await createFileIfAbsent(
+      'operations/example-deployment.yaml',
+      EXAMPLE_OPERATION,
+    )
+  ) {
     console.log('📄 Created: operations/example-deployment.yaml');
   }
 
-  if (!existsSync('qrh/database-connection-failure.yaml')) {
-    await writeFile('qrh/database-connection-failure.yaml', EXAMPLE_QRH);
+  if (
+    await createFileIfAbsent(
+      'qrh/database-connection-failure.yaml',
+      EXAMPLE_QRH,
+    )
+  ) {
     console.log('📄 Created: qrh/database-connection-failure.yaml');
   }
 
@@ -285,18 +317,13 @@ async function initProject(existing: boolean = false): Promise<void> {
 node_modules/
 `;
 
-  if (!existsSync('.gitignore')) {
-    await writeFile('.gitignore', gitignoreContent);
+  if (await createFileIfAbsent('.gitignore', gitignoreContent)) {
     console.log('📄 Created: .gitignore');
   } else {
     // Append to existing .gitignore
-    const fs = await import('node:fs');
-    const existingContent = await fs.promises.readFile('.gitignore', 'utf8');
+    const existingContent = await readFile('.gitignore', 'utf8');
     if (!existingContent.includes('.samaritan/')) {
-      await fs.promises.appendFile(
-        '.gitignore',
-        `\n# SAMARITAN\n${gitignoreContent}`,
-      );
+      await appendFile('.gitignore', `\n# SAMARITAN\n${gitignoreContent}`);
       console.log('📄 Updated: .gitignore');
     }
   }
