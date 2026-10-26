@@ -203,6 +203,19 @@ baseline) and inside `captureSinceStepStart`; a repair mid-step sets
 prompt is last again). `teardown()` only closes the pipe + deletes the marker
 while it still owns the pane. e2e: "two runs on one pane".
 
+## Resume re-attaches the sidecar pane (`attach_target`)
+
+`attachSidecarPane(sessionId, target, verb)` (run.ts) is the ONE attach path
+for `run --attach` and `resume`: validate → `resolvePaneId()` → refuse when it
+is samaritan's own pane (`isOwnPane`, `$TMUX_PANE`) → `attach()` →
+`sessionManager.setAttachTarget(id, paneId)`. `[t]` saves the same way. ALWAYS
+persist the STABLE `#{pane_id}` (`%3`), never the positional target: closing a
+pane renumbers the window, and the old `work:0.0` then resolved to samaritan's
+OWN pane (caught by the e2e). `resume` uses `--attach` ?? `session.attach_target`
+(sidecar, no spawn-own tmux), warns `Saved tmux pane … no longer exists` when
+gone, passes the backend to the loop and tears it down after. e2e: "abort →
+resume re-attaches the --attach pane".
+
 ## Retryable verification (`expect.retry`)
 
 `StepController.runVerify` polls on a failed assertion: waits `interval`

@@ -288,6 +288,74 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
+    'abort → resume re-attaches the --attach pane (by stable pane id) so [v] still verifies',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-sidecar.yaml');
+      const d = TmuxDriver.create({ split: true });
+      const paneId = (target: string): string =>
+        tmux([
+          'display-message',
+          '-p',
+          '-t',
+          target,
+          '#{pane_id}',
+        ]).stdout.trim();
+      try {
+        const work = d.work as string;
+        // The session saves the STABLE pane id, never the positional target.
+        const workId = paneId(work);
+        const main = paneId(d.main);
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_DEPLOY_OK"', { timeoutMs: 40_000 });
+        d.type('abort');
+        const aborted = await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+        const id = aborted.match(/samaritan resume ([0-9a-f-]{36})/)?.[1];
+        assert.ok(id, 'abort prints the resume hint');
+
+        // No --attach on resume: the saved pane is re-attached automatically.
+        d.type(launch(ws.dir, `resume ${id}`));
+        await d.waitFor(`Re-attached capture to tmux pane: ${workId}`, {
+          timeoutMs: 30_000,
+        });
+        await d.waitFor(/Resuming operation execution[\s\S]*abort abort/, {
+          timeoutMs: 15_000,
+        });
+        d.type('echo "deploy E2E_DEPLOY_OK"', work);
+        await d.waitFor(/^deploy E2E_DEPLOY_OK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.key('v');
+        const verified = await d.waitFor('✅ contains: E2E_DEPLOY_OK', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(!verified.includes('Verify requires an attached capture'));
+        d.type('abort');
+        await d.waitFor(/(Run aborted[\s\S]*){2}/, { timeoutMs: 15_000 });
+
+        // Close the work pane: tmux renumbers the window, so the old positional
+        // target (`:0.0`) now names samaritan's OWN pane. The saved id does not
+        // — resume must warn that the pane is gone, never attach to itself.
+        tmux(['kill-pane', '-t', workId]);
+        d.type(launch(ws.dir, `resume ${id}`), main);
+        await d.waitFor(`Saved tmux pane "${workId}" no longer exists`, {
+          pane: main,
+          timeoutMs: 30_000,
+        });
+        d.type('abort', main);
+        await d.waitFor(/(Run aborted[\s\S]*){3}/, {
+          pane: main,
+          timeoutMs: 15_000,
+        });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
     'two runs on one pane: the run whose pipe was taken re-attaches and still verifies',
     { skip, timeout: 150_000 },
     async () => {

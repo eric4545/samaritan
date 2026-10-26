@@ -137,4 +137,7 @@ Each `run`/`resume` writes a black box beside the operation at
 - `report.md` — always-on per-step verification ledger + approval trail; terminal-escape noise is cleaned from captured output and operator-local path prefixes (home `→ ~`, run dir, operation dir) are stripped so it's safe to share. Counts only genuinely completed steps (`Steps completed: N/total`); an aborted/cancelled run flags where it stopped — an `Aborted at step N: <name>` summary line plus a `🛑 (aborted here — in progress)` marker on the in-progress step's heading
 
 `.samaritan-runs/` is gitignored (force-add to commit a run). Sessions also
-persist to `~/.samaritan/sessions/<id>.json` for `resume`.
+persist to `~/.samaritan/sessions/<id>.json` for `resume`. A sidecar session
+saves its attached pane (`--attach`/`[t]`) as the stable pane id (`%3`) in
+`attach_target`; `resume` re-attaches it (warns if the pane is gone), and
+`resume --attach <pane>` overrides it. Samaritan never attaches to its own pane.

@@ -477,3 +477,14 @@ test('SessionManager - associateExecutor updates session on step_skipped event',
   const updated = sessionManager.getSession(session.id);
   assert.strictEqual(updated?.current_step_index, 1);
 });
+
+test('SessionManager - setAttachTarget persists the sidecar pane for resume', () => {
+  const sessionManager = new SessionManager();
+  const session = sessionManager.createSession('op', 'dev', 'alice', 'sidecar');
+
+  sessionManager.setAttachTarget(session.id, 'work:0.1');
+
+  // A fresh manager (a new `samaritan resume` process) reads it from disk.
+  const reloaded = new SessionManager().getSession(session.id);
+  assert.strictEqual(reloaded?.attach_target, 'work:0.1');
+});

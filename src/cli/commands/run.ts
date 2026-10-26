@@ -134,6 +134,7 @@ interface RunOptions {
 
 interface ResumeOptions {
   verbose?: boolean;
+  attach?: string;
   autoApprove?: boolean;
   fromStep?: number;
   requireEvidence?: boolean;
@@ -400,17 +401,12 @@ class OperationRunner {
 
         if (executionMode === 'sidecar' && options.attach) {
           // Sidecar + --attach: validate and attach to operator's pane
-          if (validateTmuxTarget(options.attach)) {
-            const paneCapture = new TmuxPaneCapture(
-              context.sessionId,
-              options.attach,
-            );
-            const { previousOwner } = paneCapture.attach();
-            captureBackend = paneCapture;
-            console.log(`🔗 Attached capture to tmux pane: ${options.attach}`);
-            if (previousOwner) console.warn(paneTakeoverWarning(previousOwner));
-            console.log('');
-          } else {
+          captureBackend = attachSidecarPane(
+            context.sessionId,
+            options.attach,
+            'Attached',
+          );
+          if (!captureBackend) {
             console.warn(
               `⚠️  --attach target "${options.attach}" is not a valid tmux pane; continuing without capture.\n`,
             );
@@ -667,6 +663,28 @@ class OperationRunner {
       }
     }
 
+    const resumeMode: ExecutionMode =
+      (session.mode as ExecutionMode | undefined) ?? 'sidecar';
+
+    // Sidecar: re-attach the pane the run was capturing from (`--attach` /
+    // `[t]`, saved on the session), or the one given with `resume --attach`.
+    let captureBackend: CaptureBackend | undefined = tmuxSession;
+    const attachTarget = options.attach ?? session.attach_target;
+    if (resumeMode === 'sidecar' && !tmuxSession && attachTarget) {
+      captureBackend = attachSidecarPane(
+        session.id,
+        attachTarget,
+        options.attach ? 'Attached' : 'Re-attached',
+      );
+      if (!captureBackend) {
+        console.warn(
+          options.attach
+            ? `⚠️  --attach target "${attachTarget}" is not a valid tmux pane; continuing without capture.\n`
+            : `⚠️  Saved tmux pane "${attachTarget}" no longer exists — press [t] to attach a pane for [v] verify.\n`,
+        );
+      }
+    }
+
     console.log('\n▶️  Resuming operation execution...\n');
     const startIndex =
       options.fromStep !== undefined
@@ -674,8 +692,6 @@ class OperationRunner {
         : session.current_step_index;
     executor.resumeFromIndex(startIndex);
 
-    const resumeMode: ExecutionMode =
-      (session.mode as ExecutionMode | undefined) ?? 'sidecar';
     await this.runInteractiveStepLoop(
       executor,
       operation,
@@ -683,7 +699,7 @@ class OperationRunner {
       context.variables,
       resumeMode,
       tmuxSession,
-      tmuxSession,
+      captureBackend,
       flatSteps,
       options.requireEvidence !== false,
       resumeFocusPic,
@@ -691,6 +707,10 @@ class OperationRunner {
       session.environment,
     );
     executor.finalizeOperation();
+    // Capture backend first (never kills the operator's pane), then spawn-own.
+    if (captureBackend && captureBackend !== tmuxSession) {
+      captureBackend.teardown();
+    }
     tmuxSession?.teardown();
 
     if (executor.getState().status === 'cancelled') {
@@ -2449,11 +2469,22 @@ class OperationRunner {
                 `${state.context.sessionId}-${i}`,
                 targetAns,
               );
+              const newPaneId = newCapture.resolvePaneId();
+              if (isOwnPane(newPaneId)) {
+                console.log(
+                  '    ⚠️  That is the pane samaritan runs in — pick the pane where you run commands.',
+                );
+                continue;
+              }
               const { previousOwner } = newCapture.attach();
               if (previousOwner)
                 console.warn(`  ${paneTakeoverWarning(previousOwner)}`);
               captureRef.backend = newCapture;
               captureRef.interrupted = false;
+              sessionManager.setAttachTarget(
+                state.context.sessionId,
+                newPaneId ?? targetAns,
+              );
               // Re-baseline the step offset on the new backend
               captureRef.stepOffset = newCapture.currentOffset(sessionName);
               logger.emit({
@@ -2894,6 +2925,41 @@ class OperationRunner {
   }
 }
 
+/**
+ * Attach a sidecar capture to an operator-owned pane (`run --attach`, `resume`):
+ * validates the target, attaches, warns on a takeover from another live run,
+ * and remembers the pane on the session so a later `resume` re-attaches.
+ * Returns undefined when the target is not a live tmux pane.
+ */
+function attachSidecarPane(
+  sessionId: string,
+  target: string,
+  verb: 'Attached' | 'Re-attached',
+): TmuxPaneCapture | undefined {
+  if (!validateTmuxTarget(target)) return undefined;
+  const capture = new TmuxPaneCapture(sessionId, target);
+  const paneId = capture.resolvePaneId();
+  if (isOwnPane(paneId)) {
+    console.warn(
+      `⚠️  "${target}" is the pane samaritan itself runs in — attach the pane where you run commands (press [t] to pick one).\n`,
+    );
+    return undefined;
+  }
+  const { previousOwner } = capture.attach();
+  // Save the stable pane id, never the positional target: after a pane closes
+  // `work:0.0` can renumber onto a different pane (even samaritan's own).
+  sessionManager.setAttachTarget(sessionId, paneId ?? target);
+  console.log(`🔗 ${verb} capture to tmux pane: ${target}`);
+  if (previousOwner) console.warn(paneTakeoverWarning(previousOwner));
+  console.log('');
+  return capture;
+}
+
+/** True when `paneId` is the tmux pane this samaritan process runs in. */
+function isOwnPane(paneId: string | undefined): boolean {
+  return !!paneId && paneId === process.env.TMUX_PANE;
+}
+
 /** `samaritan session <id> (pid N)` — names the run that owns a pane's pipe. */
 function describePaneOwner(owner: PaneOwner): string {
   return `samaritan session ${owner.captureId} (pid ${owner.pid})`;
@@ -3016,6 +3082,10 @@ const resumeCommand = new Command('resume')
   .option('-v, --verbose', 'Verbose output')
   .option('--auto-approve', 'Auto-approve remaining manual steps')
   .option('--from-step <number>', 'Resume from specific step number', parseInt)
+  .option(
+    '--attach <tmux-target>',
+    'Sidecar: capture from this tmux pane (default: the pane the run was attached to)',
+  )
   .option(
     '--no-require-evidence',
     'Allow completing a step whose evidence.required is true without capturing evidence',

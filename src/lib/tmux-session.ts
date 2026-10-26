@@ -493,6 +493,16 @@ export class TmuxPaneCapture implements CaptureBackend {
       : { status: 'reattached' };
   }
 
+  /**
+   * The pane's stable id (`%3`). Unlike a positional target (`work:0.1`) it
+   * never shifts to another pane when the window's panes are renumbered, so
+   * it is what a session saves for `resume`. Undefined when tmux is gone.
+   */
+  resolvePaneId(): string | undefined {
+    this.paneId ??= paneFormat(this.target, '#{pane_id}');
+    return this.paneId;
+  }
+
   /** Whether this capture still owns the pane's pipe (or nobody recorded one). */
   private ownsPane(): boolean {
     this.paneId ??= paneFormat(this.target, '#{pane_id}');

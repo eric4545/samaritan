@@ -296,6 +296,19 @@ export class SessionManager {
   }
 
   /**
+   * Remember the tmux pane a sidecar run captures from (`--attach` / `[t]`),
+   * so `resume` can re-attach to it instead of starting with no capture.
+   */
+  setAttachTarget(sessionId: string, target: string): void {
+    const session = this.getSession(sessionId);
+    if (session) {
+      session.attach_target = target;
+      session.updated_at = new Date();
+      saveSession(session);
+    }
+  }
+
+  /**
    * Persist the structured per-step record (derived by folding the JSONL
    * event log) onto the session, so the saved session JSON carries each
    * step's input/output/verification/approval — not just metadata.

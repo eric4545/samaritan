@@ -245,7 +245,12 @@ samaritan resume <session-id>
 
 # Or jump to a specific step
 samaritan resume <session-id> --from-step 4
+
+# Sidecar: capture from a different pane than the one the run used
+samaritan resume <session-id> --attach work:0.1
 ```
+
+**Sidecar resume re-attaches your pane.** The pane a sidecar run captures from (`--attach` or `[t]`) is saved on the session as tmux's stable pane id (`%3`), so `resume` re-attaches it automatically (`🔗 Re-attached capture to tmux pane: %3`) and `[v]` keeps working. The id is used, not a positional target like `work:0.0`: when a pane closes, tmux renumbers the window, and `work:0.0` could then point at a different pane, even samaritan's own. If the saved pane no longer exists, `resume` warns (`Saved tmux pane "%3" no longer exists — press [t] …`). `--attach` overrides the saved pane. Samaritan also refuses to attach to the pane it is running in.
 
 Quitting a run with `q`, `abort`, or **`Ctrl+C`** stops execution but **saves the session as paused**, prints the resume command, and keeps it listed in `samaritan sessions` — so you can stop mid-operation and pick it back up later. (`Ctrl+C` no longer hard-quits without saving — it now unwinds through the same save path as `abort`.) Resume restores variables, execution mode, and the current step index, then re-enters the interactive loop.
 
