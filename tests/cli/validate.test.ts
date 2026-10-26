@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -281,5 +281,37 @@ steps:
     ]);
     assert.strictEqual(result.status, 0, result.stderr);
     assert.match(result.stdout, /validation passed/);
+  });
+});
+
+describe('validate run.tmux_session / run.default_session (wiring)', () => {
+  // The rules themselves are unit-tested in tests/lib/run-config-lint.test.ts;
+  // these two spawns only prove `validate` reports them.
+  it('the tmux-session-name example validates clean', () => {
+    const result = runCli(['validate', 'examples/tmux-session-name.yaml']);
+    assert.strictEqual(result.status, 0, result.stdout + result.stderr);
+    assert.ok(!result.stdout.includes('run.'), result.stdout);
+  });
+
+  it('an undeclared default_session fails validation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-tmux-name-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(
+      file,
+      readFileSync('examples/tmux-session-name.yaml', 'utf-8').replace(
+        'default_session: remote',
+        'default_session: wrok',
+      ),
+    );
+    try {
+      const result = runCli(['validate', file]);
+      assert.notStrictEqual(result.status, 0);
+      assert.match(
+        result.stdout,
+        /run\.default_session "wrok" is not declared in sessions: \(declared: remote, local\)/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

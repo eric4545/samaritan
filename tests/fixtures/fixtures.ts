@@ -170,6 +170,8 @@ export const FIXTURES = {
 
   // Sessions / execution engine
   withSessions: 'tests/fixtures/operations/features/with-sessions.yaml',
+  tmuxSessionName:
+    'tests/fixtures/operations/features/e2e-tmux-session-name.yaml',
   withCaptureExpect:
     'tests/fixtures/operations/features/with-capture-expect.yaml',
   withArrayExpect: 'tests/fixtures/operations/features/with-array-expect.yaml',

@@ -15,6 +15,7 @@ import type {
   CaptureCheck,
   PaneOwner,
 } from './capture-backend';
+import { listUnresolvedVars, resolveVars } from './variable-resolver';
 
 export function isLocalSession(config: SessionConfig | undefined): boolean {
   return !config?.host;
@@ -192,6 +193,43 @@ export interface TmuxPaneInfo {
 }
 
 /**
+ * Field separator for tmux `-F` formats. tmux (3.4+) rewrites control
+ * characters — including TAB — in format output to `_`, so a `\t`-separated
+ * row arrives as ONE field. A printable multi-char token survives every
+ * version and is vanishingly unlikely inside a pane title.
+ */
+const TMUX_FIELD_SEP = '<|>';
+
+/**
+ * Parse `list-panes -a -F <id SEP target SEP command SEP title>` output.
+ * Pure (no tmux) so it can be unit tested. The title is the free-text field,
+ * so it is LAST and re-joined — a title that happens to contain the separator
+ * stays intact.
+ */
+export function parseTmuxPaneList(
+  stdout: string,
+  selfPane?: string,
+): TmuxPaneInfo[] {
+  return (
+    stdout
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line) => {
+        const [id, target, currentCommand = '', ...titleParts] =
+          line.split(TMUX_FIELD_SEP);
+        const title = titleParts.join(TMUX_FIELD_SEP);
+        return { id, target, currentCommand, title, isSelf: id === selfPane };
+      })
+      // Drop malformed rows (e.g. a partial line from `list-panes` racing a
+      // concurrent server teardown) so every returned pane has id + target.
+      .filter(
+        (pane): pane is TmuxPaneInfo =>
+          Boolean(pane.id) && Boolean(pane.target),
+      )
+  );
+}
+
+/**
  * List all panes across all tmux sessions so the operator can pick one by
  * number instead of typing a target. Returns [] when tmux is unavailable or
  * no server is running — never throws.
@@ -204,27 +242,19 @@ export function listTmuxPanes(): TmuxPaneInfo[] {
         'list-panes',
         '-a',
         '-F',
-        '#{pane_id}\t#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_command}\t#{pane_title}',
+        [
+          '#{pane_id}',
+          '#{session_name}:#{window_index}.#{pane_index}',
+          '#{pane_current_command}',
+          '#{pane_title}',
+        ].join(TMUX_FIELD_SEP),
       ],
       { stdio: 'pipe' },
     );
     if (result.status !== 0) return [];
-    const selfPane = process.env.TMUX_PANE;
-    return (
-      (result.stdout?.toString() ?? '')
-        .split('\n')
-        .filter((line) => line.trim() !== '')
-        .map((line) => {
-          const [id, target, currentCommand = '', title = ''] =
-            line.split('\t');
-          return { id, target, currentCommand, title, isSelf: id === selfPane };
-        })
-        // Drop malformed rows (e.g. a partial line from `list-panes` racing a
-        // concurrent server teardown) so every returned pane has id + target.
-        .filter(
-          (pane): pane is TmuxPaneInfo =>
-            Boolean(pane.id) && Boolean(pane.target),
-        )
+    return parseTmuxPaneList(
+      result.stdout?.toString() ?? '',
+      process.env.TMUX_PANE,
     );
   } catch {
     return [];
@@ -234,11 +264,35 @@ export function listTmuxPanes(): TmuxPaneInfo[] {
 export class TmuxSession implements CaptureBackend {
   private sessionId: string;
   private tmuxName: string;
+  private owned: boolean;
   private paneMap: Map<string, string> = new Map();
 
-  constructor(sessionId: string, tmuxName: string) {
+  /**
+   * @param owned true when samaritan created this tmux session (teardown kills
+   *   it); false when it adopted an operator's existing session of the same
+   *   name (teardown only closes samaritan's capture pipes — never kills).
+   */
+  constructor(sessionId: string, tmuxName: string, owned = true) {
     this.sessionId = sessionId;
     this.tmuxName = tmuxName;
+    this.owned = owned;
+  }
+
+  /** True when samaritan created the tmux session (and will kill it). */
+  isOwned(): boolean {
+    return this.owned;
+  }
+
+  /**
+   * Pane for a session name. An unregistered name (a step with no `session:`
+   * and no `run.default_session`) falls back to the FIRST declared session's
+   * pane — never a bare `<tmux>:0.0`, which in a reused operator session could
+   * be an unrelated window (and does not exist under `base-index 1`).
+   */
+  paneFor(sessionName: string): string {
+    const pane =
+      this.paneMap.get(sessionName) ?? this.paneMap.values().next().value;
+    return pane ?? `${this.tmuxName}:0.0`;
   }
 
   getPipeFilePath(sessionName: string): string {
@@ -250,7 +304,7 @@ export class TmuxSession implements CaptureBackend {
   }
 
   send(sessionName: string, command: string, sendEnter = true): void {
-    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    const pane = this.paneFor(sessionName);
     const args = sendEnter
       ? ['send-keys', '-t', pane, command, 'Enter']
       : ['send-keys', '-t', pane, command];
@@ -259,19 +313,19 @@ export class TmuxSession implements CaptureBackend {
 
   /** Paste a command into the pane without executing it (no Enter). */
   pasteCommand(sessionName: string, command: string): void {
-    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    const pane = this.paneFor(sessionName);
     pasteBufferTo(pane, command);
   }
 
   /** Capture the pane's rendered screen as clean text (no escape sequences). */
   captureScreen(sessionName: string): string | undefined {
-    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    const pane = this.paneFor(sessionName);
     return capturePaneScreen(pane);
   }
 
   /** The pane's current cursor line (the prompt once a command finished). */
   promptLine(sessionName: string): string | undefined {
-    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    const pane = this.paneFor(sessionName);
     return capturePaneCursorLine(pane);
   }
 
@@ -298,7 +352,10 @@ export class TmuxSession implements CaptureBackend {
 
   describeTarget(sessionName: string): string {
     const pane = this.paneMap.get(sessionName);
-    return pane ? `tmux pane ${pane}` : `tmux session ${this.tmuxName}`;
+    // Show the window by name too: bootstrap registers stable pane ids (%N).
+    return pane
+      ? `tmux pane ${this.tmuxName}:${sessionName} (${pane})`
+      : `tmux session ${this.tmuxName}`;
   }
 
   async waitForPrompt(
@@ -307,7 +364,7 @@ export class TmuxSession implements CaptureBackend {
     promptPattern?: string,
     idleThresholdMs = 0,
   ): Promise<'done' | 'timeout' | 'idle'> {
-    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    const pane = this.paneFor(sessionName);
     const deadline = Date.now() + timeoutMs;
     const re = new RegExp(promptPattern ?? '\\$\\s*$', 'm');
     const pollMs = 200;
@@ -345,9 +402,17 @@ export class TmuxSession implements CaptureBackend {
 
   teardown(): void {
     try {
-      spawnSync('tmux', ['kill-session', '-t', this.tmuxName], {
-        stdio: 'ignore',
-      });
+      if (this.owned) {
+        spawnSync('tmux', ['kill-session', '-t', `=${this.tmuxName}`], {
+          stdio: 'ignore',
+        });
+      } else {
+        // Adopted operator session: close only samaritan's pipes (pipe-pane
+        // with no command), leaving every window, pane and scrollback alive.
+        for (const pane of this.paneMap.values()) {
+          spawnSync('tmux', ['pipe-pane', '-t', pane], { stdio: 'ignore' });
+        }
+      }
     } catch {
       // session may already be gone
     }
@@ -615,59 +680,227 @@ export function sanitizeSessionName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+/**
+ * Default tmux session name: unique per run so concurrent runs never collide.
+ */
+const DEFAULT_TMUX_SESSION_TEMPLATE = 'samaritan-${SESSION_ID}';
+
+export interface TmuxSessionNameContext {
+  sessionId: string;
+  /** Target environment name, e.g. `sbx` — exposed as `${ENV}`. */
+  env: string;
+  operationId: string;
+}
+
+/**
+ * `${VAR}` names in a `run.tmux_session` template that neither the run's
+ * variables nor the run-scoped built-ins (SESSION_ID / ENV / OPERATION_ID)
+ * define. Lets `run`/`resume` fail fast — before creating a session record —
+ * and `validate` warn per environment.
+ */
+export function listUnresolvedTmuxSessionVars(
+  template: string | undefined,
+  vars: Record<string, any>,
+): string[] {
+  // The default template only uses built-ins, so it always resolves.
+  if (!template) return [];
+  const ctx = { sessionId: '', env: '', operationId: '' };
+  return listUnresolvedVars(template, tmuxNameScope(vars, ctx));
+}
+
+/** Run-scoped built-ins for `run.tmux_session`, merged UNDER the user's vars. */
+function tmuxNameScope(
+  vars: Record<string, any>,
+  ctx: TmuxSessionNameContext,
+): Record<string, any> {
+  return {
+    SESSION_ID: ctx.sessionId,
+    ENV: ctx.env,
+    OPERATION_ID: ctx.operationId,
+    ...vars,
+  };
+}
+
+/**
+ * Resolve the tmux session name for a run from `run.tmux_session` (default
+ * `samaritan-${SESSION_ID}`). Built-ins are merged UNDER the user's variables,
+ * matching every other built-in. The result is sanitized to tmux-safe
+ * characters (tmux forbids `.` and `:` in session names). Throws on an
+ * unresolved `${VAR}` — a wrong name could route commands to the wrong pane.
+ */
+export function resolveTmuxSessionName(
+  template: string | undefined,
+  vars: Record<string, any>,
+  ctx: TmuxSessionNameContext,
+): string {
+  const raw = template ?? DEFAULT_TMUX_SESSION_TEMPLATE;
+  let resolved: string;
+  try {
+    resolved = resolveVars(raw, tmuxNameScope(vars, ctx));
+  } catch (err: any) {
+    throw new Error(`run.tmux_session "${raw}": ${err.message}`);
+  }
+  const name = sanitizeSessionName(resolved.trim());
+  if (!name) throw new Error(`run.tmux_session "${raw}" resolved to empty`);
+  return name;
+}
+
+/** Tmux user option marking which samaritan run created a tmux session. */
+const OWNER_OPTION = '@samaritan_owner';
+
+function tmuxHasSession(tmuxName: string): boolean {
+  try {
+    return (
+      spawnSync('tmux', ['has-session', '-t', `=${tmuxName}`], {
+        stdio: 'ignore',
+      }).status === 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+function tmuxSessionOwner(tmuxName: string): string {
+  const r = spawnSync(
+    'tmux',
+    ['show-options', '-t', tmuxName, '-qv', OWNER_OPTION],
+    { stdio: 'pipe' },
+  );
+  return r.status === 0 ? (r.stdout?.toString() ?? '').trim() : '';
+}
+
+/**
+ * Parse `list-windows -F '#{window_name}<sep>#{pane_id}'` into
+ * window name → active pane id. Pure for unit testing; first window wins on a
+ * duplicate name (tmux's own `-t name:window` lookup is ambiguous there).
+ */
+export function parseWindowPanes(stdout: string): Map<string, string> {
+  const windows = new Map<string, string>();
+  for (const line of stdout.split('\n')) {
+    const at = line.lastIndexOf(TMUX_FIELD_SEP);
+    if (at <= 0) continue;
+    const name = line.slice(0, at);
+    const pane = line.slice(at + TMUX_FIELD_SEP.length).trim();
+    if (pane && !windows.has(name)) windows.set(name, pane);
+  }
+  return windows;
+}
+
+function listWindowPanes(tmuxName: string): Map<string, string> {
+  const r = spawnSync(
+    'tmux',
+    [
+      'list-windows',
+      '-t',
+      `=${tmuxName}`,
+      '-F',
+      `#{window_name}${TMUX_FIELD_SEP}#{pane_id}`,
+    ],
+    { stdio: 'pipe' },
+  );
+  return r.status === 0
+    ? parseWindowPanes(r.stdout?.toString() ?? '')
+    : new Map();
+}
+
+/** Run tmux and return the trimmed stdout, throwing with stderr on failure. */
+function tmuxOrThrow(args: string[]): string {
+  const r = spawnSync('tmux', args, { stdio: 'pipe' });
+  if (r.status !== 0) {
+    const reason = r.error?.message ?? r.stderr?.toString().trim();
+    throw new Error(`tmux ${args[0]} failed: ${reason || 'unknown error'}`);
+  }
+  return (r.stdout?.toString() ?? '').trim();
+}
+
+export interface BootstrapResult {
+  tmux: TmuxSession;
+  /** True when an existing tmux session with that name was adopted. */
+  reused: boolean;
+  /** `sessions:` keys whose same-named window already existed (used as-is). */
+  adopted: string[];
+  /** `sessions:` keys samaritan opened a new window for. */
+  created: string[];
+}
+
+/**
+ * Bring up one tmux window per `sessions:` key, named after the key, inside
+ * the tmux session `tmuxName` (the resolved `run.tmux_session`).
+ *
+ * - No such tmux session → create it, tag it with the run's id
+ *   (`@samaritan_owner`), and kill it on teardown.
+ * - It already exists (the operator's own, or this run's from before an
+ *   abort) → REUSE it: a window already named after a key is adopted as-is
+ *   (samaritan never types into it — no `ssh`, it's already connected); a
+ *   missing one is added. Teardown kills it only when this run created it.
+ */
 export async function bootstrapSessions(
   sessionId: string,
   sessions: Record<string, SessionConfig>,
-  promptPattern?: string,
-): Promise<TmuxSession> {
-  const tmuxName = `samaritan-${sessionId}`;
-  const tmuxSession = new TmuxSession(sessionId, tmuxName);
+  tmuxName: string,
+): Promise<BootstrapResult> {
+  const reused = tmuxHasSession(tmuxName);
+  const owned = !reused || tmuxSessionOwner(tmuxName) === sessionId;
+  const tmuxSession = new TmuxSession(sessionId, tmuxName, owned);
+  const existing = reused ? listWindowPanes(tmuxName) : new Map();
+  const adopted: string[] = [];
+  const created: string[] = [];
 
-  spawnSync('tmux', ['new-session', '-d', '-s', tmuxName]);
-
-  const sessionNames = Object.keys(sessions);
-  for (let i = 0; i < sessionNames.length; i++) {
-    const name = sanitizeSessionName(sessionNames[i]);
-    const config = sessions[sessionNames[i]];
-    // Each session gets its own window; the first pane in window i is :i.0
-    const paneTarget = `${tmuxName}:${i}.0`;
-
-    if (i > 0) {
-      spawnSync('tmux', ['new-window', '-t', tmuxName]);
-    }
-
-    // Start pipe-pane capture; pipeFile uses sanitized name so no shell injection
-    const pipeFile = tmuxSession.getPipeFilePath(name);
-    spawnSync('tmux', [
-      'pipe-pane',
-      '-t',
-      paneTarget,
-      '-o',
-      `cat >> '${pipeFile}'`,
-    ]);
-
-    tmuxSession.registerPane(name, paneTarget);
-
-    // SSH connect if host defined
-    if (config.host) {
-      const userAtHost = config.user
-        ? `${config.user}@${config.host}`
-        : config.host;
-      spawnSync('tmux', [
-        'send-keys',
-        '-t',
-        paneTarget,
-        `ssh ${userAtHost}`,
-        'Enter',
+  for (const [key, config] of Object.entries(sessions)) {
+    const name = sanitizeSessionName(key);
+    let paneTarget = existing.get(name);
+    if (paneTarget === undefined) {
+      const first = !reused && created.length === 0;
+      // -P -F prints the new pane's id (%N): stable however windows move.
+      paneTarget = tmuxOrThrow([
+        ...(first
+          ? ['new-session', '-d', '-s', tmuxName]
+          : ['new-window', '-d', '-t', `=${tmuxName}:`]),
+        ...['-n', name, '-P', '-F', '#{pane_id}'],
       ]);
+      if (first) {
+        spawnSync('tmux', [
+          'set-option',
+          '-t',
+          tmuxName,
+          OWNER_OPTION,
+          sessionId,
+        ]);
+      }
+      created.push(name);
+      // SSH connect if host defined. Adopted windows are the operator's —
+      // already connected — so samaritan never types into them.
+      if (config.host) {
+        const userAtHost = config.user
+          ? `${config.user}@${config.host}`
+          : config.host;
+        spawnSync('tmux', [
+          'send-keys',
+          '-t',
+          paneTarget,
+          `ssh ${userAtHost}`,
+          'Enter',
+        ]);
+      }
+    } else {
+      adopted.push(name);
     }
 
-    // Wait for prompt after connecting
-    const pattern = promptPattern ?? '\\$\\s*$';
-    await tmuxSession.waitForPrompt(name, 10_000, pattern);
+    // Start pipe-pane capture; pipeFile uses sanitized name so no shell
+    // injection. No `-o`: replace any stale pipe (e.g. left by an aborted run)
+    // so capture deterministically lands in THIS run's file.
+    const pipeFile = tmuxSession.getPipeFilePath(name);
+    spawnSync('tmux', ['pipe-pane', '-t', paneTarget, `cat >> '${pipeFile}'`]);
+    tmuxSession.registerPane(name, paneTarget);
   }
 
-  return tmuxSession;
+  // Wait for every NEW window's prompt at once: startup costs the slowest
+  // connect, not the sum of them.
+  await Promise.all(
+    created.map((name) => tmuxSession.waitForPrompt(name, 10_000, '\\$\\s*$')),
+  );
+
+  return { tmux: tmuxSession, reused, adopted, created };
 }
 
 function sleep(ms: number): Promise<void> {

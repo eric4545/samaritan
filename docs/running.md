@@ -29,7 +29,7 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 
 | Scenario | What happens |
 |---|---|
-| `sessions:` defined in YAML | Samaritan bootstraps its own tmux session; prints `Attach with: tmux attach -t samaritan-<id>` |
+| `sessions:` defined in YAML | Samaritan bootstraps (or [reuses](#tmux-session-name-and-reuse)) a tmux session — `samaritan-<id>` unless `run.tmux_session` names it; prints `Attach with: tmux attach -t <name>` |
 | `--attach <target>` flag | Samaritan attaches a pipe-pane capture to your existing pane without touching your session |
 | No sessions, no `--attach` | Prompt-only mode; `[v]` will indicate that you need `[t]` to attach a pane first |
 
@@ -54,8 +54,9 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 
 ```
 samaritan run deployment-with-sessions.yaml --env production
-  1. Creates a tmux session (samaritan-<id>)
-  2. Bootstraps one window per named session (local or SSH)
+  1. Creates a tmux session (samaritan-<id>, or run.tmux_session) — or reuses
+     an existing one with that name
+  2. Bootstraps one window per named session, named after it (local or SSH)
   3. Starts pipe-pane background capture on every pane
   4. Launches the interactive TUI in the current terminal
   5. Writes all events to /tmp/samaritan-<id>.jsonl
@@ -301,6 +302,66 @@ steps:
       expect:
         contains: "successfully rolled out"
 ```
+
+## tmux session name and reuse
+
+By default the `sessions:` windows live in a throwaway tmux session called `samaritan-<run id>`.
+`run.tmux_session` gives it a name you choose. Put the environment in it so that, with SBX and DEV
+both open, an SBX command can never land in a DEV pane:
+
+```yaml
+common_variables:
+  TICKET: GCSGPSOPS-17034
+
+sessions:
+  remote: {}
+  local: {}
+
+run:
+  tmux_session: ${TICKET}-${ENV}   # → GCSGPSOPS-17034-sbx with --env sbx
+  default_session: remote          # steps without session: run here
+```
+
+`${VAR}` resolves **at run time** against the run's variables (including `--var`), plus these built-ins.
+Your own variable of the same name wins:
+
+| Built-in | Value |
+|---|---|
+| `${ENV}` | target environment (`--env`) |
+| `${SESSION_ID}` | the run id (the default name is `samaritan-${SESSION_ID}`) |
+| `${OPERATION_ID}` | the operation id |
+
+A variable that can't be resolved stops `run`/`resume` before anything starts, because a wrong name could
+pick the wrong session. `validate` warns about it for each environment. Characters tmux doesn't allow
+(`.`, `:`, spaces) become `_`.
+
+**Reusing an existing session.** If a tmux session with that name already exists, Samaritan uses it
+instead of creating another one:
+
+| In the existing session | What Samaritan does |
+|---|---|
+| A window named after a `sessions:` key | **Adopts it as-is.** It types nothing into it, not even `ssh`, because it is yours and already connected |
+| No window for a key | Adds a window with that name (and runs `ssh` if the session has `host:`) |
+| Any other window | Never touches it |
+| When the run ends | Closes Samaritan's capture pipes. **Never kills** a session it didn't create |
+
+So you can open and connect the panes yourself first, then run:
+
+```bash
+tmux new-session -d -s GCSGPSOPS-17034-sbx -n remote   # then ssh in yourself
+tmux new-window  -t GCSGPSOPS-17034-sbx: -n local
+samaritan run op.yaml --env sbx
+```
+
+A session Samaritan creates is tagged with the run id (tmux option `@samaritan_owner`). After a `Ctrl+C`,
+`samaritan resume` finds the same session, re-adopts its windows (your SSH connections are still there),
+and kills it when the run finishes. If you resume with `--attach` instead, that earlier session is left
+alone; close it with `tmux kill-session -t <name>`.
+
+**`run.default_session`** must name a `sessions:` key (`validate` errors otherwise). Steps, sub-steps
+and operation-level rollback steps without a `session:` use that pane, so `[p]` send-to-pane and `[v]`
+verify work for them. A step's own `rollback` entries still follow the step's session. It applies at
+run time only: generated manuals show only the sessions you wrote.
 
 ## Run modes (`auto_send` / `auto_exec`)
 

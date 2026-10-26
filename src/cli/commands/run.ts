@@ -24,6 +24,7 @@ import {
 import { getBuiltinVariables } from '../../lib/builtin-variables';
 import type { CaptureBackend, PaneOwner } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
+import { applyDefaultSession } from '../../lib/default-session';
 import { createEventLogger } from '../../lib/event-logger';
 import { OperationExecutor } from '../../lib/executor';
 import { findShellVarRefs } from '../../lib/expect-lint';
@@ -57,6 +58,8 @@ import {
   bootstrapSessions,
   isMultiLinePaste,
   listTmuxPanes,
+  listUnresolvedTmuxSessionVars,
+  resolveTmuxSessionName,
   TmuxPaneCapture,
   type TmuxSession,
   validateTmuxTarget,
@@ -119,7 +122,8 @@ interface RunOptions {
   mock?: boolean;
   mode?: ExecutionMode;
   attach?: string;
-  variables?: string[];
+  // Commander stores `--var <key=value>` (repeatable) under `var`.
+  var?: string[];
   verbose?: boolean;
   continueOnError?: boolean;
   report?: string;
@@ -318,7 +322,7 @@ class OperationRunner {
       );
     }
 
-    const additionalVars = this.parseVariables(options.variables || []);
+    const additionalVars = this.parseVariables(options.var || []);
 
     // Merge common + env-specific + CLI overrides into resolved variable set
     const resolvedVars: Record<string, any> = {
@@ -329,6 +333,17 @@ class OperationRunner {
 
     const executionMode: ExecutionMode =
       options.mode ?? (options.autoApprove ? 'automatic' : 'sidecar');
+
+    // Fail fast — before a session record exists — when the tmux session name
+    // can't be resolved: a half-resolved name could adopt the wrong session.
+    const autoMode = executionMode === 'automatic' || !!options.autoApprove;
+    if (!autoMode && !options.dryRun) {
+      assertTmuxSessionResolvable(
+        operation,
+        resolvedVars,
+        sidecarAttachTarget(executionMode, options.attach),
+      );
+    }
 
     // In focus mode the person running IS the focused PIC — attribute the
     // session (and thus the merged report's `executed_by`) to them; otherwise
@@ -353,10 +368,10 @@ class OperationRunner {
       operator,
       sessionId: session.id,
       dryRun: options.dryRun || false,
-      autoMode: executionMode === 'automatic' || options.autoApprove || false,
+      autoMode,
     };
 
-    const { flatSteps, execOperation } = this.prepareFlatOperation(
+    const { flatSteps, execOperation } = prepareFlatOperation(
       operation,
       targetEnv,
     );
@@ -396,53 +411,14 @@ class OperationRunner {
       const isInteractiveMode = !context.autoMode && !options.dryRun;
 
       if (isInteractiveMode) {
-        let tmuxSession: TmuxSession | undefined;
-        let captureBackend: CaptureBackend | undefined;
-
-        if (executionMode === 'sidecar' && options.attach) {
-          // Sidecar + --attach: validate and attach to operator's pane
-          captureBackend = attachSidecarPane(
-            context.sessionId,
-            options.attach,
-            'Attached',
-            operation.sessions,
-          );
-          if (!captureBackend) {
-            console.warn(
-              `⚠️  --attach target "${options.attach}" is not a valid tmux pane; continuing without capture.\n`,
-            );
-          }
-        } else if (
-          operation.sessions &&
-          Object.keys(operation.sessions).length > 0
-        ) {
-          console.log('🖥️  Bootstrapping tmux sessions...');
-          try {
-            tmuxSession = await bootstrapSessions(
-              context.sessionId,
-              operation.sessions,
-            );
-            captureBackend = tmuxSession;
-            console.log(
-              `   Sessions: ${Object.keys(operation.sessions).join(', ')}`,
-            );
-            if (executionMode === 'sidecar') {
-              console.log(
-                `   Attach with: tmux attach -t samaritan-${context.sessionId}\n`,
-              );
-            } else {
-              console.log('');
-            }
-          } catch (err: any) {
-            console.warn(
-              `⚠️  tmux bootstrap failed (${err.message}); falling back to prompt-only mode.\n`,
-            );
-          }
-        } else if (executionMode === 'sidecar' && process.env.TMUX) {
-          console.log(
-            '💡 Tip: press [t] during a step to attach a tmux pane for [v] verify.\n',
-          );
-        }
+        const { tmuxSession, captureBackend } = await this.setupCapture({
+          mode: executionMode,
+          attach: options.attach,
+          operation,
+          vars: resolvedVars,
+          sessionId: context.sessionId,
+          env: targetEnv,
+        });
 
         console.log('▶️  Starting interactive operation execution...\n');
         executor.startInteractive();
@@ -628,6 +604,13 @@ class OperationRunner {
     }
 
     const operation = await this.parseOperationFile(session.operation_file);
+    const resumeMode: ExecutionMode =
+      (session.mode as ExecutionMode | undefined) ?? 'sidecar';
+    assertTmuxSessionResolvable(
+      operation,
+      session.variables || {},
+      sidecarAttachTarget(resumeMode, options.attach, session.attach_target),
+    );
 
     const context = {
       operationId: session.operation_id,
@@ -639,7 +622,7 @@ class OperationRunner {
       autoMode: session.mode === 'automatic',
     };
 
-    const { flatSteps, execOperation } = this.prepareFlatOperation(
+    const { flatSteps, execOperation } = prepareFlatOperation(
       operation,
       session.environment,
     );
@@ -648,54 +631,20 @@ class OperationRunner {
 
     this.setupEventHandlers(executor, { verbose: options.verbose });
 
-    const resumeMode: ExecutionMode =
-      (session.mode as ExecutionMode | undefined) ?? 'sidecar';
-    // Same precedence as `run`: a sidecar run attached to the operator's pane
-    // (`--attach` / `[t]`, saved on the session, or `resume --attach`)
-    // re-attaches it — it must not come back on spawned `sessions:` windows.
-    const attachTarget =
-      resumeMode === 'sidecar'
-        ? (options.attach ?? session.attach_target)
-        : undefined;
-
-    // Bootstrap tmux if the operation uses sessions
-    let tmuxSession: TmuxSession | undefined;
-    if (
-      !attachTarget &&
-      operation.sessions &&
-      Object.keys(operation.sessions).length > 0
-    ) {
-      console.log('\n🖥️  Bootstrapping tmux sessions...');
-      try {
-        tmuxSession = await bootstrapSessions(session.id, operation.sessions);
-        console.log(
-          `   Sessions: ${Object.keys(operation.sessions).join(', ')}\n`,
-        );
-      } catch (err: any) {
-        console.warn(
-          `⚠️  tmux bootstrap failed (${err.message}); continuing without tmux.\n`,
-        );
-      }
-    }
-
-    // Sidecar: re-attach the pane the run was capturing from (`--attach` /
-    // `[t]`, saved on the session), or the one given with `resume --attach`.
-    let captureBackend: CaptureBackend | undefined = tmuxSession;
-    if (attachTarget) {
-      captureBackend = attachSidecarPane(
-        session.id,
-        attachTarget,
-        options.attach ? 'Attached' : 'Re-attached',
-        operation.sessions,
-      );
-      if (!captureBackend) {
-        console.warn(
-          options.attach
-            ? `⚠️  --attach target "${attachTarget}" is not a valid tmux pane; continuing without capture.\n`
-            : `⚠️  Saved tmux pane "${attachTarget}" no longer exists — press [t] to attach a pane for [v] verify.\n`,
-        );
-      }
-    }
+    // Same capture setup as `run`. A sidecar run attached to the operator's
+    // pane (`--attach` / `[t]`, saved on the session) re-attaches it and never
+    // comes back on spawned `sessions:` windows; otherwise `sessions:`
+    // re-adopts the run's tmux session (left alive by a Ctrl+C) or brings up a
+    // fresh one under the same resolved name.
+    const { tmuxSession, captureBackend } = await this.setupCapture({
+      mode: resumeMode,
+      attach: options.attach,
+      savedAttach: session.attach_target,
+      operation,
+      vars: context.variables,
+      sessionId: session.id,
+      env: session.environment,
+    });
 
     console.log('\n▶️  Resuming operation execution...\n');
     const startIndex =
@@ -736,21 +685,109 @@ class OperationRunner {
     }
   }
 
-  private prepareFlatOperation(
-    operation: Operation,
-    targetEnv: string,
-  ): {
-    flatSteps: FlatStep[];
-    execOperation: Operation;
-  } {
-    // All steps are included in flatSteps (with filteredByEnv flag) so that
-    // authored step numbers are stable — `--from-step N` always means the Nth
-    // step the author wrote, not the Nth step after env filtering.
-    const flatSteps = flattenAndMarkForEnv(operation.steps, targetEnv);
-    return {
-      flatSteps,
-      execOperation: { ...operation, steps: flatSteps.map((f) => f.step) },
-    };
+  /**
+   * Choose the run's capture backend (shared by `run` and `resume`):
+   * - sidecar + `--attach <pane>` → pipe the operator's own pane;
+   * - `sessions:` → bootstrap one window per session inside the tmux session
+   *   named by `run.tmux_session` (reusing it when it already exists);
+   * - neither → prompt-only (`[t]` can attach a pane mid-run).
+   * Never throws: a tmux failure falls back to prompt-only mode.
+   */
+  private async setupCapture(opts: {
+    mode: ExecutionMode;
+    attach?: string;
+    /** `resume`: the pane the run was attached to (`session.attach_target`). */
+    savedAttach?: string;
+    operation: Operation;
+    vars: Record<string, any>;
+    sessionId: string;
+    env: string;
+  }): Promise<{
+    tmuxSession?: TmuxSession;
+    captureBackend?: CaptureBackend;
+  }> {
+    const { mode, attach, operation } = opts;
+
+    if (attach && mode !== 'sidecar') {
+      console.warn(
+        `⚠️  --attach only applies to sidecar mode (this run is ${mode}); ignoring it.\n`,
+      );
+    }
+
+    // An attached pane (`--attach`, or the one saved on a resumed session)
+    // wins: `sessions:` are then never spawned, even if the pane is gone.
+    const target = sidecarAttachTarget(mode, attach, opts.savedAttach);
+    if (target) {
+      const capture = attachSidecarPane(
+        opts.sessionId,
+        target,
+        attach ? 'Attached' : 'Re-attached',
+        operation.sessions,
+      );
+      if (!capture) {
+        console.warn(
+          attach
+            ? `⚠️  --attach target "${target}" is not a valid tmux pane; continuing without capture.\n`
+            : `⚠️  Saved tmux pane "${target}" no longer exists — press [t] to attach a pane for [v] verify.\n`,
+        );
+      }
+      return { captureBackend: capture };
+    }
+
+    if (operation.sessions && Object.keys(operation.sessions).length > 0) {
+      console.log('🖥️  Bootstrapping tmux sessions...');
+      try {
+        const tmuxName = resolveTmuxSessionName(
+          operation.run?.tmux_session,
+          opts.vars,
+          {
+            sessionId: opts.sessionId,
+            env: opts.env,
+            operationId: operation.id,
+          },
+        );
+        const boot = await bootstrapSessions(
+          opts.sessionId,
+          operation.sessions,
+          tmuxName,
+        );
+        if (boot.reused) {
+          console.log(`   ♻️  Reusing existing tmux session: ${tmuxName}`);
+          if (boot.adopted.length > 0)
+            console.log(`   Adopted windows: ${boot.adopted.join(', ')}`);
+          if (boot.created.length > 0)
+            console.log(`   Added windows: ${boot.created.join(', ')}`);
+          if (!boot.tmux.isOwned())
+            console.log('   (not killed when the run ends — it is yours)');
+        }
+        console.log(
+          `   Sessions: ${Object.keys(operation.sessions).join(', ')}`,
+        );
+        if (operation.run?.default_session) {
+          console.log(
+            `   Default session (steps without session:): ${operation.run.default_session}`,
+          );
+        }
+        if (mode === 'sidecar') {
+          console.log(`   Attach with: tmux attach -t ${tmuxName}\n`);
+        } else {
+          console.log('');
+        }
+        return { tmuxSession: boot.tmux, captureBackend: boot.tmux };
+      } catch (err: any) {
+        console.warn(
+          `⚠️  tmux bootstrap failed (${err.message}); falling back to prompt-only mode.\n`,
+        );
+        return {};
+      }
+    }
+
+    if (mode === 'sidecar' && process.env.TMUX) {
+      console.log(
+        '💡 Tip: press [t] during a step to attach a tmux pane for [v] verify.\n',
+      );
+    }
+    return {};
   }
 
   private async runInteractiveStepLoop(
@@ -3018,6 +3055,64 @@ function inferEvidenceTypeFromExtension(filename: string): EvidenceType {
   if (ext && IMAGE_EXTENSIONS.includes(ext)) return 'screenshot';
   if (ext && VIDEO_EXTENSIONS.includes(ext)) return 'video';
   return 'file';
+}
+
+/**
+ * The run's working copy of an operation: every step flattened in authored
+ * order (env-filtered ones flagged, so step numbers stay stable — `--from-step
+ * N` is the Nth step the author wrote), `variants.<env>` merged, and
+ * `run.default_session` applied.
+ */
+export function prepareFlatOperation(
+  operation: Operation,
+  targetEnv: string,
+): {
+  flatSteps: FlatStep[];
+  execOperation: Operation;
+} {
+  const flatSteps = flattenAndMarkForEnv(operation.steps, targetEnv);
+  const execOperation = { ...operation, steps: flatSteps.map((f) => f.step) };
+  // After the variant merge, so a `variants.<env>.rollback` entry gets the
+  // default too. Run-time only: `generate` never sees this copy.
+  applyDefaultSession(execOperation);
+  return { flatSteps, execOperation };
+}
+
+/**
+ * The pane a sidecar run captures from instead of spawning `sessions:`:
+ * `--attach`, else the one saved on a resumed session. Non-sidecar runs never
+ * attach. One rule for `setupCapture` and the fail-fast name check.
+ */
+function sidecarAttachTarget(
+  mode: ExecutionMode,
+  attach: string | undefined,
+  savedAttach?: string,
+): string | undefined {
+  return mode === 'sidecar' ? (attach ?? savedAttach) : undefined;
+}
+
+/**
+ * Throw when `run.tmux_session` references a `${VAR}` this run can't resolve
+ * — but only when the run will actually bootstrap `sessions:` (not when an
+ * attached pane replaces them).
+ */
+export function assertTmuxSessionResolvable(
+  operation: Operation,
+  vars: Record<string, any>,
+  attachTarget: string | undefined,
+): void {
+  const hasSessions = Object.keys(operation.sessions ?? {}).length > 0;
+  if (!hasSessions || attachTarget) return;
+  const missing = listUnresolvedTmuxSessionVars(
+    operation.run?.tmux_session,
+    vars,
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `run.tmux_session "${operation.run?.tmux_session}" references undefined variable(s): ${missing.join(', ')}\n` +
+        `  Define them in variables: / common_variables:, or pass --var ${missing[0]}=<value>.`,
+    );
+  }
 }
 
 // ─── CLI commands ─────────────────────────────────────────────────────────────

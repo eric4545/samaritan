@@ -39,6 +39,8 @@ function fixturePath(name: string): string {
     needsGate: 'tests/fixtures/operations/features/needs-gate.yaml',
     nearestRollback: 'tests/fixtures/operations/features/nearest-rollback.yaml',
     whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
+    tmuxSessionName:
+      'tests/fixtures/operations/features/e2e-tmux-session-name.yaml',
     runVariants: 'tests/fixtures/operations/features/run-variants.yaml',
   };
   return resolve(map[name]);
@@ -61,6 +63,12 @@ function runCli(
     stderr: result.stderr ?? '',
     status: result.status,
   };
+}
+
+function extractSessionId(output: string): string {
+  const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
+  assert.ok(m, `run output must include the session id; got:\n${output}`);
+  return (m as RegExpMatchArray)[1];
 }
 
 // ─── --env / --environment flag ───────────────────────────────────────────────
@@ -747,12 +755,6 @@ describe('run command: --report flag', () => {
 // ─── durable run record (beside the operation) ──────────────────────────────
 
 describe('run command: durable run record beside the operation', () => {
-  function extractSessionId(output: string): string {
-    const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
-    assert.ok(m, `run output must include the session id; got:\n${output}`);
-    return (m as RegExpMatchArray)[1];
-  }
-
   it('always writes events.jsonl + report.md beside the operation and a step_log on the session', () => {
     // Copy a fixture into a writable temp dir so the .samaritan-runs/ folder
     // lands next to the operation, not in the repo tree.
@@ -1051,6 +1053,23 @@ describe('run command: sub-steps support', () => {
 // ─── ${VAR} rendering in run-mode display ────────────────────────────────────
 
 describe('run command: ${VAR} rendering in step display', () => {
+  it('--var overrides an environment variable (regression: --var was ignored)', () => {
+    const result = runCli(
+      [
+        'run',
+        fixturePath('varRendering'),
+        '--env',
+        'staging',
+        '--var',
+        'NAMESPACE=from-cli',
+      ],
+      { input: 'q\n' },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(combined.includes('-n from-cli'), combined);
+    assert.ok(!combined.includes('staging-ns'), combined);
+  });
+
   it('resolves ${VAR} in step description', () => {
     const fixture = fixturePath('varRendering');
     const result = runCli(['run', fixture, '--env', 'staging'], {
@@ -1276,12 +1295,6 @@ describe('run command: TTY raw-mode action prompt', () => {
 // ─── Abort persists a resumable session (issue: "how to resume a run?") ──────
 
 describe('run command: abort persists a resumable session', () => {
-  function extractSessionId(output: string): string {
-    const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
-    assert.ok(m, `run output must include the session id; got:\n${output}`);
-    return (m as RegExpMatchArray)[1];
-  }
-
   function readSessionFile(sessionId: string): any {
     const path = join(homedir(), '.samaritan', 'sessions', `${sessionId}.json`);
     assert.ok(existsSync(path), `session file must exist at ${path}`);
@@ -1386,12 +1399,6 @@ describe('run command: abort persists a resumable session', () => {
 // ─── run --from-step: jump ahead at startup ─────────────────────────────────
 
 describe('run command: --from-step starts at a later step', () => {
-  function extractSessionId(output: string): string {
-    const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
-    assert.ok(m, `run output must include the session id; got:\n${output}`);
-    return (m as RegExpMatchArray)[1];
-  }
-
   function readSessionFile(sessionId: string): any {
     const path = join(homedir(), '.samaritan', 'sessions', `${sessionId}.json`);
     assert.ok(existsSync(path), `session file must exist at ${path}`);
@@ -1746,6 +1753,57 @@ describe('run command: when-gated step filtering by environment', () => {
     assert.ok(
       !combined.includes('Undo only in dev'),
       `dev-only rollback instruction must not appear in stg; output:\n${combined.slice(-800)}`,
+    );
+  });
+});
+
+// ─── run.tmux_session / resume --attach ─────────────────────────────────────
+// Which runs check the name, and the variant/default ordering, are unit-tested
+// in tests/cli/run-tmux-session.test.ts; these spawns cover CLI-only behaviour.
+
+describe('run/resume: tmux session name + resume --attach (CLI)', () => {
+  it('run refuses to start when run.tmux_session has an unresolved ${VAR}', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-tmux-name-'));
+    const file = join(dir, 'op.yaml');
+    const src = readFileSync(fixturePath('tmuxSessionName'), 'utf-8');
+    const yaml = src.replace(
+      'tmux_session: ${TICKET}-${ENV}',
+      'tmux_session: ${NOPE}-${ENV}',
+    );
+    assert.notStrictEqual(yaml, src, 'fixture edit must apply');
+    writeFileSync(file, yaml);
+    try {
+      const result = runCli(['run', file, '--env', 'sbx'], { input: 'q\n' });
+      const combined = result.stdout + result.stderr;
+      assert.notStrictEqual(result.status, 0, combined);
+      assert.match(
+        combined,
+        /run\.tmux_session "\$\{NOPE\}-\$\{ENV\}" references undefined variable\(s\): NOPE/,
+      );
+      assert.ok(
+        !combined.includes('📋 Session:'),
+        'must fail BEFORE a session record is created',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('resume accepts --attach and validates the target like run does', () => {
+    const first = runCli(
+      ['run', fixturePath('manualStepActions'), '--env', 'default'],
+      { input: 'q\n' },
+    );
+    const sessionId = extractSessionId(first.stdout + first.stderr);
+    const result = runCli(
+      ['resume', sessionId, '--attach', 'no-such-session:9.9'],
+      { input: 'q\n' },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(!combined.includes("unknown option '--attach'"), combined);
+    assert.match(
+      combined,
+      /--attach target "no-such-session:9\.9" is not a valid tmux pane/,
     );
   });
 });

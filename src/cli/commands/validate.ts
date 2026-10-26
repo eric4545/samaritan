@@ -10,6 +10,7 @@ import {
   lintExpectShellVars,
 } from '../../lib/expect-lint';
 import { formatRegexFinding, lintOperationRegex } from '../../lib/regex-lint';
+import { lintRunConfig } from '../../lib/run-config-lint';
 import {
   formatFinding,
   isShellcheckAvailable,
@@ -72,6 +73,9 @@ class OperationValidator {
       this.validateOperationStructure(operation, result, options);
       this.validateEnvironments(operation, result, options);
       this.validateSteps(operation, result, options);
+      const runConfig = lintRunConfig(operation);
+      result.errors.push(...runConfig.errors);
+      result.warnings.push(...runConfig.warnings);
       this.validateVariables(operation, result, options);
       this.validateExpectRegex(operation, result, options);
       this.validateExpectShellVars(operation, result);

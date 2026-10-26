@@ -55,6 +55,14 @@ export interface ExpectConfig {
 export interface RunConfig {
   auto_send?: boolean;
   auto_exec?: boolean;
+  /**
+   * tmux session name for the `sessions:` windows, `${VAR}`-resolved at run
+   * time (built-ins `${SESSION_ID}`/`${ENV}`/`${OPERATION_ID}`). An existing
+   * tmux session with that name is reused. Default `samaritan-${SESSION_ID}`.
+   */
+  tmux_session?: string;
+  /** `sessions:` key used by steps (and rollback steps) with no `session:`. */
+  default_session?: string;
 }
 
 // ─── Supporting Types and Enums ───────────────────────────────────────────────

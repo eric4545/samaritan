@@ -1,0 +1,76 @@
+# Named tmux Session Example (run.tmux_session + run.default_session)
+#
+# By default samaritan spawns a throwaway tmux session `samaritan-<run id>`.
+# `run.tmux_session` names it instead — here `${TICKET}-${ENV}`, so a run of
+# this operation against `sbx` uses the tmux session `GCSGPSOPS-17034-sbx`.
+# Putting the environment in the name keeps an SBX command from ever being
+# pasted into a DEV pane when both are open.
+#
+# Built-ins available in the name (your own variables of the same name win):
+#   ${SESSION_ID}  — the run id (the default is samaritan-${SESSION_ID})
+#   ${ENV}         — the target environment (--env)
+#   ${OPERATION_ID}
+#
+# If a tmux session with that name ALREADY exists, samaritan reuses it:
+#   - a window named after a `sessions:` key is adopted as-is (no ssh typed —
+#     it is already yours and already connected),
+#   - a missing window is added,
+#   - and the session is never killed when the run ends.
+# So you can prepare the panes yourself first:
+#
+#   tmux new-session -d -s GCSGPSOPS-17034-sbx -n remote   # ssh in yourself
+#   tmux new-window  -t GCSGPSOPS-17034-sbx: -n local
+#
+# `run.default_session` routes every step (and rollback step) that has no
+# `session:` of its own to that pane, so [p] send-to-pane and [v] verify work
+# for it too. It is applied at run time only — manuals are unchanged.
+#
+# Usage:
+#   samaritan run examples/tmux-session-name.yaml -e sbx
+#   samaritan run examples/tmux-session-name.yaml -e sbx --var TICKET=OPS-1
+#   samaritan resume <session-id>                       # re-adopts the session
+#   samaritan resume <session-id> --attach my-pane:0.0  # or use one pane
+
+name: Named tmux Session Example
+version: 1.0.0
+description: |
+  Derives the tmux session name from the ticket and the target environment,
+  reuses that session when the operator already has it open, and routes steps
+  without a session: to a default pane.
+
+common_variables:
+  TICKET: GCSGPSOPS-17034
+
+sessions:
+  remote: {} # the operator SSHes into this pane themselves
+  local: {}
+
+run:
+  tmux_session: ${TICKET}-${ENV}
+  default_session: remote
+
+environments:
+  - name: sbx
+    description: Sandbox
+    variables:
+      NAMESPACE: sbx
+  - name: dev
+    description: Development
+    variables:
+      NAMESPACE: dev
+
+steps:
+  - name: Check pods
+    type: automatic
+    phase: preflight
+    description: Runs in the default session (remote) — no session given
+    command: kubectl get pods -n ${NAMESPACE}
+    expect:
+      contains: Running
+
+  - name: Record local audit line
+    type: manual
+    phase: postflight
+    session: local
+    command: date -u +"%Y-%m-%dT%H:%M:%SZ ${TICKET} ${NAMESPACE} done"
+    instruction: Runs on your local shell, not the target host.

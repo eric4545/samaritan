@@ -150,6 +150,16 @@
           "type": "boolean",
           "default": false,
           "description": "Auto-press Enter after send"
+        },
+        "tmux_session": {
+          "type": "string",
+          "minLength": 1,
+          "description": "tmux session name holding the sessions: windows (one window per session key, named after it). ${VAR} resolves at run time against the run's variables plus built-ins ${SESSION_ID}, ${ENV} (target environment) and ${OPERATION_ID}, e.g. ${TICKET}-${ENV}. If a tmux session with that name already exists it is reused: a window already named after a session key is adopted as-is, missing ones are added, and it is never killed on teardown. Default: samaritan-${SESSION_ID}."
+        },
+        "default_session": {
+          "type": "string",
+          "minLength": 1,
+          "description": "sessions: key used by steps and rollback steps that have no session: of their own, so they can be sent, pasted ([p]) and verified ([v]) in that pane. Applied at run time only; generated manuals are unchanged."
         }
       },
       "additionalProperties": false

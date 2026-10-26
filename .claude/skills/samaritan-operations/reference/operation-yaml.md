@@ -249,6 +249,18 @@ against **common variables** at parse time (same scope as `foreach`; unmatched
 keys that start with `${`. Remote-vs-local is **config-driven, not name-driven**.
 Example: `examples/sessions-with-vars.yaml`.
 
+`run.tmux_session` names the tmux session holding the windows (one per
+`sessions:` key, named after it). Default `samaritan-${SESSION_ID}`. `${VAR}`
+resolves at **run time**, with built-ins `${ENV}` / `${SESSION_ID}` /
+`${OPERATION_ID}` (user vars win), e.g. `${TICKET}-${ENV}`. An unresolved var
+stops `run`/`resume`; `validate` warns. An existing session with that name is
+**reused**: same-named windows are adopted untouched, and it is never killed
+unless samaritan created it.
+`run.default_session` is the `sessions:` key for steps/sub-steps/operation-level
+rollback steps without `session:` (a step's rollback still follows its step).
+It is run-time only (manuals unchanged); `validate` errors if it's undeclared.
+Example: `examples/tmux-session-name.yaml`.
+
 ## Built-in run-time variables
 
 Resolve **late** (run time per step, or generation time with `--resolve-vars`);
@@ -266,6 +278,7 @@ Example: `examples/builtin-variables.yaml`.
 
 - `examples/deployment.yaml` — canonical baseline
 - `examples/sessions-with-vars.yaml` — `sessions:` map + `${VAR}` names
+- `examples/tmux-session-name.yaml` — `run.tmux_session` + reuse + `run.default_session`
 - `examples/deployment-with-scripts.yaml` — `script:` import
 - `examples/deployment-with-templates.yaml` — templates
 - `examples/multi-env-deployment.yaml` — environment matrix

@@ -10,9 +10,13 @@ import {
   isLocalSession,
   isMultiLinePaste,
   listTmuxPanes,
+  listUnresolvedTmuxSessionVars,
   normalizePasteText,
   paneOwnerFile,
+  parseTmuxPaneList,
+  parseWindowPanes,
   readPaneOwner,
+  resolveTmuxSessionName,
   sanitizeSessionName,
   TmuxPaneCapture,
   TmuxSession,
@@ -358,13 +362,12 @@ describe('TmuxSession CaptureBackend conformance', () => {
     assert.strictEqual(session.hasTarget('execution'), true);
   });
 
-  it('describeTarget includes pane when registered', () => {
-    const session = new TmuxSession('cbc-3', 'samaritan-cbc-3');
-    session.registerPane('execution', 'samaritan-cbc-3:0.0');
-    const desc = session.describeTarget('execution');
-    assert.ok(
-      desc.includes('samaritan-cbc-3:0.0'),
-      `describeTarget should include pane, got: ${desc}`,
+  it('describeTarget names the window and the pane id when registered', () => {
+    const session = new TmuxSession('cbc-5', 'TICKET-1-sbx');
+    session.registerPane('work', '%7');
+    assert.strictEqual(
+      session.describeTarget('work'),
+      'tmux pane TICKET-1-sbx:work (%7)',
     );
   });
 
@@ -425,6 +428,140 @@ describe('listTmuxPanes', () => {
       assert.ok(pane.target.includes(':'), 'target is session:window.pane');
       assert.strictEqual(typeof pane.isSelf, 'boolean');
     }
+  });
+});
+
+describe('parseTmuxPaneList (tmux 3.4 rewrites TAB to _ in -F output)', () => {
+  it('parses <|>-separated rows into pane info', () => {
+    const out = '%1<|>ops:0.0<|>zsh<|>host\n%2<|>ops:0.1<|>vim<|>notes\n';
+    assert.deepStrictEqual(parseTmuxPaneList(out, '%2'), [
+      {
+        id: '%1',
+        target: 'ops:0.0',
+        currentCommand: 'zsh',
+        title: 'host',
+        isSelf: false,
+      },
+      {
+        id: '%2',
+        target: 'ops:0.1',
+        currentCommand: 'vim',
+        title: 'notes',
+        isSelf: true,
+      },
+    ]);
+  });
+
+  it('keeps a title that itself contains the separator intact', () => {
+    const [pane] = parseTmuxPaneList('%1<|>s:0.0<|>sh<|>a<|>b');
+    assert.strictEqual(pane.title, 'a<|>b');
+  });
+
+  it('drops a tab-escaped row instead of mis-parsing it (regression)', () => {
+    // What tmux 3.4 actually printed for the old \t-joined format.
+    assert.deepStrictEqual(parseTmuxPaneList('%1_s:0.0_zsh_vm\n'), []);
+  });
+});
+
+describe('parseWindowPanes', () => {
+  it('maps window name to its active pane id', () => {
+    const map = parseWindowPanes('work<|>%3\naux<|>%4\n');
+    assert.deepStrictEqual(
+      [...map.entries()],
+      [
+        ['work', '%3'],
+        ['aux', '%4'],
+      ],
+    );
+  });
+
+  it('first window wins on a duplicate name; malformed lines ignored', () => {
+    const map = parseWindowPanes('work<|>%3\nwork<|>%9\ngarbage\n<|>%5\n');
+    assert.deepStrictEqual([...map.entries()], [['work', '%3']]);
+  });
+
+  it('splits on the LAST separator so a window name may contain it', () => {
+    const map = parseWindowPanes('a<|>b<|>%3');
+    assert.strictEqual(map.get('a<|>b'), '%3');
+  });
+});
+
+describe('resolveTmuxSessionName (run.tmux_session)', () => {
+  const ctx = { sessionId: 'abc-123', env: 'sbx', operationId: 'op-1' };
+  const cases: Array<
+    [string, string | undefined, Record<string, any>, string]
+  > = [
+    ['default is samaritan-<session id>', undefined, {}, 'samaritan-abc-123'],
+    [
+      '${TICKET}-${ENV} from run vars + the ENV built-in',
+      '${TICKET}-${ENV}',
+      { TICKET: 'GCSGPSOPS-17034' },
+      'GCSGPSOPS-17034-sbx',
+    ],
+    [
+      'a user variable wins over a built-in of the same name',
+      '${TICKET}-${ENV}',
+      { TICKET: 'T', ENV: 'x' },
+      'T-x',
+    ],
+    [
+      'characters tmux forbids (. and :) are sanitized',
+      '${V}',
+      { V: 'rel.1:a b' },
+      'rel_1_a_b',
+    ],
+  ];
+  for (const [name, template, vars, expected] of cases) {
+    it(name, () => {
+      assert.strictEqual(resolveTmuxSessionName(template, vars, ctx), expected);
+    });
+  }
+
+  it('throws on an unresolved variable instead of guessing a name', () => {
+    assert.throws(
+      () => resolveTmuxSessionName('${TICKET}-${ENV}', {}, ctx),
+      /run\.tmux_session "\$\{TICKET\}-\$\{ENV\}".*TICKET/s,
+    );
+  });
+
+  it('listUnresolvedTmuxSessionVars ignores the run-scoped built-ins', () => {
+    assert.deepStrictEqual(
+      listUnresolvedTmuxSessionVars('${TICKET}-${ENV}-${SESSION_ID}', {}),
+      ['TICKET'],
+    );
+    assert.deepStrictEqual(
+      listUnresolvedTmuxSessionVars('${TICKET}-${ENV}', { TICKET: 'x' }),
+      [],
+    );
+    assert.deepStrictEqual(listUnresolvedTmuxSessionVars(undefined, {}), []);
+  });
+});
+
+describe('TmuxSession ownership and pane fallback', () => {
+  it('a session samaritan creates is owned (killed on teardown) by default', () => {
+    assert.strictEqual(
+      new TmuxSession('own-1', 'samaritan-own-1').isOwned(),
+      true,
+    );
+    assert.strictEqual(
+      new TmuxSession('own-2', 'operator', false).isOwned(),
+      false,
+    );
+  });
+
+  it('an unregistered session name falls back to the FIRST declared pane', () => {
+    // Never a bare `<tmux>:0.0`, which in a reused operator session may be an
+    // unrelated window.
+    const session = new TmuxSession('own-3', 'operator-session', false);
+    session.registerPane('work', '%1');
+    session.registerPane('aux', '%2');
+    assert.strictEqual(session.paneFor('default'), '%1');
+    assert.strictEqual(session.paneFor('aux'), '%2');
+  });
+
+  it('with no panes registered at all, paneFor keeps the legacy :0.0 target', () => {
+    const session = new TmuxSession('own-4', 'samaritan-own-4');
+    assert.strictEqual(session.paneFor('x'), 'samaritan-own-4:0.0');
   });
 });
 
