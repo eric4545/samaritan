@@ -259,3 +259,49 @@ describe('renderReport — operator-local path redaction', () => {
     assert.ok(md.includes('~/notes.txt'), 'home collapsed to ~');
   });
 });
+
+describe('renderReport — link and run-dir screenshot evidence', () => {
+  it('renders link evidence as a clickable Markdown link, not a code block', () => {
+    const md = render([
+      ev({ type: 'session_start', op: '/tmp/op/op.yaml' }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({
+        type: 'evidence_captured',
+        step: 0,
+        evidence_type: 'link',
+        description: 'jenkins.example.com/job/deploy/123',
+        content: 'https://jenkins.example.com/job/deploy/123/',
+      }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    assert.ok(
+      md.includes(
+        '[jenkins.example.com/job/deploy/123](https://jenkins.example.com/job/deploy/123/)',
+      ),
+      md,
+    );
+    assert.ok(!md.includes('```text\nhttps://jenkins'), 'not fenced as text');
+  });
+
+  it('links a screenshot stored in the run dir relative to report.md', () => {
+    const runDir = '/tmp/op/.samaritan-runs/abc';
+    const md = render(
+      [
+        ev({ type: 'session_start', op: '/tmp/op/op.yaml' }),
+        ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+        ev({
+          type: 'evidence_captured',
+          step: 0,
+          evidence_type: 'screenshot',
+          filename: 'shot.png',
+          path: `${runDir}/evidence/123-shot.png`,
+        }),
+        ev({ type: 'step_complete', step: 0 }),
+        ev({ type: 'session_end', status: 'completed' }),
+      ],
+      runDir,
+    );
+    assert.ok(md.includes('![Evidence](evidence/123-shot.png)'), md);
+  });
+});

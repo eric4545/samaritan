@@ -60,6 +60,25 @@ export function getRunDir(operationFile: string, sessionId: string): string {
   }
 }
 
+/**
+ * Directory for a run's evidence files (screenshots, attached files), inside
+ * the run dir beside `report.md` so the report's relative image/file links
+ * resolve and the run folder is self-contained. Falls back to the session's
+ * evidence dir under `~/.samaritan` when the run dir can't be created.
+ */
+export function getRunEvidenceDir(
+  operationFile: string,
+  sessionId: string,
+): string {
+  const dir = join(getRunDir(operationFile, sessionId), 'evidence');
+  try {
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return dir;
+  } catch {
+    return getSessionEvidenceDir(sessionId);
+  }
+}
+
 /** Path to the JSONL event log for a run (see `getRunDir`). */
 export function getRunLogPath(
   operationFile: string,

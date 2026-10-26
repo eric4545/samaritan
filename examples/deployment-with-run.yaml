@@ -11,12 +11,13 @@ description: |
     samaritan run deployment-with-run.yaml --env production --dry-run
 
   At `manual` steps (e.g. "Verify rollout" below), the operator prompt offers
-  extra actions beyond done/copy/skip/rollback/abort:
+  extra actions beyond next/copy/skip/rollback/quit (one-row bar; ? lists every key):
     [n] note     — record a free-text annotation (shown in the --report Markdown)
-    [e] evidence — capture terminal output, attach a file/screenshot/image
-                   (drag it into the terminal or paste its path), or paste text;
-                   stored under ~/.samaritan/sessions/<id>/evidence/ and
-                   embedded/linked in the report
+    [e] evidence — ↵ pane output, i clipboard image (screenshot), f file
+                   (drag it into the terminal or paste its path), or t text /
+                   a URL (stored as a clickable link); files are stored under
+                   .samaritan-runs/<id>/evidence/ and embedded/linked in the
+                   report
     [x] remove evidence — shown once evidence exists for the step; pick a
                    captured item to delete (and remove its on-disk copy)
     [v] verify   — check the step's `expect` against captured pane output

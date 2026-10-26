@@ -121,15 +121,14 @@ evidence:
         description: Production dashboard
 ```
 
-**Supported Evidence Types:**
+**Supported Evidence Types** (the `evidence.types` values the schema accepts):
 - `screenshot` - UI screenshots (renders as image if file path provided)
 - `photo` - Photos (renders as image if file path provided)
 - `log` - Log files or log content
 - `command_output` - Shell command output
+- `file` - Any other file (rendered as a download link)
 - `video` - Video recordings
-- `document` - PDF or document files
-- `config` - Configuration file snapshots
-- `custom` - Custom evidence types
+- `link` - A URL such as a Jenkins build or Grafana dashboard. Allowed in `types:` to say what the operator should capture; captured during a run with `[e]` `t` (see below). Not used in `results:`.
 
 See `tests/fixtures/operations/features/evidence-with-results.yaml` for a complete example.
 
@@ -163,6 +162,33 @@ steps:
 ```
 
 See `tests/fixtures/operations/features/evidence-with-results.yaml` for a complete example.
+
+## Capturing evidence during a run
+
+During `samaritan run`, press `[e]` on a step, then a single key:
+
+| Key | Captures | Example |
+|---|---|---|
+| `↵` | The work pane's output since the step started, cleaned of escape codes and the echoed command | `kubectl rollout status` output |
+| `i` | The image on the clipboard | A screenshot of the Grafana panel (⌃⇧⌘4 on macOS copies one to the clipboard) |
+| `f` | A file you drag into the terminal or type the path of | `~/Desktop/Screenshot.png`, a `.log` file |
+| `t` | Text, or a single URL, which becomes a clickable **link** | `https://jenkins.example.com/job/deploy/123/` |
+
+```
+  > e
+  ↵ pane output · i clipboard image · f file · t text/link · q cancel · ? help
+  > t
+    Text or URL: https://jenkins.example.com/job/deploy/123/
+    Description [↵ = "jenkins.example.com/job/deploy/123"]:
+    📎 Evidence captured (link, https://jenkins.example.com/job/deploy/123/).
+```
+
+- Passing verification also records the verified output as evidence automatically (see [Running](./running.md#verify-output-checklist-highlighting-and-the-line-number-gutter)).
+- `user:token@` credentials are stripped from URLs before they are stored.
+- Images and files are copied into `<operation-dir>/.samaritan-runs/<id>/evidence/` and the report links them relatively, so they render wherever the run folder goes.
+- The bar shows `e evidence!` while a required step has nothing yet, then `e evidence·N`.
+
+See [Running an operation](./running.md#manual-step-actions-note-evidence-verify) for every key and the evidence-required gate.
 
 ## JSONL audit trail
 
@@ -201,7 +227,7 @@ samaritan run deployment.yaml --env production --report ./reports
 samaritan report .samaritan-runs/f3a9b2/events.jsonl
 
 # Save to a specific file
-samaritan report /tmp/samaritan-f3a9b2.jsonl --output evidence-report.md
+samaritan report .samaritan-runs/f3a9b2/events.jsonl --output evidence-report.md
 ```
 
 The report includes a summary (steps, duration, PIC/reviewer), per-step command + output, verification sign-offs, and a dedicated rollback events section. Attach it directly to a change ticket.

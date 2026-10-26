@@ -133,10 +133,14 @@ Markdown, Confluence markup, ADF) renders a `# Paste command output here` code b
 
 `evidence.required: true` is also **enforced live** in `samaritan run`: a step can't be
 completed (or, for `type: approval`, approved) until at least one evidence item is
-captured via `[e]` (a typed-text note counts), or the operator `[s]` skips it. See
+captured via `[e]` (a typed-text note or a URL link counts; a passing `↵` verify
+auto-captures one), or the operator `[s]` skips it. See
 "Evidence-required gate" in `reference/cli.md`. `types`/`results` above remain
 documentation/embedding only — this enforcement is purely about whether *any*
-evidence was captured, not which types.
+evidence was captured, not which types. `types` accepts `screenshot`, `log`,
+`command_output`, `file`, `photo`, `video` and `link` (a URL such as a Jenkins
+build, captured with `[e]` `t`); `results[].type` accepts the same list minus
+`link`.
 
 ## Verification (`expect`)
 

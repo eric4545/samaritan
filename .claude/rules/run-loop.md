@@ -10,7 +10,7 @@ paths:
 `samaritan run` is implemented (interactive loop only — NOT non-interactive
 execution). **Default mode is `sidecar`**: SAMARITAN DISPLAYS each step's
 resolved command but does NOT send it to tmux — the operator runs it, then
-presses `[v]` to verify `step.expect`. Other modes: `manual` (operator-driven,
+presses `↵` (verify & next) or `[v]` to verify `step.expect`. Other modes: `manual` (operator-driven,
 tmux-optional), `automatic` (tmux-backed send/verify), `hybrid`. `CaptureBackend`
 in `src/lib/capture-backend.ts`; `TmuxPaneCapture` in `src/lib/tmux-session.ts`.
 
@@ -18,19 +18,48 @@ Non-interactive command execution is NOT implemented — `--auto-approve` /
 `automatic` marks steps complete without running commands. Automatic evidence
 collection is NOT implemented. (Check `ROADMAP.md`.)
 
-## Action keys
+## Action keys — one-row bar, single keys, typos never act
 
-- `[n]` note, `[e]` evidence (capture pane / attach file / paste text), `[x]`
-  remove evidence (only shown once evidence exists — deletes from the session
-  record and from `~/.samaritan/sessions/<id>/evidence/` on disk; logged
-  `evidence_removed`), `[v]` verify (`step.expect` against captured output).
-- Sidecar-only: `[t]` attach pane (fires immediately, numbered picker from
-  `listTmuxPanes()`), `[p]` send to pane (when step has a command + pane attached).
-- `[b]` back (not on first step), `[j]` jump forward (not on last step),
-  `[r]` per-step rollback, `[g]` global rollback (when `operation.rollback`
-  exists), `q`/`quit`/`Ctrl+C` abort.
+Every bar goes through `promptBar(hints, commandToCopy?)` → `renderActionBar`
+(`src/lib/tui.ts`): ONE row, hints in priority order filled to the terminal
+width, then `? more` (`? help` when all fit; non-TTY = all shown). `?` prints
+`renderKeyHelp` (every key, incl. ones cut from the row) + `captureRef.hint`.
+`readActionKey(immediate)` takes the BAR's own key set (single-char keys of its
+hints, minus `needsEnter` ones, plus `?`) — so `a` is immediate only on the
+approval bar and the word `abort` still types on the sidecar bar. State lives in
+the labels (no status row): `↵ verify & next`/`↵ next`, `p paste` (pane
+attached) vs `t attach pane` (none), `e evidence!` (required, none) /
+`e evidence·N`.
 
-## `[p]` send to pane — bracketed paste, never Enter
+- Sidecar/manual bar: `↵` next, `v` verify, `p` paste, `t` attach/switch pane,
+  `c` copy, `e` evidence, `x` remove evidence (once evidence exists — deletes
+  the session record + the copied file in the run/session evidence dir; logged
+  `evidence_removed`), `n` note, `s` skip, `b` back (not first step), `j` jump
+  (not last), `r` rollback, `g` global rollback (when `operation.rollback`),
+  `q`/`quit`/`abort`/`Ctrl+C` abort.
+- Approval bar: `a` approve, `d` deny (`approve`/`reject`/`deny` words still
+  accepted), `e`, `s`, `r` **+Enter** (`needsEnter: true`, rendered `r↵` — an
+  immediate `r` fired rollback on the first letter of `reject`), `g`, `q`.
+- **Unknown input never completes, skips or approves** (`warnUnknownKey`, stay on
+  the bar). Free text + Enter used to complete the step with it as the note, and
+  any unrecognised approval input used to `skipStep`. Notes go through `[n]` only.
+- Automatic (non-sidecar) bars use `promptChoice(hints, isAutomaticBarChoice)`.
+  `c` copy is handled INSIDE `promptBar` (it re-prompts) — it used to return `''`
+  which then fell through to send/confirm.
+
+## `↵` = verify & next
+
+On a sidecar/manual step, bare `↵` with `step.expect` + a pane attached + not yet
+in `verifiedSteps` calls `verifyManualOutput(..., advancing=true)`; the step
+completes only on `'pass'`/`'override'` (`VerifyOutcome`). PASS/override add
+the step to `verifiedSteps` (`[v]` too), so a later `↵` just advances. No pane →
+completes with a warning + `user_input`/`verify_skipped`. The evidence gate runs
+AFTER verify, so the PASS auto-capture satisfies it. The failure menu
+(`promptAssertFailureAction`) is the same single-key bar: `↵` stay (or `stop
+run` via `enterLabel` on the tmux-automatic path), `o` override, `v` re-verify,
+`m` more, `c` copy command, `r` rollback.
+
+## `[p]` paste — bracketed paste, never Enter
 
 Pastes the `${VAR}`-resolved command via a tmux paste **buffer** with
 **bracketed paste** (`set-buffer -b samaritan-send -- <cmd>` +
@@ -84,16 +113,29 @@ so the event union stays closed.
 
 `needsEvidenceGate(i, step)` gates completing a step whose `evidence.required` is
 true with zero captured items. The check lives INSIDE the action bar (two sites:
-the manual/sidecar inner loop before the completion fall-through, and the
-`approval` branch's `while(true)` bar with an added `[e]` key) — it prints a
-one-line inline warning and `continue`s the same bar, re-rendering only the
-key-hints. `[e]` capture (typed text counts) = done; `[s]` skip = not done
-(records `skipped`). The old `[o]` override + `confirmEvidenceGate` were REMOVED.
-The approval `for` is labelled `stepLoop:` so the `while` can
-`continue`/`break stepLoop`. Enforcement is `requireEvidence`
-(`options.requireEvidence !== false`, ON by default; `--no-require-evidence`
-disables). Does NOT gate plain `type: automatic` steps. Fixture
-`evidence-required.yaml`.
+the manual/sidecar inner loop after the `↵` verify, and the `approval` branch's
+`while(true)` bar on `a`) — it prints a one-line inline warning (pointing at
+`e` then `↵` when a pane is attached) and `continue`s the same bar. `[e]` capture
+(typed text / link counts) = done; `[s]` skip = not done (records `skipped`).
+The approval `for` is labelled `stepLoop:` so the `while` can `continue`/`break
+stepLoop`. Enforcement is `requireEvidence` (`options.requireEvidence !== false`,
+ON by default; `--no-require-evidence` disables). Does NOT gate plain
+`type: automatic` steps. Fixture `evidence-required.yaml`.
+
+## `[e]` evidence — single-key sub-bar
+
+`captureEvidence(i, captureSinceStepStart, command)`: `↵` pane output
+(`stripCommandEcho(cleanTerminalOutput(raw), command)`, tail preview via
+`tailOfOutput`), `i` clipboard image (`readClipboardImage` in
+`src/lib/clipboard.ts`: osascript / PowerShell / wl-paste / xclip, PNG-magic
+checked, argv-only), `f` file, `t` text — a single `http(s)` URL becomes a
+`link` item (`parseEvidenceLink`, `src/lib/evidence-link.ts`, strips
+`user:pass@`). One description prompt with a default. Files go to
+`getRunEvidenceDir(operationFile, sessionId)` = `<run-dir>/evidence/` (fallback
+`getSessionEvidenceDir`), so `redactLocalPaths` turns the report link into a
+relative `evidence/<file>` that renders. `link` is an `EvidenceType`, an
+`evidence.types` schema value (not `results`), and renders
+`[label](url)` in `report-generator.ts`.
 
 ## `q`/`Ctrl+C` abort — both SAVE (paused/resumable)
 
@@ -139,10 +181,10 @@ is what stops a real RESULT line that merely *ends with* a short command — e.g
 when no command is passed or no echo is found (never makes a working capture
 worse). `verifyOutput` also returns `detailed` (`assertOutputDetailed()` —
 evaluates ALL checks, no short-circuit; `assertOutput` still short-circuits).
-`verifyManualOutput` loops on `[v]` via `renderVerifyOutcome(detailed, expect,
+`verifyManualOutput` loops via `renderVerifyOutcome(detailed, expect,
 {expand})` (PASS/FAIL header, per-check checklist, highlighted output tail
 `VERIFY_OUTPUT_TAIL_LINES=12`). On FAIL, `promptAssertFailureAction` offers
-`o`/`r`/`c` (copy resolved command)/`m` (full output)/`v` (re-capture)/Enter=stop.
+`↵` stay/`o`/`r`/`c` (copy resolved command)/`m` (full output)/`v` (re-capture).
 
 ## Retryable verification (`expect.retry`)
 
@@ -155,7 +197,7 @@ step-level command re-execution remains a ROADMAP item — unimplemented.)
 
 ## Auto-capture on verify
 
-The first passing `[v]` verify per step auto-records the verified pane output as
+The first passing verify (`↵` or `[v]`) per step auto-records the verified pane output as
 a `command_output` EvidenceItem (`src/lib/verified-evidence.ts`
 `buildVerifiedEvidenceItem`; `automatic`/`validated`, `metadata.source:'verify'`,
 deduped per step). Content comes from the pane's **rendered screen**
@@ -187,3 +229,22 @@ command/output/evidence body goes through `cleanTerminalOutput()` then
 `redactLocalPaths()` (`src/lib/path-redact.ts` — home `→ ~`, run dir + operation
 dir stripped to relative tail; only absolute bases of length > 1). Keep any new
 rendered path/command/output field routed through the same clean/redact pair.
+
+## Capture setup — work pane create/reuse (`src/lib/tmux-workspace.ts`)
+
+`run` AND `resume` call `captureStrategy()` → `pickCaptureStrategy` then
+`setupCapture()`. Precedence: `--attach` (sidecar) → `sessions:` bootstrap →
+`work-pane` (sidecar + `$TMUX` + `stdin.isTTY` + not `--no-tmux`) → `relaunch`
+(sidecar + no `$TMUX` + `--tmux`) → none. Piped stdin NEVER creates panes
+(tests/CI). `ensureWorkPane(tag)` reuses the pane in samaritan's window whose
+`@samaritan` pane option = `workPaneTag(operation.name)`, else
+`split-window -h -d -P -F '#{pane_id}'` + `set-option -p`. `relaunch` runs
+before a session is created (one session only): `new-session -s
+samaritan-<tag>`, or `new-window` + `attach-session` when it exists. Every
+strategy prints `attachHint(...)` (sessions inside tmux → `switch-client`,
+never a nested `attach`), passed to the loop as `captureHint` for `?`.
+Teardown only closes the pipe — the work pane is the operator's shell and is
+reused next run. `--tmux`/`--no-tmux` on run + resume (Commander: both defined →
+`options.tmux` true/false/undefined); resume also takes `--attach`. The old
+`src/lib/iterm2.ts` (`openDisplaySplits`, never called) was deleted.
+

@@ -1,0 +1,17 @@
+name: Approval Keys
+version: 1.0.0
+description: >-
+  One approval step followed by a manual step — exercises the single-key
+  approval bar (a approve / d deny) and that typos never approve, deny or skip.
+
+environments:
+  - name: default
+
+steps:
+  - name: Change approval
+    type: approval
+    instruction: Approve the production change
+
+  - name: After approval
+    type: manual
+    instruction: Confirm the change window is open

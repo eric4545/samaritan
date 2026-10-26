@@ -39,8 +39,15 @@ function fixturePath(name: string): string {
     needsGate: 'tests/fixtures/operations/features/needs-gate.yaml',
     nearestRollback: 'tests/fixtures/operations/features/nearest-rollback.yaml',
     whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
+    approvalKeys: 'tests/fixtures/operations/features/approval-keys.yaml',
   };
   return resolve(map[name]);
+}
+
+// Action bars wrap key/label in ANSI styles; strip them to assert on text.
+const ANSI = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*m`, 'g');
+function stripAnsiCodes(s: string): string {
+  return s.replace(ANSI, '');
 }
 
 const CLI = 'node_modules/.bin/tsx';
@@ -383,7 +390,7 @@ describe('run command: evidence-required gate', () => {
     const fixture = fixturePath('evidenceRequired');
     const result = runCli(
       ['run', fixture, '--env', 'default', '--no-require-evidence'],
-      { input: 'confirmed\n' },
+      { input: '\n' },
     );
     const combined = result.stdout + result.stderr;
     assert.ok(
@@ -593,13 +600,18 @@ describe('run command: sidecar verify UX (--attach + tmux)', () => {
         combined.includes('missing: successfully rolled out'),
         'shows the missing expected text',
       );
+      const plain = stripAnsiCodes(combined);
       assert.ok(
-        combined.includes('m=more') && combined.includes('v=re-verify'),
-        `failure menu should offer [m] more and [v] re-verify; output:\n${combined.slice(-1500)}`,
+        plain.includes('m more') && plain.includes('v re-verify'),
+        `failure menu should offer [m] more and [v] re-verify; output:\n${plain.slice(-1500)}`,
       );
       assert.ok(
-        combined.includes('c=copy command'),
-        `failure menu should offer [c] copy command; output:\n${combined.slice(-1500)}`,
+        plain.includes('c copy command'),
+        `failure menu should offer [c] copy command; output:\n${plain.slice(-1500)}`,
+      );
+      assert.ok(
+        plain.includes('↵ stay') && plain.includes('Staying on this step'),
+        'Enter on a failed check stays on the step (never advances)',
       );
     },
   );
@@ -632,7 +644,8 @@ describe('run command: sidecar verify UX (--attach + tmux)', () => {
         `pressing c must trigger the copy branch; output:\n${combined.slice(-1500)}`,
       );
       // Copy is not terminal: the failure menu must render again afterwards.
-      const menuCount = combined.split('c=copy command').length - 1;
+      const menuCount =
+        stripAnsiCodes(combined).split('c copy command').length - 1;
       assert.ok(
         menuCount >= 2,
         `failure menu must re-render after copy (saw ${menuCount}); output:\n${combined.slice(-1500)}`,
@@ -918,16 +931,17 @@ describe('run command: sidecar mode', () => {
     );
   });
 
-  it('[p] send to pane hint appears in sidecar mode for a step with a command', () => {
+  it('[p] paste is only offered once a pane is attached ([t] attach pane otherwise)', () => {
     const fixture = fixturePath('sidecar');
     const result = runCli(['run', fixture, '--env', 'staging'], {
       input: 'q\n',
       timeout: 15_000,
     });
-    const combined = result.stdout + result.stderr;
+    const bar = stripAnsiCodes(result.stdout + result.stderr);
+    assert.ok(bar.includes('t attach pane'), bar.slice(-800));
     assert.ok(
-      combined.includes('send to pane') || combined.includes('[p]'),
-      'sidecar mode should show the [p] send-to-pane hint',
+      !bar.includes('p paste'),
+      'paste cannot work without a pane, so it is not offered',
     );
   });
 
@@ -1746,5 +1760,110 @@ describe('run command: when-gated step filtering by environment', () => {
       !combined.includes('Undo only in dev'),
       `dev-only rollback instruction must not appear in stg; output:\n${combined.slice(-800)}`,
     );
+  });
+});
+
+// ─── Key safety: typos never advance, approval single keys ──────────────────
+
+describe('run command: key bar safety', () => {
+  it('unknown input on the step bar does not complete the step', () => {
+    const fixture = fixturePath('varRendering');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'zz\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(combined.includes('Unknown key "zz"'), combined.slice(-800));
+    assert.ok(
+      !combined.includes('✅ Step marked complete.'),
+      'a typo must never complete a step',
+    );
+  });
+
+  it('the step bar is a single row that ends with ? help', () => {
+    const fixture = fixturePath('sidecar');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: 'q\n',
+    });
+    const bar = stripAnsiCodes(result.stdout)
+      .split('\n')
+      .find((l) => l.startsWith('  ↵ '));
+    assert.ok(bar, 'bar rendered');
+    assert.ok(bar.endsWith('? help'), bar);
+    assert.ok(!bar.includes('abort abort'), bar);
+    assert.ok(bar.includes('q quit'), bar);
+  });
+
+  it('? lists every key', () => {
+    const fixture = fixturePath('sidecar');
+    const result = runCli(['run', fixture, '--env', 'staging'], {
+      input: '?\n',
+    });
+    const plain = stripAnsiCodes(result.stdout);
+    assert.ok(plain.includes('Keys'), plain.slice(-800));
+    assert.ok(/\n\s+r\s+rollback/.test(plain), plain.slice(-800));
+  });
+
+  it('↵ on an expect step with no pane completes and records verification skipped', () => {
+    const fixture = fixturePath('manualStepActions');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: '\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('No pane attached — completing without verification'),
+      combined.slice(-800),
+    );
+    assert.ok(combined.includes('✅ Step marked complete.'));
+  });
+
+  it('approval: a approves', () => {
+    const fixture = fixturePath('approvalKeys');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'a\n',
+    });
+    // `a` then the (optional) rationale prompt reads EOF — approval still lands.
+    const plain = stripAnsiCodes(result.stdout + result.stderr);
+    assert.ok(plain.includes('a approve · d deny'), plain.slice(-800));
+    assert.ok(plain.includes('Rationale (optional)'), plain.slice(-800));
+  });
+
+  it('approval: a typo re-prompts instead of skipping', () => {
+    const fixture = fixturePath('approvalKeys');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'aprove\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(combined.includes('Unknown key "aprove"'), combined.slice(-800));
+    assert.ok(!combined.includes('⏭  Skipped.'), 'typo must not skip');
+    assert.ok(!combined.includes('Confirm the change window'), 'stays put');
+  });
+
+  it('approval: legacy "reject" word still denies', () => {
+    const fixture = fixturePath('approvalKeys');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: 'reject\n',
+    });
+    const combined = result.stdout + result.stderr;
+    assert.ok(combined.includes('Rationale (optional)'), combined.slice(-800));
+  });
+
+  it('run and resume accept --tmux / --no-tmux, resume accepts --attach', () => {
+    for (const cmd of ['run', 'resume']) {
+      const help = runCli([cmd, '--help']).stdout;
+      assert.ok(help.includes('--tmux'), `${cmd} --tmux`);
+      assert.ok(help.includes('--no-tmux'), `${cmd} --no-tmux`);
+      assert.ok(help.includes('--attach'), `${cmd} --attach`);
+    }
+  });
+
+  it('piped stdin never auto-creates a tmux work pane (even with $TMUX set)', () => {
+    const fixture = fixturePath('sidecar');
+    const result = spawnSync(CLI, [INDEX, 'run', fixture, '--env', 'staging'], {
+      encoding: 'utf8',
+      input: 'q\n',
+      timeout: 15_000,
+      env: { ...process.env, TMUX: '/tmp/fake,1,0', TMUX_PANE: '%999' },
+    });
+    assert.ok(!(result.stdout ?? '').includes('Work pane'), result.stdout);
   });
 });

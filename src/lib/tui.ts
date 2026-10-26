@@ -571,6 +571,74 @@ export function renderKeyHints(
   return `  ${parts.join(separator)}`;
 }
 
+export interface KeyHint {
+  key: string;
+  label: string;
+  /**
+   * The key needs Enter instead of firing on the keystroke — used where a
+   * legacy word starting with the same letter must stay typeable (approval:
+   * `r` rollback vs the word `reject`).
+   */
+  needsEnter?: boolean;
+}
+
+const BAR_SEPARATOR = ` ${DIM}·${RESET} `;
+const BAR_SEPARATOR_WIDTH = 3;
+const BAR_INDENT = '  ';
+
+const displayKey = ({ key, needsEnter }: KeyHint): string =>
+  needsEnter ? `${key}↵` : key;
+const formatHint = (hint: KeyHint): string =>
+  `${BOLD}${displayKey(hint)}${RESET} ${DIM}${hint.label}${RESET}`;
+const hintWidth = (hint: KeyHint): number =>
+  displayKey(hint).length + 1 + hint.label.length;
+
+/**
+ * Render the interactive action bar as ONE row. `hints` are in priority
+ * order: they are added until the next one would overflow the terminal width,
+ * then a `? more` hint closes the row (`? help` when everything fit). Hidden
+ * hints stay usable — `?` lists them via `renderKeyHelp`. The first hint is
+ * always shown. Non-TTY output (`columns = Infinity`) shows every hint, so
+ * piped/test output stays deterministic.
+ */
+export function renderActionBar(
+  hints: KeyHint[],
+  opts?: { columns?: number },
+): string {
+  const columns = opts?.columns ?? getTerminalSize().columns;
+  const moreHint: KeyHint = { key: '?', label: 'more' };
+  const budget = columns - BAR_INDENT.length;
+
+  const fitsAll =
+    hints.reduce((w, h) => w + hintWidth(h) + BAR_SEPARATOR_WIDTH, 0) +
+      hintWidth({ key: '?', label: 'help' }) <=
+    budget;
+  if (fitsAll) {
+    const all = [...hints, { key: '?', label: 'help' }];
+    return `${BAR_INDENT}${all.map(formatHint).join(BAR_SEPARATOR)}`;
+  }
+
+  const shown: KeyHint[] = [];
+  let used = hintWidth(moreHint);
+  for (const hint of hints) {
+    const cost = hintWidth(hint) + BAR_SEPARATOR_WIDTH;
+    if (shown.length > 0 && used + cost > budget) break;
+    shown.push(hint);
+    used += cost;
+  }
+  return `${BAR_INDENT}${[...shown, moreHint].map(formatHint).join(BAR_SEPARATOR)}`;
+}
+
+/** Full key list for `?` — one `key  label` per line, keys aligned. */
+export function renderKeyHelp(hints: KeyHint[]): string {
+  const keyWidth = Math.max(...hints.map((h) => displayKey(h).length));
+  const lines = hints.map(
+    (h) =>
+      `    ${BOLD}${displayKey(h).padEnd(keyWidth)}${RESET}  ${DIM}${h.label}${RESET}`,
+  );
+  return [`  ${BOLD}Keys${RESET}`, ...lines].join('\n');
+}
+
 const ASSERT_ACTUAL_TAIL_LINES = 8;
 const ASSERT_ACTUAL_MAX_LINE_LEN = 200;
 const VERIFY_OUTPUT_TAIL_LINES = 12;
@@ -642,6 +710,20 @@ function scaleTailLines(maxTail: number): number {
   const { rows } = getTerminalSize();
   if (!Number.isFinite(rows)) return maxTail;
   return Math.max(MIN_TAIL_LINES, Math.min(maxTail, rows - TAIL_RESERVED_ROWS));
+}
+
+/**
+ * The last lines of `text`, capped at VERIFY_OUTPUT_TAIL_LINES and scaled to
+ * the terminal height — used for evidence previews so a long capture doesn't
+ * scroll the step off screen. Returns the tail and how many lines were cut.
+ */
+export function tailOfOutput(text: string): { tail: string; hidden: number } {
+  const lines = text.split('\n');
+  const keep = scaleTailLines(VERIFY_OUTPUT_TAIL_LINES);
+  return {
+    tail: lines.slice(-keep).join('\n'),
+    hidden: Math.max(0, lines.length - keep),
+  };
 }
 
 /**

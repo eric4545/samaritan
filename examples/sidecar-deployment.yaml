@@ -4,24 +4,35 @@
 #
 # Sidecar mode: samaritan DISPLAYS each command but does NOT run it.
 # You run commands yourself in your own terminal; samaritan validates
-# expected output only when YOU press [v].
+# expected output when YOU press ↵ (verify & next) or [v] (verify only).
 #
 # Usage:
 #   samaritan run examples/sidecar-deployment.yaml -e staging
 #
-# Attach to an existing tmux pane (skip bootstrapping a new session):
+# This example defines `sessions:`, so samaritan bootstraps its own tmux
+# session and prints how to reach it (`tmux attach -t samaritan-<id>`, or
+# `tmux switch-client -t …` when you are already inside tmux).
+#
+# Without `sessions:`, running inside tmux creates (or reuses) a WORK PANE
+# beside samaritan and attaches to it automatically; outside tmux, add
+# `--tmux` to open/reuse a samaritan-<operation> tmux session. `--no-tmux`
+# turns the work pane off.
+#
+# Attach to an existing tmux pane instead:
 #   samaritan run examples/sidecar-deployment.yaml -e staging \
 #     --attach mysession:0.0
 #
-# Mid-flight: press [t] at any step to attach a tmux pane for [v] verify.
-# Press [v] after running the step's command to validate expected output.
+# Per step: run the command in the pane (or [p] to paste it there), then press
+# ↵ once — samaritan verifies, saves the output as evidence and moves on. A
+# failed check never advances: ↵ stays, [o] overrides with a reason.
+# Press [t] at any step to switch the capture pane; ? lists every key.
 
 name: Sidecar Deployment Example
 version: 1.0.0
 description: |
   Deploys the web service to the target environment.
   Run with sidecar mode (default): samaritan displays each command;
-  you run it yourself, then press [v] to verify the expected output.
+  you run it yourself, then press ↵ to verify the expected output and move on.
 
 sessions:
   # Define a session so samaritan bootstraps a tmux window you can attach to.

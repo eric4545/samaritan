@@ -67,12 +67,20 @@ directory or example ships with this repo today.
 
 ### run
 - Default mode is **sidecar**: SAMARITAN displays each resolved command but does
-  NOT send it to tmux — the operator runs it, then presses `[v]` to verify
-  `step.expect`.
+  NOT send it to tmux — the operator runs it, then presses `↵` (verify & next:
+  checks `step.expect`, advances only on PASS/override) or `[v]` (verify only).
+- **Work pane**: inside tmux (interactive sidecar), samaritan splits — or
+  reuses, via the `@samaritan` pane tag for this operation — a pane beside
+  itself and attaches capture to it, printing how to reach it. The pane is never
+  killed; the next `run`/`resume` reuses it. Piped stdin never creates panes.
 - Other modes: `manual`, `automatic` (tmux-backed send/verify), `hybrid`.
 - `--mock` — replay each step's `expect` against `evidence.results[<env>]` output;
   prints PASS/FAIL/SKIP, exits non-zero on failure. No tmux/execution.
-- `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning.
+- `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning
+  (also on `resume`).
+- `--tmux` — outside tmux: re-run inside a `samaritan-<operation>` tmux session
+  (created, or reused with a new window) and attach the terminal.
+- `--no-tmux` — inside tmux: don't create/reuse a work pane (also on `resume`).
 - `--from-step <N>` — start at step N; earlier steps are recorded as **skipped**
   (distinct from `resume --from-step`, which marks earlier steps completed).
 - `--report <dir>` — write an extra copy of the run report.
@@ -100,29 +108,47 @@ directory or example ships with this repo today.
 
 ## Interactive run loop actions
 
+Every bar is **one row**: keys in priority order filled to the terminal width,
+then `? more` — `?` lists every key (hidden ones still work). Single keys fire
+without Enter. **Unknown input never completes, skips or approves** — it prints
+`Unknown key "…"` and stays. Labels carry state: `↵ verify & next` vs `↵ next`,
+`p paste` (pane attached) vs `t attach pane`, `e evidence!` (required, none yet)
+/ `e evidence·N`.
+
 Per manual/sidecar step:
-- `[n]` note — free-text annotation
-- `[e]` evidence — capture pane output / attach file / paste text
+- `↵` next — completes the step. With `expect` + a pane attached it **verifies
+  first**: PASS → auto-captures evidence and advances; FAIL → `↵ stay · o
+  override · v re-verify · m more · c copy command · r rollback` (a failure
+  never advances). No pane → completes, logged `verify_skipped`
+- `[n]` note — free-text annotation (the only way to add a note)
+- `[e]` evidence — single-key sub-bar: `↵` pane output (cleaned, echoed command
+  dropped) · `i` clipboard image (screenshot) · `f` file (drag & drop) · `t`
+  text, or a single `http(s)` URL → a clickable `link` item (credentials
+  stripped). Files land in `<run-dir>/evidence/` and the report links them
+  relatively
 - `[x]` remove evidence — only shown once evidence exists
-- `[v]` verify — run `step.expect` against captured pane output
+- `[v]` verify — run `step.expect` against captured pane output, stay on the step
 - `[t]` attach pane — (sidecar) attach/swap a tmux capture backend mid-run
-- `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command (or a `script:`, whose `bash <path>` invocation is pasted) and a pane is attached. Re-run during verify = `[p]` then `[v]`. Before pasting, CRLF/CR becomes LF and trailing newlines are stripped (tmux LF→CR would otherwise turn a stray `\r` into a blank line that breaks `\` continuations). Multi-line commands first ask `Paste it? [y / Enter=cancel]`, because shells without bracketed paste (sh/dash) run each line as it arrives
+- `[p]` paste — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command (or a `script:`, whose `bash <path>` invocation is pasted) and a pane is attached. Re-run during verify = `[p]`, run it, then `↵`. Before pasting, CRLF/CR becomes LF and trailing newlines are stripped (tmux LF→CR would otherwise turn a stray `\r` into a blank line that breaks `\` continuations). Multi-line commands first ask `Paste it? [y / Enter=cancel]`, because shells without bracketed paste (sh/dash) run each line as it arrives
 - Step headings read `[Step 10.2 · 34/46]`: the single-env manual number (`generate manual --env`, dotted sub-steps) plus the flat run position (the number `[b]`/`[j]`/`--from-step` use), followed by `Section :` (the parent) and `Next : … (N remaining)` lines
-- A **script-only step** (`script:` with no inline `command`) displays `Script: <path>`, the embedded script content, and a `bash <path>` runnable; `[c]` copy and `[p]` send-to-pane act on that `bash <path>` invocation
+- A **script-only step** (`script:` with no inline `command`) displays `Script: <path>`, the embedded script content, and a `bash <path>` runnable; `[c]` copy and `[p]` paste act on that `bash <path>` invocation
 - `[b]` back — go back to an earlier step and re-run from there (resets it + later steps to pending; audit log keeps the prior attempt); not offered on the first step
 - `[j]` jump — jump **forward** to a later step; the current step through the target are recorded as **skipped** (⏭) in the report, execution resumes at the target; not offered on the last step. Startup equivalent: `run --from-step <N>`
 - `[r]` rollback — run *this step's* `rollback`, stay on the step. When this step has no rollback of its own, offers the **nearest upstream** step's rollback instead (needs chain first, else document order; only completed steps qualify).
 - `[g]` global rollback — only when the operation declares a top-level `rollback:`. Previews + runs the consolidated recovery (explicit `rollback.steps` + every **completed** step's rollback in reverse order when `aggregate_step_rollbacks: true`; ordered by reverse-topological order when `needs` are present), then aborts the operation
+- Approval steps: `a` approve · `d` deny · `e` evidence · `s` skip · `r`+Enter
+  rollback (needs Enter so the legacy word `reject` stays typeable) · `q` quit
 - `q` / `quit` / `Ctrl+C` — **aborts** the operation, persists session as `paused` (resumable) and prints a resume hint (`Ctrl+C` saves too — it no longer hard-quits without saving)
 
 ## Evidence-required gate
 
 When a step has `evidence: { required: true }`, completing it (`manual`/sidecar
-`Enter`, or `approval`'s `approve`) is **blocked** by default until `[e]`
-captures at least one evidence item (a typed-text note counts). There is no
-separate gate menu — trying to complete with nothing captured just prints a
-one-line warning **on the same action bar** (`⚠️  This step requires evidence
-— press [e] to capture … or [s] to skip.`) and keeps you there. `[s]` skips
+`↵`, or `approval`'s `a`) is **blocked** by default until `[e]`
+captures at least one evidence item (a typed-text note or link counts; a passing
+`↵` verify auto-captures one). There is no separate gate menu — trying to
+complete with nothing captured just prints a one-line warning **on the same
+action bar** (`⚠️  This step requires evidence — press e then ↵ to grab the pane
+…, or s to skip.`) and keeps you there. `[s]` skips
 the step (recorded as skipped, not completed). Disable with
 `--no-require-evidence`. Does NOT gate plain (non-sidecar) `type: automatic`
 steps.

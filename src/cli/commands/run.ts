@@ -19,11 +19,13 @@ import { detectMimeType } from '../../evidence/collector';
 import {
   cleanTerminalOutput,
   renderExpectDescription,
+  stripCommandEcho,
 } from '../../lib/assertions';
 import { getBuiltinVariables } from '../../lib/builtin-variables';
 import type { CaptureBackend } from '../../lib/capture-backend';
-import { copyToClipboard } from '../../lib/clipboard';
+import { copyToClipboard, readClipboardImage } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
+import { parseEvidenceLink } from '../../lib/evidence-link';
 import { OperationExecutor } from '../../lib/executor';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
@@ -39,6 +41,7 @@ import {
 } from '../../lib/session-log';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import {
+  getRunEvidenceDir,
   getRunReportPath,
   getSessionEvidenceDir,
 } from '../../lib/session-persistence';
@@ -59,12 +62,25 @@ import {
   validateTmuxTarget,
 } from '../../lib/tmux-session';
 import {
+  attachHint,
+  type CaptureStrategy,
+  ensureWorkPane,
+  pickCaptureStrategy,
+  relaunchInTmux,
+  tmuxSessionExists,
+  tmuxSessionName,
+  workPaneTag,
+} from '../../lib/tmux-workspace';
+import {
   flattenRollbackSteps,
+  type KeyHint,
+  renderActionBar,
   renderAssertOutcome,
   renderCodeBlock,
-  renderKeyHints,
+  renderKeyHelp,
   renderVerifyOutcome,
   StepController,
+  tailOfOutput,
 } from '../../lib/tui';
 import {
   listUnresolvedVars,
@@ -99,6 +115,8 @@ interface RunOptions {
   mock?: boolean;
   mode?: ExecutionMode;
   attach?: string;
+  // `--tmux` → true, `--no-tmux` → false, neither → undefined (auto in tmux).
+  tmux?: boolean;
   variables?: string[];
   verbose?: boolean;
   continueOnError?: boolean;
@@ -113,6 +131,8 @@ interface RunOptions {
 }
 
 interface ResumeOptions {
+  attach?: string;
+  tmux?: boolean;
   verbose?: boolean;
   autoApprove?: boolean;
   fromStep?: number;
@@ -310,6 +330,17 @@ class OperationRunner {
     const focusPic = resolveFocusPic(options.pic);
     const operator = focusPic || process.env.USER || 'unknown';
 
+    // `--tmux` outside tmux: re-run this command inside a samaritan-<op> tmux
+    // session (created or reused) and attach the terminal — the inner run then
+    // gets its work pane. Done before creating a session so there is only one.
+    if (
+      !options.dryRun &&
+      this.captureStrategy(operation, executionMode, options) === 'relaunch'
+    ) {
+      this.relaunch(operation);
+      return;
+    }
+
     // Create session first so its ID can serve as the JSONL log identifier
     const session = sessionManager.createSession(
       operation.id,
@@ -370,57 +401,13 @@ class OperationRunner {
       const isInteractiveMode = !context.autoMode && !options.dryRun;
 
       if (isInteractiveMode) {
-        let tmuxSession: TmuxSession | undefined;
-        let captureBackend: CaptureBackend | undefined;
-
-        if (executionMode === 'sidecar' && options.attach) {
-          // Sidecar + --attach: validate and attach to operator's pane
-          if (validateTmuxTarget(options.attach)) {
-            const paneCapture = new TmuxPaneCapture(
-              context.sessionId,
-              options.attach,
-            );
-            paneCapture.attach();
-            captureBackend = paneCapture;
-            console.log(
-              `🔗 Attached capture to tmux pane: ${options.attach}\n`,
-            );
-          } else {
-            console.warn(
-              `⚠️  --attach target "${options.attach}" is not a valid tmux pane; continuing without capture.\n`,
-            );
-          }
-        } else if (
-          operation.sessions &&
-          Object.keys(operation.sessions).length > 0
-        ) {
-          console.log('🖥️  Bootstrapping tmux sessions...');
-          try {
-            tmuxSession = await bootstrapSessions(
-              context.sessionId,
-              operation.sessions,
-            );
-            captureBackend = tmuxSession;
-            console.log(
-              `   Sessions: ${Object.keys(operation.sessions).join(', ')}`,
-            );
-            if (executionMode === 'sidecar') {
-              console.log(
-                `   Attach with: tmux attach -t samaritan-${context.sessionId}\n`,
-              );
-            } else {
-              console.log('');
-            }
-          } catch (err: any) {
-            console.warn(
-              `⚠️  tmux bootstrap failed (${err.message}); falling back to prompt-only mode.\n`,
-            );
-          }
-        } else if (executionMode === 'sidecar' && process.env.TMUX) {
-          console.log(
-            '💡 Tip: press [t] during a step to attach a tmux pane for [v] verify.\n',
-          );
-        }
+        const { tmuxSession, captureBackend, hint } = await this.setupCapture(
+          this.captureStrategy(operation, executionMode, options),
+          operation,
+          context.sessionId,
+          options.attach,
+          executionMode,
+        );
 
         console.log('▶️  Starting interactive operation execution...\n');
         executor.startInteractive();
@@ -460,6 +447,7 @@ class OperationRunner {
           focusPic,
           options.skipOthers !== false,
           targetEnv,
+          hint,
         );
         executor.finalizeOperation();
 
@@ -626,21 +614,22 @@ class OperationRunner {
 
     this.setupEventHandlers(executor, { verbose: options.verbose });
 
-    // Bootstrap tmux if the operation uses sessions
-    let tmuxSession: TmuxSession | undefined;
-    if (operation.sessions && Object.keys(operation.sessions).length > 0) {
-      console.log('\n🖥️  Bootstrapping tmux sessions...');
-      try {
-        tmuxSession = await bootstrapSessions(session.id, operation.sessions);
-        console.log(
-          `   Sessions: ${Object.keys(operation.sessions).join(', ')}\n`,
-        );
-      } catch (err: any) {
-        console.warn(
-          `⚠️  tmux bootstrap failed (${err.message}); continuing without tmux.\n`,
-        );
-      }
+    // Same capture setup as `run` — previously resume only re-bootstrapped
+    // `sessions:` and silently lost sidecar capture.
+    const resumeMode: ExecutionMode =
+      (session.mode as ExecutionMode | undefined) ?? 'sidecar';
+    const strategy = this.captureStrategy(operation, resumeMode, options);
+    if (strategy === 'relaunch') {
+      this.relaunch(operation);
+      return;
     }
+    const { tmuxSession, captureBackend, hint } = await this.setupCapture(
+      strategy,
+      operation,
+      session.id,
+      options.attach,
+      resumeMode,
+    );
 
     console.log('\n▶️  Resuming operation execution...\n');
     const startIndex =
@@ -649,8 +638,6 @@ class OperationRunner {
         : session.current_step_index;
     executor.resumeFromIndex(startIndex);
 
-    const resumeMode: ExecutionMode =
-      (session.mode as ExecutionMode | undefined) ?? 'sidecar';
     await this.runInteractiveStepLoop(
       executor,
       operation,
@@ -658,14 +645,18 @@ class OperationRunner {
       context.variables,
       resumeMode,
       tmuxSession,
-      tmuxSession,
+      captureBackend,
       flatSteps,
       options.requireEvidence !== false,
       resumeFocusPic,
       options.skipOthers !== false,
       session.environment,
+      hint,
     );
     executor.finalizeOperation();
+    if (captureBackend && captureBackend !== tmuxSession) {
+      captureBackend.teardown();
+    }
     tmuxSession?.teardown();
 
     if (executor.getState().status === 'cancelled') {
@@ -677,6 +668,123 @@ class OperationRunner {
     } else {
       console.log('\n✅ Session resumed and completed!');
     }
+  }
+
+  /** How this run gets its capture pane (see pickCaptureStrategy). */
+  private captureStrategy(
+    operation: Operation,
+    mode: ExecutionMode,
+    options: { attach?: string; tmux?: boolean },
+  ): CaptureStrategy {
+    return pickCaptureStrategy({
+      attach: options.attach,
+      hasSessions:
+        !!operation.sessions && Object.keys(operation.sessions).length > 0,
+      mode,
+      inTmux: !!process.env.TMUX,
+      interactive: !!process.stdin.isTTY,
+      tmuxFlag: options.tmux,
+    });
+  }
+
+  /** Re-run this command inside the operation's tmux session and attach. */
+  private relaunch(operation: Operation): void {
+    const name = tmuxSessionName(workPaneTag(operation.name));
+    const reused = tmuxSessionExists(name);
+    console.log(attachHint({ kind: 'relaunch', target: name, reused }));
+    relaunchInTmux(name);
+  }
+
+  /**
+   * Set up the capture backend for an interactive run: `--attach` pane,
+   * spawn-own `sessions:` bootstrap, or an auto created/reused work pane. Always
+   * prints how to reach the pane, and returns that hint for `?` help.
+   */
+  private async setupCapture(
+    strategy: CaptureStrategy,
+    operation: Operation,
+    sessionId: string,
+    attachTarget: string | undefined,
+    mode: ExecutionMode,
+  ): Promise<{
+    tmuxSession?: TmuxSession;
+    captureBackend?: CaptureBackend;
+    hint?: string;
+  }> {
+    if (strategy === 'attach' && attachTarget) {
+      if (!validateTmuxTarget(attachTarget)) {
+        console.warn(
+          `⚠️  --attach target "${attachTarget}" is not a valid tmux pane; continuing without capture.\n`,
+        );
+        return {};
+      }
+      const paneCapture = new TmuxPaneCapture(sessionId, attachTarget);
+      paneCapture.attach();
+      const hint = attachHint({ kind: 'attach', target: attachTarget });
+      console.log(`${hint}\n`);
+      return { captureBackend: paneCapture, hint };
+    }
+
+    if (strategy === 'sessions' && operation.sessions) {
+      console.log('🖥️  Bootstrapping tmux sessions...');
+      try {
+        const tmuxSession = await bootstrapSessions(
+          sessionId,
+          operation.sessions,
+        );
+        console.log(
+          `   Sessions: ${Object.keys(operation.sessions).join(', ')}`,
+        );
+        const hint = attachHint({
+          kind: 'sessions',
+          target: `samaritan-${sessionId}`,
+          inTmux: !!process.env.TMUX,
+        });
+        console.log(`   ${hint}\n`);
+        return { tmuxSession, captureBackend: tmuxSession, hint };
+      } catch (err: any) {
+        console.warn(
+          `⚠️  tmux bootstrap failed (${err.message}); falling back to prompt-only mode.\n`,
+        );
+        return {};
+      }
+    }
+
+    if (strategy === 'work-pane') {
+      const selfPane = process.env.TMUX_PANE;
+      const pane = selfPane
+        ? ensureWorkPane(workPaneTag(operation.name), {
+            selfPane,
+            cwd: process.cwd(),
+          })
+        : undefined;
+      if (pane) {
+        const paneCapture = new TmuxPaneCapture(sessionId, pane.paneId);
+        paneCapture.attach();
+        const hint = attachHint({
+          kind: 'work-pane',
+          target: pane.paneId,
+          reused: pane.reused,
+        });
+        console.log(`${hint}\n`);
+        return { captureBackend: paneCapture, hint };
+      }
+      console.warn(
+        '⚠️  Could not create a tmux work pane — press [t] to attach one.\n',
+      );
+      return {};
+    }
+
+    if (mode === 'sidecar' && process.env.TMUX) {
+      console.log(
+        '💡 Tip: press [t] during a step to attach a tmux pane for [v] verify.\n',
+      );
+    } else if (mode === 'sidecar' && process.stdin.isTTY) {
+      console.log(
+        '💡 Tip: run with --tmux to get a work pane for [p] paste / [v] verify.\n',
+      );
+    }
+    return {};
   }
 
   private prepareFlatOperation(
@@ -709,6 +817,8 @@ class OperationRunner {
     focusPic: string | undefined,
     skipOthers: boolean,
     targetEnv: string,
+    // How to reach the capture pane/session — repeated under `?` help.
+    captureHint?: string,
   ): Promise<string> {
     const rl = createReadlineInterface({
       input: process.stdin,
@@ -719,25 +829,12 @@ class OperationRunner {
 
     if (process.stdin.isTTY) emitKeypressEvents(process.stdin);
 
-    // Single-char action keys that fire immediately without pressing Enter.
-    // Multi-char words (abort, approve, reject) still require Enter — intentional.
-    const IMMEDIATE_ACTION_CHARS = new Set([
-      'c',
-      'n',
-      'e',
-      'x',
-      'v',
-      't',
-      'p',
-      'b',
-      'j',
-      's',
-      'r',
-      'g',
-      'q',
-    ]);
-
-    const readActionKey = (): Promise<string> => {
+    // Single-char action keys fire immediately without pressing Enter. Each
+    // bar passes its OWN key set (see promptBar), so a letter only fires when
+    // that bar offers it — e.g. `a` approves on the approval bar, but on the
+    // sidecar bar it is ordinary text, so typing the legacy word `abort` still
+    // works. Multi-char words still require Enter (piped-stdin back-compat).
+    const readActionKey = (immediate: ReadonlySet<string>): Promise<string> => {
       if (!process.stdin.isTTY) return question('  > ');
 
       rl.pause();
@@ -787,7 +884,7 @@ class OperationRunner {
           const c = ch.toLowerCase();
           buffer += c;
           process.stdout.write(c);
-          if (buffer.length === 1 && IMMEDIATE_ACTION_CHARS.has(c)) {
+          if (buffer.length === 1 && immediate.has(c)) {
             cleanup();
             process.stdout.write('\n');
             resolve(c);
@@ -933,9 +1030,12 @@ class OperationRunner {
     const captureRef: {
       backend: CaptureBackend | undefined;
       stepOffset: number;
+      // How to reach the capture pane (printed at start and under `?`).
+      hint?: string;
     } = {
       backend: captureBackend,
       stepOffset: 0,
+      hint: captureHint,
     };
 
     const DIVIDER = '─'.repeat(60);
@@ -1162,37 +1262,35 @@ class OperationRunner {
     };
 
     // Shared "what now?" prompt for a failed `expect` assertion — used by both
-    // the automatic verify path and manual-step `[v] verify`. Records an
-    // override (with reason) in the audit log when chosen; leaves rollback/stop
-    // handling (which differ by call site — loop continue/break vs. a void
-    // return) to the caller.
+    // the automatic verify path and the sidecar/manual verify. Single keys on
+    // the same one-row bar as everything else. Records an override (with
+    // reason) in the audit log when chosen; leaves rollback/stay handling
+    // (which differ by call site) to the caller. `↵` never advances: it means
+    // "stay" (fix it and re-verify) — or "stop" on the tmux-automatic path,
+    // labelled via `enterLabel`.
     const promptAssertFailureAction = async (
       stepIndex: number,
       opts?: {
         allowReVerify?: boolean;
         allowMore?: boolean;
-        // When set, offer `c=copy command` so the operator can re-copy the
+        // When set, offer `c copy command` so the operator can re-copy the
         // (already ${VAR}-resolved) command and re-run it after a failed check.
         commandToCopy?: string;
+        enterLabel?: string;
       },
-    ): Promise<'override' | 'rollback' | 'stop' | 'reverify' | 'more'> => {
-      // Loop so copying the command re-renders the prompt rather than
-      // consuming the operator's choice — copy is not a terminal action.
+    ): Promise<'override' | 'rollback' | 'stay' | 'reverify' | 'more'> => {
+      console.log('    ⚠️  Assertion failed.');
+      const hints: KeyHint[] = [
+        { key: '↵', label: opts?.enterLabel ?? 'stay' },
+        { key: 'o', label: 'override' },
+        ...(opts?.allowReVerify ? [{ key: 'v', label: 're-verify' }] : []),
+        ...(opts?.allowMore ? [{ key: 'm', label: 'more' }] : []),
+        ...(opts?.commandToCopy ? [{ key: 'c', label: 'copy command' }] : []),
+        { key: 'r', label: 'rollback' },
+      ];
       while (true) {
-        const extras = [
-          ...(opts?.commandToCopy ? ['c=copy command'] : []),
-          ...(opts?.allowMore ? ['m=more'] : []),
-          ...(opts?.allowReVerify ? ['v=re-verify'] : []),
-        ];
-        const extraLabel = extras.length ? ` / ${extras.join(' / ')}` : '';
-        const overrideAns = await question(
-          `    ⚠️  Assertion failed. [o=override with reason / r=rollback${extraLabel} / Enter=stop]: `,
-        );
-        const oc = overrideAns.trim().toLowerCase();
-        if (opts?.commandToCopy && (oc === 'c' || oc === 'copy')) {
-          await copyCommand(opts.commandToCopy, '    ');
-          continue;
-        }
+        const oc = await promptBar(hints, opts?.commandToCopy);
+        if (oc === '') return 'stay';
         if (oc === 'o' || oc === 'override') {
           const reason = await question('    Reason for override: ');
           logger.emit({
@@ -1212,66 +1310,130 @@ class OperationRunner {
           (oc === 'v' || oc === 're-verify' || oc === 'reverify')
         )
           return 'reverify';
-        return 'stop';
+        warnUnknownKey(oc);
       }
     };
 
-    const promptAction = async (
-      hints: Array<{ key: string; label: string }>,
+    // Show a one-row action bar (renderActionBar) and read one action. `?`
+    // lists every key — including any the bar had no room for — and
+    // re-prompts; `c` copies `commandToCopy` and re-prompts, so copy is never a
+    // terminal action. The bar's single-char keys fire without Enter.
+    const promptBar = async (
+      hints: KeyHint[],
       commandToCopy?: string,
     ): Promise<string> => {
-      console.log(`\n${renderKeyHints(hints)}`);
-      const ans = await readActionKey();
-      const choice = ans.trim().toLowerCase();
-      if (commandToCopy && (choice === 'c' || choice === 'copy')) {
-        await copyCommand(commandToCopy);
-        return '';
+      const immediate = new Set(
+        hints
+          .filter((h) => !h.needsEnter)
+          .map((h) => h.key)
+          .filter((k) => k.length === 1 && k !== '↵'),
+      );
+      immediate.add('?');
+      while (true) {
+        console.log(`\n${renderActionBar(hints)}`);
+        const choice = (await readActionKey(immediate)).trim().toLowerCase();
+        if (choice === '?' || choice === 'help') {
+          console.log(renderKeyHelp(hints));
+          if (captureRef.hint) console.log(`    ${captureRef.hint}`);
+          continue;
+        }
+        if (commandToCopy && (choice === 'c' || choice === 'copy')) {
+          await copyCommand(commandToCopy);
+          continue;
+        }
+        return choice;
       }
-      return choice;
     };
 
-    // Capture a piece of evidence (terminal output, a file/screenshot/image, or
-    // typed text) and store it with the session — like attaching a file in
-    // Claude Code: drag the file into the terminal, or type/paste its path.
+    // Unrecognised input never completes, skips or approves anything — it
+    // only explains itself and the caller re-shows the same bar.
+    const warnUnknownKey = (choice: string): void => {
+      console.log(`    ⚠️  Unknown key "${choice}" — press ? for keys.`);
+    };
+
+    // promptBar, re-prompting until the choice is one `isValid` accepts.
+    const promptChoice = async (
+      hints: KeyHint[],
+      isValid: (choice: string) => boolean,
+      commandToCopy?: string,
+    ): Promise<string> => {
+      while (true) {
+        const choice = await promptBar(hints, commandToCopy);
+        if (isValid(choice)) return choice;
+        warnUnknownKey(choice);
+      }
+    };
+    // Keys every automatic-step bar understands: ↵, skip, rollback, quit (+ g).
+    const isAutomaticBarChoice = (c: string): boolean =>
+      c === '' ||
+      isQuit(c) ||
+      isSkip(c) ||
+      isRollback(c) ||
+      (hasGlobalRollback && isGlobalRollback(c));
+
+    // Where this run's evidence files live: inside the run dir beside
+    // report.md, so the report's relative image/file links resolve.
+    const evidenceDir = (): string =>
+      getRunEvidenceDir(operationFile, state.context.sessionId);
+
+    // Capture a piece of evidence on a single-key sub-bar:
+    //   ↵ pane output (cleaned, command echo dropped) · i clipboard image ·
+    //   f file (drag & drop) · t text or URL (a URL becomes a clickable link).
+    // Any other key cancels. One optional description prompt follows, with a
+    // sensible default so ↵ accepts it.
     const captureEvidence = async (
       stepIndex: number,
       captureSinceStepStart: () => string | undefined,
+      // ${VAR}-resolved command, so its echo is dropped from pane captures.
+      command?: string,
     ): Promise<void> => {
       const captured = captureSinceStepStart();
-
-      console.log(
-        `\n${renderKeyHints([
-          ...(captured !== undefined
-            ? [{ key: '↵', label: 'capture terminal output' }]
-            : []),
-          { key: 'f', label: 'file or image' },
-          { key: 't', label: 'type/paste text' },
-        ])}`,
-      );
-      const sourceAns = (await question('    Evidence source > '))
-        .trim()
-        .toLowerCase();
+      const source = await promptBar([
+        ...(captured !== undefined ? [{ key: '↵', label: 'pane output' }] : []),
+        { key: 'i', label: 'clipboard image' },
+        { key: 'f', label: 'file' },
+        { key: 't', label: 'text/link' },
+        { key: 'q', label: 'cancel' },
+      ]);
 
       let evidenceType: EvidenceType = 'command_output';
       let content: string | Buffer = '';
       let filename: string | undefined;
       let storedPath: string | undefined;
       let automatic = false;
+      let defaultDescription: string | undefined;
 
-      if (
-        captured !== undefined &&
-        (sourceAns === '' || sourceAns === 'capture')
-      ) {
-        if (!captured || !captured.trim()) {
+      if (captured !== undefined && (source === '' || source === 'capture')) {
+        const cleaned = stripCommandEcho(
+          cleanTerminalOutput(captured),
+          command,
+        ).trim();
+        if (!cleaned) {
           console.log(
             '    ⚠️  No new output captured in this pane since the step started.',
           );
           return;
         }
-        console.log(`\n${renderCodeBlock(captured)}`);
-        content = captured;
+        const { tail, hidden } = tailOfOutput(cleaned);
+        if (hidden > 0) console.log(`    … ${hidden} earlier line(s) kept`);
+        console.log(renderCodeBlock(tail, 'output'));
+        content = cleaned;
         automatic = true;
-      } else if (sourceAns === 'f' || sourceAns === 'file') {
+        defaultDescription = 'pane output';
+      } else if (source === 'i' || source === 'image') {
+        const dest = join(evidenceDir(), `${randomUUID()}-clipboard.png`);
+        if (!readClipboardImage(dest)) {
+          console.log(
+            '    ⚠️  No image in the clipboard (or no clipboard tool) — copy a screenshot first, or use f to attach a file.',
+          );
+          return;
+        }
+        content = readFileSync(dest);
+        filename = basename(dest);
+        storedPath = dest;
+        evidenceType = 'screenshot';
+        defaultDescription = 'screenshot';
+      } else if (source === 'f' || source === 'file') {
         const rawPath = await question(
           '    Path (drag & drop into terminal): ',
         );
@@ -1288,22 +1450,44 @@ class OperationRunner {
         }
         filename = basename(resolvedPath);
         evidenceType = inferEvidenceTypeFromExtension(filename);
-
-        const evidenceDir = getSessionEvidenceDir(state.context.sessionId);
-        storedPath = join(evidenceDir, `${randomUUID()}-${filename}`);
+        defaultDescription = filename;
+        storedPath = join(evidenceDir(), `${randomUUID()}-${filename}`);
         copyFileSync(resolvedPath, storedPath);
-      } else {
-        content = await question('    Paste/type evidence content: ');
-        if (Buffer.byteLength(content, 'utf-8') > MAX_PASTED_EVIDENCE_BYTES) {
+      } else if (source === 't' || source === 'text') {
+        const text = await question('    Text or URL: ');
+        if (!text.trim()) {
+          console.log('    ↩  Cancelled.');
+          return;
+        }
+        if (Buffer.byteLength(text, 'utf-8') > MAX_PASTED_EVIDENCE_BYTES) {
           console.log(
             '    ⚠️  Pasted content exceeds 10 MB — attach it as a file instead.',
           );
           return;
         }
+        const link = parseEvidenceLink(text);
+        if (link) {
+          if (link.strippedCredentials)
+            console.log('    ⚠️  Credentials removed from the URL.');
+          evidenceType = 'link';
+          content = link.url;
+          defaultDescription = link.label;
+        } else {
+          content = text;
+        }
+      } else {
+        console.log('    ↩  Cancelled.');
+        return;
       }
 
       const description =
-        (await question('    Description (optional): ')).trim() || undefined;
+        (
+          await question(
+            defaultDescription
+              ? `    Description [↵ = "${defaultDescription}"]: `
+              : '    Description (optional): ',
+          )
+        ).trim() || defaultDescription;
 
       const size = Buffer.isBuffer(content)
         ? content.length
@@ -1311,8 +1495,8 @@ class OperationRunner {
       const format = detectMimeType(evidenceType, content, filename);
 
       // For file/image/video evidence the bytes already live on disk under the
-      // session's evidence directory (copied above) — reference that path
-      // rather than duplicating the raw content into the persisted session.
+      // run's evidence directory (copied above) — reference that path rather
+      // than duplicating the raw content into the persisted session.
       const item: EvidenceItem = {
         id: randomUUID(),
         step_id: String(stepIndex),
@@ -1348,7 +1532,9 @@ class OperationRunner {
 
       const summary = storedPath
         ? `${evidenceType}, saved to ${storedPath}`
-        : `${evidenceType}, ${item.metadata.size} bytes`;
+        : evidenceType === 'link'
+          ? `link, ${content}`
+          : `${evidenceType}, ${item.metadata.size} bytes`;
       console.log(`    📎 Evidence captured (${summary}).`);
     };
 
@@ -1407,10 +1593,13 @@ class OperationRunner {
       // directory — never touch the operator's original source file. Compare
       // parent directories rather than a string prefix so trailing slashes or
       // relative segments can't produce a false match.
-      const evidenceDir = getSessionEvidenceDir(state.context.sessionId);
+      const ownedDirs = [
+        evidenceDir(),
+        getSessionEvidenceDir(state.context.sessionId),
+      ];
       if (
         removed.metadata.original_path &&
-        dirname(removed.metadata.original_path) === evidenceDir &&
+        ownedDirs.includes(dirname(removed.metadata.original_path)) &&
         existsSync(removed.metadata.original_path)
       ) {
         try {
@@ -1439,6 +1628,9 @@ class OperationRunner {
     // Steps whose passing verify already auto-captured evidence — so repeated
     // [v] presses don't record duplicate command_output items.
     const autoVerifiedSteps = new Set<number>();
+    // Steps whose expect passed (or was overridden) — `↵` on such a step
+    // advances without re-verifying.
+    const verifiedSteps = new Set<number>();
 
     // Close the loop between expect and evidence: a PASSING [v] verify records
     // the verified pane output as command_output evidence (once per step), so
@@ -1492,8 +1684,11 @@ class OperationRunner {
       // Captures the pane's rendered screen for the auto-recorded evidence, so
       // the report keeps clean output instead of the raw pipe-pane slice.
       captureScreen?: () => string | undefined,
-    ): Promise<void> => {
-      if (!step.expect) return;
+      // True when called from `↵` (verify & next): a pass advances, so the
+      // "press ↵ to continue" hint is dropped.
+      advancing = false,
+    ): Promise<VerifyOutcome> => {
+      if (!step.expect) return 'none';
 
       let expand = false;
 
@@ -1503,7 +1698,7 @@ class OperationRunner {
           console.log(
             '    ⚠️  Verify requires an attached capture — press [t] to attach a tmux pane.',
           );
-          return;
+          return 'none';
         }
 
         console.log('    🔍 Checking expected output...');
@@ -1514,7 +1709,7 @@ class OperationRunner {
           commandToCopy,
         );
 
-        if (!assertResult || !detailed) return;
+        if (!assertResult || !detailed) return 'none';
 
         console.log(
           renderVerifyOutcome(detailed, displayExpect ?? step.expect, {
@@ -1524,10 +1719,10 @@ class OperationRunner {
 
         if (assertResult.pass) {
           captureVerifiedEvidence(stepIndex, output, captureScreen);
-          console.log(
-            '    ✅ Verify passed — press [v] again any time to re-check.',
-          );
-          return;
+          verifiedSteps.add(stepIndex);
+          if (!advancing)
+            console.log('    ✅ Verify passed — ↵ next, or v to re-check.');
+          return 'pass';
         }
 
         const action = await promptAssertFailureAction(stepIndex, {
@@ -1543,12 +1738,16 @@ class OperationRunner {
           expand = false;
           continue;
         }
-        if (action === 'rollback') {
-          await doRollback(step, stepIndex);
-        } else if (action === 'stop') {
-          console.log('    ❌ Stopping due to failed assertion.');
+        if (action === 'override') {
+          verifiedSteps.add(stepIndex);
+          return 'override';
         }
-        return;
+        if (action === 'rollback') await doRollback(step, stepIndex);
+        else
+          console.log(
+            '    ↩  Staying on this step — fix it, then ↵ to verify again.',
+          );
+        return 'stay';
       }
     };
 
@@ -1844,7 +2043,7 @@ class OperationRunner {
 
           if (controller && step.session && resolvedCommand) {
             // tmux-backed automatic step
-            const choice = await promptAction(
+            const choice = await promptChoice(
               [
                 { key: '↵', label: 'send' },
                 { key: 'c', label: 'copy' },
@@ -1853,6 +2052,7 @@ class OperationRunner {
                 ...globalRollbackMenuItem,
                 { key: 'q', label: 'quit' },
               ],
+              isAutomaticBarChoice,
               resolvedCommand,
             );
             if (isQuit(choice)) {
@@ -1893,12 +2093,13 @@ class OperationRunner {
                 if (!assertResult.pass) {
                   const action = await promptAssertFailureAction(i, {
                     commandToCopy: resolvedCommand,
+                    enterLabel: 'stop run',
                   });
                   if (action === 'rollback') {
                     await doRollback(step, i);
                     continue;
                   }
-                  if (action === 'stop') {
+                  if (action === 'stay') {
                     console.log('    ❌ Stopping due to failed assertion.');
                     break;
                   }
@@ -1915,7 +2116,7 @@ class OperationRunner {
             controller.completeStep(i);
           } else {
             // prompt-only automatic step
-            const choice = await promptAction(
+            const choice = await promptChoice(
               [
                 { key: '↵', label: 'confirm' },
                 ...(resolvedCommand ? [{ key: 'c', label: 'copy' }] : []),
@@ -1924,6 +2125,7 @@ class OperationRunner {
                 ...globalRollbackMenuItem,
                 { key: 'q', label: 'quit' },
               ],
+              isAutomaticBarChoice,
               resolvedCommand,
             );
             if (isQuit(choice)) {
@@ -2016,46 +2218,54 @@ class OperationRunner {
           let navIsJump = false;
           while (true) {
             const evidenceForStep = stepEvidence(i);
+            // Re-rendered above every bar so the criteria never scroll off.
             if (step.expect) {
               console.log(
                 `\n    Expected: ${renderExpectDescription(resolvedExpect)}`,
               );
             }
-            console.log(
-              '\n' +
-                renderKeyHints([
-                  { key: '↵', label: 'done' },
-                  ...(runnableCommand ? [{ key: 'c', label: 'copy' }] : []),
-                  { key: 'n', label: 'note' },
-                  { key: 'e', label: 'evidence' },
-                  ...(evidenceForStep.length
-                    ? [{ key: 'x', label: 'remove evidence' }]
-                    : []),
-                  ...(step.expect ? [{ key: 'v', label: 'verify' }] : []),
-                  ...(mode === 'sidecar'
-                    ? [{ key: 't', label: 'attach pane' }]
-                    : []),
-                  ...(mode === 'sidecar' && runnableCommand
-                    ? [{ key: 'p', label: 'send to pane' }]
-                    : []),
-                  ...(i > 0 ? [{ key: 'b', label: 'back' }] : []),
-                  ...(i < steps.length - 1
-                    ? [{ key: 'j', label: 'jump' }]
-                    : []),
-                  { key: 's', label: 'skip' },
-                  { key: 'r', label: 'rollback' },
-                  ...globalRollbackMenuItem,
-                  { key: 'abort', label: 'abort' },
-                ]),
-            );
-            const input = await readActionKey();
+            const paneAttached = !!captureRef.backend?.hasTarget(sessionName);
+            // `↵` verifies first when there is something to check against.
+            const enterVerifies =
+              !!step.expect && paneAttached && !verifiedSteps.has(i);
+            const evidenceLabel = evidenceForStep.length
+              ? `evidence·${evidenceForStep.length}`
+              : needsEvidenceGate(i, step)
+                ? 'evidence!'
+                : 'evidence';
+            const input = await promptBar([
+              { key: '↵', label: enterVerifies ? 'verify & next' : 'next' },
+              ...(step.expect ? [{ key: 'v', label: 'verify' }] : []),
+              ...(mode === 'sidecar' && runnableCommand && paneAttached
+                ? [{ key: 'p', label: 'paste' }]
+                : []),
+              ...(mode === 'sidecar' && !paneAttached
+                ? [{ key: 't', label: 'attach pane' }]
+                : []),
+              ...(runnableCommand ? [{ key: 'c', label: 'copy' }] : []),
+              { key: 'e', label: evidenceLabel },
+              { key: 'n', label: 'note' },
+              { key: 's', label: 'skip' },
+              ...(i > 0 ? [{ key: 'b', label: 'back' }] : []),
+              ...(i < steps.length - 1 ? [{ key: 'j', label: 'jump' }] : []),
+              { key: 'r', label: 'rollback' },
+              ...globalRollbackMenuItem,
+              ...(evidenceForStep.length
+                ? [{ key: 'x', label: 'remove evidence' }]
+                : []),
+              ...(mode === 'sidecar' && paneAttached
+                ? [{ key: 't', label: 'switch pane' }]
+                : []),
+              { key: 'q', label: 'quit' },
+            ]);
             const inputChoice = input.trim().toLowerCase();
-            if (isQuit(inputChoice)) {
+            if (isQuit(inputChoice) || inputChoice === 'abort') {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
               manualNotes = '';
               break;
             }
+            // Copy here (not in promptBar) so Expected + bar re-render after.
             if (
               runnableCommand &&
               (inputChoice === 'c' || inputChoice === 'copy')
@@ -2078,7 +2288,7 @@ class OperationRunner {
               continue;
             }
             if (inputChoice === 'e' || inputChoice === 'evidence') {
-              await captureEvidence(i, captureSinceStepStart);
+              await captureEvidence(i, captureSinceStepStart, runnableCommand);
               continue;
             }
             if (
@@ -2294,23 +2504,53 @@ class OperationRunner {
               }
               continue;
             }
-            // About to complete this step (any non-action input = confirm or
-            // free-text notes). If it requires evidence and none is captured,
-            // refuse inline and stay on THIS bar — no sub-menu, no step
-            // re-entry. Skip/rollback/abort still fall through to break.
-            const pending = input.trim().toLowerCase();
-            if (
-              !isSkip(pending) &&
-              !isRollback(pending) &&
-              pending !== 'abort' &&
-              needsEvidenceGate(i, step)
-            ) {
+            if (isSkip(inputChoice) || isRollback(inputChoice)) {
+              manualNotes = inputChoice;
+              break;
+            }
+            // Only a bare ↵ completes the step — anything else is a typo, and
+            // a typo must never advance a step (notes go through [n]).
+            if (inputChoice !== '') {
+              warnUnknownKey(input.trim());
+              continue;
+            }
+            // ↵ = verify & next: with an expect and a pane, check first and
+            // only advance on PASS (or an explicit override).
+            if (enterVerifies) {
+              const outcome = await verifyManualOutput(
+                step,
+                i,
+                captureSinceStepStart,
+                resolvedExpect,
+                runnableCommand,
+                () => captureRef.backend?.captureScreen?.(sessionName),
+                true,
+              );
+              if (outcome !== 'pass' && outcome !== 'override') continue;
+            } else if (step.expect && !verifiedSteps.has(i)) {
               console.log(
-                '\n    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.',
+                '    ⚠️  No pane attached — completing without verification.',
+              );
+              logger.emit({
+                type: 'user_input',
+                action: 'verify_skipped',
+                step: i,
+                actor: state.context.operator,
+                notes: 'no capture pane attached',
+              });
+            }
+            // Evidence-required: refuse inline and stay on THIS bar — no
+            // sub-menu, no step re-entry. Runs after verify, so a PASS's
+            // auto-captured evidence already satisfies it.
+            if (needsEvidenceGate(i, step)) {
+              console.log(
+                paneAttached
+                  ? '\n    ⚠️  This step requires evidence — press e then ↵ to grab the pane (i image, t text/link), or s to skip.'
+                  : '\n    ⚠️  This step requires evidence — press e to capture (typed text is fine) or s to skip.',
               );
               continue; // re-render only the bar; header/command stay put
             }
-            manualNotes = input;
+            manualNotes = '';
             break;
           }
 
@@ -2349,12 +2589,7 @@ class OperationRunner {
             continue;
           }
 
-          const choice = manualNotes.trim().toLowerCase();
-          if (choice === 'abort') {
-            executor.cancel();
-            console.log('\n⛔ Execution aborted by operator.');
-            break;
-          }
+          const choice = manualNotes;
           if (isRollback(choice)) {
             await doRollback(step, i);
             continue;
@@ -2366,17 +2601,13 @@ class OperationRunner {
           }
           // Evidence-required completion is gated inline in the action loop
           // above (stay-on-the-bar warning) — nothing to check here.
-          await executor.executeStepManually(
-            i,
-            manualNotes.trim() || 'confirmed',
-          );
+          await executor.executeStepManually(i, 'confirmed');
           persistProgress();
           logger.emit({
             type: 'user_input',
             action: 'confirmed',
             step: i,
             actor: state.context.operator,
-            notes: manualNotes.trim() || undefined,
           });
           logger.emit({ type: 'step_complete', step: i });
           console.log('    ✅ Step marked complete.');
@@ -2385,14 +2616,22 @@ class OperationRunner {
           // Loop the approval bar so evidence capture (and the evidence-
           // required nudge) happen inline on the SAME bar — no sub-menu.
           while (true) {
-            const choice = await promptAction([
-              { key: 'approve', label: 'approve' },
-              { key: 'reject', label: 'reject' },
+            const choice = await promptBar([
+              { key: 'a', label: 'approve' },
+              { key: 'd', label: 'deny' },
               { key: 'e', label: 'evidence' },
-              { key: 'r', label: 'rollback' },
-              ...globalRollbackMenuItem,
               { key: 's', label: 'skip' },
+              // Needs Enter here so the legacy word `reject` stays typeable —
+              // an immediate `r` fired a rollback on its first letter.
+              { key: 'r', label: 'rollback', needsEnter: true },
+              ...globalRollbackMenuItem,
+              { key: 'q', label: 'quit' },
             ]);
+            if (isQuit(choice) || choice === 'abort') {
+              executor.cancel();
+              console.log('\n⛔ Execution aborted by operator.');
+              break stepLoop;
+            }
             if (choice === 'e' || choice === 'evidence') {
               await captureEvidence(i, () => undefined);
               continue;
@@ -2405,10 +2644,10 @@ class OperationRunner {
               await doRollback(step, i);
               continue stepLoop;
             }
-            if (choice === 'approve') {
+            if (choice === 'a' || choice === 'approve') {
               if (needsEvidenceGate(i, step)) {
                 console.log(
-                  '\n    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.',
+                  '\n    ⚠️  This step requires evidence — press e to capture (typed text is fine) or s to skip.',
                 );
                 continue;
               }
@@ -2419,16 +2658,20 @@ class OperationRunner {
               console.log('    ✅ Approved.');
               break;
             }
-            if (choice === 'reject') {
+            if (choice === 'd' || choice === 'deny' || choice === 'reject') {
               await recordApprovalDecision(i, step, false);
               executor.skipStep(i);
               persistProgress();
               console.log('    ❌ Rejected — step skipped.');
               break;
             }
-            executor.skipStep(i);
-            console.log('    ⏭  Skipped.');
-            break;
+            if (isSkip(choice)) {
+              executor.skipStep(i);
+              console.log('    ⏭  Skipped.');
+              break;
+            }
+            // A typo must never approve, reject or skip an approval.
+            warnUnknownKey(choice);
           }
         } else {
           await executor.executeStepManually(i, 'confirmed');
@@ -2542,6 +2785,9 @@ class OperationRunner {
   }
 }
 
+/** Result of a sidecar/manual verify: advance only on 'pass'/'override'. */
+type VerifyOutcome = 'pass' | 'override' | 'stay' | 'none';
+
 // Resolve a path the operator drags into the terminal or types — strips the
 // surrounding quotes and backslash-escapes most terminals add on drag-and-drop,
 // and expands a leading `~`.
@@ -2601,6 +2847,14 @@ const runCommand = new Command('run')
     'Attach to an existing tmux pane for sidecar capture (e.g. mysession:0.0)',
   )
   .option(
+    '--tmux',
+    'Sidecar: outside tmux, open (or reuse) a samaritan-<operation> tmux session and attach to it',
+  )
+  .option(
+    '--no-tmux',
+    'Sidecar: do not create/reuse a tmux work pane automatically when running inside tmux',
+  )
+  .option(
     '--var <key=value>',
     'Override variable values',
     (value, previous: string[] = []) => [...previous, value],
@@ -2654,6 +2908,18 @@ const resumeCommand = new Command('resume')
   .option('-v, --verbose', 'Verbose output')
   .option('--auto-approve', 'Auto-approve remaining manual steps')
   .option('--from-step <number>', 'Resume from specific step number', parseInt)
+  .option(
+    '--attach <tmux-target>',
+    'Attach to an existing tmux pane for sidecar capture (e.g. mysession:0.0)',
+  )
+  .option(
+    '--tmux',
+    'Sidecar: outside tmux, open (or reuse) a samaritan-<operation> tmux session and attach to it',
+  )
+  .option(
+    '--no-tmux',
+    'Sidecar: do not create/reuse a tmux work pane automatically when running inside tmux',
+  )
   .option(
     '--no-require-evidence',
     'Allow completing a step whose evidence.required is true without capturing evidence',

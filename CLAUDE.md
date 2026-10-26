@@ -72,7 +72,10 @@ embedding (`evidence.results`), `schema` export, interactive `run` (sidecar /
 manual / automatic / hybrid), session persistence + `resume`/`sessions`,
 `run --mock`, auto-capture on verify, retryable verification (`expect.retry`),
 multi-operator `--pic` focus + `report merge`, rollback (step + operation-level,
-full parity), postmortem / incident-report (RCA) documents.
+full parity), postmortem / incident-report (RCA) documents, sidecar one-row
+action bar (`↵` = verify & next, typos never advance), tmux work pane
+create/reuse/auto-attach (`--tmux`/`--no-tmux`), link + clipboard-screenshot
+evidence stored in the run folder.
 CLI: `validate`, `generate manual|docs|postmortem|schedule`, `postmortem`,
 `report`, `schema`, `diff`, `init`, `operation`, `run`, `resume`, `sessions`, `qrh`.
 Confluence/ADF are **formats** (`generate manual -f confluence|adf`), not a

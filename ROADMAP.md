@@ -95,7 +95,7 @@ in this roadmap:
 - [ ] **File artifacts**: Collect generated files (configs, reports, etc.)
 - [ ] **Video recording**: Record operation execution sessions
 - [ ] Evidence validation (file size, format, content)
-- [ ] Evidence storage and organization
+- [x] Evidence storage and organization (files live in `.samaritan-runs/<id>/evidence/` beside `report.md`)
 - [ ] Evidence gallery in generated reports
 
 **Priority**: HIGH
@@ -115,7 +115,11 @@ in this roadmap:
 - [x] Pause/resume functionality
 - [x] Skip step capability
 - [x] Back/re-run navigation (`[b]` returns to an earlier step and re-runs from there)
-- [x] Sidecar send-to-pane (`[p]` pastes the command into the attached pane without executing)
+- [x] Sidecar paste (`[p]` pastes the command into the attached pane without executing)
+- [x] One-row action bar (`?` lists every key; unknown input never advances)
+- [x] `↵` = verify & next (a failed check never advances; `o` overrides with a reason)
+- [x] Work pane: create/reuse a tmux pane beside samaritan and attach automatically (`--tmux` outside tmux, `--no-tmux` to opt out)
+- [x] Evidence: clipboard screenshot (`[e]` `i`), URL links (`[e]` `t`), run-folder evidence storage
 - [x] Rollback on failure
 - [x] Progress tracking and display
 
@@ -123,9 +127,9 @@ in this roadmap:
 modes. Sidecar mode displays each resolved command and verifies `step.expect`
 against captured tmux pane output without sending the command automatically — the
 operator can optionally `[p]` paste it into the attached pane (no Enter) and runs
-it themselves. See CLAUDE.md Gotcha #3 for full details on supported actions
-(`[n]` note, `[e]` evidence, `[x]` remove evidence, `[v]` verify, `[t]` attach pane,
-`[p]` send to pane, `[b]` back to a previous step).
+it themselves. See `docs/running.md` for every key (`↵` verify & next, `[n]`
+note, `[e]` evidence, `[x]` remove evidence, `[v]` verify, `[t]` attach pane,
+`[p]` paste, `[b]` back, `[j]` jump).
 
 ### 2.4 Session Management — ✅ IMPLEMENTED (v1.1)
 - [x] Session state persistence (`~/.samaritan/sessions/<id>.json`)
@@ -138,6 +142,41 @@ it themselves. See CLAUDE.md Gotcha #3 for full details on supported actions
 
 `samaritan sessions` lists saved sessions (resumable by default, `--all` for
 everything) with a `samaritan resume <id>` hint per resumable session.
+
+---
+
+## 🧭 Declarative runs, Ansible-style (PROPOSED)
+
+SAMARITAN already covers much of what makes Ansible playbooks declarative:
+
+| Ansible | SAMARITAN today |
+|---|---|
+| `when` | `when` (environment-gated) |
+| `loop` / `with_items` | `foreach` / matrix |
+| roles / `include_tasks` | `uses` / `with`, templates, imports |
+| `register` | `capture` |
+| `failed_when` / `assert` | `expect` (+ `expect.retry`) |
+| `block` / `rescue` | step + operation `rollback` |
+| `--check` | `--dry-run`, `run --mock` |
+
+Proposed gaps, in priority order:
+
+- [ ] **`skip_if: { command, expect }` idempotency guard** — the `creates` /
+  `unless` equivalent. When the check already passes, the step is recorded as
+  `skipped (already satisfied)` with the check output as evidence, so re-runs and
+  resumes are safe. Biggest safety win; small–medium.
+- [ ] **`tags:` + `--tags` / `--skip-tags`** on `run` and `generate` — run or print a
+  declared subset (e.g. only `preflight`), like `--tags` / `--limit`. Small.
+- [ ] **`hosts:` list → automatic matrix** over `sessions:` — an inventory-like
+  shorthand for "run this step on each host".
+- [ ] **`changed_when`** — only meaningful once the execution engine (2.1) runs
+  commands itself.
+- [ ] Handlers / `notify` — low priority.
+
+Other roadmap items worth doing next: `sessions prune` (2.4 cleanup — run folders
+grow without bound) and a Slack/webhook notification on step/approval events.
+The execution engine (2.1) has the most value but also the most risk; build it
+after `skip_if` and `tags`.
 
 ---
 

@@ -318,4 +318,229 @@ describe('sidecar e2e (real tmux)', () => {
       }
     },
   );
+
+  it(
+    'approval: d denies in a real TTY (r used to fire rollback while typing "reject")',
+    { skip, timeout: 90_000 },
+    async () => {
+      const ws = workspace('approval-keys.yaml');
+      const d = TmuxDriver.create();
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env default --no-tmux`));
+        await d.waitFor('Approve the production change', { timeoutMs: 40_000 });
+        d.key('d');
+        await d.waitFor('Rationale (optional)', { timeoutMs: 15_000 });
+        d.type('window closed');
+        const after = await d.waitFor('Rejected — step skipped', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          !after.includes('Rollback'),
+          'deny must not start a rollback',
+        );
+        await d.waitFor('Confirm the change window is open', {
+          timeoutMs: 15_000,
+        });
+        d.key('q');
+        await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '↵ = verify & next: PASS advances + auto-evidence; FAIL stays until override',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-sidecar.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
+        await d.waitFor('echo "deploy E2E_DEPLOY_OK"', { timeoutMs: 40_000 });
+        await d.waitFor('verify & next', { timeoutMs: 15_000 });
+
+        // Run the command, then ONE Enter: verify passes and the step advances.
+        d.type('echo "deploy E2E_DEPLOY_OK"', d.work);
+        await d.waitFor(/^deploy E2E_DEPLOY_OK$/m, { pane: d.work });
+        d.enter();
+        await d.waitFor('Verified output captured as evidence', {
+          timeoutMs: 15_000,
+        });
+        await d.waitFor('Verify Health', { timeoutMs: 15_000 });
+
+        // Step 2: Enter without running the command → FAIL, stays on the step.
+        d.enter();
+        await d.waitFor('Assertion failed', { timeoutMs: 15_000 });
+        d.enter(); // ↵ = stay
+        const stayed = await d.waitFor('Staying on this step', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          !stayed.includes('Operation completed'),
+          'a failed check must not advance',
+        );
+
+        // Override with a reason completes it.
+        d.enter();
+        await d.waitFor('Assertion failed', { timeoutMs: 15_000 });
+        d.key('o');
+        await d.waitFor('Reason for override', { timeoutMs: 15_000 });
+        d.type('health endpoint checked manually');
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'auto work pane: created beside samaritan, reused on the next run and on resume',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-sidecar.yaml');
+      const d = TmuxDriver.create();
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging`));
+        const first = await d.waitFor(/Work pane (%\d+) \(created\)/, {
+          timeoutMs: 40_000,
+        });
+        const paneId = first.match(/Work pane (%\d+) \(created\)/)?.[1];
+        assert.ok(paneId, 'work pane id printed');
+        assert.ok(
+          first.includes(`tmux select-pane -t ${paneId}`),
+          'prints how to reach it',
+        );
+        await d.waitFor('p paste', { timeoutMs: 15_000 });
+        d.key('q');
+        const aborted = await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+        const sessionId = aborted.match(
+          /samaritan resume ([0-9a-f-]{36})/,
+        )?.[1];
+        assert.ok(sessionId, 'resume hint');
+
+        // Resume reattaches to the SAME pane.
+        d.type(launch(ws.dir, `resume ${sessionId}`));
+        await d.waitFor(`Work pane ${paneId} (reused)`, { timeoutMs: 40_000 });
+        d.key('q');
+        await d.waitFor(/Run aborted[\s\S]*Run aborted/, { timeoutMs: 15_000 });
+
+        // A fresh run of the same operation reuses it too.
+        d.type('clear');
+        d.type(launch(ws.dir, `run ${ws.op} --env staging`));
+        await d.waitFor(`Work pane ${paneId} (reused)`, { timeoutMs: 40_000 });
+        d.key('q');
+        await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '[e] evidence: ↵ stores cleaned pane output; t + URL stores a clickable link',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-sidecar.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
+        await d.waitFor('echo "deploy E2E_DEPLOY_OK"', { timeoutMs: 40_000 });
+        // Colored output: the stored evidence must not keep the escape codes.
+        d.type("printf '\\033[31mred E2E_COLOR\\033[0m\\n'", d.work);
+        await d.waitFor('red E2E_COLOR', { pane: d.work });
+
+        d.key('e');
+        await d.waitFor('i clipboard image', { timeoutMs: 15_000 });
+        d.enter(); // ↵ pane output
+        await d.waitFor('Description [↵ = "pane output"]', {
+          timeoutMs: 15_000,
+        });
+        d.enter();
+        await d.waitFor('Evidence captured (command_output', {
+          timeoutMs: 15_000,
+        });
+
+        d.key('e');
+        await d.waitFor('i clipboard image', { timeoutMs: 15_000 });
+        d.key('t');
+        await d.waitFor('Text or URL', { timeoutMs: 15_000 });
+        d.type('https://bot:tok3n@jenkins.example.com/job/deploy/42/');
+        await d.waitFor('Credentials removed from the URL', {
+          timeoutMs: 15_000,
+        });
+        d.enter(); // accept default label
+        await d.waitFor('Evidence captured (link', { timeoutMs: 15_000 });
+
+        d.key('q');
+        await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+
+        const events = readFileSync(
+          findFile(ws.dir, 'events.jsonl') ?? '',
+          'utf8',
+        )
+          .split('\n')
+          .filter(Boolean)
+          .map((l) => JSON.parse(l))
+          .filter((e) => e.type === 'evidence_captured');
+        const pane = events.find((e) => e.evidence_type === 'command_output');
+        assert.ok(
+          pane?.content.includes('red E2E_COLOR'),
+          JSON.stringify(pane),
+        );
+        assert.ok(!pane.content.includes('\x1b'), 'no ANSI escapes stored');
+        const link = events.find((e) => e.evidence_type === 'link');
+        assert.strictEqual(
+          link?.content,
+          'https://jenkins.example.com/job/deploy/42/',
+        );
+        assert.strictEqual(
+          link?.description,
+          'jenkins.example.com/job/deploy/42',
+        );
+
+        const report = readReport(ws.dir);
+        assert.ok(
+          report.includes(
+            '[jenkins.example.com/job/deploy/42](https://jenkins.example.com/job/deploy/42/)',
+          ),
+          'report renders the link',
+        );
+        assert.ok(!report.includes('tok3n'), 'token never reaches the report');
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'approval: typing the legacy word "reject" denies instead of firing rollback',
+    { skip, timeout: 90_000 },
+    async () => {
+      const ws = workspace('approval-keys.yaml');
+      const d = TmuxDriver.create();
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env default --no-tmux`));
+        await d.waitFor('Approve the production change', { timeoutMs: 40_000 });
+        d.type('reject');
+        const after = await d.waitFor('Rationale (optional)', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(!after.includes('Rollback'), 'no rollback on the r');
+        d.enter();
+        await d.waitFor('Rejected — step skipped', { timeoutMs: 15_000 });
+        d.key('q');
+        await d.waitFor('Run aborted', { timeoutMs: 15_000 });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
 });

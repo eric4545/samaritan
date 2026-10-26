@@ -336,7 +336,12 @@ function renderEvidenceBlock(
   lines.push(label);
   lines.push('');
 
-  if (evidence.path) {
+  if (evidence.type === 'link' && evidence.content) {
+    // A URL (Jenkins build, dashboard…) renders clickable, labelled by its
+    // description (host + path by default).
+    const url = evidence.content.trim();
+    lines.push(`[${evidence.description ?? url}](${url})`);
+  } else if (evidence.path) {
     if (evidence.type === 'screenshot' || evidence.type === 'photo') {
       lines.push(`![Evidence](${redact(evidence.path)})`);
     } else {

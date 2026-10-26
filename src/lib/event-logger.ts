@@ -20,7 +20,6 @@ export type EventType =
   | 'rollback_start'
   | 'rollback_complete'
   | 'session_end'
-  | 'iterm2_pane_opened'
   | 'assert_result';
 
 export interface BaseEvent {

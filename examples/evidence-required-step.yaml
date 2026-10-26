@@ -8,25 +8,27 @@ description: |
   Run interactively:
     samaritan run evidence-required-step.yaml --env production
 
-  At either step below, pressing Enter (or "approve") with no evidence
+  At either step below, pressing ↵ (or "a" approve) with no evidence
   captured yet shows an inline warning ON THE SAME action bar (no separate
-  gate menu, no re-entry):
-    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.
+  gate menu, no re-entry), and the bar labels it `e evidence!`:
+    ⚠️  This step requires evidence — press e to capture (typed text is fine) or s to skip.
 
   From that same bar:
-    [e] capture evidence — same [e] flow as any manual step (terminal output,
-                            a file/screenshot, or pasted text — a typed-text
-                            note counts); once at least one item is captured
-                            the step completes on your next Enter
-    [s] skip             — skip the step; recorded as skipped (not completed)
-                            in the run record
+    e  capture evidence — a single-key sub-bar:
+         ↵ pane output · i clipboard image · f file · t text/link
+       e.g. copy a screenshot of the dashboard then `e` `i`, or `e` `t` and
+       paste the Jenkins build URL (stored as a clickable link, credentials
+       stripped). Once at least one item is captured the step completes on
+       your next ↵
+    s  skip — skip the step; recorded as skipped (not completed) in the
+       run record
 
   This enforcement is ON by default whenever evidence.required is true. To
   disable it (e.g. for a CI dry-run rehearsal), pass:
     samaritan run evidence-required-step.yaml --env production --no-require-evidence
 
   Note: the gate only applies to `manual`/sidecar step completion and to
-  `approval` steps' "approve" path — it does not gate plain (non-sidecar)
+  `approval` steps' approve (`a`) path — it does not gate plain (non-sidecar)
   `type: automatic` steps.
 
 environments:
@@ -37,11 +39,12 @@ steps:
     type: manual
     instruction: |
       Check the deployment dashboard and confirm all pods are healthy before
-      continuing. Capture the dashboard screenshot or `kubectl get pods`
-      output as evidence.
+      continuing. Capture the dashboard screenshot (`e` `i` after copying it),
+      the Jenkins/Argo build link (`e` `t`), or `kubectl get pods` output
+      (`e` `↵`) as evidence.
     evidence:
       required: true
-      types: [screenshot, command_output]
+      types: [screenshot, link, command_output]
 
   - name: Sign off on rollout
     type: approval

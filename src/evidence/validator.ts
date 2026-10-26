@@ -44,6 +44,11 @@ const DEFAULT_VALIDATION_RULES: Record<EvidenceType, EvidenceValidationRule> = {
     allowed_formats: ['video/mp4', 'video/webm', 'video/quicktime'],
     max_duration: 300, // 5 minutes
   },
+  link: {
+    type: 'link',
+    max_size: 8 * 1024, // a URL, not a payload
+    allowed_formats: ['text/uri-list'],
+  },
 };
 
 /**

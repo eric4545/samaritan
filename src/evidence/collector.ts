@@ -281,6 +281,8 @@ export function detectMimeType(
       return 'text/plain';
     case 'file':
       return 'application/octet-stream';
+    case 'link':
+      return 'text/uri-list';
     default:
       return 'application/octet-stream';
   }

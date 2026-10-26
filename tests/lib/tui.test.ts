@@ -12,13 +12,16 @@ import { SessionState } from '../../src/lib/session-state';
 import {
   getTerminalSize,
   interpolateExpect,
+  renderActionBar,
   renderAssertOutcome,
   renderCodeBlock,
   renderHighlightedBlock,
+  renderKeyHelp,
   renderKeyHints,
   renderVerifyOutcome,
   StepController,
   type StepControllerOptions,
+  tailOfOutput,
   truncateToWidth,
 } from '../../src/lib/tui';
 
@@ -147,6 +150,73 @@ describe('renderKeyHints', () => {
   it('starts with two-space indent', () => {
     const out = stripAnsi(renderKeyHints([{ key: 'x', label: 'foo' }]));
     assert.ok(out.startsWith('  '), 'starts with two spaces');
+  });
+});
+
+describe('renderActionBar — one-row, width-bounded key bar', () => {
+  const SIDECAR = [
+    { key: '↵', label: 'verify & next' },
+    { key: 'v', label: 'check' },
+    { key: 'p', label: 'paste' },
+    { key: 'c', label: 'copy' },
+    { key: 'e', label: 'evidence!' },
+    { key: 'n', label: 'note' },
+    { key: 's', label: 'skip' },
+    { key: 'b', label: 'back' },
+    { key: 'j', label: 'jump' },
+    { key: 'r', label: 'rollback' },
+    { key: 'g', label: 'global' },
+    { key: 'q', label: 'quit' },
+  ];
+
+  it('is a single line', () => {
+    const out = renderActionBar(SIDECAR, { columns: 80 });
+    assert.ok(!out.includes('\n'), 'bar must be one row');
+  });
+
+  for (const columns of [80, 60, 40]) {
+    it(`fits within ${columns} visible columns`, () => {
+      const out = stripAnsi(renderActionBar(SIDECAR, { columns }));
+      assert.ok(
+        out.length <= columns,
+        `bar is ${out.length} cols, must fit ${columns}: ${out}`,
+      );
+    });
+  }
+
+  it('keeps hints in priority order and ends with "? more" when truncated', () => {
+    const out = stripAnsi(renderActionBar(SIDECAR, { columns: 80 }));
+    assert.ok(out.startsWith('  ↵ verify & next · v check'), out);
+    assert.ok(out.endsWith('? more'), out);
+    assert.ok(!out.includes('quit'), 'low-priority hint dropped at 80 cols');
+  });
+
+  it('shows every hint and "? help" when the width is unbounded (non-TTY)', () => {
+    const out = stripAnsi(
+      renderActionBar(SIDECAR, { columns: Number.POSITIVE_INFINITY }),
+    );
+    assert.ok(out.includes('q quit'), out);
+    assert.ok(out.endsWith('? help'), out);
+  });
+
+  it('always shows the first hint even on a tiny terminal', () => {
+    const out = stripAnsi(renderActionBar(SIDECAR, { columns: 10 }));
+    assert.ok(out.includes('↵'), out);
+    assert.ok(out.includes('?'), out);
+  });
+});
+
+describe('renderKeyHelp', () => {
+  it('lists every key with its label, one per line', () => {
+    const out = stripAnsi(
+      renderKeyHelp([
+        { key: '↵', label: 'next' },
+        { key: 'q', label: 'quit' },
+      ]),
+    );
+    const lines = out.split('\n').filter((l) => l.trim());
+    assert.strictEqual(lines.length, 3, out); // header + 2 keys
+    assert.ok(/↵\s+next/.test(out) && /q\s+quit/.test(out), out);
   });
 });
 
@@ -971,5 +1041,36 @@ describe('responsive rendering (terminal size aware)', () => {
       cut.endsWith(`${String.fromCharCode(27)}[0m`),
       'trailing reset preserved',
     );
+  });
+});
+
+describe('tailOfOutput', () => {
+  it('keeps the last lines and reports how many were hidden', () => {
+    const text = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join(
+      '\n',
+    );
+    const { tail, hidden } = tailOfOutput(text);
+    const lines = tail.split('\n');
+    assert.strictEqual(lines.at(-1), 'line 30');
+    assert.strictEqual(hidden, 30 - lines.length);
+    assert.ok(lines.length < 30);
+  });
+
+  it('returns short output unchanged', () => {
+    assert.deepStrictEqual(tailOfOutput('a\nb'), { tail: 'a\nb', hidden: 0 });
+  });
+});
+
+describe('renderActionBar — needsEnter keys', () => {
+  it('marks a key that needs Enter with ↵ in the bar and in help', () => {
+    const hints = [
+      { key: 'a', label: 'approve' },
+      { key: 'r', label: 'rollback', needsEnter: true },
+    ];
+    const bar = stripAnsi(
+      renderActionBar(hints, { columns: Number.POSITIVE_INFINITY }),
+    );
+    assert.ok(bar.includes('r↵ rollback'), bar);
+    assert.ok(stripAnsi(renderKeyHelp(hints)).includes('r↵'), 'help too');
   });
 });
