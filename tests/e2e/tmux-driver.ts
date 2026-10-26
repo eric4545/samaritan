@@ -122,6 +122,25 @@ export class TmuxDriver {
     );
   }
 
+  /**
+   * Poll `read` until `done(value)` holds or the timeout passes; returns the
+   * last value either way so the caller's assertion shows what it saw. For
+   * state that isn't pane text (sessions, pipes) — `waitFor` covers text.
+   */
+  static async waitUntil<T>(
+    read: () => T,
+    done: (value: T) => boolean,
+    { timeoutMs = 6_000, intervalMs = 300 } = {},
+  ): Promise<T> {
+    const deadline = Date.now() + timeoutMs;
+    let value = read();
+    while (!done(value) && Date.now() < deadline) {
+      await wait(intervalMs);
+      value = read();
+    }
+    return value;
+  }
+
   /** List live tmux sessions (server-wide) — used to assert bootstrap/teardown. */
   static listSessions(): string[] {
     const out = tmux(['ls', '-F', '#{session_name}']);

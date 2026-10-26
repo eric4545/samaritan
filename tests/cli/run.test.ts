@@ -65,6 +65,12 @@ function runCli(
   };
 }
 
+function extractSessionId(output: string): string {
+  const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
+  assert.ok(m, `run output must include the session id; got:\n${output}`);
+  return (m as RegExpMatchArray)[1];
+}
+
 // ─── --env / --environment flag ───────────────────────────────────────────────
 
 describe('run command: --env / --environment flag', () => {
@@ -749,12 +755,6 @@ describe('run command: --report flag', () => {
 // ─── durable run record (beside the operation) ──────────────────────────────
 
 describe('run command: durable run record beside the operation', () => {
-  function extractSessionId(output: string): string {
-    const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
-    assert.ok(m, `run output must include the session id; got:\n${output}`);
-    return (m as RegExpMatchArray)[1];
-  }
-
   it('always writes events.jsonl + report.md beside the operation and a step_log on the session', () => {
     // Copy a fixture into a writable temp dir so the .samaritan-runs/ folder
     // lands next to the operation, not in the repo tree.
@@ -1053,6 +1053,23 @@ describe('run command: sub-steps support', () => {
 // ─── ${VAR} rendering in run-mode display ────────────────────────────────────
 
 describe('run command: ${VAR} rendering in step display', () => {
+  it('--var overrides an environment variable (regression: --var was ignored)', () => {
+    const result = runCli(
+      [
+        'run',
+        fixturePath('varRendering'),
+        '--env',
+        'staging',
+        '--var',
+        'NAMESPACE=from-cli',
+      ],
+      { input: 'q\n' },
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(combined.includes('-n from-cli'), combined);
+    assert.ok(!combined.includes('staging-ns'), combined);
+  });
+
   it('resolves ${VAR} in step description', () => {
     const fixture = fixturePath('varRendering');
     const result = runCli(['run', fixture, '--env', 'staging'], {
@@ -1278,12 +1295,6 @@ describe('run command: TTY raw-mode action prompt', () => {
 // ─── Abort persists a resumable session (issue: "how to resume a run?") ──────
 
 describe('run command: abort persists a resumable session', () => {
-  function extractSessionId(output: string): string {
-    const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
-    assert.ok(m, `run output must include the session id; got:\n${output}`);
-    return (m as RegExpMatchArray)[1];
-  }
-
   function readSessionFile(sessionId: string): any {
     const path = join(homedir(), '.samaritan', 'sessions', `${sessionId}.json`);
     assert.ok(existsSync(path), `session file must exist at ${path}`);
@@ -1388,12 +1399,6 @@ describe('run command: abort persists a resumable session', () => {
 // ─── run --from-step: jump ahead at startup ─────────────────────────────────
 
 describe('run command: --from-step starts at a later step', () => {
-  function extractSessionId(output: string): string {
-    const m = output.match(/📋 Session: ([0-9a-f-]{36})/);
-    assert.ok(m, `run output must include the session id; got:\n${output}`);
-    return (m as RegExpMatchArray)[1];
-  }
-
   function readSessionFile(sessionId: string): any {
     const path = join(homedir(), '.samaritan', 'sessions', `${sessionId}.json`);
     assert.ok(existsSync(path), `session file must exist at ${path}`);
@@ -1753,26 +1758,27 @@ describe('run command: when-gated step filtering by environment', () => {
 });
 
 // ─── run.tmux_session / resume --attach ─────────────────────────────────────
+// Which runs check the name, and the variant/default ordering, are unit-tested
+// in tests/cli/run-tmux-session.test.ts; these spawns cover CLI-only behaviour.
 
-describe('run/resume: configurable tmux session name + resume --attach', () => {
+describe('run/resume: tmux session name + resume --attach (CLI)', () => {
   it('run refuses to start when run.tmux_session has an unresolved ${VAR}', () => {
     const dir = mkdtempSync(join(tmpdir(), 'samaritan-tmux-name-'));
     const file = join(dir, 'op.yaml');
-    // Drop TICKET so `${TICKET}-${ENV}` can't resolve.
-    writeFileSync(
-      file,
-      readFileSync(fixturePath('tmuxSessionName'), 'utf-8').replace(
-        /common_variables:\n {2}TICKET: SAMTEST-1\n/,
-        '',
-      ),
+    const src = readFileSync(fixturePath('tmuxSessionName'), 'utf-8');
+    const yaml = src.replace(
+      'tmux_session: ${TICKET}-${ENV}',
+      'tmux_session: ${NOPE}-${ENV}',
     );
+    assert.notStrictEqual(yaml, src, 'fixture edit must apply');
+    writeFileSync(file, yaml);
     try {
       const result = runCli(['run', file, '--env', 'sbx'], { input: 'q\n' });
       const combined = result.stdout + result.stderr;
       assert.notStrictEqual(result.status, 0, combined);
       assert.match(
         combined,
-        /run\.tmux_session "\$\{TICKET\}-\$\{ENV\}" references undefined variable\(s\): TICKET/,
+        /run\.tmux_session "\$\{NOPE\}-\$\{ENV\}" references undefined variable\(s\): NOPE/,
       );
       assert.ok(
         !combined.includes('📋 Session:'),
@@ -1783,40 +1789,14 @@ describe('run/resume: configurable tmux session name + resume --attach', () => {
     }
   });
 
-  it('the unresolved-name check is skipped for a sidecar --attach run', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'samaritan-tmux-name-'));
-    const file = join(dir, 'op.yaml');
-    writeFileSync(
-      file,
-      readFileSync(fixturePath('tmuxSessionName'), 'utf-8').replace(
-        /common_variables:\n {2}TICKET: SAMTEST-1\n/,
-        '',
-      ),
-    );
-    try {
-      const result = runCli(
-        ['run', file, '--env', 'sbx', '--attach', 'no-such-session:9.9'],
-        { input: 'q\n' },
-      );
-      const combined = result.stdout + result.stderr;
-      assert.ok(!combined.includes('references undefined'), combined);
-      assert.ok(combined.includes('📋 Session:'), combined);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   it('resume accepts --attach and validates the target like run does', () => {
     const first = runCli(
       ['run', fixturePath('manualStepActions'), '--env', 'default'],
       { input: 'q\n' },
     );
-    const m = (first.stdout + first.stderr).match(
-      /📋 Session: ([0-9a-f-]{36})/,
-    );
-    assert.ok(m, first.stdout + first.stderr);
+    const sessionId = extractSessionId(first.stdout + first.stderr);
     const result = runCli(
-      ['resume', (m as RegExpMatchArray)[1], '--attach', 'no-such-session:9.9'],
+      ['resume', sessionId, '--attach', 'no-such-session:9.9'],
       { input: 'q\n' },
     );
     const combined = result.stdout + result.stderr;
@@ -1825,42 +1805,6 @@ describe('run/resume: configurable tmux session name + resume --attach', () => {
       combined,
       /--attach target "no-such-session:9\.9" is not a valid tmux pane/,
     );
-  });
-});
-
-// ─── --var overrides ─────────────────────────────────────────────────────────
-
-describe('run --var', () => {
-  it('overrides a YAML variable (regression: --var was silently ignored)', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'samaritan-var-'));
-    const file = join(dir, 'op.yaml');
-    writeFileSync(
-      file,
-      `name: Var Override
-version: 1.0.0
-description: d
-common_variables:
-  TAG: from-yaml
-environments:
-  - name: sbx
-    description: s
-steps:
-  - name: Show
-    type: manual
-    command: echo TAG=\${TAG}
-`,
-    );
-    try {
-      const result = runCli(
-        ['run', file, '--env', 'sbx', '--var', 'TAG=from-cli'],
-        { input: 'q\n' },
-      );
-      const combined = result.stdout + result.stderr;
-      assert.ok(combined.includes('echo TAG=from-cli'), combined);
-      assert.ok(!combined.includes('echo TAG=from-yaml'), combined);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
   });
 });
 

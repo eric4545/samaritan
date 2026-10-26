@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -284,75 +284,34 @@ steps:
   });
 });
 
-describe('validate run.tmux_session / run.default_session', () => {
-  const write = (body: string): string => {
+describe('validate run.tmux_session / run.default_session (wiring)', () => {
+  // The rules themselves are unit-tested in tests/lib/run-config-lint.test.ts;
+  // these two spawns only prove `validate` reports them.
+  it('the tmux-session-name example validates clean', () => {
+    const result = runCli(['validate', 'examples/tmux-session-name.yaml']);
+    assert.strictEqual(result.status, 0, result.stdout + result.stderr);
+    assert.ok(!result.stdout.includes('run.'), result.stdout);
+  });
+
+  it('an undeclared default_session fails validation', () => {
     const dir = mkdtempSync(join(tmpdir(), 'samaritan-tmux-name-'));
     const file = join(dir, 'op.yaml');
-    writeFileSync(file, body);
-    return file;
-  };
-  const op = (run: string, sessions = 'sessions:\n  work: {}\n'): string =>
-    `name: Tmux Name
-version: 1.0.0
-description: d
-common_variables:
-  TICKET: T-1
-${sessions}run:
-${run}
-environments:
-  - name: sbx
-    description: sandbox
-steps:
-  - name: Echo
-    type: manual
-    command: echo hi
-`;
-
-  it('accepts a resolvable ${TICKET}-${ENV} name and a declared default', () => {
-    const result = runCli([
-      'validate',
-      write(op('  tmux_session: ${TICKET}-${ENV}\n  default_session: work')),
-    ]);
-    assert.strictEqual(result.status, 0, result.stdout + result.stderr);
-    assert.ok(!result.stdout.includes('tmux_session'), result.stdout);
-  });
-
-  it('errors when default_session is not a declared session', () => {
-    const result = runCli(['validate', write(op('  default_session: wrok'))]);
-    assert.notStrictEqual(result.status, 0);
-    assert.match(
-      result.stdout,
-      /run\.default_session "wrok" is not declared in sessions: \(declared: work\)/,
+    writeFileSync(
+      file,
+      readFileSync('examples/tmux-session-name.yaml', 'utf-8').replace(
+        'default_session: remote',
+        'default_session: wrok',
+      ),
     );
-  });
-
-  it('warns (not errors) when tmux_session uses an undefined variable', () => {
-    const result = runCli([
-      'validate',
-      write(op('  tmux_session: ${NOPE}-${ENV}')),
-    ]);
-    assert.strictEqual(result.status, 0, result.stdout + result.stderr);
-    assert.match(
-      result.stdout,
-      /uses \$\{NOPE\} not defined for environment 'sbx'/,
-    );
-  });
-
-  it('warns that tmux_session has no effect without sessions:', () => {
-    const result = runCli([
-      'validate',
-      write(op('  tmux_session: ${TICKET}', '')),
-    ]);
-    assert.strictEqual(result.status, 0, result.stdout + result.stderr);
-    assert.match(
-      result.stdout,
-      /run\.tmux_session has no effect without sessions:/,
-    );
-  });
-
-  it('schema rejects an empty tmux_session', () => {
-    const result = runCli(['validate', write(op("  tmux_session: ''"))]);
-    assert.notStrictEqual(result.status, 0);
-    assert.match(result.stdout, /tmux_session/);
+    try {
+      const result = runCli(['validate', file]);
+      assert.notStrictEqual(result.status, 0);
+      assert.match(
+        result.stdout,
+        /run\.default_session "wrok" is not declared in sessions: \(declared: remote, local\)/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

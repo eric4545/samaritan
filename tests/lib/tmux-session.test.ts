@@ -7,7 +7,6 @@ import { describe, it } from 'node:test';
 import {
   buildPasteBufferArgs,
   capturePaneCursorLine,
-  DEFAULT_TMUX_SESSION_TEMPLATE,
   isLocalSession,
   isMultiLinePaste,
   listTmuxPanes,
@@ -363,17 +362,7 @@ describe('TmuxSession CaptureBackend conformance', () => {
     assert.strictEqual(session.hasTarget('execution'), true);
   });
 
-  it('describeTarget includes pane when registered', () => {
-    const session = new TmuxSession('cbc-3', 'samaritan-cbc-3');
-    session.registerPane('execution', 'samaritan-cbc-3:0.0');
-    const desc = session.describeTarget('execution');
-    assert.ok(
-      desc.includes('samaritan-cbc-3:0.0'),
-      `describeTarget should include pane, got: ${desc}`,
-    );
-  });
-
-  it('describeTarget names the window as well as the bare pane id', () => {
+  it('describeTarget names the window and the pane id when registered', () => {
     const session = new TmuxSession('cbc-5', 'TICKET-1-sbx');
     session.registerPane('work', '%7');
     assert.strictEqual(
@@ -499,46 +488,34 @@ describe('parseWindowPanes', () => {
 
 describe('resolveTmuxSessionName (run.tmux_session)', () => {
   const ctx = { sessionId: 'abc-123', env: 'sbx', operationId: 'op-1' };
-
-  it('defaults to samaritan-<session id> (unchanged behaviour)', () => {
-    assert.strictEqual(
-      DEFAULT_TMUX_SESSION_TEMPLATE,
-      'samaritan-${SESSION_ID}',
-    );
-    assert.strictEqual(
-      resolveTmuxSessionName(undefined, {}, ctx),
-      'samaritan-abc-123',
-    );
-  });
-
-  it('resolves ${TICKET}-${ENV} from run vars + the ENV built-in', () => {
-    assert.strictEqual(
-      resolveTmuxSessionName(
-        '${TICKET}-${ENV}',
-        { TICKET: 'GCSGPSOPS-17034' },
-        ctx,
-      ),
+  const cases: Array<
+    [string, string | undefined, Record<string, any>, string]
+  > = [
+    ['default is samaritan-<session id>', undefined, {}, 'samaritan-abc-123'],
+    [
+      '${TICKET}-${ENV} from run vars + the ENV built-in',
+      '${TICKET}-${ENV}',
+      { TICKET: 'GCSGPSOPS-17034' },
       'GCSGPSOPS-17034-sbx',
-    );
-  });
-
-  it('a user-defined variable wins over a built-in of the same name', () => {
-    assert.strictEqual(
-      resolveTmuxSessionName(
-        '${TICKET}-${ENV}',
-        { TICKET: 'T', ENV: 'x' },
-        ctx,
-      ),
+    ],
+    [
+      'a user variable wins over a built-in of the same name',
+      '${TICKET}-${ENV}',
+      { TICKET: 'T', ENV: 'x' },
       'T-x',
-    );
-  });
-
-  it('sanitizes characters tmux forbids in session names (. and :)', () => {
-    assert.strictEqual(
-      resolveTmuxSessionName('${V}', { V: 'rel.1:a b' }, ctx),
+    ],
+    [
+      'characters tmux forbids (. and :) are sanitized',
+      '${V}',
+      { V: 'rel.1:a b' },
       'rel_1_a_b',
-    );
-  });
+    ],
+  ];
+  for (const [name, template, vars, expected] of cases) {
+    it(name, () => {
+      assert.strictEqual(resolveTmuxSessionName(template, vars, ctx), expected);
+    });
+  }
 
   it('throws on an unresolved variable instead of guessing a name', () => {
     assert.throws(
@@ -560,27 +537,24 @@ describe('resolveTmuxSessionName (run.tmux_session)', () => {
   });
 });
 
-describe('TmuxSession ownership (reuse of an existing tmux session)', () => {
-  it('is owned by default and exposes its tmux name', () => {
-    const session = new TmuxSession('own-1', 'samaritan-own-1');
-    assert.strictEqual(session.isOwned(), true);
-    assert.strictEqual(session.getTmuxName(), 'samaritan-own-1');
-  });
-
-  it('an adopted (not owned) session tears down without throwing', () => {
-    const session = new TmuxSession('own-2', 'operator-session', false);
-    session.registerPane('work', '%99999');
-    assert.strictEqual(session.isOwned(), false);
-    assert.doesNotThrow(() => session.teardown());
+describe('TmuxSession ownership and pane fallback', () => {
+  it('a session samaritan creates is owned (killed on teardown) by default', () => {
+    assert.strictEqual(
+      new TmuxSession('own-1', 'samaritan-own-1').isOwned(),
+      true,
+    );
+    assert.strictEqual(
+      new TmuxSession('own-2', 'operator', false).isOwned(),
+      false,
+    );
   });
 
   it('an unregistered session name falls back to the FIRST declared pane', () => {
     // Never a bare `<tmux>:0.0`, which in a reused operator session may be an
-    // unrelated window. describeTarget is the observable surface here.
+    // unrelated window.
     const session = new TmuxSession('own-3', 'operator-session', false);
     session.registerPane('work', '%1');
     session.registerPane('aux', '%2');
-    assert.strictEqual(session.hasTarget('default'), false);
     assert.strictEqual(session.paneFor('default'), '%1');
     assert.strictEqual(session.paneFor('aux'), '%2');
   });

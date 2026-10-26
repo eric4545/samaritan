@@ -86,9 +86,6 @@ function findFile(dir: string, name: string): string | undefined {
 // The resume hint an abort prints (`samaritan resume <session-id>`).
 const RESUME_HINT = /samaritan resume ([0-9a-f-]{36})/;
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((r) => setTimeout(r, ms));
-
 describe('sidecar e2e (real tmux)', () => {
   it(
     'golden path: attach → [v] verify PASS → auto-evidence → complete → report',
@@ -230,17 +227,16 @@ describe('sidecar e2e (real tmux)', () => {
         });
 
         // Teardown must kill the spawned session (poll briefly for exit).
-        let gone = false;
-        for (let i = 0; i < 20; i++) {
-          if (
-            !TmuxDriver.listSessions().some((s) => s.startsWith('samaritan-'))
-          ) {
-            gone = true;
-            break;
-          }
-          await sleep(300);
-        }
-        assert.ok(gone, 'teardown must kill the spawned samaritan-* session');
+        const left = await TmuxDriver.waitUntil(
+          () =>
+            TmuxDriver.listSessions().filter((s) => s.startsWith('samaritan-')),
+          (sessions) => sessions.length === 0,
+        );
+        assert.deepStrictEqual(
+          left,
+          [],
+          'teardown must kill the spawned samaritan-* session',
+        );
       } finally {
         d.kill();
         ws.cleanup();
@@ -290,19 +286,18 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor('Run aborted', { timeoutMs: 15_000 });
 
         // Not ours → never killed; every window survives, pipes closed.
-        let panes = '';
-        for (let i = 0; i < 20; i++) {
-          panes = tmux([
-            'list-panes',
-            '-s',
-            '-t',
-            `=${opSession}`,
-            '-F',
-            '#{window_name}=#{pane_pipe}',
-          ]).stdout;
-          if (!panes.includes('=1')) break;
-          await sleep(300);
-        }
+        const panes = await TmuxDriver.waitUntil(
+          () =>
+            tmux([
+              'list-panes',
+              '-s',
+              '-t',
+              `=${opSession}`,
+              '-F',
+              '#{window_name}=#{pane_pipe}',
+            ]).stdout,
+          (out) => !out.includes('=1'),
+        );
         assert.ok(
           TmuxDriver.listSessions().includes(opSession),
           'a reused operator session must not be killed',

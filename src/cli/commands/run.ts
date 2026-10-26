@@ -312,7 +312,6 @@ class OperationRunner {
     console.log(`🎯 Target environment: ${targetEnv}`);
 
     const operation = await this.parseOperationFile(absFile);
-    applyDefaultSession(operation);
 
     const environment = operation.environments.find(
       (env) => env.name === targetEnv,
@@ -342,8 +341,7 @@ class OperationRunner {
       assertTmuxSessionResolvable(
         operation,
         resolvedVars,
-        executionMode,
-        options.attach,
+        sidecarAttachTarget(executionMode, options.attach),
       );
     }
 
@@ -373,7 +371,7 @@ class OperationRunner {
       autoMode,
     };
 
-    const { flatSteps, execOperation } = this.prepareFlatOperation(
+    const { flatSteps, execOperation } = prepareFlatOperation(
       operation,
       targetEnv,
     );
@@ -606,14 +604,12 @@ class OperationRunner {
     }
 
     const operation = await this.parseOperationFile(session.operation_file);
-    applyDefaultSession(operation);
     const resumeMode: ExecutionMode =
       (session.mode as ExecutionMode | undefined) ?? 'sidecar';
     assertTmuxSessionResolvable(
       operation,
       session.variables || {},
-      resumeMode,
-      options.attach ?? session.attach_target,
+      sidecarAttachTarget(resumeMode, options.attach, session.attach_target),
     );
 
     const context = {
@@ -626,7 +622,7 @@ class OperationRunner {
       autoMode: session.mode === 'automatic',
     };
 
-    const { flatSteps, execOperation } = this.prepareFlatOperation(
+    const { flatSteps, execOperation } = prepareFlatOperation(
       operation,
       session.environment,
     );
@@ -720,8 +716,7 @@ class OperationRunner {
 
     // An attached pane (`--attach`, or the one saved on a resumed session)
     // wins: `sessions:` are then never spawned, even if the pane is gone.
-    const target =
-      mode === 'sidecar' ? (attach ?? opts.savedAttach) : undefined;
+    const target = sidecarAttachTarget(mode, attach, opts.savedAttach);
     if (target) {
       const capture = attachSidecarPane(
         opts.sessionId,
@@ -754,7 +749,7 @@ class OperationRunner {
         const boot = await bootstrapSessions(
           opts.sessionId,
           operation.sessions,
-          { tmuxName },
+          tmuxName,
         );
         if (boot.reused) {
           console.log(`   ♻️  Reusing existing tmux session: ${tmuxName}`);
@@ -793,23 +788,6 @@ class OperationRunner {
       );
     }
     return {};
-  }
-
-  private prepareFlatOperation(
-    operation: Operation,
-    targetEnv: string,
-  ): {
-    flatSteps: FlatStep[];
-    execOperation: Operation;
-  } {
-    // All steps are included in flatSteps (with filteredByEnv flag) so that
-    // authored step numbers are stable — `--from-step N` always means the Nth
-    // step the author wrote, not the Nth step after env filtering.
-    const flatSteps = flattenAndMarkForEnv(operation.steps, targetEnv);
-    return {
-      flatSteps,
-      execOperation: { ...operation, steps: flatSteps.map((f) => f.step) },
-    };
   }
 
   private async runInteractiveStepLoop(
@@ -3080,18 +3058,51 @@ function inferEvidenceTypeFromExtension(filename: string): EvidenceType {
 }
 
 /**
- * Throw when `run.tmux_session` references a `${VAR}` this run can't resolve
- * — but only when the run will actually bootstrap `sessions:` (not with a
- * sidecar `--attach`, which uses the operator's pane instead).
+ * The run's working copy of an operation: every step flattened in authored
+ * order (env-filtered ones flagged, so step numbers stay stable — `--from-step
+ * N` is the Nth step the author wrote), `variants.<env>` merged, and
+ * `run.default_session` applied.
  */
-function assertTmuxSessionResolvable(
+export function prepareFlatOperation(
   operation: Operation,
-  vars: Record<string, any>,
+  targetEnv: string,
+): {
+  flatSteps: FlatStep[];
+  execOperation: Operation;
+} {
+  const flatSteps = flattenAndMarkForEnv(operation.steps, targetEnv);
+  const execOperation = { ...operation, steps: flatSteps.map((f) => f.step) };
+  // After the variant merge, so a `variants.<env>.rollback` entry gets the
+  // default too. Run-time only: `generate` never sees this copy.
+  applyDefaultSession(execOperation);
+  return { flatSteps, execOperation };
+}
+
+/**
+ * The pane a sidecar run captures from instead of spawning `sessions:`:
+ * `--attach`, else the one saved on a resumed session. Non-sidecar runs never
+ * attach. One rule for `setupCapture` and the fail-fast name check.
+ */
+function sidecarAttachTarget(
   mode: ExecutionMode,
   attach: string | undefined,
+  savedAttach?: string,
+): string | undefined {
+  return mode === 'sidecar' ? (attach ?? savedAttach) : undefined;
+}
+
+/**
+ * Throw when `run.tmux_session` references a `${VAR}` this run can't resolve
+ * — but only when the run will actually bootstrap `sessions:` (not when an
+ * attached pane replaces them).
+ */
+export function assertTmuxSessionResolvable(
+  operation: Operation,
+  vars: Record<string, any>,
+  attachTarget: string | undefined,
 ): void {
   const hasSessions = Object.keys(operation.sessions ?? {}).length > 0;
-  if (!hasSessions || (mode === 'sidecar' && attach)) return;
+  if (!hasSessions || attachTarget) return;
   const missing = listUnresolvedTmuxSessionVars(
     operation.run?.tmux_session,
     vars,

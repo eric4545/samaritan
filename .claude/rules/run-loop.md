@@ -259,8 +259,12 @@ from `-P -F '#{pane_id}'`), never `<name>:<i>.0`, which breaks under
 (the creator tags `@samaritan_owner` = run id, so a resume after Ctrl+C owns it
 again) decides teardown: owned → `kill-session`; adopted → only `pipe-pane`
 close. `paneFor()` falls back to the FIRST registered pane, never `:0.0`.
-`applyDefaultSession(operation)` (`src/lib/default-session.ts`) fills a missing
-`session` at run time only, right after parse in `run`/`resume`.
+`applyDefaultSession` (`src/lib/default-session.ts`) fills a missing
+`session` inside `prepareFlatOperation` — AFTER the `variants.<env>` merge, so a
+variant's rollback gets it too (the run's parsed copy only; `generate` never).
+`sidecarAttachTarget()` is the one "attached pane replaces `sessions:`" rule
+shared by `setupCapture` and the fail-fast check. `validate`'s rules live in
+`lintRunConfig` (`src/lib/run-config-lint.ts`).
 tmux 3.4 rewrites TAB in `-F` output to `_`, so use `TMUX_FIELD_SEP` (`<|>`).
 e2e: `tests/e2e/sidecar-tmux.e2e.ts` (fixture `e2e-tmux-session-name.yaml`).
 

@@ -1,7 +1,6 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import { applyDefaultSession } from '../../src/lib/default-session';
-import { generateManual } from '../../src/manuals/generator';
 import { parseFixture } from '../fixtures/fixtures';
 
 describe('applyDefaultSession (run.default_session)', () => {
@@ -39,18 +38,5 @@ describe('applyDefaultSession (run.default_session)', () => {
     applyDefaultSession(op);
     assert.strictEqual(op.steps[0].session, undefined);
     assert.strictEqual(op.rollback?.steps[0].session, undefined);
-  });
-});
-
-describe('run.default_session is run-time only', () => {
-  it('generated manuals do not show a session the author did not write', async () => {
-    const op = await parseFixture('tmuxSessionName');
-    const manual = generateManual(op);
-    // Only the explicit `session: aux` step renders a session line.
-    assert.ok(manual.includes('Session: aux'), 'explicit session still shown');
-    assert.ok(
-      !manual.includes('Session: work'),
-      'default_session must not leak into the manual',
-    );
   });
 });

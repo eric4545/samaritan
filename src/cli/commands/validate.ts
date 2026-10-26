@@ -10,13 +10,13 @@ import {
   lintExpectShellVars,
 } from '../../lib/expect-lint';
 import { formatRegexFinding, lintOperationRegex } from '../../lib/regex-lint';
+import { lintRunConfig } from '../../lib/run-config-lint';
 import {
   formatFinding,
   isShellcheckAvailable,
   lintOperationCommands,
 } from '../../lib/shell-lint';
 import { validateStepDeps } from '../../lib/step-deps';
-import { listUnresolvedTmuxSessionVars } from '../../lib/tmux-session';
 import type { Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 
@@ -73,7 +73,9 @@ class OperationValidator {
       this.validateOperationStructure(operation, result, options);
       this.validateEnvironments(operation, result, options);
       this.validateSteps(operation, result, options);
-      this.validateRunConfig(operation, result);
+      const runConfig = lintRunConfig(operation);
+      result.errors.push(...runConfig.errors);
+      result.warnings.push(...runConfig.warnings);
       this.validateVariables(operation, result, options);
       this.validateExpectRegex(operation, result, options);
       this.validateExpectShellVars(operation, result);
@@ -277,49 +279,6 @@ class OperationValidator {
             `Step ${i + 1} (${step.name}): rollback defined but no command or instruction specified`,
           );
         }
-      }
-    }
-  }
-
-  /**
-   * `run.default_session` must name a declared `sessions:` key (a typo would
-   * silently route sessionless steps nowhere). `run.tmux_session` `${VAR}`s
-   * that an environment doesn't define are warnings, not errors — `--var` can
-   * still supply them — but `run`/`resume` refuse to start without them.
-   */
-  private validateRunConfig(
-    operation: Operation,
-    result: ValidationResult,
-  ): void {
-    const run = operation.run;
-    if (!run) return;
-    const declared = Object.keys(operation.sessions ?? {});
-
-    if (run.default_session && !declared.includes(run.default_session)) {
-      result.errors.push(
-        `run.default_session "${run.default_session}" is not declared in sessions:` +
-          (declared.length > 0
-            ? ` (declared: ${declared.join(', ')})`
-            : ' (no sessions: defined)'),
-      );
-    }
-
-    if (run.tmux_session === undefined) return;
-    if (declared.length === 0) {
-      result.warnings.push(
-        'run.tmux_session has no effect without sessions: (it names the tmux session holding their windows)',
-      );
-      return;
-    }
-    for (const env of operation.environments) {
-      const missing = listUnresolvedTmuxSessionVars(run.tmux_session, {
-        ...(operation.common_variables ?? {}),
-        ...(operation.variables[env.name] ?? {}),
-      });
-      if (missing.length > 0) {
-        result.warnings.push(
-          `run.tmux_session "${run.tmux_session}" uses ${missing.map((m) => `\${${m}}`).join(', ')} not defined for environment '${env.name}' — define it or pass --var at run time`,
-        );
       }
     }
   }

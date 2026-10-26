@@ -278,11 +278,6 @@ export class TmuxSession implements CaptureBackend {
     this.owned = owned;
   }
 
-  /** The tmux session name — what the operator passes to `tmux attach -t`. */
-  getTmuxName(): string {
-    return this.tmuxName;
-  }
-
   /** True when samaritan created the tmux session (and will kill it). */
   isOwned(): boolean {
     return this.owned;
@@ -688,14 +683,7 @@ export function sanitizeSessionName(name: string): string {
 /**
  * Default tmux session name: unique per run so concurrent runs never collide.
  */
-export const DEFAULT_TMUX_SESSION_TEMPLATE = 'samaritan-${SESSION_ID}';
-
-/** Run-scoped variables available to `run.tmux_session` (user vars win). */
-export const TMUX_SESSION_BUILTIN_VARS = [
-  'SESSION_ID',
-  'ENV',
-  'OPERATION_ID',
-] as const;
+const DEFAULT_TMUX_SESSION_TEMPLATE = 'samaritan-${SESSION_ID}';
 
 export interface TmuxSessionNameContext {
   sessionId: string;
@@ -714,13 +702,23 @@ export function listUnresolvedTmuxSessionVars(
   template: string | undefined,
   vars: Record<string, any>,
 ): string[] {
-  const builtins = Object.fromEntries(
-    TMUX_SESSION_BUILTIN_VARS.map((name) => [name, '']),
-  );
-  return listUnresolvedVars(template ?? DEFAULT_TMUX_SESSION_TEMPLATE, {
-    ...builtins,
+  // The default template only uses built-ins, so it always resolves.
+  if (!template) return [];
+  const ctx = { sessionId: '', env: '', operationId: '' };
+  return listUnresolvedVars(template, tmuxNameScope(vars, ctx));
+}
+
+/** Run-scoped built-ins for `run.tmux_session`, merged UNDER the user's vars. */
+function tmuxNameScope(
+  vars: Record<string, any>,
+  ctx: TmuxSessionNameContext,
+): Record<string, any> {
+  return {
+    SESSION_ID: ctx.sessionId,
+    ENV: ctx.env,
+    OPERATION_ID: ctx.operationId,
     ...vars,
-  });
+  };
 }
 
 /**
@@ -735,16 +733,10 @@ export function resolveTmuxSessionName(
   vars: Record<string, any>,
   ctx: TmuxSessionNameContext,
 ): string {
-  const scope = {
-    SESSION_ID: ctx.sessionId,
-    ENV: ctx.env,
-    OPERATION_ID: ctx.operationId,
-    ...vars,
-  };
   const raw = template ?? DEFAULT_TMUX_SESSION_TEMPLATE;
   let resolved: string;
   try {
-    resolved = resolveVars(raw, scope);
+    resolved = resolveVars(raw, tmuxNameScope(vars, ctx));
   } catch (err: any) {
     throw new Error(`run.tmux_session "${raw}": ${err.message}`);
   }
@@ -821,12 +813,6 @@ function tmuxOrThrow(args: string[]): string {
   return (r.stdout?.toString() ?? '').trim();
 }
 
-export interface BootstrapOptions {
-  /** tmux session name (resolved `run.tmux_session`); default `samaritan-<id>`. */
-  tmuxName?: string;
-  promptPattern?: string;
-}
-
 export interface BootstrapResult {
   tmux: TmuxSession;
   /** True when an existing tmux session with that name was adopted. */
@@ -839,7 +825,7 @@ export interface BootstrapResult {
 
 /**
  * Bring up one tmux window per `sessions:` key, named after the key, inside
- * the tmux session `tmuxName`.
+ * the tmux session `tmuxName` (the resolved `run.tmux_session`).
  *
  * - No such tmux session → create it, tag it with the run's id
  *   (`@samaritan_owner`), and kill it on teardown.
@@ -851,9 +837,8 @@ export interface BootstrapResult {
 export async function bootstrapSessions(
   sessionId: string,
   sessions: Record<string, SessionConfig>,
-  opts: BootstrapOptions = {},
+  tmuxName: string,
 ): Promise<BootstrapResult> {
-  const tmuxName = opts.tmuxName ?? `samaritan-${sessionId}`;
   const reused = tmuxHasSession(tmuxName);
   const owned = !reused || tmuxSessionOwner(tmuxName) === sessionId;
   const tmuxSession = new TmuxSession(sessionId, tmuxName, owned);
@@ -861,40 +846,19 @@ export async function bootstrapSessions(
   const adopted: string[] = [];
   const created: string[] = [];
 
-  const sessionNames = Object.keys(sessions);
-  for (let i = 0; i < sessionNames.length; i++) {
-    const name = sanitizeSessionName(sessionNames[i]);
-    const config = sessions[sessionNames[i]];
-
+  for (const [key, config] of Object.entries(sessions)) {
+    const name = sanitizeSessionName(key);
     let paneTarget = existing.get(name);
-    const isAdopted = paneTarget !== undefined;
     if (paneTarget === undefined) {
+      const first = !reused && created.length === 0;
       // -P -F prints the new pane's id (%N): stable however windows move.
-      paneTarget =
-        !reused && created.length === 0
-          ? tmuxOrThrow([
-              'new-session',
-              '-d',
-              '-s',
-              tmuxName,
-              '-n',
-              name,
-              '-P',
-              '-F',
-              '#{pane_id}',
-            ])
-          : tmuxOrThrow([
-              'new-window',
-              '-d',
-              '-t',
-              `=${tmuxName}:`,
-              '-n',
-              name,
-              '-P',
-              '-F',
-              '#{pane_id}',
-            ]);
-      if (!reused && created.length === 0) {
+      paneTarget = tmuxOrThrow([
+        ...(first
+          ? ['new-session', '-d', '-s', tmuxName]
+          : ['new-window', '-d', '-t', `=${tmuxName}:`]),
+        ...['-n', name, '-P', '-F', '#{pane_id}'],
+      ]);
+      if (first) {
         spawnSync('tmux', [
           'set-option',
           '-t',
@@ -904,6 +868,20 @@ export async function bootstrapSessions(
         ]);
       }
       created.push(name);
+      // SSH connect if host defined. Adopted windows are the operator's —
+      // already connected — so samaritan never types into them.
+      if (config.host) {
+        const userAtHost = config.user
+          ? `${config.user}@${config.host}`
+          : config.host;
+        spawnSync('tmux', [
+          'send-keys',
+          '-t',
+          paneTarget,
+          `ssh ${userAtHost}`,
+          'Enter',
+        ]);
+      }
     } else {
       adopted.push(name);
     }
@@ -913,30 +891,14 @@ export async function bootstrapSessions(
     // so capture deterministically lands in THIS run's file.
     const pipeFile = tmuxSession.getPipeFilePath(name);
     spawnSync('tmux', ['pipe-pane', '-t', paneTarget, `cat >> '${pipeFile}'`]);
-
     tmuxSession.registerPane(name, paneTarget);
-
-    // An adopted window is the operator's — already connected; never type.
-    if (isAdopted) continue;
-
-    // SSH connect if host defined
-    if (config.host) {
-      const userAtHost = config.user
-        ? `${config.user}@${config.host}`
-        : config.host;
-      spawnSync('tmux', [
-        'send-keys',
-        '-t',
-        paneTarget,
-        `ssh ${userAtHost}`,
-        'Enter',
-      ]);
-    }
-
-    // Wait for prompt after connecting
-    const pattern = opts.promptPattern ?? '\\$\\s*$';
-    await tmuxSession.waitForPrompt(name, 10_000, pattern);
   }
+
+  // Wait for every NEW window's prompt at once: startup costs the slowest
+  // connect, not the sum of them.
+  await Promise.all(
+    created.map((name) => tmuxSession.waitForPrompt(name, 10_000, '\\$\\s*$')),
+  );
 
   return { tmux: tmuxSession, reused, adopted, created };
 }
