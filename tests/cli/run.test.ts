@@ -47,6 +47,27 @@ function fixturePath(name: string): string {
 const CLI = 'node_modules/.bin/tsx';
 const INDEX = 'src/cli/index.ts';
 
+/**
+ * Pipe timed keystrokes (`keys`, a bash command list) into `samaritan <argv>`.
+ * The CLI argv reaches bash as positional parameters ("$@"), never spliced
+ * into the script text, so paths are not re-parsed by the shell. With `tty`,
+ * the CLI runs under `script` (a pseudo-terminal); its command string is
+ * rebuilt with `printf %q` so each argument stays one word.
+ */
+function feedKeys(keys: string, argv: string[], tty = false) {
+  const sink = tty
+    ? `script -qec "$(printf '%q ' "$@")" /dev/null`
+    : 'timeout 20 "$@"';
+  return spawnSync(
+    'bash',
+    ['-c', `(${keys}) | ${sink}`, 'bash', CLI, INDEX, ...argv],
+    {
+      encoding: 'utf8',
+      timeout: 30_000,
+    },
+  );
+}
+
 function runCli(
   args: string[],
   opts?: { input?: string; timeout?: number },
@@ -544,11 +565,10 @@ describe('run command: sidecar verify UX (--attach + tmux)', () => {
       const { stdout, stderr } = withTmuxPane(
         'deployment "web" successfully rolled out',
         (target) => {
-          const cmd = `(sleep 3; printf 'v\\n'; sleep 1; printf 'abort\\n') | timeout 20 node_modules/.bin/tsx src/cli/index.ts run ${fixture} --env default --attach ${target}`;
-          const result = spawnSync('bash', ['-c', cmd], {
-            encoding: 'utf8',
-            timeout: 30_000,
-          });
+          const result = feedKeys(
+            `sleep 3; printf 'v\\n'; sleep 1; printf 'abort\\n'`,
+            ['run', fixture, '--env', 'default', '--attach', target],
+          );
           return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
         },
       );
@@ -580,11 +600,10 @@ describe('run command: sidecar verify UX (--attach + tmux)', () => {
       const { stdout, stderr } = withTmuxPane(
         'deployment still progressing...',
         (target) => {
-          const cmd = `(sleep 3; printf 'v\\n'; sleep 1; printf '\\n'; sleep 1; printf 'abort\\n') | timeout 20 node_modules/.bin/tsx src/cli/index.ts run ${fixture} --env default --attach ${target}`;
-          const result = spawnSync('bash', ['-c', cmd], {
-            encoding: 'utf8',
-            timeout: 30_000,
-          });
+          const result = feedKeys(
+            `sleep 3; printf 'v\\n'; sleep 1; printf '\\n'; sleep 1; printf 'abort\\n'`,
+            ['run', fixture, '--env', 'default', '--attach', target],
+          );
           return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
         },
       );
@@ -616,11 +635,10 @@ describe('run command: sidecar verify UX (--attach + tmux)', () => {
         'deployment still progressing...',
         (target) => {
           // v → verify fails → menu; c → copy command + re-render menu; Enter → stop; abort.
-          const cmd = `(sleep 3; printf 'v\\n'; sleep 1; printf 'c\\n'; sleep 1; printf '\\n'; sleep 1; printf 'abort\\n') | timeout 20 node_modules/.bin/tsx src/cli/index.ts run ${fixture} --env default --attach ${target}`;
-          const result = spawnSync('bash', ['-c', cmd], {
-            encoding: 'utf8',
-            timeout: 30_000,
-          });
+          const result = feedKeys(
+            `sleep 3; printf 'v\\n'; sleep 1; printf 'c\\n'; sleep 1; printf '\\n'; sleep 1; printf 'abort\\n'`,
+            ['run', fixture, '--env', 'default', '--attach', target],
+          );
           return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
         },
       );
@@ -1259,11 +1277,11 @@ describe('run command: TTY raw-mode action prompt', () => {
     () => {
       const fixture = fixturePath('manualStepActions');
       // Hold stdin open, send a single raw `q` keypress after the prompt renders.
-      const cmd = `(sleep 3; printf 'q'; sleep 3) | script -qec "${CLI} ${INDEX} run ${fixture} --env default" /dev/null`;
-      const result = spawnSync('bash', ['-c', cmd], {
-        encoding: 'utf8',
-        timeout: 30_000,
-      });
+      const result = feedKeys(
+        `sleep 3; printf 'q'; sleep 3`,
+        ['run', fixture, '--env', 'default'],
+        true,
+      );
       const combined = (result.stdout ?? '') + (result.stderr ?? '');
       assert.ok(
         combined.includes('aborted by operator'),
@@ -1516,11 +1534,11 @@ describe('run command: TTY [r] nearest-upstream rollback', () => {
       // rollback of its own). Complete Build (Enter), then on Deploy press r →
       // the loop offers Build's rollback as the nearest upstream source.
       const fixture = fixturePath('nearestRollback');
-      const cmd = `(sleep 3; printf '\\n'; sleep 3; printf 'r'; sleep 2; printf 'n\\n'; sleep 2; printf 'q'; sleep 2) | script -qec "${CLI} ${INDEX} run ${fixture} --env staging" /dev/null`;
-      const result = spawnSync('bash', ['-c', cmd], {
-        encoding: 'utf8',
-        timeout: 30_000,
-      });
+      const result = feedKeys(
+        `sleep 3; printf '\\n'; sleep 3; printf 'r'; sleep 2; printf 'n\\n'; sleep 2; printf 'q'; sleep 2`,
+        ['run', fixture, '--env', 'staging'],
+        true,
+      );
       const combined = (result.stdout ?? '') + (result.stderr ?? '');
       assert.ok(
         combined.includes('Nearest rollback comes from step'),
@@ -1549,11 +1567,11 @@ describe('run command: TTY [t] attach prompt', () => {
     () => {
       const fixture = fixturePath('sidecar');
       // t → attach prompt appears immediately; Enter cancels it; q aborts.
-      const cmd = `(sleep 3; printf 't'; sleep 2; printf '\\n'; sleep 2; printf 'q'; sleep 2) | script -qec "${CLI} ${INDEX} run ${fixture} --env staging" /dev/null`;
-      const result = spawnSync('bash', ['-c', cmd], {
-        encoding: 'utf8',
-        timeout: 30_000,
-      });
+      const result = feedKeys(
+        `sleep 3; printf 't'; sleep 2; printf '\\n'; sleep 2; printf 'q'; sleep 2`,
+        ['run', fixture, '--env', 'staging'],
+        true,
+      );
       const combined = (result.stdout ?? '') + (result.stderr ?? '');
       assert.ok(
         combined.includes('Select pane') ||

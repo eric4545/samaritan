@@ -1,11 +1,18 @@
 import assert from 'node:assert';
-import fs from 'node:fs';
-import { describe, it } from 'node:test';
+import fs, { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, describe, it } from 'node:test';
 import {
   OperationParseError,
   parseOperation,
 } from '../../src/operations/parser';
 import { parseFixture } from '../fixtures/fixtures';
+
+// Private scratch dir (mkdtemp: random name, mode 0700) rather than fixed
+// names in the shared temp dir, which another local user could pre-create.
+const TMP = mkdtempSync(join(tmpdir(), 'samaritan-enhanced-parser-test-'));
+after(() => rmSync(TMP, { recursive: true, force: true }));
 
 describe('Enhanced Operation Parser', () => {
   it('should parse operation with new Step fields including instructions', async () => {
@@ -89,7 +96,7 @@ steps:
       types: [invalid_evidence]
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-invalid-operation.yaml`;
+    const tempFile = join(TMP, 'invalid-operation.yaml');
     fs.writeFileSync(tempFile, invalidYaml);
 
     try {
@@ -113,7 +120,7 @@ steps:
     description: Missing name should fail
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-invalid-steps.yaml`;
+    const tempFile = join(TMP, 'invalid-steps.yaml');
     fs.writeFileSync(tempFile, invalidStepsYaml);
 
     try {
@@ -137,7 +144,7 @@ steps:
     timeout: "invalid"
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-invalid-numeric.yaml`;
+    const tempFile = join(TMP, 'invalid-numeric.yaml');
     fs.writeFileSync(tempFile, invalidNumericYaml);
 
     try {
@@ -160,7 +167,7 @@ steps:
     type: unknown
 `;
 
-    const tempFile = `/tmp/samaritan-test-${Date.now()}-error-test.yaml`;
+    const tempFile = join(TMP, 'error-test.yaml');
     fs.writeFileSync(tempFile, invalidYaml);
 
     try {

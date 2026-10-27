@@ -104,20 +104,20 @@ describe('Format Consistency Tests', () => {
 
     // Both should resolve DB_HOST variable
     assert(
-      markdownResolved.includes('staging-db.example.com'),
+      markdownResolved.includes('DB_HOST: "staging-db.example.com"'),
       'Markdown should resolve staging DB_HOST',
     );
     assert(
-      markdownResolved.includes('prod-db.example.com'),
+      markdownResolved.includes('DB_HOST: "prod-db.example.com"'),
       'Markdown should resolve production DB_HOST',
     );
 
     assert(
-      adfStringResolved.includes('staging-db.example.com'),
+      adfStringResolved.includes('DB_HOST: \\"staging-db.example.com\\"'),
       'ADF should resolve staging DB_HOST',
     );
     assert(
-      adfStringResolved.includes('prod-db.example.com'),
+      adfStringResolved.includes('DB_HOST: \\"prod-db.example.com\\"'),
       'ADF should resolve production DB_HOST',
     );
   });

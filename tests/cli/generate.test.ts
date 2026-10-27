@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdtempSync,
@@ -34,8 +34,17 @@ describe('Generate Command', () => {
       const fixtureFile = getFixturePath('ganttTimeline');
 
       // Execute schedule generation command
-      const result = execSync(
-        `npx tsx src/cli/index.ts generate schedule ${fixtureFile} --output ${scheduleOutputPath}`,
+      const result = execFileSync(
+        'npx',
+        [
+          'tsx',
+          'src/cli/index.ts',
+          'generate',
+          'schedule',
+          fixtureFile,
+          '--output',
+          scheduleOutputPath,
+        ],
         {
           cwd: process.cwd(),
           encoding: 'utf-8',
@@ -93,8 +102,17 @@ describe('Generate Command', () => {
       const fixtureFile = getFixturePath('minimal');
 
       // Execute schedule generation command
-      const result = execSync(
-        `npx tsx src/cli/index.ts generate schedule ${fixtureFile} --output ${scheduleOutputPath}`,
+      const result = execFileSync(
+        'npx',
+        [
+          'tsx',
+          'src/cli/index.ts',
+          'generate',
+          'schedule',
+          fixtureFile,
+          '--output',
+          scheduleOutputPath,
+        ],
         {
           cwd: process.cwd(),
           encoding: 'utf-8',
@@ -121,8 +139,19 @@ describe('Generate Command', () => {
       const fixtureFile = getFixturePath('globalRollback');
 
       // Execute confluence generation command
-      const result = execSync(
-        `npx tsx src/cli/index.ts generate manual ${fixtureFile} --format confluence --output ${confluenceOutputPath}`,
+      const result = execFileSync(
+        'npx',
+        [
+          'tsx',
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          fixtureFile,
+          '--format',
+          'confluence',
+          '--output',
+          confluenceOutputPath,
+        ],
         {
           cwd: process.cwd(),
           encoding: 'utf-8',
@@ -188,8 +217,19 @@ describe('Generate Command', () => {
     it('should include global rollback plan in the aggregate section', () => {
       const fixtureFile = getFixturePath('globalRollback');
 
-      execSync(
-        `npx tsx src/cli/index.ts generate manual ${fixtureFile} --format confluence --output ${confluenceOutputPath}`,
+      execFileSync(
+        'npx',
+        [
+          'tsx',
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          fixtureFile,
+          '--format',
+          'confluence',
+          '--output',
+          confluenceOutputPath,
+        ],
         {
           cwd: process.cwd(),
           encoding: 'utf-8',
@@ -250,8 +290,18 @@ describe('Generate Command', () => {
 
     it('should generate one markdown manual per environment', () => {
       const outDir = makeDir();
-      const result = execSync(
-        `npx tsx src/cli/index.ts generate manual ${deploymentFixture} --all-envs --output-dir ${outDir}`,
+      const result = execFileSync(
+        'npx',
+        [
+          'tsx',
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          deploymentFixture,
+          '--all-envs',
+          '--output-dir',
+          outDir,
+        ],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
 
@@ -275,8 +325,20 @@ describe('Generate Command', () => {
 
     it('should use --prefix as the base filename', () => {
       const outDir = makeDir();
-      execSync(
-        `npx tsx src/cli/index.ts generate manual ${deploymentFixture} --all-envs --prefix release --output-dir ${outDir}`,
+      execFileSync(
+        'npx',
+        [
+          'tsx',
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          deploymentFixture,
+          '--all-envs',
+          '--prefix',
+          'release',
+          '--output-dir',
+          outDir,
+        ],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
 
@@ -297,8 +359,20 @@ describe('Generate Command', () => {
 
     it('should honor the output format extension (adf -> .json)', () => {
       const outDir = makeDir();
-      execSync(
-        `npx tsx src/cli/index.ts generate manual ${deploymentFixture} --all-envs -f adf --output-dir ${outDir}`,
+      execFileSync(
+        'npx',
+        [
+          'tsx',
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          deploymentFixture,
+          '--all-envs',
+          '-f',
+          'adf',
+          '--output-dir',
+          outDir,
+        ],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
 
@@ -330,8 +404,18 @@ describe('Generate Command', () => {
         ].join('\n'),
       );
 
-      execSync(
-        `npx tsx src/cli/index.ts generate manual ${opFile} --all-envs --output-dir ${outDir}`,
+      execFileSync(
+        'npx',
+        [
+          'tsx',
+          'src/cli/index.ts',
+          'generate',
+          'manual',
+          opFile,
+          '--all-envs',
+          '--output-dir',
+          outDir,
+        ],
         { cwd: process.cwd(), encoding: 'utf-8' },
       );
 

@@ -26,7 +26,14 @@ describe('TmuxSession (issue #6)', () => {
     assert.ok(path.includes('abc123'), 'path includes session id');
     assert.ok(path.includes('execution'), 'path includes session name');
     assert.ok(path.endsWith('.pipe'), 'path ends with .pipe');
-    assert.ok(path.startsWith(tmpdir()), 'path is in tmpdir');
+    assert.ok(
+      path.startsWith(join(homedir(), '.samaritan', 'pipes')),
+      'path is in the private per-user pipes dir',
+    );
+    assert.ok(!path.startsWith(tmpdir()), 'never the shared temp dir');
+    if (process.platform !== 'win32') {
+      assert.strictEqual(statSync(dirname(path)).mode & 0o777, 0o700);
+    }
   });
 
   it('currentOffset returns 0 when pipe file does not exist', () => {
@@ -287,10 +294,7 @@ describe('TmuxPaneCapture (capture-backend)', () => {
   it('currentOffset returns file size when pipe file exists', () => {
     const capture = new TmuxPaneCapture('test-cap-offset-2', 'mysession:0.0');
     // Seed the pipe file manually (simulating what pipe-pane would do)
-    const pipeFile = join(
-      tmpdir(),
-      'samaritan-test-cap-offset-2-attached.pipe',
-    );
+    const pipeFile = capture.getPipeFilePath();
     writeFileSync(pipeFile, 'hello world\n', 'utf-8');
     try {
       const offset = capture.currentOffset('default');
@@ -302,7 +306,7 @@ describe('TmuxPaneCapture (capture-backend)', () => {
 
   it('readOutput returns content from offset', () => {
     const capture = new TmuxPaneCapture('test-cap-ro-1', 'mysession:0.0');
-    const pipeFile = join(tmpdir(), 'samaritan-test-cap-ro-1-attached.pipe');
+    const pipeFile = capture.getPipeFilePath();
     writeFileSync(pipeFile, 'prefix_output_suffix\n', 'utf-8');
     try {
       const output = capture.readOutput('default', 7);
@@ -320,7 +324,7 @@ describe('TmuxPaneCapture (capture-backend)', () => {
 
   it('teardown unlinks the pipe file and does not throw', () => {
     const capture = new TmuxPaneCapture('test-cap-td-1', 'mysession:0.0');
-    const pipeFile = join(tmpdir(), 'samaritan-test-cap-td-1-attached.pipe');
+    const pipeFile = capture.getPipeFilePath();
     writeFileSync(pipeFile, 'captured output\n', 'utf-8');
     assert.ok(existsSync(pipeFile), 'pipe file should exist before teardown');
     // teardown calls tmux pipe-pane (may fail in CI — that is OK) and unlinks

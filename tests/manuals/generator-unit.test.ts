@@ -611,7 +611,7 @@ describe('Manual Generator Unit Tests', () => {
 
     // Should NOT contain staging values
     assert(
-      !prodManualResolved.includes('staging-db.example.com'),
+      !prodManualResolved.includes('staging-db'),
       'Should not contain staging values when filtered to production',
     );
     assert(
@@ -2588,5 +2588,37 @@ describe('foreach loop variables propagated into sub_steps and top-level variabl
       !md.includes('${REGION}'),
       'no unresolved ${REGION} literal remains',
     );
+  });
+});
+
+describe('multi-env table cell escaping (CodeQL js/incomplete-sanitization)', () => {
+  const op: Operation = {
+    ...deploymentOperation,
+    steps: [
+      {
+        name: 'Search',
+        type: 'manual',
+        instruction: 'Match a\\|b or plain a|b',
+        command: "grep 'a\\|b' f | wc -l",
+      },
+      { name: 'Stamp', type: 'manual', command: 'echo `date` > out' },
+    ],
+  };
+
+  it('keeps a backslash before a pipe in instruction text', () => {
+    const md = generateManual(op);
+    // splitter strips one backslash -> a\\|b ; inline \\ -> \  => "a\|b"
+    assert.ok(md.includes('Match a\\\\\\|b or plain a\\|b'), md);
+  });
+
+  it('leaves backslashes in commands verbatim (code span)', () => {
+    const md = generateManual(op);
+    assert.ok(md.includes("`grep 'a\\\\|b' f \\| wc -l`"), md);
+  });
+
+  it('fences a command containing backticks instead of escaping them', () => {
+    const md = generateManual(op);
+    assert.ok(md.includes('``echo `date` > out``'), md);
+    assert.ok(!md.includes('\\`date\\`'), 'no \\` inside a code span');
   });
 });
