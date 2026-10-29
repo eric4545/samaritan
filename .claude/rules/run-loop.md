@@ -20,6 +20,16 @@ collection is NOT implemented. (Check `ROADMAP.md`.)
 
 ## Action keys
 
+The forward step bar (sidecar + manual) is COMPACT: `stepActionHints()` in
+`src/lib/step-actions.ts` (pure, unit-tested) splits keys into `primary`
+(`y` armed · `↵` · `p` · `v` · `t` only while no pane attached · `s` · `r` ·
+`?`) and `more` (printed by `?`: `c n e x`, `t` attach another pane, `b j g
+abort`). The bar only decides HINTS — every key keeps working unshown, never
+gate a handler on the hint list. `runCommandHeader()` gives the sidecar
+command header (`Command — [p] pastes it into <pane>:` when a pane is
+attached). CLI tests asserting a `more` key must send `?` first and keep to
+one `?` per piped run (readline gotcha drops the lines after it).
+
 - `[n]` note, `[e]` evidence (capture pane / attach file / paste text), `[x]`
   remove evidence (only shown once evidence exists — deletes from the session
   record and from `~/.samaritan/sessions/<id>/evidence/` on disk; logged

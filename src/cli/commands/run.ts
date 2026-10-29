@@ -53,6 +53,7 @@ import {
   getSessionEvidenceDir,
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
+import { runCommandHeader, stepActionHints } from '../../lib/step-actions';
 import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
 import { childStepLabel, describeStepPosition } from '../../lib/step-position';
 import {
@@ -814,6 +815,7 @@ class OperationRunner {
       'r',
       'g',
       'q',
+      '?',
     ]);
 
     // `immediate` = keys that fire on press without Enter (default: the action
@@ -1108,6 +1110,13 @@ class OperationRunner {
       return true;
     };
     const isArmedAt = (where: string): boolean => armedEnter?.where === where;
+    /** The attached pane `[p]` would paste into, or undefined when none. */
+    const attachedPaneTarget = (sessionName: string): string | undefined => {
+      const backend = captureRef.backend;
+      return backend?.hasTarget(sessionName) && backend.pasteCommand
+        ? backend.describeTarget(sessionName)
+        : undefined;
+    };
     /**
      * [y] — press Enter in the pane for the armed paste, ONLY while the pane
      * is exactly as the paste left it (`checkEnterSafe`). A refusal keeps it
@@ -2480,9 +2489,12 @@ class OperationRunner {
           if (resolvedCommand) {
             if (isSidecarAutomatic) {
               // Sidecar: display command prominently — operator runs it themselves
-              console.log('\n    Run this command in your terminal:');
-              console.log(renderCodeBlock(resolvedCommand));
+              // (or [p] pastes it when a pane is attached — say so up front).
               const sessionName = step.session ?? 'default';
+              console.log(
+                `\n    ${runCommandHeader({ paneTarget: attachedPaneTarget(sessionName) })}`,
+              );
+              console.log(renderCodeBlock(resolvedCommand));
               logger.emit({
                 type: 'command_displayed',
                 step: i,
@@ -2501,7 +2513,12 @@ class OperationRunner {
             if (scriptBody) console.log(renderCodeBlock(scriptBody));
             else console.log(`    ⚠️  Script file not found: ${step.script}`);
             if (isSidecarAutomatic)
-              console.log('\n    Run this in your terminal:');
+              console.log(
+                `\n    ${runCommandHeader({
+                  paneTarget: attachedPaneTarget(step.session ?? 'default'),
+                  script: true,
+                })}`,
+              );
             else console.log('\n    Run:');
             if (runnableCommand) console.log(renderCodeBlock(runnableCommand));
             if (isSidecarAutomatic && runnableCommand) {
@@ -2563,38 +2580,26 @@ class OperationRunner {
                 `\n    Expected: ${renderExpectDescription(resolvedExpect)}`,
               );
             }
-            console.log(
-              '\n' +
-                renderKeyHints([
-                  ...(mode === 'sidecar' && isArmedAt(`step:${i}`)
-                    ? [{ key: 'y', label: 'run it' }]
-                    : []),
-                  { key: '↵', label: 'done' },
-                  ...(runnableCommand ? [{ key: 'c', label: 'copy' }] : []),
-                  { key: 'n', label: 'note' },
-                  { key: 'e', label: 'evidence' },
-                  ...(evidenceForStep.length
-                    ? [{ key: 'x', label: 'remove evidence' }]
-                    : []),
-                  ...(step.expect ? [{ key: 'v', label: 'verify' }] : []),
-                  ...(mode === 'sidecar'
-                    ? [{ key: 't', label: 'attach pane' }]
-                    : []),
-                  ...(mode === 'sidecar' && runnableCommand
-                    ? [{ key: 'p', label: 'send to pane' }]
-                    : []),
-                  ...(i > 0 ? [{ key: 'b', label: 'back' }] : []),
-                  ...(i < steps.length - 1
-                    ? [{ key: 'j', label: 'jump' }]
-                    : []),
-                  { key: 's', label: 'skip' },
-                  { key: 'r', label: 'rollback' },
-                  ...globalRollbackMenuItem,
-                  { key: 'abort', label: 'abort' },
-                ]),
-            );
+            // Compact bar: the usual flow keys + `?` for the rest. Every key
+            // works whether shown or not (see src/lib/step-actions.ts).
+            const hints = stepActionHints({
+              sidecar: mode === 'sidecar',
+              armed: isArmedAt(`step:${i}`),
+              hasCommand: !!runnableCommand,
+              hasExpect: !!step.expect,
+              paneAttached: !!captureRef.backend?.hasTarget(sessionName),
+              hasEvidence: evidenceForStep.length > 0,
+              canGoBack: i > 0,
+              canJump: i < steps.length - 1,
+              hasGlobalRollback,
+            });
+            console.log(`\n${renderKeyHints(hints.primary)}`);
             const input = await readActionKey();
             const inputChoice = input.trim().toLowerCase();
+            if (inputChoice === '?' || inputChoice === 'more') {
+              console.log(renderKeyHints(hints.more));
+              continue;
+            }
             if (isQuit(inputChoice)) {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');

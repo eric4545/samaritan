@@ -127,9 +127,11 @@ describe('sidecar e2e (real tmux)', () => {
         // Complete step 1 → advance to step 2.
         d.enter();
         // NOT 'Verify Health': step 1's 'Next : Verify Health' line already
-        // shows it. Wait for step 2's own action bar ('b back' is never on
-        // step 1), which prints after the step-2 capture baseline.
-        await d.waitFor('b back', { timeoutMs: 15_000 });
+        // shows it. Wait for step 2's own action bar (after its heading),
+        // which prints after the step-2 capture baseline.
+        await d.waitFor(/\[Step 2 · 2\/2\][\s\S]*\? more/, {
+          timeoutMs: 15_000,
+        });
         d.type('echo "health E2E_HEALTH_OK"', d.work);
         await d.waitFor('E2E_HEALTH_OK', { pane: d.work, timeoutMs: 15_000 });
         d.key('v');
@@ -330,7 +332,7 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor(`Re-attached capture to tmux pane: ${workId}`, {
           timeoutMs: 30_000,
         });
-        await d.waitFor(/Resuming operation execution[\s\S]*abort abort/, {
+        await d.waitFor(/Resuming operation execution[\s\S]*\? more/, {
           timeoutMs: 15_000,
         });
         d.type('echo "deploy E2E_DEPLOY_OK"', work);
@@ -404,7 +406,7 @@ describe('sidecar e2e (real tmux)', () => {
           'resume must not spawn sessions: for an attached run',
         );
         assert.deepStrictEqual(spawned(), [], 'resume spawns nothing');
-        await d.waitFor(/Resuming operation execution[\s\S]*abort abort/, {
+        await d.waitFor(/Resuming operation execution[\s\S]*\? more/, {
           timeoutMs: 15_000,
         });
         d.type('echo "built v1 E2E_BUILD_OK"', work);
@@ -627,9 +629,14 @@ describe('sidecar e2e (real tmux)', () => {
         const work = d.work as string;
         d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
         await d.waitFor('Paste check', { timeoutMs: 40_000 });
+        // With a pane attached the header points at [p], and the compact bar
+        // shows the flow keys + `?` (copy/note/… live under it).
+        await d.waitFor(`Command — [p] pastes it into tmux pane ${work}:`);
+        await d.waitFor(/↵ done .*p paste .*v verify .*\? more/);
 
         d.key('p');
         await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        await d.waitFor(/y run it .*↵ done/);
         assert.ok(
           !d.capture(work).includes('PASTE_EXECMARK'),
           'nothing runs on [p] alone',

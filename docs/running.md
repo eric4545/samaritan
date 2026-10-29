@@ -82,11 +82,13 @@ Each step heading uses the **same number as the single-environment manual** (`ge
 
 | Step type / mode | Prompt | Keys |
 |---|---|---|
-| `automatic` in **sidecar** | `Run this command in your terminal:` | `Enter`=done, `c`=copy, `n`=note, `e`=evidence, `v`=verify, `t`=attach, `p`=send to pane, `b`=back, `j`=jump, `s`=skip, `r`=rollback, `g`=global rollback, `q`/`abort`=quit |
+| `automatic` in **sidecar** | `Command — [p] pastes it into <pane>:` (pane attached) or `Run this command in your terminal ([t] attaches a pane for [p]/[v]):` | Bar: `y`=run it (after `p`), `Enter`=done, `p`=paste, `v`=verify, `t`=attach (no pane yet), `s`=skip, `r`=rollback, `?`=more. Under `?`: `c`=copy, `n`=note, `e`=evidence, `x`=remove evidence, `t`=attach another pane, `b`=back, `j`=jump, `g`=global rollback, `q`/`abort`=quit |
 | `automatic` (tmux-backed, non-sidecar) | `▶  Send to tmux?` | `Enter`=send, `s`=skip, `r`=rollback, `g`=global rollback, `q`=quit |
 | `automatic` (prompt-only, non-sidecar) | `▶  Execute?` | `Enter`=confirm, `s`=skip, `r`=rollback, `g`=global rollback, `q`=quit |
-| `manual` | `✋ Mark done` | `Enter`/notes=confirm, `n`=note, `e`=evidence, `v`=verify, `t`=attach (sidecar), `p`=send to pane (sidecar), `b`=back, `j`=jump, `r`=rollback, `g`=global rollback, `s`=skip, `q`/`abort`=quit |
+| `manual` | `✋ Mark done` | Same compact bar: `Enter`/notes=confirm, `v`=verify, `p`/`y`/`t` (sidecar), `s`=skip, `r`=rollback, `?`=more (`n`=note, `e`=evidence, `b`=back, `j`=jump, `g`=global rollback, `q`/`abort`=quit) |
 | `approval` | `⚡ approve/reject` | `approve`, `reject`, `r`=rollback, `g`=global rollback, `skip` |
+
+**The step bar is compact.** It shows the keys of the usual flow (`[p]` → `[y]` → `↵`, `[v]`), plus `[s]`, `[r]` and `[?] more`. `[t]` is shown while no pane is attached. `?` prints the rest once (copy, note, evidence, back, jump, global rollback, abort…). **Every key works whether it is shown or not**, so `n`, `e`, `b` and `j` need no `?` first.
 
 `g`=global rollback is only offered when the operation declares a top-level `rollback:` block. It runs the consolidated recovery (see [Group per-step rollbacks into the global rollback](./rollback.md#group-per-step-rollbacks-into-the-global-rollback-aggregate_step_rollbacks)) and then aborts.
 
@@ -148,10 +150,12 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 
 ## Manual-step actions: note, evidence, verify
 
-`manual` steps offer extra operator actions while you're working the step — they don't complete the step, so you can use any of them as many times as you like before pressing Enter to mark the step done:
+`manual` steps offer extra operator actions while you're working the step — they don't complete the step, so you can use any of them as many times as you like before pressing Enter to mark the step done. The bar shows the common keys; `?` lists the rest:
 
 ```
-[↵] done  ·  [c] copy  ·  [n] note  ·  [e] evidence  ·  [x] remove evidence  ·  [v] verify  ·  [p] send to pane  ·  [y] run it (after [p])  ·  [b] back  ·  [j] jump  ·  [s] skip  ·  [r] rollback  ·  [g] global rollback  ·  [abort] abort
+[y] run it (after [p])  ·  [↵] done  ·  [p] paste  ·  [v] verify  ·  [s] skip  ·  [r] rollback  ·  [?] more
+> ?
+[c] copy  ·  [n] note  ·  [e] evidence  ·  [x] remove evidence  ·  [t] attach another pane  ·  [b] back  ·  [j] jump  ·  [g] global rollback  ·  [abort] abort
 ```
 
 - **`[n]` note** — record a free-text annotation (e.g. "restarted pod manually, confirmed with on-call"). Stored in the JSONL audit log as a `user_input`/`note` event and rendered as a bullet list under the step in the `--report` Markdown.
