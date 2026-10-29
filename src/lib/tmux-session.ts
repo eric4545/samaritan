@@ -35,11 +35,6 @@ export function normalizePasteText(command: string): string {
   return command.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
 }
 
-/** True when the (normalized) command spans more than one line. */
-export function isMultiLinePaste(command: string): boolean {
-  return normalizePasteText(command).includes('\n');
-}
-
 /**
  * Build the two tmux argv arrays used to paste a command into a pane.
  *

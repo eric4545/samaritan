@@ -38,7 +38,7 @@ spawn-own `tmuxSession` sends via `controller.runRollbackSteps` (send+Enter →
 `status:'success'`). Everything else (sidecar `--attach`/`[t]`/spawn-own, and
 manual without tmux) goes through `runOperatorRollback`: per entry it emits
 `command_displayed` (+`context`), offers `↵` done · `p` paste (same
-`pasteCommand` + multi-line confirm as forward `[p]`; logs
+`pasteCommand` as forward `[p]`, no multi-line prompt; logs
 `user_input/send_to_pane` with `context`) · `c` · `v` (`verifyOutput(...,
 context)` → the `assert_result` folds onto the rollback entry, NOT the step)
 · `s` · `a`, then emits `rollback_step {index, outcome, verified?}`; finally
@@ -75,11 +75,14 @@ command lands WITHOUT a trailing newline.
 `buildPasteBufferArgs` stores `normalizePasteText(cmd)`: CRLF/CR → LF (tmux
 rewrites LF→CR, so `\r\n` became `\r\r` — a blank line after each `\`
 continuation and a broken command), trailing newlines stripped (a YAML `|`
-block's final `\n` is an Enter in a non-bracketed shell). A multi-line command
-(`isMultiLinePaste`) asks via `confirmMultiLinePaste()` (`PASTE_CONFIRM_KEYS` y/a/n, single key) before pasting — `a` persists `confirm_multiline_paste: false` via `setPreference` (`src/lib/user-preferences.ts`, `~/.samaritan/preferences.json`, 0600 in the 0700 dir) and flips the run's `multiLinePasteConfirm`, so every later paste (forward AND rollback, this run and future runs/resumes) skips the prompt. Deleting the file re-enables it. A failed save still silences the current run —
-sh/dash ignore bracketed paste and run each line on arrival, and tmux 3.4
-exposes no pane flag to detect that. e2e regression in
-`tests/e2e/sidecar-tmux.e2e.ts` (CRLF continuation block; "[p] multi-line confirm" for `a`, fixture `e2e-multiline-paste.yaml`).
+block's final `\n` is an Enter in a non-bracketed shell). **Multi-line
+commands paste with NO confirm prompt** (opinionated, no config): bracketed
+paste is the default in bash ≥ 4.4 / zsh ≥ 5.1. Only sh/dash (or bracketed
+paste turned off) would run each line on arrival — tmux 3.4 can't detect that,
+and an every-paste `Paste it?` prompt was removed as too noisy. Do not
+reintroduce a prompt or a preferences file for it. e2e regression in
+`tests/e2e/sidecar-tmux.e2e.ts` (CRLF continuation block; "[p] multi-line
+paste" with fixture `e2e-multiline-paste.yaml`).
 
 ## `variants.<env>` resolved once, in `flattenAndMarkForEnv`
 

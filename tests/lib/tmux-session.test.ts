@@ -8,7 +8,6 @@ import {
   buildPasteBufferArgs,
   capturePaneCursorLine,
   isLocalSession,
-  isMultiLinePaste,
   listTmuxPanes,
   normalizePasteText,
   paneOwnerFile,
@@ -170,12 +169,6 @@ describe('TmuxSession (issue #6)', () => {
   it('buildPasteBufferArgs stores the normalized command', () => {
     const { setArgs } = buildPasteBufferArgs('%1', 'echo a \\\r\n  b\n');
     assert.strictEqual(setArgs[setArgs.length - 1], 'echo a \\\n  b');
-  });
-
-  it('isMultiLinePaste ignores a lone trailing newline', () => {
-    assert.strictEqual(isMultiLinePaste('echo hi\n'), false);
-    assert.strictEqual(isMultiLinePaste('echo a \\\n  b'), true);
-    assert.strictEqual(isMultiLinePaste('echo a\r\nb'), true);
   });
 
   it('getPaneMap returns registered panes as a ReadonlyMap', () => {

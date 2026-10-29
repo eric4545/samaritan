@@ -55,7 +55,6 @@ import {
 } from '../../lib/step-resolution';
 import {
   bootstrapSessions,
-  isMultiLinePaste,
   listTmuxPanes,
   TmuxPaneCapture,
   type TmuxSession,
@@ -69,11 +68,6 @@ import {
   renderVerifyOutcome,
   StepController,
 } from '../../lib/tui';
-import {
-  preferencesPath,
-  readPreferences,
-  setPreference,
-} from '../../lib/user-preferences';
 import {
   listUnresolvedVars,
   resolveVars,
@@ -96,9 +90,6 @@ type RollbackStatus = 'completed' | 'partial' | 'not_executed';
 
 // Single-key answers for a y/n confirmation (fire without Enter on a TTY).
 const CONFIRM_KEYS: ReadonlySet<string> = new Set(['y', 'n']);
-// Single-key answers for the multi-line paste confirm (a = don't ask again,
-// saved across runs).
-const PASTE_CONFIRM_KEYS: ReadonlySet<string> = new Set(['y', 'a', 'n']);
 // Single-key actions on the all-steps-done completion screen.
 const COMPLETION_KEYS: ReadonlySet<string> = new Set(['r', 'g']);
 // Single-key actions on an operator-driven rollback step.
@@ -795,44 +786,6 @@ class OperationRunner {
       return ans === 'y' || ans === 'yes';
     };
 
-    // A multi-line block lands atomically only when the pane's shell has
-    // bracketed paste on (bash ≥ 4.4, zsh ≥ 5.1). In sh/dash, or with it off,
-    // every embedded newline is an Enter — lines run as they arrive. tmux
-    // can't report the pane's mode, so ask — until the operator answers [a]:
-    // that is saved to ~/.samaritan/preferences.json and every later paste, in
-    // this run and future runs/resumes, goes straight through.
-    let multiLinePasteConfirm =
-      readPreferences().confirm_multiline_paste !== false;
-    const confirmMultiLinePaste = async (): Promise<boolean> => {
-      if (!multiLinePasteConfirm) return true;
-      console.log(
-        '    ⚠️  Multi-line command. It lands as one un-run block only if the pane shell supports bracketed paste (bash ≥ 4.4, zsh ≥ 5.1); in sh/dash each line runs as it arrives.',
-      );
-      const ans = (
-        await readActionKey(
-          PASTE_CONFIRM_KEYS,
-          "    Paste it? [y / a=yes, don't ask again / n=cancel]: ",
-        )
-      )
-        .trim()
-        .toLowerCase();
-      if (ans === 'a' || ans === 'always') {
-        multiLinePasteConfirm = false;
-        try {
-          setPreference('confirm_multiline_paste', false);
-          console.log(
-            `    ✓  Won't ask again — saved to ${preferencesPath()} (delete it to re-enable).`,
-          );
-        } catch {
-          console.log("    ✓  Won't ask again this run (couldn't save it).");
-        }
-        return true;
-      }
-      if (ans === 'y' || ans === 'yes') return true;
-      console.log('    ↩  Cancelled — nothing pasted.');
-      return false;
-    };
-
     if (process.stdin.isTTY) emitKeypressEvents(process.stdin);
 
     // Single-char action keys that fire immediately without pressing Enter.
@@ -1278,8 +1231,6 @@ class OperationRunner {
             .trim()
             .toLowerCase();
           if (choice === 'p' && canPaste && cmd && backend?.pasteCommand) {
-            if (isMultiLinePaste(cmd) && !(await confirmMultiLinePaste()))
-              continue;
             backend.pasteCommand(sessionName, cmd);
             logger.emit({
               type: 'user_input',
@@ -2556,7 +2507,8 @@ class OperationRunner {
               // [p] — paste the resolved command (or `bash <script>` for a
               // script-only step) into the attached pane WITHOUT executing it
               // (no Enter). Operator reviews it, presses Enter themselves, then
-              // [v] to verify. Only available once a pane is attached (spawn-own
+              // [v] to verify. Multi-line commands paste without asking:
+              // bracketed paste lands them as one un-run block. Only available once a pane is attached (spawn-own
               // session or [t]/--attach).
               const backend = captureRef.backend;
               if (!backend?.hasTarget(sessionName) || !backend.pasteCommand) {
@@ -2565,13 +2517,6 @@ class OperationRunner {
                 );
                 continue;
               }
-              // Multi-line: confirm unless [a] was answered — see
-              // confirmMultiLinePaste.
-              if (
-                isMultiLinePaste(runnableCommand) &&
-                !(await confirmMultiLinePaste())
-              )
-                continue;
               backend.pasteCommand(sessionName, runnableCommand);
               // Recorded as a user_input breadcrumb (not command_sent): sidecar
               // never executes, so folding it into the step's command list would

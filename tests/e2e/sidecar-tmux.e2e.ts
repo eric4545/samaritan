@@ -618,56 +618,34 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
-    '[p] multi-line confirm: [a] is remembered for later steps AND later runs',
-    { skip, timeout: 150_000 },
+    '[p] multi-line paste: pastes straight away on every step, no confirm prompt',
+    { skip, timeout: 120_000 },
     async () => {
       const ws = workspace('e2e-multiline-paste.yaml');
       const d = TmuxDriver.create({ split: true });
-      const PROMPT = "Paste it? [y / a=yes, don't ask again";
-      const count = (text: string): number => text.split(PROMPT).length - 1;
       try {
         const work = d.work as string;
         d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
         await d.waitFor('MULTILINE_ONE', { timeoutMs: 40_000 });
 
-        // Step 1: the first multi-line paste asks; [a] pastes + saves it.
-        d.key('p');
-        await d.waitFor(PROMPT);
-        d.key('a');
-        await d.waitFor("Won't ask again", { timeoutMs: 15_000 });
-        await d.waitFor('MULTILINE_ONE', { pane: work, timeoutMs: 15_000 });
-        d.enter(work);
-        await d.waitFor(/^FIRST MULTILINE_ONE$/m, { pane: work });
-        d.enter(); // complete step 1
-
-        // Step 2: pasted straight away, no second confirm.
-        await d.waitFor('MULTILINE_TWO', { timeoutMs: 15_000 });
-        d.key('p');
-        await d.waitFor('MULTILINE_TWO', { pane: work, timeoutMs: 15_000 });
-        await d.waitFor(/Pasted into[\s\S]*Pasted into/, { timeoutMs: 15_000 });
-        assert.strictEqual(count(d.capture()), 1, 'no confirm after [a]');
-        assert.ok(
-          !/^SECOND MULTILINE_TWO$/m.test(d.capture(work)),
-          'paste must still not execute',
-        );
-        assert.deepStrictEqual(
-          JSON.parse(
-            readFileSync(join(ws.dir, '.samaritan/preferences.json'), 'utf8'),
-          ),
-          { confirm_multiline_paste: false },
-        );
-
-        // A brand-new run (same HOME) must not ask either.
-        d.key('q');
-        await d.waitFor('samaritan resume', { timeoutMs: 15_000 });
-        tmux(['send-keys', '-t', work, 'C-c']);
-        tmux(['clear-history', '-t', d.main]);
-        d.type('clear');
-        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
-        await d.waitFor('MULTILINE_ONE', { timeoutMs: 40_000 });
-        d.key('p');
-        await d.waitFor('Pasted into', { timeoutMs: 15_000 });
-        assert.strictEqual(count(d.capture()), 0, 'no confirm on a new run');
+        for (const [mark, out] of [
+          ['MULTILINE_ONE', /^FIRST MULTILINE_ONE$/m],
+          ['MULTILINE_TWO', /^SECOND MULTILINE_TWO$/m],
+        ] as const) {
+          d.key('p');
+          // The block lands in the work pane with no question asked first.
+          await d.waitFor(mark, { pane: work, timeoutMs: 15_000 });
+          assert.ok(!out.test(d.capture(work)), 'paste must not execute');
+          d.enter(work);
+          await d.waitFor(out, { pane: work });
+          d.enter(); // complete the step
+        }
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+        const main = d.capture();
+        assert.ok(!main.includes('Paste it?'), main);
+        assert.ok(!main.includes('Multi-line command'), main);
       } finally {
         d.kill();
         ws.cleanup();
