@@ -1,6 +1,7 @@
 ---
 paths:
   - "src/operations/**"
+  - "src/validation/**"
   - "src/models/**"
   - "src/schemas/**"
 ---
@@ -135,3 +136,21 @@ timestamps stay strings). Renderers live in `src/manuals/postmortem-*.ts`.
 Because a postmortem has its OWN sections (not operation steps), the
 four-render-path `StepContent` parity concern does NOT apply. See the skill's
 `reference/postmortem-yaml.md` for the authoring surface.
+
+## Schema errors — prune `oneOf` noise, name the field
+
+Ajv (`allErrors`) reports EVERY failed branch of a `oneOf`. One wrong value in a
+step therefore also produced `must have required property 'uses'` (the `uses:`
+branch), `expect must be string/array` and two `must match exactly one schema`
+lines (#118). `pruneOneOfErrors` (`src/validation/schema-validator.ts`) picks
+the branch the DATA takes (`applicableBranches`: branch `type` vs the value's
+JSON type; a branch whose `required` keys are all absent while another's are
+present is ruled out) and drops the other branches' errors. A `oneOf` error
+survives only when nothing more specific is left under it. Errors inside a
+`$ref` branch carry the referenced path (`#/definitions/x/...`), and another
+branch can reach the same definition deeper (expect list items), so a `$ref`
+match only drops errors at the oneOf's OWN instance path (`fromBranch`).
+`SchemaValidationError.message` = `schemaFailureMessage(errors)` (headline +
+`formatValidationError` lines, capped at 10), and the parser forwards that
+message, so `generate`/`run`/`resume` print the field too; `validate` prints the
+headline once plus every line. Tests: `tests/schemas/schema-errors.test.ts`.

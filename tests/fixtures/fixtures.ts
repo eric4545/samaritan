@@ -37,6 +37,8 @@ export const FIXTURES = {
     'tests/fixtures/operations/invalid/missing-template-vars.yaml',
   deprecatedEvidenceFields:
     'tests/fixtures/operations/invalid/deprecated-evidence-fields.yaml',
+  expectShapeMismatch:
+    'tests/fixtures/operations/invalid/expect-shape-mismatch.yaml',
 
   // ===== Feature-Specific Tests =====
   // Foreach & Matrix
