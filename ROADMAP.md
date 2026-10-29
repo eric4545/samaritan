@@ -116,6 +116,7 @@ in this roadmap:
 - [x] Skip step capability
 - [x] Back/re-run navigation (`[b]` returns to an earlier step and re-runs from there)
 - [x] Sidecar send-to-pane (`[p]` pastes the command into the attached pane without executing)
+- [x] Sidecar `[y]` run-it: operator-triggered Enter for a `[p]` paste, guarded by a pane-state check (not non-interactive execution)
 - [x] Rollback on failure
 - [x] Progress tracking and display
 
@@ -123,7 +124,8 @@ in this roadmap:
 modes. Sidecar mode displays each resolved command and verifies `step.expect`
 against captured tmux pane output without sending the command automatically — the
 operator can optionally `[p]` paste it into the attached pane (no Enter) and runs
-it themselves. See CLAUDE.md Gotcha #3 for full details on supported actions
+it themselves, or press `[y]` to have samaritan press Enter there (one guarded key
+per command — the pane must still hold the unrun paste). See CLAUDE.md Gotcha #3 for full details on supported actions
 (`[n]` note, `[e]` evidence, `[x]` remove evidence, `[v]` verify, `[t]` attach pane,
 `[p]` send to pane, `[b]` back to a previous step).
 

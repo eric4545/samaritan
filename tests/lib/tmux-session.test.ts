@@ -12,6 +12,7 @@ import {
   normalizePasteText,
   paneOwnerFile,
   readPaneOwner,
+  readPaneState,
   sanitizeSessionName,
   TmuxPaneCapture,
   TmuxSession,
@@ -552,4 +553,64 @@ describe('TmuxPaneCapture — one pipe-pane per pane (ownership)', () => {
       assert.strictEqual(statSync(dirname(file)).mode & 0o777, 0o700);
     }
   });
+});
+
+describe('readPaneState', () => {
+  const hasTmux =
+    process.platform !== 'win32' &&
+    spawnSync('tmux', ['-V'], { encoding: 'utf8' }).status === 0;
+
+  it('returns undefined for a pane that does not exist', () => {
+    assert.strictEqual(
+      readPaneState('samaritan-no-such-session-xyz:0.0'),
+      undefined,
+    );
+  });
+
+  it(
+    'reads id, flags, foreground program and the cursor row of a live pane',
+    { skip: !hasTmux },
+    async () => {
+      const session = `sam-state-${process.pid}-${Date.now()}`;
+      spawnSync('tmux', [
+        'new-session',
+        '-d',
+        '-s',
+        session,
+        'env PS1="STATE_PROMPT\\$ " bash --norc --noprofile',
+      ]);
+      try {
+        let st = readPaneState(`${session}:0.0`);
+        for (
+          let i = 0;
+          i < 30 && !st?.cursorLine.includes('STATE_PROMPT');
+          i++
+        ) {
+          await new Promise((r) => setTimeout(r, 100));
+          st = readPaneState(`${session}:0.0`);
+        }
+        assert.ok(st, 'state read');
+        assert.match(st.paneId, /^%\d+$/);
+        assert.strictEqual(st.cursorLine.trimEnd(), 'STATE_PROMPT$');
+        assert.strictEqual(st.currentCommand, 'bash');
+        assert.deepStrictEqual(
+          [st.dead, st.inMode, st.synchronized, st.inputOff],
+          [false, false, false, false],
+        );
+        spawnSync('tmux', ['copy-mode', '-t', `${session}:0.0`]);
+        spawnSync('tmux', [
+          'set-window-option',
+          '-t',
+          `${session}:0`,
+          'synchronize-panes',
+          'on',
+        ]);
+        const after = readPaneState(`${session}:0.0`);
+        assert.strictEqual(after?.inMode, true);
+        assert.strictEqual(after?.synchronized, true);
+      } finally {
+        spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
+      }
+    },
+  );
 });

@@ -15,6 +15,7 @@ import type {
   CaptureCheck,
   PaneOwner,
 } from './capture-backend';
+import type { PaneState } from './pane-enter-guard';
 
 export function isLocalSession(config: SessionConfig | undefined): boolean {
   return !config?.host;
@@ -154,6 +155,77 @@ export function capturePaneCursorLine(target: string): string | undefined {
   }
 }
 
+// `|`-separated (tmux renders a tab as `_`); the free-text program name goes
+// LAST so a `|` inside it can't shift the numeric fields.
+const PANE_STATE_FORMAT = [
+  '#{pane_id}',
+  '#{pane_dead}',
+  '#{pane_in_mode}',
+  '#{pane_synchronized}',
+  '#{pane_input_off}',
+  '#{cursor_x}',
+  '#{cursor_y}',
+  '#{history_size}',
+  '#{pane_current_command}',
+].join('|');
+
+/**
+ * Read the pane state the `[y]` Enter guard checks (`pane-enter-guard.ts`):
+ * one `display-message` for the flags + cursor, then the row under that
+ * cursor. Undefined when tmux or the pane is gone.
+ */
+export function readPaneState(target: string): PaneState | undefined {
+  try {
+    const r = spawnSync('tmux', [
+      'display-message',
+      '-p',
+      '-t',
+      target,
+      PANE_STATE_FORMAT,
+    ]);
+    if (r.status !== 0) return undefined;
+    const raw = (r.stdout?.toString('utf-8') ?? '').replace(/\n$/, '');
+    const f = raw.split('|');
+    if (f.length < 9 || !f[0].startsWith('%')) return undefined;
+    const [x, y, hist] = [f[5], f[6], f[7]].map((n) => Number.parseInt(n, 10));
+    if (![x, y, hist].every(Number.isInteger)) return undefined;
+    const line = spawnSync('tmux', [
+      'capture-pane',
+      '-p',
+      '-t',
+      f[0],
+      '-S',
+      String(y),
+      '-E',
+      String(y),
+    ]);
+    if (line.status !== 0) return undefined;
+    return {
+      paneId: f[0],
+      dead: f[1] === '1',
+      inMode: f[2] === '1',
+      synchronized: f[3] === '1',
+      inputOff: f[4] === '1',
+      currentCommand: f.slice(8).join('|'),
+      cursorX: x,
+      cursorY: y,
+      historySize: hist,
+      cursorLine: line.stdout?.toString('utf-8').replace(/\n+$/, '') ?? '',
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Press Enter in exactly this pane (by stable `%id`). True when tmux took it. */
+export function sendEnterTo(paneId: string): boolean {
+  try {
+    return spawnSync('tmux', ['send-keys', '-t', paneId, 'Enter']).status === 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Validate that a tmux target string (e.g. "mysession:0.0" or "%12") refers to
  * an existing pane. Returns true when the target resolves, false otherwise.
@@ -267,6 +339,18 @@ export class TmuxSession implements CaptureBackend {
   promptLine(sessionName: string): string | undefined {
     const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
     return capturePaneCursorLine(pane);
+  }
+
+  /** Pane state for the `[y]` Enter guard. */
+  paneState(sessionName: string): PaneState | undefined {
+    return readPaneState(
+      this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`,
+    );
+  }
+
+  /** Press Enter in the given pane id (the guard has already checked it). */
+  sendEnter(_sessionName: string, paneId: string): boolean {
+    return sendEnterTo(paneId);
   }
 
   hasTarget(sessionName: string): boolean {
@@ -592,6 +676,16 @@ export class TmuxPaneCapture implements CaptureBackend {
   /** The attached pane's cursor line (the prompt once a command finished). */
   promptLine(_sessionName: string): string | undefined {
     return capturePaneCursorLine(this.target);
+  }
+
+  /** Pane state for the `[y]` Enter guard. */
+  paneState(_sessionName: string): PaneState | undefined {
+    return readPaneState(this.target);
+  }
+
+  /** Press Enter in the given pane id (the guard has already checked it). */
+  sendEnter(_sessionName: string, paneId: string): boolean {
+    return sendEnterTo(paneId);
   }
 
   /** Scrollback + screen of the attached pane as clean text (no escapes). */

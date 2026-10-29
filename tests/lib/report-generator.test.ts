@@ -483,3 +483,43 @@ describe('renderReport — rollback events are honest', () => {
     assert.ok(!md.includes('success'), md);
   });
 });
+
+describe('renderReport — [y] Enter sent from samaritan', () => {
+  it('says samaritan pressed Enter, for a step and a rollback entry', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml' }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({ type: 'command_displayed', session: 'w', command: 'echo deploy' }),
+      ev({ type: 'user_input', action: 'enter_sent', command: 'echo deploy' }),
+      ev({ type: 'rollback_start', step: 0, context: 'rollback' }),
+      ev({
+        type: 'command_displayed',
+        session: 'w',
+        command: 'echo undo',
+        context: 'rollback',
+      }),
+      ev({ type: 'user_input', action: 'send_to_pane', context: 'rollback' }),
+      ev({ type: 'user_input', action: 'enter_sent', context: 'rollback' }),
+      ev({
+        type: 'rollback_step',
+        step: 0,
+        context: 'rollback',
+        index: 0,
+        outcome: 'executed',
+      }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(
+      md.includes(
+        '**Command (run by operator)**: `echo deploy` — ⏎ Enter sent from samaritan `[y]`',
+      ),
+      md,
+    );
+    assert.ok(
+      md.includes(
+        '`echo undo` (pasted into pane, Enter sent from samaritan `[y]`)',
+      ),
+      md,
+    );
+  });
+});

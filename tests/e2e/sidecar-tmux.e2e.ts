@@ -618,6 +618,152 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
+    '[p] then [y]: samaritan presses Enter in the pane, the command runs, [v] passes, report credits [y]',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-paste.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('Paste check', { timeoutMs: 40_000 });
+
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        assert.ok(
+          !d.capture(work).includes('PASTE_EXECMARK'),
+          'nothing runs on [p] alone',
+        );
+        d.key('y');
+        await d.waitFor('Sent Enter to', { timeoutMs: 15_000 });
+        await d.waitFor('PASTE_EXECMARK', { pane: work, timeoutMs: 15_000 });
+        d.key('v');
+        await d.waitFor('✅ contains: PASTE_EXECMARK', { timeoutMs: 15_000 });
+        d.enter();
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          readReport(ws.dir).includes('⏎ Enter sent from samaritan `[y]`'),
+          'the report credits samaritan for pressing Enter',
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'rollback [p] then [y]: Enter sent for the rollback entry, verified, credited in the report',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-rollback.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_RB_MARK"', { timeoutMs: 40_000 });
+        d.enter(); // complete the only step
+        await d.waitFor('All steps done.', { timeoutMs: 15_000 });
+        d.key('r');
+        await d.waitFor('Roll back which step?');
+        d.type('1');
+        await d.waitFor('Rollback 1/1: Undo deploy', { timeoutMs: 15_000 });
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        d.key('y');
+        await d.waitFor(/^UNDO_DEPLOY E2E_RB_MARK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        d.key('v');
+        await d.waitFor('✅ contains: UNDO_DEPLOY', { timeoutMs: 15_000 });
+        d.enter(); // ↵ done
+        await d.waitFor('Rollback complete — 1/1', { timeoutMs: 15_000 });
+        await d.waitFor(/All steps done\.[\s\S]*All steps done\./, {
+          timeoutMs: 15_000,
+        });
+        d.enter();
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          readReport(ws.dir).includes(
+            '(pasted into pane, Enter sent from samaritan `[y]`, verify ✅)',
+          ),
+          readReport(ws.dir),
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '[y] refuses unless the pane is exactly as the paste left it (copy-mode, typed input, synchronize-panes)',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-paste.yaml');
+      const d = TmuxDriver.create({ split: true });
+      const runs = (): number =>
+        (d.capture(work).match(/^PASTE_EXECMARK$/gm) ?? []).length;
+      const work = d.work as string;
+      const refusals = (): number =>
+        (d.capture().match(/Enter NOT sent/g) ?? []).length;
+      const window = work.replace(/\.\d+$/, '');
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('Paste check', { timeoutMs: 40_000 });
+
+        // 1. Copy-mode would swallow Enter: refused, stays armed, and works
+        //    once the pane leaves copy-mode.
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        tmux(['copy-mode', '-t', work]);
+        d.key('y');
+        await d.waitFor('Enter NOT sent: the pane is in copy/view mode');
+        assert.strictEqual(runs(), 0, 'refused [y] must not run anything');
+        tmux(['send-keys', '-t', work, '-X', 'cancel']);
+        d.key('y');
+        await d.waitFor('Sent Enter to', { timeoutMs: 15_000 });
+        await d.waitFor(/^PASTE_EXECMARK$/m, { pane: work });
+        assert.strictEqual(runs(), 1);
+
+        // 2. The operator typed in the pane after the paste: refused.
+        d.key('p');
+        await d.waitFor(/\[y\] to run it[\s\S]*\[y\] to run it/, {
+          timeoutMs: 15_000,
+        });
+        d.key(' #edited', work);
+        await d.waitFor('#edited', { pane: work });
+        d.key('y');
+        await d.waitFor(
+          'Enter NOT sent: the pane printed output since the paste',
+        );
+        assert.strictEqual(runs(), 1, 'an edited command is never run');
+
+        // 3. synchronize-panes would send Enter to every pane: refused.
+        tmux(['send-keys', '-t', work, 'C-c']);
+        await sleep(300);
+        d.key('p');
+        await d.waitFor(/(\[y\] to run it[\s\S]*){3}/, { timeoutMs: 15_000 });
+        tmux(['set-window-option', '-t', window, 'synchronize-panes', 'on']);
+        const before = refusals();
+        d.key('y');
+        await d.waitFor(/synchronize-panes is on/, { timeoutMs: 15_000 });
+        assert.strictEqual(refusals(), before + 1);
+        tmux(['set-window-option', '-t', window, 'synchronize-panes', 'off']);
+        assert.strictEqual(runs(), 1, 'nothing ran while synchronized');
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
     '[p] multi-line paste: pastes straight away on every step, no confirm prompt',
     { skip, timeout: 120_000 },
     async () => {

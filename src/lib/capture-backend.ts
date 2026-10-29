@@ -1,3 +1,5 @@
+import type { PaneState } from './pane-enter-guard';
+
 /** The samaritan capture recorded as owning a pane's single `pipe-pane`. */
 export interface PaneOwner {
   /** Capture id — the run's session id (plus `-<step>` for a `[t]` attach). */
@@ -20,9 +22,10 @@ export type CaptureCheck =
  * Both TmuxSession (spawn-own) and TmuxPaneCapture (attach-to-existing) implement
  * this interface, letting the sidecar run loop stay backend-agnostic.
  * Automatic `send`/`waitForPrompt` are intentionally kept tmux-specific — sidecar
- * never sends commands automatically. The optional `pasteCommand` below is the one
- * exception: it is operator-triggered (the `[p]` action) and never presses Enter,
- * so the operator still reviews and runs the command themselves.
+ * never sends commands automatically. The optional `pasteCommand` / `sendEnter`
+ * below are the exceptions, both operator-triggered: `[p]` pastes without
+ * Enter, and `[y]` presses Enter only while `checkEnterSafe` proves the pane
+ * still holds that unrun paste.
  */
 export interface CaptureBackend {
   /** Returns true when this backend has a capture target for the given session name. */
@@ -39,6 +42,16 @@ export interface CaptureBackend {
    * operator-triggered (the `[p]` action), never automatic.
    */
   pasteCommand?(sessionName: string, command: string): void;
+  /**
+   * Optional: the pane's state (id, mode/sync/input flags, foreground program,
+   * cursor + cursor row) for the `[y]` Enter guard (`pane-enter-guard.ts`).
+   */
+  paneState?(sessionName: string): PaneState | undefined;
+  /**
+   * Optional: press Enter in pane `paneId` — the sidecar `[y]` action, sent
+   * ONLY after `checkEnterSafe` proved the pane still holds the unrun paste.
+   */
+  sendEnter?(sessionName: string, paneId: string): boolean;
   /**
    * Optional: capture the pane's rendered screen as clean text (no escape
    * sequences). Used for the auto-captured verify evidence so the report shows

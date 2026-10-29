@@ -3,6 +3,8 @@ export interface StepCommandRecord {
   command: string;
   output?: string;
   displayed?: boolean;
+  /** Enter pressed in the pane by samaritan (`[y]`, after a guarded `[p]`). */
+  enterSent?: boolean;
 }
 
 export interface VerificationCheck {
@@ -91,6 +93,8 @@ export interface RollbackCommandRecord {
   instruction?: boolean;
   /** Pasted into the attached pane with `[p]` (never with Enter). */
   pasted?: boolean;
+  /** Enter pressed in the pane by samaritan (`[y]`, after a guarded `[p]`). */
+  enterSent?: boolean;
   /** The operator's answer: ran it (`executed`), `skipped`, or `aborted`. */
   outcome?: 'executed' | 'skipped' | 'aborted';
   /** Result of `[v]` against this entry's `expect`, when verified. */
