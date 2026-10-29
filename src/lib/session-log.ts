@@ -163,12 +163,16 @@ export function foldEvents(events: SessionEvent[]): {
 
       case 'user_input': {
         if (event.context) {
-          // `[p]` paste of a rollback command.
+          // `[p]` paste / `[y]` Enter of a rollback command.
           const last = currentRollback?.commands.at(-1);
           if (last && event.action === 'send_to_pane') last.pasted = true;
+          if (last && event.action === 'enter_sent') last.enterSent = true;
         } else if (currentStep) {
           const action = event.action as string;
-          if (action === 'verify_ok') {
+          if (action === 'enter_sent') {
+            const last = currentStep.commands.at(-1);
+            if (last) last.enterSent = true;
+          } else if (action === 'verify_ok') {
             currentStep.verification ??= { pass: true, checks: [] };
             currentStep.verification.verifiedBy = event.actor as string;
             currentStep.verification.verifiedAt = event.ts;

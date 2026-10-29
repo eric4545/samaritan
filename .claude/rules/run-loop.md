@@ -20,12 +20,23 @@ collection is NOT implemented. (Check `ROADMAP.md`.)
 
 ## Action keys
 
+The forward step bar (sidecar + manual) is COMPACT: `stepActionHints()` in
+`src/lib/step-actions.ts` (pure, unit-tested) splits keys into `primary`
+(`y` armed · `↵` · `p` · `v` · `t` only while no pane attached · `s` · `r` ·
+`?`) and `more` (printed by `?`: `c n e x`, `t` attach another pane, `b j g
+abort`). The bar only decides HINTS — every key keeps working unshown, never
+gate a handler on the hint list. `runCommandHeader()` gives the sidecar
+command header (`Command — [p] pastes it into <pane>:` when a pane is
+attached). CLI tests asserting a `more` key must send `?` first and keep to
+one `?` per piped run (readline gotcha drops the lines after it).
+
 - `[n]` note, `[e]` evidence (capture pane / attach file / paste text), `[x]`
   remove evidence (only shown once evidence exists — deletes from the session
   record and from `~/.samaritan/sessions/<id>/evidence/` on disk; logged
   `evidence_removed`), `[v]` verify (`step.expect` against captured output).
 - Sidecar-only: `[t]` attach pane (fires immediately, numbered picker from
-  `listTmuxPanes()`), `[p]` send to pane (when step has a command + pane attached).
+  `listTmuxPanes()`), `[p]` send to pane (when step has a command + pane attached),
+  `[y]` run it — Enter for that paste, guarded (see "`[y]` run it" below).
 - `[b]` back (not on first step), `[j]` jump forward (not on last step),
   `[r]` per-step rollback, `[g]` global rollback (when `operation.rollback`
   exists), `q`/`quit`/`Ctrl+C` abort. See "Rollback delivery" below.
@@ -38,7 +49,8 @@ spawn-own `tmuxSession` sends via `controller.runRollbackSteps` (send+Enter →
 `status:'success'`). Everything else (sidecar `--attach`/`[t]`/spawn-own, and
 manual without tmux) goes through `runOperatorRollback`: per entry it emits
 `command_displayed` (+`context`), offers `↵` done · `p` paste (same
-`pasteCommand` + multi-line confirm as forward `[p]`; logs
+`pasteCommand` as forward `[p]`, no multi-line prompt; `y` after it = same
+guarded Enter as forward `[y]`, `where = rollback:<ctx>:<step>:<k>`; logs
 `user_input/send_to_pane` with `context`) · `c` · `v` (`verifyOutput(...,
 context)` → the `assert_result` folds onto the rollback entry, NOT the step)
 · `s` · `a`, then emits `rollback_step {index, outcome, verified?}`; finally
@@ -62,12 +74,12 @@ Pastes the `${VAR}`-resolved command via a tmux paste **buffer** with
 **bracketed paste** (`set-buffer -b samaritan-send -- <cmd>` +
 `paste-buffer -d -p -b samaritan-send -t <pane>`, argv from `buildPasteBufferArgs()`,
 via `pasteBufferTo()` / `CaptureBackend.pasteCommand()`) and **never** appends
-Enter — the operator reviews and runs it. The `-p` (bracketed paste) is
+Enter — the operator reviews and runs it (or presses `[y]`, below). The `-p` (bracketed paste) is
 load-bearing: without it tmux injects embedded newlines as literal Enter, so a
-multi-line command executes line-by-line instead of landing atomically. This is
-the ONLY write path in the otherwise read-only `CaptureBackend`
-(`pasteCommand?` optional; both `TmuxSession` and `TmuxPaneCapture` implement
-it). Emits a `user_input`/`action:'send_to_pane'` breadcrumb — deliberately NOT
+multi-line command executes line-by-line instead of landing atomically. This and
+`sendEnter?` (`[y]`) are the ONLY write paths in the otherwise read-only
+`CaptureBackend` (both optional; `TmuxSession` and `TmuxPaneCapture` implement
+them). Emits a `user_input`/`action:'send_to_pane'` breadcrumb — deliberately NOT
 `command_sent` (which `foldEvents` would fold into a misleading duplicate
 "Command sent" row; sidecar never executes). Smoke-test in real tmux: the
 command lands WITHOUT a trailing newline.
@@ -75,11 +87,48 @@ command lands WITHOUT a trailing newline.
 `buildPasteBufferArgs` stores `normalizePasteText(cmd)`: CRLF/CR → LF (tmux
 rewrites LF→CR, so `\r\n` became `\r\r` — a blank line after each `\`
 continuation and a broken command), trailing newlines stripped (a YAML `|`
-block's final `\n` is an Enter in a non-bracketed shell). A multi-line command
-(`isMultiLinePaste`) asks `Paste it? [y / n=cancel]` (single key via `confirmKey`) before pasting —
-sh/dash ignore bracketed paste and run each line on arrival, and tmux 3.4
-exposes no pane flag to detect that. e2e regression in
-`tests/e2e/sidecar-tmux.e2e.ts` (CRLF continuation block).
+block's final `\n` is an Enter in a non-bracketed shell). **Multi-line
+commands paste with NO confirm prompt** (opinionated, no config): bracketed
+paste is the default in bash ≥ 4.4 / zsh ≥ 5.1. Only sh/dash (or bracketed
+paste turned off) would run each line on arrival — tmux 3.4 can't detect that,
+and an every-paste `Paste it?` prompt was removed as too noisy. Do not
+reintroduce a prompt or a preferences file for it. e2e regression in
+`tests/e2e/sidecar-tmux.e2e.ts` (CRLF continuation block; "[p] multi-line
+paste" with fixture `e2e-multiline-paste.yaml`).
+
+## `[y]` run it — guarded Enter for the last `[p]` paste
+
+`src/lib/pane-enter-guard.ts` (pure, unit-tested) + `readPaneState()` /
+`sendEnterTo()` in `tmux-session.ts` (`CaptureBackend.paneState?` /
+`sendEnter?`). After `[p]`, `armAfterPaste` waits for the pipe offset to be
+quiet (200ms, max 2s), snapshots the pane and `armEnter` requires the command's
+last line at the cursor row (else `[y]` is not offered). `[y]` →
+`pressArmedEnter(where)`: refuses unless same backend, no capture repair,
+and `checkEnterSafe` passes — same `#{pane_id}`, not dead, not
+`pane_in_mode`, not `pane_synchronized` (Enter would hit every pane), not
+`pane_input_off`, same `pane_current_command`, pipe offset AND cursor x/y,
+`history_size`, cursor row all unchanged. Then `send-keys -t <%id> Enter`,
+disarm, `user_input`/`action:'enter_sent'` (+`context` for rollback) and
+returns a `RunWatch` (`promptRow` = cursor row read BEFORE `pasteCommand`,
+`shell` = `pane_current_command` at arm, `offsetAtEnter`). `waitForCommand`
+then polls `commandFinished` every 150ms (pure, unit-tested: `running` until
+output after Enter + 300ms quiet + same foreground program; `prompt` when the
+cursor row equals `promptRow` digit-normalized; `quiet` fallback after 3s;
+`gone`), cancellable by ANY key (own raw-mode listener with the same
+suspend/restore of readline's keypress listeners as `readActionKey`; Ctrl+C
+re-raises SIGINT). On `prompt`/`quiet` the forward loop calls
+`verifyManualOutput` and the rollback loop falls through to its `v` branch
+(`choice = 'v'`). Without this, `[v]` right after `[y]` FAILED on half the
+output (seen in the real-tmux walk). Also →
+`foldEvents` sets `enterSent` on the step's last command / rollback entry →
+report `⏎ Enter sent from samaritan [y]`. A refusal sends nothing and stays
+armed. `armedEnter` is cleared at each step-loop iteration and each rollback
+entry; `where` (`step:<i>` / `rollback:…`) pins it to where it was pasted.
+tmux `display-message` renders TAB as `_` — the state format is `|`-separated
+with `pane_current_command` LAST (caught only by the real-tmux unit test).
+NOT non-interactive execution: one operator key per command. When armed,
+`y run it` is the FIRST key in the bar. e2e: "[p] then [y]", "rollback [p]
+then [y]", "[y] on a slow command" (`e2e-slow-run.yaml`), "[y] refuses unless…".
 
 ## `variants.<env>` resolved once, in `flattenAndMarkForEnv`
 

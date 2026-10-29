@@ -1,0 +1,23 @@
+name: E2E Multi-line Paste
+version: 1.0.0
+description: >-
+  Fixture for the [p] multi-line paste e2e test. Both steps carry a
+  backslash-continuation command; [p] must paste each one straight away (no
+  confirm prompt) as one un-run block.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables: {}
+
+steps:
+  - name: First block
+    type: automatic
+    command: |
+      echo FIRST \
+        MULTILINE_ONE
+  - name: Second block
+    type: automatic
+    command: |
+      echo SECOND \
+        MULTILINE_TWO

@@ -127,9 +127,11 @@ describe('sidecar e2e (real tmux)', () => {
         // Complete step 1 → advance to step 2.
         d.enter();
         // NOT 'Verify Health': step 1's 'Next : Verify Health' line already
-        // shows it. Wait for step 2's own action bar ('b back' is never on
-        // step 1), which prints after the step-2 capture baseline.
-        await d.waitFor('b back', { timeoutMs: 15_000 });
+        // shows it. Wait for step 2's own action bar (after its heading),
+        // which prints after the step-2 capture baseline.
+        await d.waitFor(/\[Step 2 · 2\/2\][\s\S]*\? more/, {
+          timeoutMs: 15_000,
+        });
         d.type('echo "health E2E_HEALTH_OK"', d.work);
         await d.waitFor('E2E_HEALTH_OK', { pane: d.work, timeoutMs: 15_000 });
         d.key('v');
@@ -330,7 +332,7 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor(`Re-attached capture to tmux pane: ${workId}`, {
           timeoutMs: 30_000,
         });
-        await d.waitFor(/Resuming operation execution[\s\S]*abort abort/, {
+        await d.waitFor(/Resuming operation execution[\s\S]*\? more/, {
           timeoutMs: 15_000,
         });
         d.type('echo "deploy E2E_DEPLOY_OK"', work);
@@ -404,7 +406,7 @@ describe('sidecar e2e (real tmux)', () => {
           'resume must not spawn sessions: for an attached run',
         );
         assert.deepStrictEqual(spawned(), [], 'resume spawns nothing');
-        await d.waitFor(/Resuming operation execution[\s\S]*abort abort/, {
+        await d.waitFor(/Resuming operation execution[\s\S]*\? more/, {
           timeoutMs: 15_000,
         });
         d.type('echo "built v1 E2E_BUILD_OK"', work);
@@ -610,6 +612,227 @@ describe('sidecar e2e (real tmux)', () => {
           readReport(ws.dir).includes('**Status**: ❌ NOT executed'),
           'a skipped rollback is never reported as success',
         );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '[p] then [y]: samaritan presses Enter, waits for the command, auto-verifies, report credits [y]',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-paste.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('Paste check', { timeoutMs: 40_000 });
+        // With a pane attached the header points at [p], and the compact bar
+        // shows the flow keys + `?` (copy/note/… live under it).
+        await d.waitFor(`Command — [p] pastes it into tmux pane ${work}:`);
+        await d.waitFor(/↵ done .*p paste .*v verify .*\? more/);
+
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        await d.waitFor(/y run it .*↵ done/);
+        assert.ok(
+          !d.capture(work).includes('PASTE_EXECMARK'),
+          'nothing runs on [p] alone',
+        );
+        d.key('y');
+        await d.waitFor('Enter sent to', { timeoutMs: 15_000 });
+        await d.waitFor('PASTE_EXECMARK', { pane: work, timeoutMs: 15_000 });
+        // No [v]: verify runs by itself once the command is back at the prompt.
+        const main = await d.waitFor(
+          /Finished\.[\s\S]*✅ contains: PASTE_EXECMARK[\s\S]*Verify passed/,
+          { timeoutMs: 15_000 },
+        );
+        assert.ok(!main.includes('❌'), 'no premature FAIL before it finished');
+        d.enter();
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          readReport(ws.dir).includes('⏎ Enter sent from samaritan `[y]`'),
+          'the report credits samaritan for pressing Enter',
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'rollback [p] then [y]: Enter sent for the rollback entry, auto-verified, credited in the report',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-rollback.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_RB_MARK"', { timeoutMs: 40_000 });
+        d.enter(); // complete the only step
+        await d.waitFor('All steps done.', { timeoutMs: 15_000 });
+        d.key('r');
+        await d.waitFor('Roll back which step?');
+        d.type('1');
+        await d.waitFor('Rollback 1/1: Undo deploy', { timeoutMs: 15_000 });
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        d.key('y');
+        await d.waitFor(/^UNDO_DEPLOY E2E_RB_MARK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        // Auto-verify of the rollback entry's expect — no [v] needed.
+        await d.waitFor('✅ contains: UNDO_DEPLOY', { timeoutMs: 15_000 });
+        d.enter(); // ↵ done
+        await d.waitFor('Rollback complete — 1/1', { timeoutMs: 15_000 });
+        await d.waitFor(/All steps done\.[\s\S]*All steps done\./, {
+          timeoutMs: 15_000,
+        });
+        d.enter();
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          readReport(ws.dir).includes(
+            '(pasted into pane, Enter sent from samaritan `[y]`, verify ✅)',
+          ),
+          readReport(ws.dir),
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '[y] on a slow command: any key stops waiting, [v] later still verifies',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-slow-run.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('Slow rollout', { timeoutMs: 40_000 });
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        d.key('y');
+        await d.waitFor('Running… verify follows', { timeoutMs: 15_000 });
+        d.key('z'); // any key: hand the bar back while it still runs
+        await d.waitFor('Stopped waiting', { timeoutMs: 15_000 });
+        assert.ok(!d.capture().includes('❌'), 'no verify while it runs');
+        await d.waitFor(/^SLOW_DONE$/m, { pane: work, timeoutMs: 20_000 });
+        d.key('v');
+        await d.waitFor('✅ contains: SLOW_DONE', { timeoutMs: 15_000 });
+        assert.ok(
+          !/> z/.test(d.capture()),
+          'the stop key must not leak into the next prompt',
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '[y] refuses unless the pane is exactly as the paste left it (copy-mode, typed input, synchronize-panes)',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-paste.yaml');
+      const d = TmuxDriver.create({ split: true });
+      const runs = (): number =>
+        (d.capture(work).match(/^PASTE_EXECMARK$/gm) ?? []).length;
+      const work = d.work as string;
+      const refusals = (): number =>
+        (d.capture().match(/Enter NOT sent/g) ?? []).length;
+      const window = work.replace(/\.\d+$/, '');
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('Paste check', { timeoutMs: 40_000 });
+
+        // 1. Copy-mode would swallow Enter: refused, stays armed, and works
+        //    once the pane leaves copy-mode.
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        tmux(['copy-mode', '-t', work]);
+        d.key('y');
+        await d.waitFor('Enter NOT sent: the pane is in copy/view mode');
+        assert.strictEqual(runs(), 0, 'refused [y] must not run anything');
+        tmux(['send-keys', '-t', work, '-X', 'cancel']);
+        d.key('y');
+        await d.waitFor('Verify passed', { timeoutMs: 15_000 });
+        assert.strictEqual(runs(), 1);
+
+        // 2. The operator typed in the pane after the paste: refused.
+        d.key('p');
+        await d.waitFor(/\[y\] to run it[\s\S]*\[y\] to run it/, {
+          timeoutMs: 15_000,
+        });
+        d.key(' #edited', work);
+        await d.waitFor('#edited', { pane: work });
+        d.key('y');
+        await d.waitFor(
+          'Enter NOT sent: the pane printed output since the paste',
+        );
+        assert.strictEqual(runs(), 1, 'an edited command is never run');
+
+        // 3. synchronize-panes would send Enter to every pane: refused.
+        tmux(['send-keys', '-t', work, 'C-c']);
+        await sleep(300);
+        d.key('p');
+        await d.waitFor(/(\[y\] to run it[\s\S]*){3}/, { timeoutMs: 15_000 });
+        tmux(['set-window-option', '-t', window, 'synchronize-panes', 'on']);
+        const before = refusals();
+        d.key('y');
+        await d.waitFor(/synchronize-panes is on/, { timeoutMs: 15_000 });
+        assert.strictEqual(refusals(), before + 1);
+        tmux(['set-window-option', '-t', window, 'synchronize-panes', 'off']);
+        assert.strictEqual(runs(), 1, 'nothing ran while synchronized');
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '[p] multi-line paste: pastes straight away on every step, no confirm prompt',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-multiline-paste.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('MULTILINE_ONE', { timeoutMs: 40_000 });
+
+        for (const [mark, out] of [
+          ['MULTILINE_ONE', /^FIRST MULTILINE_ONE$/m],
+          ['MULTILINE_TWO', /^SECOND MULTILINE_TWO$/m],
+        ] as const) {
+          d.key('p');
+          // The block lands in the work pane with no question asked first.
+          await d.waitFor(mark, { pane: work, timeoutMs: 15_000 });
+          assert.ok(!out.test(d.capture(work)), 'paste must not execute');
+          d.enter(work);
+          await d.waitFor(out, { pane: work });
+          d.enter(); // complete the step
+        }
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+        const main = d.capture();
+        assert.ok(!main.includes('Paste it?'), main);
+        assert.ok(!main.includes('Multi-line command'), main);
       } finally {
         d.kill();
         ws.cleanup();

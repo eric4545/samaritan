@@ -178,6 +178,9 @@ const ROLLBACK_TITLES: Record<string, string> = {
   nearest: 'Nearest-upstream rollback (triggered at Step',
 };
 
+/** How the report credits a `[y]` Enter (operator-triggered, guarded). */
+const ENTER_SENT_NOTE = 'Enter sent from samaritan `[y]`';
+
 const ROLLBACK_OUTCOMES: Record<string, string> = {
   executed: '✅ run by operator',
   skipped: '⏭ skipped',
@@ -205,6 +208,7 @@ function renderRollback(rb: RollbackRecord, redact: Redact): string[] {
       const outcome = ROLLBACK_OUTCOMES[cmd.outcome ?? ''] ?? '⚠️ not run';
       const notes = [
         ...(cmd.pasted ? ['pasted into pane'] : []),
+        ...(cmd.enterSent ? [ENTER_SENT_NOTE] : []),
         ...(cmd.verified === undefined
           ? []
           : [cmd.verified ? 'verify ✅' : 'verify ❌']),
@@ -285,7 +289,9 @@ function renderStep(
   for (const cmd of step.commands) {
     lines.push('');
     if (cmd.displayed) {
-      lines.push(`**Command (run by operator)**: \`${redact(cmd.command)}\``);
+      lines.push(
+        `**Command (run by operator)**: \`${redact(cmd.command)}\`${cmd.enterSent ? ` — ⏎ ${ENTER_SENT_NOTE}` : ''}`,
+      );
     } else {
       lines.push(`**Command sent**: \`${redact(cmd.command)}\``);
     }

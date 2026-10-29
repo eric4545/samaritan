@@ -29,6 +29,14 @@ import { OperationExecutor } from '../../lib/executor';
 import { findShellVarRefs } from '../../lib/expect-lint';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
+import {
+  type ArmedEnter,
+  armEnter,
+  checkEnterSafe,
+  commandFinished,
+  type PaneState,
+  type RunWatch,
+} from '../../lib/pane-enter-guard';
 import { generateReport, renderReport } from '../../lib/report-generator';
 import {
   filterRollbackByEnv,
@@ -45,6 +53,7 @@ import {
   getSessionEvidenceDir,
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
+import { runCommandHeader, stepActionHints } from '../../lib/step-actions';
 import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
 import { childStepLabel, describeStepPosition } from '../../lib/step-position';
 import {
@@ -55,7 +64,6 @@ import {
 } from '../../lib/step-resolution';
 import {
   bootstrapSessions,
-  isMultiLinePaste,
   listTmuxPanes,
   TmuxPaneCapture,
   type TmuxSession,
@@ -96,6 +104,7 @@ const COMPLETION_KEYS: ReadonlySet<string> = new Set(['r', 'g']);
 // Single-key actions on an operator-driven rollback step.
 const ROLLBACK_ACTION_KEYS: ReadonlySet<string> = new Set([
   'p',
+  'y',
   'c',
   'v',
   's',
@@ -799,12 +808,14 @@ class OperationRunner {
       'v',
       't',
       'p',
+      'y',
       'b',
       'j',
       's',
       'r',
       'g',
       'q',
+      '?',
     ]);
 
     // `immediate` = keys that fire on press without Enter (default: the action
@@ -1040,6 +1051,200 @@ class OperationRunner {
       return true;
     };
 
+    // [p] → [y]: the one paste [y] may press Enter for. `where` ties it to
+    // the step / rollback entry it was pasted from, so [y] never fires a
+    // paste left over from somewhere else.
+    let armedEnter:
+      | (ArmedEnter & {
+          where: string;
+          sessionName: string;
+          backend: CaptureBackend;
+          /** Cursor row before the paste: the pane's bare prompt. */
+          promptRow?: string;
+        })
+      | undefined;
+    const sleep = (ms: number): Promise<void> =>
+      new Promise((r) => setTimeout(r, ms));
+    // Wait for the paste's echo to finish: the pipe offset unchanged for
+    // 200ms (at most ~2s). The guard's snapshot must not include a half echo.
+    const waitForPaneQuiet = async (
+      backend: CaptureBackend,
+      sessionName: string,
+    ): Promise<number> => {
+      let last = backend.currentOffset(sessionName);
+      let stableSince = Date.now();
+      const deadline = stableSince + 2000;
+      while (Date.now() < deadline) {
+        await sleep(50);
+        const now = backend.currentOffset(sessionName);
+        if (now !== last) {
+          last = now;
+          stableSince = Date.now();
+        } else if (Date.now() - stableSince >= 200) break;
+      }
+      return last;
+    };
+    /** After a [p] paste: snapshot the pane and arm [y]. True when armed. */
+    const armAfterPaste = async (
+      backend: CaptureBackend,
+      sessionName: string,
+      command: string,
+      where: string,
+      beforePaste: PaneState | undefined,
+    ): Promise<boolean> => {
+      armedEnter = undefined;
+      if (!backend.paneState || !backend.sendEnter) return false;
+      const offset = await waitForPaneQuiet(backend, sessionName);
+      const armed = armEnter(command, backend.paneState(sessionName), offset);
+      if ('reason' in armed) {
+        console.log(`    ℹ️  [y] not offered: ${armed.reason}.`);
+        return false;
+      }
+      armedEnter = {
+        ...armed,
+        where,
+        sessionName,
+        backend,
+        promptRow: beforePaste?.cursorLine,
+      };
+      return true;
+    };
+    const isArmedAt = (where: string): boolean => armedEnter?.where === where;
+    /** The attached pane `[p]` would paste into, or undefined when none. */
+    const attachedPaneTarget = (sessionName: string): string | undefined => {
+      const backend = captureRef.backend;
+      return backend?.hasTarget(sessionName) && backend.pasteCommand
+        ? backend.describeTarget(sessionName)
+        : undefined;
+    };
+    /**
+     * [y] — press Enter in the pane for the armed paste, ONLY while the pane
+     * is exactly as the paste left it (`checkEnterSafe`). A refusal keeps it
+     * armed (e.g. leave copy-mode and press [y] again) and sends nothing.
+     */
+    const pressArmedEnter = (
+      where: string,
+      step: number,
+      context?: string,
+    ): RunWatch | undefined => {
+      const armed = armedEnter;
+      if (!armed || armed.where !== where) {
+        console.log('    ⚠️  Nothing pasted here to run — press [p] first.');
+        return undefined;
+      }
+      const refuse = (reason: string): undefined => {
+        console.log(
+          `    🛑 Enter NOT sent: ${reason}. Press Enter in the pane yourself, or [p] to paste again.`,
+        );
+        return undefined;
+      };
+      if (captureRef.backend !== armed.backend)
+        return refuse('the attached pane changed since the paste');
+      if (repairCapture(armed.sessionName))
+        return refuse('the capture pipe was replaced since the paste');
+      const reason = checkEnterSafe(
+        armed,
+        armed.backend.paneState?.(armed.sessionName),
+        armed.backend.currentOffset(armed.sessionName),
+      );
+      if (reason) return refuse(reason);
+      if (!armed.backend.sendEnter?.(armed.sessionName, armed.state.paneId))
+        return refuse('tmux did not accept the key');
+      armedEnter = undefined;
+      logger.emit({
+        type: 'user_input',
+        action: 'enter_sent',
+        step,
+        session: armed.backend.describeTarget(armed.sessionName),
+        command: armed.command,
+        actor: state.context.operator,
+        ...(context ? { context } : {}),
+      });
+      console.log(
+        `    ⏎  Enter sent to ${armed.backend.describeTarget(armed.sessionName)}.`,
+      );
+      return {
+        promptRow: armed.promptRow,
+        shell: armed.state.currentCommand,
+        offsetAtEnter: armed.offset,
+      };
+    };
+    /**
+     * After [y]: wait until the command finishes (`commandFinished` — back at
+     * the bare prompt, or quiet with the shell in front) so verify never runs
+     * on half the output. Any key stops waiting; Ctrl+C still saves + aborts.
+     */
+    const waitForCommand = async (
+      backend: CaptureBackend,
+      sessionName: string,
+      watch: RunWatch,
+      verifyNext: boolean,
+    ): Promise<'prompt' | 'quiet' | 'gone' | 'key'> => {
+      console.log(
+        `    ⏳ Running…${verifyNext ? ' verify follows when it finishes' : ''} · any key: stop waiting`,
+      );
+      let keyPressed = false;
+      let stopKeys = (): void => {};
+      if (process.stdin.isTTY) {
+        rl.pause();
+        const suspended = process.stdin.listeners('keypress').slice() as Array<
+          (...args: any[]) => void
+        >;
+        for (const l of suspended) process.stdin.removeListener('keypress', l);
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+        const handler = (_ch: string | undefined, key: any) => {
+          if (key?.ctrl && key.name === 'c') {
+            stopKeys();
+            process.kill(process.pid, 'SIGINT');
+            return;
+          }
+          keyPressed = true;
+        };
+        process.stdin.on('keypress', handler);
+        let stopped = false;
+        stopKeys = () => {
+          if (stopped) return;
+          stopped = true;
+          process.stdin.removeListener('keypress', handler);
+          for (const l of suspended) process.stdin.on('keypress', l);
+          process.stdin.setRawMode(false);
+          rl.resume();
+        };
+      }
+      try {
+        let lastOffset = backend.currentOffset(sessionName);
+        let lastChange = Date.now();
+        while (!keyPressed) {
+          await sleep(150);
+          const offset = backend.currentOffset(sessionName);
+          if (offset !== lastOffset) {
+            lastOffset = offset;
+            lastChange = Date.now();
+          }
+          const result = commandFinished(
+            watch,
+            backend.paneState?.(sessionName),
+            offset,
+            Date.now() - lastChange,
+          );
+          if (result === 'running') continue;
+          if (result === 'gone')
+            console.log(
+              '    ⚠️  Lost track of the pane — press [v] once the command is done.',
+            );
+          else console.log('    ✔  Finished.');
+          return result;
+        }
+        console.log(
+          '    ↩  Stopped waiting — press [v] once the command is done.',
+        );
+        return 'key';
+      } finally {
+        stopKeys();
+      }
+    };
+
     const DIVIDER = '─'.repeat(60);
     const isQuit = (c: string) => c === 'q' || c === 'quit';
     const isSkip = (c: string) => c === 's' || c === 'skip';
@@ -1185,6 +1390,9 @@ class OperationRunner {
           ? (backend as CaptureBackend).currentOffset(sessionName)
           : 0;
         const canPaste = !!(cmd && canCapture && backend?.pasteCommand);
+        // [y] only ever presses Enter for a paste made from THIS entry.
+        const rbWhere = `rollback:${context}:${stepIndex}:${k}`;
+        armedEnter = undefined;
         const rbExpect = rb.expect
           ? substituteExpectVars(
               rb.expect,
@@ -1218,6 +1426,7 @@ class OperationRunner {
         while (!outcome) {
           console.log(
             `\n${renderKeyHints([
+              ...(isArmedAt(rbWhere) ? [{ key: 'y', label: 'run it' }] : []),
               { key: '↵', label: cmd ? 'done — I ran it' : 'done' },
               ...(canPaste ? [{ key: 'p', label: 'paste into pane' }] : []),
               ...(cmd ? [{ key: 'c', label: 'copy' }] : []),
@@ -1228,19 +1437,11 @@ class OperationRunner {
               { key: 'a', label: 'abort rollback' },
             ])}`,
           );
-          const choice = (await readActionKey(ROLLBACK_ACTION_KEYS))
+          let choice = (await readActionKey(ROLLBACK_ACTION_KEYS))
             .trim()
             .toLowerCase();
           if (choice === 'p' && canPaste && cmd && backend?.pasteCommand) {
-            if (
-              isMultiLinePaste(cmd) &&
-              !(await confirmKey(
-                '    ⚠️  Multi-line command — it lands as one block only with bracketed paste (bash ≥ 4.4, zsh ≥ 5.1). Paste it? [y / n=cancel]: ',
-              ))
-            ) {
-              console.log('    ↩  Cancelled — nothing pasted.');
-              continue;
-            }
+            const beforePaste = backend.paneState?.(sessionName);
             backend.pasteCommand(sessionName, cmd);
             logger.emit({
               type: 'user_input',
@@ -1251,10 +1452,32 @@ class OperationRunner {
               actor: state.context.operator,
               context,
             });
+            const armed = await armAfterPaste(
+              backend,
+              sessionName,
+              cmd,
+              rbWhere,
+              beforePaste,
+            );
             console.log(
-              `    ⌨️  Pasted into ${target} — review it, press Enter there to run, then ${rbExpect ? '[v] to verify or ' : ''}↵ here.`,
+              armed
+                ? `    ⌨️  Pasted into ${target} — review it there, then [y] to run it${rbExpect && canCapture ? ' (verify follows)' : ''}.`
+                : `    ⌨️  Pasted into ${target} — review it, press Enter there to run, then ${rbExpect ? '[v] to verify or ' : ''}↵ here.`,
             );
             continue;
+          }
+          if (choice === 'y') {
+            const verifyNext = !!(rbExpect && canCapture && controller);
+            const watch = pressArmedEnter(rbWhere, stepIndex, context);
+            if (!watch || !backend) continue;
+            const end = await waitForCommand(
+              backend,
+              sessionName,
+              watch,
+              verifyNext,
+            );
+            if (end === 'key' || end === 'gone' || !verifyNext) continue;
+            choice = 'v'; // auto-verify: fall through to the [v] branch
           }
           if (choice === 'c' && cmd) {
             await copyCommand(cmd, '    ');
@@ -1813,7 +2036,7 @@ class OperationRunner {
         if (assertResult.pass) {
           captureVerifiedEvidence(stepIndex, output, captureScreen);
           console.log(
-            '    ✅ Verify passed — press [v] again any time to re-check.',
+            '    ✅ Verify passed — ↵ to complete the step ([v] re-checks).',
           );
           return;
         }
@@ -1958,6 +2181,9 @@ class OperationRunner {
       const gatedBackOnce = new Set<number>();
 
       stepLoop: for (let i = startIndex; i < steps.length; i++) {
+        // A paste armed for [y] never carries over to another step (or back
+        // to this one via [b]).
+        armedEnter = undefined;
         const { step } = steps[i];
         // Heading uses the single-env manual's dotted number (`Step 10.2`)
         // plus the flat progress position, so the sidecar maps 1:1 onto the
@@ -2263,9 +2489,12 @@ class OperationRunner {
           if (resolvedCommand) {
             if (isSidecarAutomatic) {
               // Sidecar: display command prominently — operator runs it themselves
-              console.log('\n    Run this command in your terminal:');
-              console.log(renderCodeBlock(resolvedCommand));
+              // (or [p] pastes it when a pane is attached — say so up front).
               const sessionName = step.session ?? 'default';
+              console.log(
+                `\n    ${runCommandHeader({ paneTarget: attachedPaneTarget(sessionName) })}`,
+              );
+              console.log(renderCodeBlock(resolvedCommand));
               logger.emit({
                 type: 'command_displayed',
                 step: i,
@@ -2284,7 +2513,12 @@ class OperationRunner {
             if (scriptBody) console.log(renderCodeBlock(scriptBody));
             else console.log(`    ⚠️  Script file not found: ${step.script}`);
             if (isSidecarAutomatic)
-              console.log('\n    Run this in your terminal:');
+              console.log(
+                `\n    ${runCommandHeader({
+                  paneTarget: attachedPaneTarget(step.session ?? 'default'),
+                  script: true,
+                })}`,
+              );
             else console.log('\n    Run:');
             if (runnableCommand) console.log(renderCodeBlock(runnableCommand));
             if (isSidecarAutomatic && runnableCommand) {
@@ -2346,35 +2580,26 @@ class OperationRunner {
                 `\n    Expected: ${renderExpectDescription(resolvedExpect)}`,
               );
             }
-            console.log(
-              '\n' +
-                renderKeyHints([
-                  { key: '↵', label: 'done' },
-                  ...(runnableCommand ? [{ key: 'c', label: 'copy' }] : []),
-                  { key: 'n', label: 'note' },
-                  { key: 'e', label: 'evidence' },
-                  ...(evidenceForStep.length
-                    ? [{ key: 'x', label: 'remove evidence' }]
-                    : []),
-                  ...(step.expect ? [{ key: 'v', label: 'verify' }] : []),
-                  ...(mode === 'sidecar'
-                    ? [{ key: 't', label: 'attach pane' }]
-                    : []),
-                  ...(mode === 'sidecar' && runnableCommand
-                    ? [{ key: 'p', label: 'send to pane' }]
-                    : []),
-                  ...(i > 0 ? [{ key: 'b', label: 'back' }] : []),
-                  ...(i < steps.length - 1
-                    ? [{ key: 'j', label: 'jump' }]
-                    : []),
-                  { key: 's', label: 'skip' },
-                  { key: 'r', label: 'rollback' },
-                  ...globalRollbackMenuItem,
-                  { key: 'abort', label: 'abort' },
-                ]),
-            );
+            // Compact bar: the usual flow keys + `?` for the rest. Every key
+            // works whether shown or not (see src/lib/step-actions.ts).
+            const hints = stepActionHints({
+              sidecar: mode === 'sidecar',
+              armed: isArmedAt(`step:${i}`),
+              hasCommand: !!runnableCommand,
+              hasExpect: !!step.expect,
+              paneAttached: !!captureRef.backend?.hasTarget(sessionName),
+              hasEvidence: evidenceForStep.length > 0,
+              canGoBack: i > 0,
+              canJump: i < steps.length - 1,
+              hasGlobalRollback,
+            });
+            console.log(`\n${renderKeyHints(hints.primary)}`);
             const input = await readActionKey();
             const inputChoice = input.trim().toLowerCase();
+            if (inputChoice === '?' || inputChoice === 'more') {
+              console.log(renderKeyHints(hints.more));
+              continue;
+            }
             if (isQuit(inputChoice)) {
               executor.cancel();
               console.log('\n⛔ Execution aborted by operator.');
@@ -2516,9 +2741,11 @@ class OperationRunner {
             ) {
               // [p] — paste the resolved command (or `bash <script>` for a
               // script-only step) into the attached pane WITHOUT executing it
-              // (no Enter). Operator reviews it, presses Enter themselves, then
-              // [v] to verify. Only available once a pane is attached (spawn-own
-              // session or [t]/--attach).
+              // (no Enter). Operator reviews it, then presses Enter there or
+              // [y] here (guarded — see pressArmedEnter), then [v] to verify.
+              // Multi-line commands paste without asking: bracketed paste lands
+              // them as one un-run block. Only available once a pane is
+              // attached (spawn-own session or [t]/--attach).
               const backend = captureRef.backend;
               if (!backend?.hasTarget(sessionName) || !backend.pasteCommand) {
                 console.log(
@@ -2526,19 +2753,7 @@ class OperationRunner {
                 );
                 continue;
               }
-              // A multi-line block lands atomically only when the pane's shell
-              // has bracketed paste on (bash ≥ 4.4, zsh ≥ 5.1). In sh/dash, or
-              // with it off, every embedded newline is an Enter — lines run as
-              // they arrive. tmux can't report the pane's mode, so ask first.
-              if (isMultiLinePaste(runnableCommand)) {
-                console.log(
-                  '    ⚠️  Multi-line command. It lands as one un-run block only if the pane shell supports bracketed paste (bash ≥ 4.4, zsh ≥ 5.1); in sh/dash each line runs as it arrives.',
-                );
-                if (!(await confirmKey('    Paste it? [y / n=cancel]: '))) {
-                  console.log('    ↩  Cancelled — nothing pasted.');
-                  continue;
-                }
-              }
+              const beforePaste = backend.paneState?.(sessionName);
               backend.pasteCommand(sessionName, runnableCommand);
               // Recorded as a user_input breadcrumb (not command_sent): sidecar
               // never executes, so folding it into the step's command list would
@@ -2551,9 +2766,46 @@ class OperationRunner {
                 command: runnableCommand,
                 actor: state.context.operator,
               });
-              console.log(
-                `    ⌨️  Pasted into ${backend.describeTarget(sessionName)} — review it, press Enter there to run, then [v] to verify.`,
+              const armed = await armAfterPaste(
+                backend,
+                sessionName,
+                runnableCommand,
+                `step:${i}`,
+                beforePaste,
               );
+              console.log(
+                armed
+                  ? `    ⌨️  Pasted into ${backend.describeTarget(sessionName)} — review it there, then [y] to run it${step.expect ? ' (verify follows)' : ''}.`
+                  : `    ⌨️  Pasted into ${backend.describeTarget(sessionName)} — review it, press Enter there to run, then [v] to verify.`,
+              );
+              continue;
+            }
+            if (
+              mode === 'sidecar' &&
+              (inputChoice === 'y' || inputChoice === 'run')
+            ) {
+              // [y] — press Enter in the pane for THIS step's [p] paste, only
+              // while the pane provably still holds it unrun (pressArmedEnter),
+              // then wait for it to finish and auto-verify `expect`.
+              const backend = captureRef.backend;
+              const watch = pressArmedEnter(`step:${i}`, i);
+              if (!watch || !backend) continue;
+              const end = await waitForCommand(
+                backend,
+                sessionName,
+                watch,
+                !!step.expect,
+              );
+              if (step.expect && (end === 'prompt' || end === 'quiet'))
+                await verifyManualOutput(
+                  step,
+                  i,
+                  captureSinceStepStart,
+                  resolvedExpect,
+                  runnableCommand,
+                  () => captureRef.backend?.captureScreen?.(sessionName),
+                  () => captureRef.backend?.promptLine?.(sessionName),
+                );
               continue;
             }
             if (i > 0 && (inputChoice === 'b' || inputChoice === 'back')) {

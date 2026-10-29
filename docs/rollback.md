@@ -146,12 +146,13 @@ Operator-driven rollback walks the entries one at a time — `↩ Rollback 1/3: 
 |---|---|
 | `↵` | done — I ran it |
 | `p` | paste into the attached pane (bracketed paste, **no Enter** — same as the forward `[p]`) |
+| `y` | after `p`: samaritan presses Enter in the pane, only while the pane still holds that paste unrun (same guard as the forward [`[y]`](./running.md)), then waits for it to finish and verifies the entry's `expect` |
 | `c` | copy the command |
 | `v` | verify the entry's `expect` against the pane output since it was shown |
 | `s` | skip this entry |
 | `a` | abort the rest of the rollback |
 
-The run report's **Rollback Events** records what actually happened. Each entry is listed as `✅ run by operator` / `⏭ skipped` / `⛔ not run`, with `pasted into pane` and the `verify ✅/❌` result where they apply. The status is `✅ completed` only when every entry was confirmed run. Otherwise it is `⚠️ partial` or `❌ NOT executed`. A rollback that was only shown is never recorded as a success. Commands in the audit log are resolved (`${REGION}` → `us-east-1`), so the log is replayable.
+The run report's **Rollback Events** records what actually happened. Each entry is listed as `✅ run by operator` / `⏭ skipped` / `⛔ not run`, with `pasted into pane`, `Enter sent from samaritan [y]`, and the `verify ✅/❌` result where they apply. The status is `✅ completed` only when every entry was confirmed run. Otherwise it is `⚠️ partial` or `❌ NOT executed`. A rollback that was only shown is never recorded as a success. Commands in the audit log are resolved (`${REGION}` → `us-east-1`), so the log is replayable.
 
 Finishing the last step does not take rollback away. When anything can be rolled back, the run stops on an **All steps done** screen (`↵ finish · r roll back a step · g global rollback`) before it exits.
 
