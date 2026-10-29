@@ -2733,6 +2733,7 @@ class OperationRunner {
               history?.text ?? '',
               captureRef.pasteAnchor?.startLine,
               history?.baseLine,
+              runnableCommand,
             );
             if (fromPaste !== undefined) {
               console.log(

@@ -852,4 +852,28 @@ describe('sliceFromPaneLine — paste-anchored scrollback slice for a lost pipe'
       '$ aws route53 list-resource-record-sets\nlive env row\n$ ',
     );
   });
+
+  const cmd = 'aws route53 list-resource-record-sets';
+
+  it('keeps the anchor when its row echoes the command', () => {
+    assert.strictEqual(
+      sliceFromPaneLine(history, 44, 40, cmd),
+      '$ aws route53 list-resource-record-sets\nlive env row\n$ ',
+    );
+  });
+
+  it('walks back to the nearest echo when a full scrollback shifted the anchor', () => {
+    // history-limit reached: history_size stayed put while lines dropped off,
+    // so the recorded line now points at the output, below the live echo
+    // (seen in real tmux: the slice began at `39`, `40`, `$ `). The nearest
+    // earlier echo is the live one, never the stale attempt above it.
+    assert.strictEqual(
+      sliceFromPaneLine(history, 46, 40, cmd),
+      '$ aws route53 list-resource-record-sets\nlive env row\n$ ',
+    );
+  });
+
+  it('is undefined when no echo is at or before the anchor', () => {
+    assert.strictEqual(sliceFromPaneLine(history, 41, 40, cmd), undefined);
+  });
 });
