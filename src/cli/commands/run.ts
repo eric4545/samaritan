@@ -70,6 +70,11 @@ import {
   StepController,
 } from '../../lib/tui';
 import {
+  preferencesPath,
+  readPreferences,
+  setPreference,
+} from '../../lib/user-preferences';
+import {
   listUnresolvedVars,
   resolveVars,
   resolveVarsSafe,
@@ -91,8 +96,8 @@ type RollbackStatus = 'completed' | 'partial' | 'not_executed';
 
 // Single-key answers for a y/n confirmation (fire without Enter on a TTY).
 const CONFIRM_KEYS: ReadonlySet<string> = new Set(['y', 'n']);
-// Single-key answers for the multi-line paste confirm (a = don't ask again
-// for this pane).
+// Single-key answers for the multi-line paste confirm (a = don't ask again,
+// saved across runs).
 const PASTE_CONFIRM_KEYS: ReadonlySet<string> = new Set(['y', 'a', 'n']);
 // Single-key actions on the all-steps-done completion screen.
 const COMPLETION_KEYS: ReadonlySet<string> = new Set(['r', 'g']);
@@ -793,25 +798,34 @@ class OperationRunner {
     // A multi-line block lands atomically only when the pane's shell has
     // bracketed paste on (bash ≥ 4.4, zsh ≥ 5.1). In sh/dash, or with it off,
     // every embedded newline is an Enter — lines run as they arrive. tmux
-    // can't report the pane's mode, so ask — but only until the operator
-    // answers [a]: from then on that pane (by its target) pastes silently for
-    // the rest of the run. Re-attaching a different pane asks again.
-    const multiLinePasteOk = new Set<string>();
-    const confirmMultiLinePaste = async (pane: string): Promise<boolean> => {
-      if (multiLinePasteOk.has(pane)) return true;
+    // can't report the pane's mode, so ask — until the operator answers [a]:
+    // that is saved to ~/.samaritan/preferences.json and every later paste, in
+    // this run and future runs/resumes, goes straight through.
+    let multiLinePasteConfirm =
+      readPreferences().confirm_multiline_paste !== false;
+    const confirmMultiLinePaste = async (): Promise<boolean> => {
+      if (!multiLinePasteConfirm) return true;
       console.log(
         '    ⚠️  Multi-line command. It lands as one un-run block only if the pane shell supports bracketed paste (bash ≥ 4.4, zsh ≥ 5.1); in sh/dash each line runs as it arrives.',
       );
       const ans = (
         await readActionKey(
           PASTE_CONFIRM_KEYS,
-          "    Paste it? [y / a=yes, don't ask again for this pane / n=cancel]: ",
+          "    Paste it? [y / a=yes, don't ask again / n=cancel]: ",
         )
       )
         .trim()
         .toLowerCase();
       if (ans === 'a' || ans === 'always') {
-        multiLinePasteOk.add(pane);
+        multiLinePasteConfirm = false;
+        try {
+          setPreference('confirm_multiline_paste', false);
+          console.log(
+            `    ✓  Won't ask again — saved to ${preferencesPath()} (delete it to re-enable).`,
+          );
+        } catch {
+          console.log("    ✓  Won't ask again this run (couldn't save it).");
+        }
         return true;
       }
       if (ans === 'y' || ans === 'yes') return true;
@@ -1264,10 +1278,7 @@ class OperationRunner {
             .trim()
             .toLowerCase();
           if (choice === 'p' && canPaste && cmd && backend?.pasteCommand) {
-            if (
-              isMultiLinePaste(cmd) &&
-              !(await confirmMultiLinePaste(target ?? sessionName))
-            )
+            if (isMultiLinePaste(cmd) && !(await confirmMultiLinePaste()))
               continue;
             backend.pasteCommand(sessionName, cmd);
             logger.emit({
@@ -2554,13 +2565,11 @@ class OperationRunner {
                 );
                 continue;
               }
-              // Multi-line: confirm (once per pane after [a]) — see
+              // Multi-line: confirm unless [a] was answered — see
               // confirmMultiLinePaste.
               if (
                 isMultiLinePaste(runnableCommand) &&
-                !(await confirmMultiLinePaste(
-                  backend.describeTarget(sessionName),
-                ))
+                !(await confirmMultiLinePaste())
               )
                 continue;
               backend.pasteCommand(sessionName, runnableCommand);
