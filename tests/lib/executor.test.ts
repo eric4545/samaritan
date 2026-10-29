@@ -606,6 +606,79 @@ describe('goToStep (back-to-previous-step navigation)', () => {
   });
 });
 
+describe('revisitStep / returnToStep (re-run one earlier step, #117)', () => {
+  const op: Operation = {
+    id: 'revisit-op',
+    name: 'Revisit Op',
+    version: '1.0.0',
+    description: 'Four-step op for revisitStep tests',
+    environments: [
+      {
+        name: 'test',
+        description: 'Test env',
+        variables: {},
+        restrictions: [],
+        approval_required: false,
+        validation_required: false,
+      },
+    ],
+    variables: { test: {} },
+    steps: [
+      { name: 'Step A', type: 'manual' },
+      { name: 'Step B', type: 'manual' },
+      { name: 'Step C', type: 'manual' },
+      { name: 'Step D', type: 'manual' },
+    ],
+    metadata: {
+      created_at: new Date(),
+      updated_at: new Date(),
+      execution_count: 0,
+    },
+  };
+  const newExecutor = () =>
+    createExecutor(
+      op,
+      ExecutorUtils.createContext('revisit-op', 'test', {}, 'tester'),
+    );
+
+  it('resets only the target; the steps in between stay completed', () => {
+    const executor = newExecutor();
+    executor.resumeFromIndex(3); // A, B, C completed, at D
+    executor.revisitStep(0);
+    const state = executor.getState();
+    assert.strictEqual(state.currentStepIndex, 0);
+    assert.strictEqual(state.completedSteps, 2);
+    assert.deepStrictEqual(
+      state.steps.map((s) => s.status),
+      ['pending', 'completed', 'completed', 'pending'],
+    );
+  });
+
+  it('returnToStep moves the index without touching any status', () => {
+    const executor = newExecutor();
+    executor.resumeFromIndex(3);
+    executor.revisitStep(1);
+    executor.returnToStep(3);
+    const state = executor.getState();
+    assert.strictEqual(state.currentStepIndex, 3);
+    assert.strictEqual(state.skippedSteps, 0);
+    assert.deepStrictEqual(
+      state.steps.map((s) => s.status),
+      ['completed', 'pending', 'completed', 'pending'],
+    );
+  });
+
+  it('both are no-ops for an out-of-range index', () => {
+    const executor = newExecutor();
+    executor.resumeFromIndex(2);
+    executor.revisitStep(99);
+    executor.returnToStep(-1);
+    const state = executor.getState();
+    assert.strictEqual(state.currentStepIndex, 2);
+    assert.strictEqual(state.completedSteps, 2);
+  });
+});
+
 describe('jumpToStep (forward jump / skip-ahead navigation)', () => {
   const threeStepOperation: Operation = {
     id: 'jump-op',

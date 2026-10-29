@@ -414,6 +414,50 @@ export class OperationExecutor {
   }
 
   /**
+   * Re-run ONE earlier step (the `[b]` → "re-run only" choice). Unlike
+   * goToStep, only the target is reset to 'pending'. The steps between it and
+   * where the operator was keep their status, so a later returnToStep does
+   * not have to walk (or skip) them again.
+   */
+  revisitStep(stepIndex: number): void {
+    if (stepIndex < 0 || stepIndex >= this.state.steps.length) return;
+    const s = this.state.steps[stepIndex];
+    if (s.status === 'completed') {
+      this.state.completedSteps = Math.max(0, this.state.completedSteps - 1);
+    } else if (s.status === 'failed') {
+      this.state.failedSteps = Math.max(0, this.state.failedSteps - 1);
+    } else if (s.status === 'skipped') {
+      this.state.skippedSteps = Math.max(0, this.state.skippedSteps - 1);
+    } else if (s.status === 'waiting') {
+      this.state.waitingSteps = Math.max(0, this.state.waitingSteps - 1);
+    }
+    s.status = 'pending';
+    this.state.currentStepIndex = stepIndex;
+    this.emitEvent({
+      type: 'operation_started',
+      timestamp: new Date(),
+      operationId: this.state.operation.id,
+      message: `Re-running step ${stepIndex + 1} only: ${this.state.operation.name}`,
+    });
+  }
+
+  /**
+   * Go back to where the operator was before revisitStep, leaving every
+   * step's status as it is (neither skipped like jumpToStep nor reset like
+   * goToStep).
+   */
+  returnToStep(stepIndex: number): void {
+    if (stepIndex < 0 || stepIndex >= this.state.steps.length) return;
+    this.state.currentStepIndex = stepIndex;
+    this.emitEvent({
+      type: 'operation_started',
+      timestamp: new Date(),
+      operationId: this.state.operation.id,
+      message: `Returned to step ${stepIndex + 1}: ${this.state.operation.name}`,
+    });
+  }
+
+  /**
    * Jump forward to a later step (the `[j]` action / `run --from-step`). Every
    * still-'pending' step between the current index and the target is marked
    * 'skipped' (counters + step_skipped events), then currentStepIndex points at

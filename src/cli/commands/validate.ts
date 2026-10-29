@@ -18,6 +18,10 @@ import {
 import { validateStepDeps } from '../../lib/step-deps';
 import type { Operation } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
+import {
+  formatValidationError,
+  type ValidationError,
+} from '../../validation/schema-validator';
 
 interface ValidationResult {
   valid: boolean;
@@ -88,12 +92,14 @@ class OperationValidator {
         this.lintCommands(operation, filePath, result, options);
       }
     } catch (error: any) {
-      result.errors.push(`Parsing error: ${error.message}`);
+      // The message lists the errors too (for generate/run); keep only its
+      // headline here, since every error is printed below.
+      result.errors.push(
+        `Parsing error: ${String(error.message).split('\n')[0]}`,
+      );
       if (error.errors && Array.isArray(error.errors)) {
-        error.errors.forEach((validationError: any) => {
-          result.errors.push(
-            `  ${validationError.field}: ${validationError.message}`,
-          );
+        error.errors.forEach((validationError: ValidationError) => {
+          result.errors.push(`  ${formatValidationError(validationError)}`);
         });
       }
       result.valid = false;

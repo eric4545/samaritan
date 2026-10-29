@@ -19,6 +19,18 @@ function ev(partial: Partial<SessionEvent> & { type: string }): SessionEvent {
 }
 
 describe('foldEvents', () => {
+  it('records ↵ over an un-run paste as a step note (#115)', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({ type: 'user_input', action: 'send_to_pane', command: 'echo a' }),
+      ev({ type: 'user_input', action: 'paste_not_run', command: 'echo a' }),
+      ev({ type: 'step_complete', step: 0 }),
+    ]);
+    assert.deepStrictEqual(steps[0].notes, [
+      '⚠️ Marked done while the pasted command was not run: echo a',
+    ]);
+  });
+
   it('captures command input and attaches pane output', () => {
     const { steps } = foldEvents([
       ev({ type: 'step_start', step: 0, name: 'Deploy', pic: 'ops@x.com' }),

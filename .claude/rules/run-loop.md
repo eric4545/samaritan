@@ -68,6 +68,26 @@ piped stdin) so scripted runs end as before. Single-key y/n via
 `confirmKey()` (`readActionKey(CONFIRM_KEYS, prompt)`). e2e: "--attach
 rollback" + "completion screen" (`e2e-rollback.yaml`).
 
+## `readActionKey` — burst discard + double-Enter debounce (#116)
+
+Keys typed in one burst arrive as ONE stdin chunk (`"v\r"`) and
+`emitKeypressEvents` emits them synchronously. The old handler restored
+readline's keypress listener inside the `v` keypress, so the trailing `\r`
+went to readline (no pending question → lost) when fast, but meant "done"
+when slow. `finish()` now sets `settled` (the handler ignores the rest of the
+chunk), `queueMicrotask(cleanup)` BEFORE `resolve()` (cleanup runs before the
+caller's continuation, so a following `question()` sees cooked mode). A bare
+Enter within `ENTER_DEBOUNCE_MS` (400) of the last acted-on bare Enter
+(`lastBareEnterAt`, reset to 0 by any other resolved key: only CONSECUTIVE
+Enters are a double press, e.g. `↵ r 1⏎ s ↵` in 300 ms is not) is ignored with a visible `Enter ignored: pressed twice`
+line, never silently. Debounced from the previous ENTER, not from step render:
+scripted drivers (and e2e tests) press ↵ as soon as a new step's box shows.
+TTY path only; piped stdin (`question()`) is unchanged. e2e: "Enter after [v]".
+An e2e test that presses ↵ on one screen and again on the next (rollback
+entry → All steps done) must `await sleep(ENTER_DEBOUNCE_MS + 100)` between
+them, and must wait for the SECOND occurrence of a repeated prompt before
+answering it (a `y` reaching the bar early is `[y]` run it).
+
 ## `[p]` send to pane — bracketed paste, never Enter
 
 Pastes the `${VAR}`-resolved command via a tmux paste **buffer** with
@@ -130,6 +150,23 @@ NOT non-interactive execution: one operator key per command. When armed,
 `y run it` is the FIRST key in the bar. e2e: "[p] then [y]", "rollback [p]
 then [y]", "[y] on a slow command" (`e2e-slow-run.yaml`), "[y] refuses unless…".
 
+### Un-run paste guard (#115)
+
+`[p]` never presses Enter, so an un-run paste stays on the pane's input line
+across step changes. The NEXT `[p]` used to append to it (`echo hello-becho
+hello-c`) and `↵` marked a never-run step done. `lastPaste` (loop-level, set by
+forward AND rollback `[p]`) + `unrunPaste()` (`src/lib/paste-guard.ts`): the
+paste is un-run while `backend.promptLine()` (cursor line) still ends with the
+command's last line (`pasteStillOnInputLine`; a wrapped long line matches by a
+≥16-char tail; an unreadable cursor line never blocks). Then:
+`blockedByUnrunPaste()` refuses `[p]` (`Nothing pasted.`), never sends keys to
+clear it (paste stays the ONLY write); `confirmDoneWithUnrunPaste(step,
+context)` asks `Mark done anyway?` on `↵` for THAT step's/rollback entry's own
+paste (`y` → `user_input`/`paste_not_run`, folded to a ⚠️ step note); step
+start warns about an earlier step's un-run paste. Deliberately NOT cleared on
+step change: the pane text is still there. e2e: "un-run [p] paste"
+(`e2e-paste-guard.yaml`); unit: `tests/lib/paste-guard.test.ts`.
+
 ## `variants.<env>` resolved once, in `flattenAndMarkForEnv`
 
 Every flat step is `mergeStepVariant(step, targetEnv)` before anything else
@@ -149,6 +186,17 @@ always targets one env (NOT the multi-env `10b`/`10b1` letters).
 the `needs` dep graph is still `/^\d+$/` on the label.
 
 ## `[b]` back / `[j]` jump / `--from-step`
+
+**Re-run only (#117):** `[b]` with steps in between asks `Re-run only …? [y /
+n=rewind]` (`confirmKey`). `y` → `navRerunOnly` → `executor.revisitStep(t)`
+(resets ONLY `t`), sets `revisiting = t` + `returnTo = max(returnTo ?? i, i)`.
+At the loop top, once `i > revisiting` and `i < returnTo`,
+`executor.returnToStep(returnTo)` (index only, no status change) + `rerun_return`
+event + `i = returnTo - 1; continue`. Header `Next :` says `back to step N`. A
+plain rewind clears `returnTo`. Not persisted: abort mid-re-run resumes after
+the re-run step. Why not `[b]` + `[j]`: `jumpToStep` marks the rewound
+(`pending`) steps `skipped` even though they ran. Tests: `run command: [b]
+re-run one earlier step` (`rerun-step.yaml`), executor `revisitStep`.
 
 `executor.goToStep(index)` (rewind) resets the target + every later step to
 `pending`, rewinds counters, sets `currentStepIndex`. `executor.jumpToStep(target)`

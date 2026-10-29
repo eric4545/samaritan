@@ -96,6 +96,11 @@ After the last step, when anything can be rolled back, the run shows **All steps
 
 The global-rollback confirmation asks `[y/N]`. On a TTY it is answered with a single key, without Enter.
 
+Two guards keep a stray Enter from completing a step on a TTY:
+
+- **Keys typed after an action key in one burst are discarded.** Typing `v⏎` quickly runs `[v]` only; the Enter does not mark the step done.
+- **A second `↵` within 400 ms of one that was acted on, with no other key in between, is ignored**, with `↩ Enter ignored: pressed twice within 400 ms`. A double press on the step you just finished never completes the step that opened next. Press `↵` again to confirm.
+
 Before each step, samaritan prints `Expected: <criteria>` up front (e.g. `Expected: contains: Running, does not contain: CrashLoopBackOff`) so you know what `[v]` will check before you run anything.
 
 ## Verify output: checklist, highlighting, and the line-number gutter
@@ -142,7 +147,7 @@ On **FAIL**, a single-key menu follows:
 - `v` — **re-verify**: re-capture the pane output and re-run all checks (useful when the command is still finishing)
 - Enter — stop
 
-On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to re-check.` — `[v]` is not consumed by passing; you can re-run it as often as you like.
+On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: press ↵ to mark it done, or [v] to re-check.` A pass never completes the step by itself: `↵` does, and you can re-run `[v]` as often as you like.
 
 > Verification runs against **cleaned** pane output: ANSI color codes and escape sequences are stripped and `\r`-overwrites (progress bars, `\r\n` line endings) are resolved before `expect` assertions run — so `contains`/`equals` match what you actually see on screen, even when tools colorize their output.
 
@@ -174,6 +179,11 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 - **`[g]` global rollback** — only offered when the operation declares a top-level `rollback:` block. Previews the **consolidated** recovery — the explicit `rollback.steps` plus, when `aggregate_step_rollbacks` is on, every **completed** step's own rollback in reverse order (ordered by reverse-topological order when `needs` are present) — asks for a single-key `y` confirmation, runs it the same way as `[r]`, then aborts the operation (the session stays resumable). Use it when a failure means abandoning forward progress and unwinding what's been done so far.
 - **Forward gating (`needs`)** — before starting a step whose `needs` aren't all completed (e.g. a dependency was skipped by `[j]` jump or `--from-step`), the run loop warns (`⚠️ This step needs: …`) and prompts `Start anyway? [y=proceed / Enter=go back]`. `y` proceeds and records a `needs_override` audit event; Enter rewinds to the first unmet dependency. A **skipped** dependency counts as unmet.
 - **`[p]` send to pane** (sidecar only) — **pastes** the step's `${VAR}`-resolved command into the attached tmux pane **without** pressing Enter, so you review it at your own prompt and run it yourself. The command is delivered via a tmux paste buffer with **bracketed paste** (`paste-buffer -p`), so a multi-line command (e.g. a heredoc script) lands as **one atomic block** at your prompt and does **not** execute line-by-line — you press Enter once yourself to run it. Only offered when the step has a command and a pane is attached (a spawn-own `sessions:` pane, or one attached via `[t]`/`--attach`); with nothing attached it tells you to `[t]` attach first. Before pasting, line endings are normalized: CRLF or a lone CR becomes LF, and trailing newlines are stripped. tmux rewrites every LF to CR when it pastes. A stray `\r`, for example from a CRLF variable value, would therefore reach the shell as a blank line after each `\` continuation and split the block into separate commands. A trailing newline would act as Enter in a shell without bracketed paste. **Multi-line commands paste straight away, with no confirmation.** They land as one un-run block because the pane's shell supports bracketed paste (on by default in bash ≥ 4.4 and zsh ≥ 5.1). Don't use `[p]` for a multi-line command in a `sh`/`dash` pane, or with bracketed paste turned off: there each line runs as it arrives. In bash, an empty row after a line that exactly fills the pane width is a readline redraw artifact. The pasted bytes are unchanged. To re-run a command during verify, just press `[p]` again, then `[v]`. Logged as a `user_input`/`send_to_pane` breadcrumb in the JSONL audit log. `[p]` itself never executes anything; `[y]` (below) is the one explicit way to have samaritan press Enter.
+  - **An un-run paste is tracked.** Samaritan reads the pane's cursor line. While it still ends with the pasted command, the command has not run:
+    - `[p]` is **refused** (`Nothing pasted.`) until you run or clear it (Ctrl+U), so a new paste never lands on the end of an old one (`echo aecho b`).
+    - `↵` on that step asks `Mark done anyway? [y / n=go back]`. `y` is logged (`user_input`/`paste_not_run`) and shows as a ⚠️ note on the step in `report.md`.
+    - Entering a later step warns when an earlier step's paste is still on the pane's input line.
+    - Rollback `p` and `↵` follow the same rules.
 - **`[y]` run it (Enter in pane)** (sidecar only, shown right after a `[p]` paste) — samaritan presses Enter in the attached pane for you, so you don't have to switch panes. It sends Enter **only while the pane is exactly as the paste left it**. Right after `[p]`, samaritan waits for the paste to finish echoing, then checks the command is sitting at the cursor (otherwise `[y]` isn't offered). When you press `[y]` it re-reads the pane and refuses with `🛑 Enter NOT sent: <reason>` if any of these changed:
 
   | Check | Why |
@@ -189,6 +199,11 @@ On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to
 
   A refusal sends nothing and keeps `[y]` available (leave copy-mode, press `[y]` again). If the pane changed, press Enter there yourself, or `[p]` to paste again. `[y]` only ever applies to the paste made from the same step (or rollback entry). It isn't carried over to another step, or to the same step revisited with `[b]`. Logged as `user_input`/`enter_sent`, and the report marks the command `⏎ Enter sent from samaritan [y]`. There is no flag or setting for it.
 - **`[b]` back** — go back to an earlier, already-processed step to re-run it (e.g. an external dependency was fixed and you want to retry from there). Shows a numbered picker of the prior steps; the chosen step **and every step after it** are reset to pending and execution resumes from there. The append-only JSONL audit log keeps the full history of the earlier attempt, and the rewound step index is persisted so `resume` stays consistent. Not offered on the first step.
+  - **Re-run only one step.** When there are steps between the one you pick and the one you are on, `[b]` asks `Re-run only "<picked>", then come back to "<current>"? [y / n=rewind]`.
+    - `y` resets **only** the picked step. Its header shows `Next : back to step N`. Once it is done (or skipped), the run returns straight to where you were, and the steps in between keep their status: they are neither re-run nor marked skipped.
+    - `n` rewinds as described above.
+    - Logged as `user_input` `rerun` / `rerun_return`. If you abort during the re-run, `resume` continues after the re-run step, not at the step you came from.
+    - Prefer this over `[b]` followed by `[j]`: a `[j]` back over the rewound steps records them as **skipped** even though they ran.
 - **`[j]` jump** — jump **forward** to a later step (e.g. steps 3–5 are irrelevant this run and you want to go straight to step 6). Shows a numbered picker of the steps after the current one; the current step and every step up to (but not including) the target are recorded as **skipped** (⏭) in the run report, and execution resumes at the target. The append-only JSONL audit log keeps the full history. Not offered on the last step. To start a fresh run partway through instead, use `run --from-step <N>` (see below).
 
 ## Evidence-required gate

@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { ENTER_DEBOUNCE_MS } from '../../src/cli/commands/run.ts';
 import { TmuxPaneCapture } from '../../src/lib/tmux-session.ts';
 import { hasTmux, TmuxDriver, tmux } from './tmux-driver.ts';
 
@@ -185,6 +186,137 @@ describe('sidecar e2e (real tmux)', () => {
         // Now the operator presses Enter in the work pane → it executes.
         d.enter(d.work);
         await d.waitFor('PASTE_EXECMARK', { pane: d.work, timeoutMs: 15_000 });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'Enter after [v]: a burst `v⏎` only verifies, and a quick second ↵ is ignored (#116)',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-sidecar.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('echo "deploy E2E_DEPLOY_OK"', { timeoutMs: 40_000 });
+        await d.waitFor('v verify', { timeoutMs: 15_000 });
+        d.type('echo "deploy E2E_DEPLOY_OK"', work);
+        await d.waitFor('E2E_DEPLOY_OK', { pane: work, timeoutMs: 15_000 });
+
+        // `v` and Enter in ONE send-keys → one input chunk ("v\r"). The Enter
+        // used to vanish here (fast) or complete the step (slow): now the
+        // type-ahead is discarded, deterministically.
+        tmux(['send-keys', '-t', d.main, 'v', 'Enter']);
+        await d.waitFor('✅ contains: E2E_DEPLOY_OK', { timeoutMs: 15_000 });
+        await d.waitFor('The step is not done yet', { timeoutMs: 10_000 });
+        await sleep(800);
+        assert.ok(
+          !d.capture().includes('Step marked complete'),
+          'a burst v⏎ must not complete the step',
+        );
+
+        // ↵ completes step 1; a second ↵ 100 ms later must NOT complete step 2.
+        d.enter();
+        await sleep(100);
+        d.enter();
+        await d.waitFor('Enter ignored: pressed twice', { timeoutMs: 15_000 });
+        await sleep(500);
+        assert.strictEqual(
+          d.capture().split('Step marked complete').length - 1,
+          1,
+          'only step 1 was completed',
+        );
+
+        // A deliberate ↵ on step 2 still works.
+        d.type('echo "health E2E_HEALTH_OK"', work);
+        await d.waitFor('E2E_HEALTH_OK', { pane: work, timeoutMs: 15_000 });
+        d.key('v');
+        await d.waitFor('✅ contains: E2E_HEALTH_OK', { timeoutMs: 15_000 });
+        d.enter();
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(readReport(ws.dir).includes('Steps completed: 2/2'));
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'un-run [p] paste: ↵ asks first, and the next [p] is refused instead of appending (#115)',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-paste-guard.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
+        await d.waitFor('p paste', { timeoutMs: 40_000 });
+
+        // Step 1: paste, do NOT run it, press ↵ here.
+        d.key('p');
+        await d.waitFor('echo PG_ONE', { pane: d.work, timeoutMs: 15_000 });
+        await d.waitFor('Pasted into', { timeoutMs: 10_000 });
+        d.enter();
+        await d.waitFor('Mark done anyway?', { timeoutMs: 15_000 });
+        d.key('n'); // go back: still on step 1
+        await sleep(500);
+        assert.ok(
+          !d.capture().includes('Paste guard two\n'),
+          'n keeps the operator on step 1',
+        );
+        d.enter();
+        // The SECOND prompt: `y` sent to the bar instead would be [y] run it.
+        await d.waitFor(/Mark done anyway\?[\s\S]*Mark done anyway\?/, {
+          timeoutMs: 15_000,
+        });
+        d.key('y');
+
+        // Step 2 opens with a warning about step 1's un-run paste.
+        await d.waitFor('MANUAL: Paste guard two', { timeoutMs: 15_000 });
+        await d.waitFor('still has the paste from "Paste guard one"', {
+          timeoutMs: 15_000,
+        });
+
+        // [p] is refused, and the pane line is left untouched.
+        d.key('p');
+        await d.waitFor('Nothing pasted.', { timeoutMs: 15_000 });
+        await sleep(500);
+        const work = d.capture(d.work);
+        assert.ok(
+          !work.includes('PG_ONEecho PG_TWO'),
+          `[p] must not append to the un-run paste:\n${work.slice(-300)}`,
+        );
+
+        // Clear the line in the work pane → [p] pastes; run it → ↵ asks nothing.
+        tmux(['send-keys', '-t', d.work as string, 'C-u']);
+        await sleep(300);
+        d.key('p');
+        await d.waitFor('echo PG_TWO', { pane: d.work, timeoutMs: 15_000 });
+        d.enter(d.work);
+        await d.waitFor('\nPG_TWO', { pane: d.work, timeoutMs: 15_000 });
+        d.enter();
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+
+        const report = readReport(ws.dir);
+        assert.ok(
+          report.includes(
+            'Marked done while the pasted command was not run: echo PG_ONE',
+          ),
+          'report records the override on step 1',
+        );
+        assert.strictEqual(
+          report.split('Marked done while the pasted command').length - 1,
+          1,
+          'step 2 (run before ↵) carries no override note',
+        );
       } finally {
         d.kill();
         ws.cleanup();
@@ -695,6 +827,9 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor(/All steps done\.[\s\S]*All steps done\./, {
           timeoutMs: 15_000,
         });
+        // Two bare Enters closer than ENTER_DEBOUNCE_MS are a double press
+        // (#116): the second is ignored. A person reads the new screen first.
+        await sleep(ENTER_DEBOUNCE_MS + 100);
         d.enter();
         await d.waitFor('Operation completed successfully', {
           timeoutMs: 15_000,

@@ -186,6 +186,12 @@ export function foldEvents(events: SessionEvent[]): {
           } else if (action === 'note') {
             const notes = event.notes as string | undefined;
             if (notes) currentStep.notes.push(notes);
+          } else if (action === 'paste_not_run') {
+            // ↵ confirmed while the [p]-pasted command was still un-run on
+            // the pane's input line (#115).
+            currentStep.notes.push(
+              `⚠️ Marked done while the pasted command was not run: ${event.command as string}`,
+            );
           } else if (action === 'approved' || action === 'rejected') {
             currentStep.approval = {
               approver: event.actor as string,

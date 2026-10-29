@@ -1,0 +1,20 @@
+name: E2E Paste Guard
+version: 1.0.0
+description: >-
+  Fixture for the un-run paste guard (#115). Two steps with distinct tokens:
+  paste step 1, press ↵ without running it, then [p] on step 2 must be refused
+  instead of appending to the un-run text (PG_ONEecho PG_TWO).
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables: {}
+
+steps:
+  - name: Paste guard one
+    type: manual
+    command: echo PG_ONE
+
+  - name: Paste guard two
+    type: manual
+    command: echo PG_TWO

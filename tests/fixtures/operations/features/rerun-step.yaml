@@ -1,0 +1,24 @@
+name: Re-run One Step
+version: 1.0.0
+description: >-
+  Four manual steps for the [b] "re-run only" choice (#117): from step 4, re-run
+  step 1 and come back, with steps 2-3 still completed (not reset, not skipped).
+
+environments:
+  - name: default
+    description: Default environment
+    variables: {}
+
+steps:
+  - name: Rerun alpha
+    type: manual
+    instruction: First
+  - name: Rerun bravo
+    type: manual
+    instruction: Second
+  - name: Rerun charlie
+    type: manual
+    instruction: Third
+  - name: Rerun delta
+    type: manual
+    instruction: Fourth

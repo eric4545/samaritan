@@ -1157,7 +1157,7 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     validateOperationSchemaStrict(rawOperation);
   } catch (error) {
     if (error instanceof SchemaValidationError) {
-      throw new OperationParseError('Schema validation failed', error.errors);
+      throw new OperationParseError(error.message, error.errors);
     }
     throw new OperationParseError('Validation failed', [
       { field: 'schema', message: (error as Error).message },

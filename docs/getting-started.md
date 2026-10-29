@@ -77,6 +77,15 @@ samaritan validate my-operation.yaml
 samaritan run my-operation.yaml --env staging
 ```
 
+A value of the wrong shape names the step and the field, in `validate` and in every
+command that reads the file (`generate`, `run`, `resume`):
+
+```text
+❌ Errors:
+   Parsing error: Schema validation failed
+     steps[0] "Check pods" → expect.any_line_contains: must be string (got number 123)
+```
+
 ## The core loop
 
 ```bash

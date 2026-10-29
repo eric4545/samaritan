@@ -37,6 +37,11 @@ import {
   type PaneState,
   type RunWatch,
 } from '../../lib/pane-enter-guard';
+import {
+  type PendingPaste,
+  pastePreview,
+  unrunPaste,
+} from '../../lib/paste-guard';
 import { generateReport, renderReport } from '../../lib/report-generator';
 import {
   filterRollbackByEnv,
@@ -113,6 +118,12 @@ const ROLLBACK_ACTION_KEYS: ReadonlySet<string> = new Set([
 
 // Cap free-form pasted evidence; larger payloads should be file attachments.
 const MAX_PASTED_EVIDENCE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * A bare Enter this soon after the previous acted-on one is a double press,
+ * not a decision about the step that just rendered (#116). Exported for tests.
+ */
+export const ENTER_DEBOUNCE_MS = 400;
 
 interface FlatStep {
   step: Step;
@@ -818,6 +829,9 @@ class OperationRunner {
       '?',
     ]);
 
+    // When the last bare Enter was acted on, for the double-Enter debounce.
+    let lastBareEnterAt = 0;
+
     // `immediate` = keys that fire on press without Enter (default: the action
     // bar's); `prompt` = what to print before reading.
     const readActionKey = (
@@ -847,8 +861,26 @@ class OperationRunner {
 
       return new Promise((resolve) => {
         let buffer = '';
+        let settled = false;
+
+        // Keys typed in one burst arrive as ONE chunk and are emitted
+        // synchronously ("v\r"). Restoring readline's listener right away
+        // handed the rest of the chunk to readline, so the Enter of a fast
+        // `v⏎` vanished while a slower one meant "done" (#116). Stay attached
+        // until the chunk has been emitted, discarding the type-ahead, and
+        // clean up before the caller's continuation runs.
+        const finish = (value: string) => {
+          settled = true;
+          // Only CONSECUTIVE Enters count as a double press: any other key
+          // (r, then a rollback choice, …) means the operator moved on.
+          if (value !== '') lastBareEnterAt = 0;
+          process.stdout.write('\n');
+          queueMicrotask(cleanup);
+          resolve(value);
+        };
 
         const handler = (ch: string | undefined, key: any) => {
+          if (settled) return;
           if (key?.ctrl && key.name === 'c') {
             // Restore the terminal, then route through the single SIGINT
             // handler so Ctrl+C SAVES (pauses + resume hint) instead of
@@ -859,9 +891,23 @@ class OperationRunner {
             return;
           }
           if (key?.name === 'return' || key?.name === 'enter') {
-            cleanup();
-            process.stdout.write('\n');
-            resolve(buffer);
+            if (buffer === '') {
+              // A second bare Enter right after one that was acted on (e.g.
+              // the ↵ that completed the previous step) would silently
+              // complete whatever just rendered. Ignore it, visibly.
+              const now = Date.now();
+              if (
+                lastBareEnterAt &&
+                now - lastBareEnterAt < ENTER_DEBOUNCE_MS
+              ) {
+                process.stdout.write(
+                  `\n    ↩  Enter ignored: pressed twice within ${ENTER_DEBOUNCE_MS} ms. Press ↵ again if you meant it.\n${prompt}`,
+                );
+                return;
+              }
+              lastBareEnterAt = now;
+            }
+            finish(buffer);
             return;
           }
           if (key?.name === 'backspace' && buffer.length > 0) {
@@ -873,11 +919,7 @@ class OperationRunner {
           const c = ch.toLowerCase();
           buffer += c;
           process.stdout.write(c);
-          if (buffer.length === 1 && immediate.has(c)) {
-            cleanup();
-            process.stdout.write('\n');
-            resolve(c);
-          }
+          if (buffer.length === 1 && immediate.has(c)) finish(c);
         };
 
         const cleanup = () => {
@@ -896,6 +938,55 @@ class OperationRunner {
     const state = executor.getState();
     const logger = createEventLogger(state.context.sessionId, operationFile);
     console.log(`📝 Audit log: ${logger.path}`);
+
+    // The last [p] paste (forward or rollback). Kept across step changes on
+    // purpose: [p] never presses Enter, so the text stays on the pane's input
+    // line until the operator runs or clears it. A later [p] would append to
+    // it (`echo aecho b`), and ↵ would mark a never-run step done (#115).
+    let lastPaste: PendingPaste | undefined;
+
+    /** Refuse a new [p] while an earlier paste is still un-run. */
+    const blockedByUnrunPaste = (indent = '    '): boolean => {
+      const stale = unrunPaste(lastPaste);
+      if (!stale) return false;
+      console.log(
+        `${indent}⚠️  ${stale.backend.describeTarget(stale.sessionName)} still has an earlier paste on its input line, not run: ${pastePreview(stale.command)}`,
+      );
+      console.log(
+        `${indent}   Run it or clear it there (Ctrl+U), then [p] again. Nothing pasted.`,
+      );
+      return true;
+    };
+
+    /**
+     * Before ↵ done: when THIS step's (or rollback entry's) paste was never
+     * run, say so and ask. `false` = go back to the bar.
+     */
+    const confirmDoneWithUnrunPaste = async (
+      step: number,
+      context?: string,
+      indent = '    ',
+    ): Promise<boolean> => {
+      const stale = unrunPaste(lastPaste);
+      if (!stale || stale.step !== step || stale.context !== context) {
+        return true;
+      }
+      console.log(
+        `\n${indent}⚠️  The command pasted into ${stale.backend.describeTarget(stale.sessionName)} was not run. It is still on the pane's input line: ${pastePreview(stale.command)}`,
+      );
+      if (!(await confirmKey(`${indent}Mark done anyway? [y / n=go back]: `))) {
+        return false;
+      }
+      logger.emit({
+        type: 'user_input',
+        action: 'paste_not_run',
+        step,
+        actor: state.context.operator,
+        command: stale.command,
+        ...(context ? { context } : {}),
+      });
+      return true;
+    };
     const sessionState = new SessionState();
 
     // Fixed run-start time for RUN_START_* / ELAPSED_TIME built-in variables.
@@ -1441,8 +1532,16 @@ class OperationRunner {
             .trim()
             .toLowerCase();
           if (choice === 'p' && canPaste && cmd && backend?.pasteCommand) {
+            if (blockedByUnrunPaste()) continue;
             const beforePaste = backend.paneState?.(sessionName);
             backend.pasteCommand(sessionName, cmd);
+            lastPaste = {
+              backend,
+              sessionName,
+              command: cmd,
+              step: stepIndex,
+              context,
+            };
             logger.emit({
               type: 'user_input',
               action: 'send_to_pane',
@@ -1508,7 +1607,9 @@ class OperationRunner {
           }
           if (choice === 's' || choice === 'skip') outcome = 'skipped';
           else if (choice === 'a' || choice === 'abort') outcome = 'aborted';
-          else outcome = 'executed';
+          else if (await confirmDoneWithUnrunPaste(stepIndex, context)) {
+            outcome = 'executed';
+          }
         }
 
         logger.emit({
@@ -2036,7 +2137,7 @@ class OperationRunner {
         if (assertResult.pass) {
           captureVerifiedEvidence(stepIndex, output, captureScreen);
           console.log(
-            '    ✅ Verify passed — ↵ to complete the step ([v] re-checks).',
+            '    ✅ Verify passed. The step is not done yet: ↵ completes it ([v] re-checks).',
           );
           return;
         }
@@ -2180,10 +2281,38 @@ class OperationRunner {
       // infinite go-back loop under piped/EOF stdin (empty answer = go back).
       const gatedBackOnce = new Set<number>();
 
+      // Set by [b] → "re-run only": the step to come back to once the revisited
+      // step is done. The steps in between keep their status (#117).
+      let returnTo: number | undefined;
+      let revisiting = -1;
+
       stepLoop: for (let i = startIndex; i < steps.length; i++) {
         // A paste armed for [y] never carries over to another step (or back
         // to this one via [b]).
         armedEnter = undefined;
+        // Wait until the loop has moved PAST the revisited step (done, skipped
+        // or rolled back), then go straight back.
+        if (returnTo !== undefined && i > revisiting) {
+          if (i < returnTo) {
+            const back = returnTo;
+            returnTo = undefined;
+            executor.returnToStep(back);
+            persistProgress();
+            logger.emit({
+              type: 'user_input',
+              action: 'rerun_return',
+              step: back,
+              actor: state.context.operator,
+              notes: `back at step ${back + 1}`,
+            });
+            console.log(
+              `\n    ↪  Back at step ${back + 1}: "${steps[back].step.name}". The steps in between keep their status.`,
+            );
+            i = back - 1;
+            continue;
+          }
+          returnTo = undefined;
+        }
         const { step } = steps[i];
         // Heading uses the single-env manual's dotted number (`Step 10.2`)
         // plus the flat progress position, so the sidecar maps 1:1 onto the
@@ -2318,9 +2447,11 @@ class OperationRunner {
         console.log(`${stepNum} ${typeLabel}: ${step.name}`);
         if (position.parent) console.log(`    Section  : ${position.parent}`);
         console.log(
-          position.next
-            ? `    Next     : ${position.next} (${position.remaining} remaining)`
-            : '    Next     : — last step',
+          returnTo !== undefined && i === revisiting
+            ? `    Next     : back to step ${returnTo + 1}: ${steps[returnTo].step.name} (re-running this step only)`
+            : position.next
+              ? `    Next     : ${position.next} (${position.remaining} remaining)`
+              : '    Next     : — last step',
         );
         if (step.description)
           console.log(`    ${tryResolve(step.description, step.variables)}`);
@@ -2573,6 +2704,14 @@ class OperationRunner {
           // from a backward rewind (reset later steps to pending).
           let navTarget: number | undefined;
           let navIsJump = false;
+          // [b] → re-run only the picked step, then come back (#117).
+          let navRerunOnly = false;
+          const earlierPaste = unrunPaste(lastPaste);
+          if (earlierPaste && earlierPaste.step !== i) {
+            console.log(
+              `\n    ⚠️  ${earlierPaste.backend.describeTarget(earlierPaste.sessionName)} still has the paste from "${steps[earlierPaste.step]?.step.name ?? `step ${earlierPaste.step + 1}`}" on its input line, not run: ${pastePreview(earlierPaste.command)}`,
+            );
+          }
           while (true) {
             const evidenceForStep = stepEvidence(i);
             if (step.expect) {
@@ -2753,8 +2892,15 @@ class OperationRunner {
                 );
                 continue;
               }
+              if (blockedByUnrunPaste()) continue;
               const beforePaste = backend.paneState?.(sessionName);
               backend.pasteCommand(sessionName, runnableCommand);
+              lastPaste = {
+                backend,
+                sessionName,
+                command: runnableCommand,
+                step: i,
+              };
               // Recorded as a user_input breadcrumb (not command_sent): sidecar
               // never executes, so folding it into the step's command list would
               // render a misleading duplicate "Command sent" row in the report.
@@ -2836,6 +2982,14 @@ class OperationRunner {
                 continue;
               }
               navTarget = picked - 1;
+              // With steps in between, a rewind would reset all of them (and
+              // a [j] back over them would record them skipped). Offer to
+              // re-run only the picked step and come back here instead.
+              if (navTarget < i - 1) {
+                navRerunOnly = await confirmKey(
+                  `    Re-run only "${steps[navTarget].step.name}", then come back to "${step.name}"? [y / n=rewind: steps ${picked}–${i + 1} run again]: `,
+                );
+              }
               break;
             }
             if (
@@ -2897,6 +3051,14 @@ class OperationRunner {
               );
               continue; // re-render only the bar; header/command stay put
             }
+            if (
+              !isSkip(pending) &&
+              !isRollback(pending) &&
+              pending !== 'abort' &&
+              !(await confirmDoneWithUnrunPaste(i))
+            ) {
+              continue;
+            }
             manualNotes = input;
             break;
           }
@@ -2914,23 +3076,33 @@ class OperationRunner {
               // Record the jumped-over steps (current step i through the target)
               // as skipped in the black box, so the report reflects them.
               for (let k = i; k < navTarget; k++) logSkip(k);
+            } else if (navRerunOnly) {
+              executor.revisitStep(navTarget);
+              revisiting = navTarget;
+              // Keep the furthest point if a re-run nests another re-run.
+              returnTo = Math.max(returnTo ?? i, i);
             } else {
               executor.goToStep(navTarget);
+              returnTo = undefined;
             }
             persistProgress();
             logger.emit({
               type: 'user_input',
-              action: navIsJump ? 'jump' : 'back',
+              action: navIsJump ? 'jump' : navRerunOnly ? 'rerun' : 'back',
               step: i,
               actor: state.context.operator,
               notes: navIsJump
                 ? `jumped to step ${navTarget + 1}`
-                : `re-running from step ${navTarget + 1}`,
+                : navRerunOnly
+                  ? `re-running step ${navTarget + 1} only, then back to step ${(returnTo ?? i) + 1}`
+                  : `re-running from step ${navTarget + 1}`,
             });
             console.log(
               navIsJump
                 ? `    ⏭  Jumping to step ${navTarget + 1} — steps in between marked skipped.`
-                : `    ↩  Going back to step ${navTarget + 1} — re-running from there.`,
+                : navRerunOnly
+                  ? `    ↩  Re-running step ${navTarget + 1} only. Step ${(returnTo ?? i) + 1} comes next.`
+                  : `    ↩  Going back to step ${navTarget + 1} — re-running from there.`,
             );
             i = navTarget - 1;
             continue;

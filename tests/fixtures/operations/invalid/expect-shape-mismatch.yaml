@@ -1,0 +1,15 @@
+name: Expect Shape Mismatch
+version: 1.0.0
+description: One wrong value type inside a step (a number where expect wants a string)
+
+environments:
+  - name: staging
+    description: Staging
+    variables: {}
+
+steps:
+  - name: Check pods
+    type: manual
+    command: kubectl get pods
+    expect:
+      any_line_contains: 123
