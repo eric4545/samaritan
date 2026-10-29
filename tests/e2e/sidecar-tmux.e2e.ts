@@ -618,7 +618,7 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
-    '[p] then [y]: samaritan presses Enter in the pane, the command runs, [v] passes, report credits [y]',
+    '[p] then [y]: samaritan presses Enter, waits for the command, auto-verifies, report credits [y]',
     { skip, timeout: 120_000 },
     async () => {
       const ws = workspace('e2e-paste.yaml');
@@ -635,10 +635,14 @@ describe('sidecar e2e (real tmux)', () => {
           'nothing runs on [p] alone',
         );
         d.key('y');
-        await d.waitFor('Sent Enter to', { timeoutMs: 15_000 });
+        await d.waitFor('Enter sent to', { timeoutMs: 15_000 });
         await d.waitFor('PASTE_EXECMARK', { pane: work, timeoutMs: 15_000 });
-        d.key('v');
-        await d.waitFor('✅ contains: PASTE_EXECMARK', { timeoutMs: 15_000 });
+        // No [v]: verify runs by itself once the command is back at the prompt.
+        const main = await d.waitFor(
+          /Finished\.[\s\S]*✅ contains: PASTE_EXECMARK[\s\S]*Verify passed/,
+          { timeoutMs: 15_000 },
+        );
+        assert.ok(!main.includes('❌'), 'no premature FAIL before it finished');
         d.enter();
         await d.waitFor('Operation completed successfully', {
           timeoutMs: 15_000,
@@ -655,7 +659,7 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
-    'rollback [p] then [y]: Enter sent for the rollback entry, verified, credited in the report',
+    'rollback [p] then [y]: Enter sent for the rollback entry, auto-verified, credited in the report',
     { skip, timeout: 120_000 },
     async () => {
       const ws = workspace('e2e-rollback.yaml');
@@ -677,7 +681,7 @@ describe('sidecar e2e (real tmux)', () => {
           pane: work,
           timeoutMs: 15_000,
         });
-        d.key('v');
+        // Auto-verify of the rollback entry's expect — no [v] needed.
         await d.waitFor('✅ contains: UNDO_DEPLOY', { timeoutMs: 15_000 });
         d.enter(); // ↵ done
         await d.waitFor('Rollback complete — 1/1', { timeoutMs: 15_000 });
@@ -693,6 +697,37 @@ describe('sidecar e2e (real tmux)', () => {
             '(pasted into pane, Enter sent from samaritan `[y]`, verify ✅)',
           ),
           readReport(ws.dir),
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '[y] on a slow command: any key stops waiting, [v] later still verifies',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-slow-run.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('Slow rollout', { timeoutMs: 40_000 });
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        d.key('y');
+        await d.waitFor('Running… verify follows', { timeoutMs: 15_000 });
+        d.key('z'); // any key: hand the bar back while it still runs
+        await d.waitFor('Stopped waiting', { timeoutMs: 15_000 });
+        assert.ok(!d.capture().includes('❌'), 'no verify while it runs');
+        await d.waitFor(/^SLOW_DONE$/m, { pane: work, timeoutMs: 20_000 });
+        d.key('v');
+        await d.waitFor('✅ contains: SLOW_DONE', { timeoutMs: 15_000 });
+        assert.ok(
+          !/> z/.test(d.capture()),
+          'the stop key must not leak into the next prompt',
         );
       } finally {
         d.kill();
@@ -727,8 +762,7 @@ describe('sidecar e2e (real tmux)', () => {
         assert.strictEqual(runs(), 0, 'refused [y] must not run anything');
         tmux(['send-keys', '-t', work, '-X', 'cancel']);
         d.key('y');
-        await d.waitFor('Sent Enter to', { timeoutMs: 15_000 });
-        await d.waitFor(/^PASTE_EXECMARK$/m, { pane: work });
+        await d.waitFor('Verify passed', { timeoutMs: 15_000 });
         assert.strictEqual(runs(), 1);
 
         // 2. The operator typed in the pane after the paste: refused.

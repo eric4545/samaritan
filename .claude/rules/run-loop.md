@@ -98,15 +98,27 @@ and `checkEnterSafe` passes — same `#{pane_id}`, not dead, not
 `pane_in_mode`, not `pane_synchronized` (Enter would hit every pane), not
 `pane_input_off`, same `pane_current_command`, pipe offset AND cursor x/y,
 `history_size`, cursor row all unchanged. Then `send-keys -t <%id> Enter`,
-disarm, `user_input`/`action:'enter_sent'` (+`context` for rollback) →
+disarm, `user_input`/`action:'enter_sent'` (+`context` for rollback) and
+returns a `RunWatch` (`promptRow` = cursor row read BEFORE `pasteCommand`,
+`shell` = `pane_current_command` at arm, `offsetAtEnter`). `waitForCommand`
+then polls `commandFinished` every 150ms (pure, unit-tested: `running` until
+output after Enter + 300ms quiet + same foreground program; `prompt` when the
+cursor row equals `promptRow` digit-normalized; `quiet` fallback after 3s;
+`gone`), cancellable by ANY key (own raw-mode listener with the same
+suspend/restore of readline's keypress listeners as `readActionKey`; Ctrl+C
+re-raises SIGINT). On `prompt`/`quiet` the forward loop calls
+`verifyManualOutput` and the rollback loop falls through to its `v` branch
+(`choice = 'v'`). Without this, `[v]` right after `[y]` FAILED on half the
+output (seen in the real-tmux walk). Also →
 `foldEvents` sets `enterSent` on the step's last command / rollback entry →
 report `⏎ Enter sent from samaritan [y]`. A refusal sends nothing and stays
 armed. `armedEnter` is cleared at each step-loop iteration and each rollback
 entry; `where` (`step:<i>` / `rollback:…`) pins it to where it was pasted.
 tmux `display-message` renders TAB as `_` — the state format is `|`-separated
 with `pane_current_command` LAST (caught only by the real-tmux unit test).
-NOT non-interactive execution: one operator key per command. e2e: "[p] then
-[y]", "rollback [p] then [y]", "[y] refuses unless…".
+NOT non-interactive execution: one operator key per command. When armed,
+`y run it` is the FIRST key in the bar. e2e: "[p] then [y]", "rollback [p]
+then [y]", "[y] on a slow command" (`e2e-slow-run.yaml`), "[y] refuses unless…".
 
 ## `variants.<env>` resolved once, in `flattenAndMarkForEnv`
 

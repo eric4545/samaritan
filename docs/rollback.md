@@ -146,7 +146,7 @@ Operator-driven rollback walks the entries one at a time — `↩ Rollback 1/3: 
 |---|---|
 | `↵` | done — I ran it |
 | `p` | paste into the attached pane (bracketed paste, **no Enter** — same as the forward `[p]`) |
-| `y` | after `p`: samaritan presses Enter in the pane, only while the pane still holds that paste unrun (same guard as the forward [`[y]`](./running.md)) |
+| `y` | after `p`: samaritan presses Enter in the pane, only while the pane still holds that paste unrun (same guard as the forward [`[y]`](./running.md)), then waits for it to finish and verifies the entry's `expect` |
 | `c` | copy the command |
 | `v` | verify the entry's `expect` against the pane output since it was shown |
 | `s` | skip this entry |

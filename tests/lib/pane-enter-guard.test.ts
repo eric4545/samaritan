@@ -4,6 +4,7 @@ import {
   type ArmedEnter,
   armEnter,
   checkEnterSafe,
+  commandFinished,
   type PaneState,
 } from '../../src/lib/pane-enter-guard';
 
@@ -91,4 +92,65 @@ describe('checkEnterSafe', () => {
       assert.match(checkEnterSafe(armed(), now, offset) ?? '', reason);
     });
   }
+});
+
+describe('commandFinished — after [y], when to auto-verify', () => {
+  const watch = {
+    promptRow: 'work:~$',
+    shell: 'bash',
+    offsetAtEnter: 100,
+  };
+  const at = (cursorLine: string, over: Partial<PaneState> = {}) =>
+    pane({ cursorLine, ...over });
+
+  it('is running until the pane printed anything after Enter', () => {
+    assert.strictEqual(
+      commandFinished(watch, at('work:~$'), 100, 5000),
+      'running',
+    );
+  });
+
+  it('is running while output is still arriving (not quiet yet)', () => {
+    assert.strictEqual(
+      commandFinished(watch, at('work:~$'), 150, 100),
+      'running',
+    );
+  });
+
+  it('is done once quiet AND the cursor is back on a bare prompt', () => {
+    assert.strictEqual(
+      commandFinished(watch, at('work:~$ '), 150, 400),
+      'prompt',
+    );
+  });
+
+  it('matches a prompt whose clock / exit code changed (digits normalized)', () => {
+    const w = { ...watch, promptRow: '[10:22:01] 0 work:~$' };
+    assert.strictEqual(
+      commandFinished(w, at('[10:22:09] 1 work:~$'), 150, 400),
+      'prompt',
+    );
+  });
+
+  it('keeps waiting on a silent long-running program (kubectl in foreground)', () => {
+    assert.strictEqual(
+      commandFinished(
+        watch,
+        at('Waiting for rollout...', { currentCommand: 'kubectl' }),
+        150,
+        60_000,
+      ),
+      'running',
+    );
+  });
+
+  it('falls back to 3s of quiet when the prompt is not recognised (e.g. cd changed it)', () => {
+    const now = at('work:/tmp$');
+    assert.strictEqual(commandFinished(watch, now, 150, 2000), 'running');
+    assert.strictEqual(commandFinished(watch, now, 150, 3000), 'quiet');
+  });
+
+  it('reports gone when the pane disappeared', () => {
+    assert.strictEqual(commandFinished(watch, undefined, 150, 0), 'gone');
+  });
 });

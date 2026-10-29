@@ -114,3 +114,52 @@ export function checkEnterSafe(
     return 'the prompt changed since the paste';
   return undefined;
 }
+
+/** What `[y]` watches to know the command it started has finished. */
+export interface RunWatch {
+  /** The pane's cursor row BEFORE the paste — its bare shell prompt. */
+  promptRow?: string;
+  /** Foreground program at paste time (the shell, or `ssh` over a hop). */
+  shell: string;
+  /** Capture pipe offset when Enter was sent. */
+  offsetAtEnter: number;
+}
+
+/** A prompt row compared loosely: clocks, exit codes and spacing may differ. */
+function normalizePromptRow(row: string): string {
+  return row.trim().replace(/\d/g, '0').replace(/\s+/g, ' ');
+}
+
+/** Quiet time that confirms a finish when the prompt row matches. */
+export const FINISH_QUIET_MS = 300;
+/** Fallback quiet time when the prompt is not recognised (e.g. `cd` changed it). */
+export const FINISH_FALLBACK_QUIET_MS = 3000;
+
+/**
+ * Has the command `[y]` started finished?
+ *
+ * - `running` — no output since Enter yet, output still arriving, or a
+ *   different program is in the foreground (a silent `kubectl rollout status`).
+ * - `prompt` — quiet for `FINISH_QUIET_MS` AND the cursor is back on the same
+ *   bare prompt the pane showed before the paste (digits normalized).
+ * - `quiet` — the prompt is not recognised, but the shell is in the foreground
+ *   and the pane has been quiet for `FINISH_FALLBACK_QUIET_MS`.
+ * - `gone` — the pane state can't be read any more.
+ */
+export function commandFinished(
+  watch: RunWatch,
+  now: PaneState | undefined,
+  offsetNow: number,
+  quietMs: number,
+): 'running' | 'prompt' | 'quiet' | 'gone' {
+  if (!now) return 'gone';
+  if (offsetNow <= watch.offsetAtEnter || quietMs < FINISH_QUIET_MS)
+    return 'running';
+  if (now.currentCommand !== watch.shell) return 'running';
+  if (
+    watch.promptRow?.trim() &&
+    normalizePromptRow(now.cursorLine) === normalizePromptRow(watch.promptRow)
+  )
+    return 'prompt';
+  return quietMs >= FINISH_FALLBACK_QUIET_MS ? 'quiet' : 'running';
+}

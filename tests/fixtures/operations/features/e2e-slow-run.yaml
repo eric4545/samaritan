@@ -1,0 +1,17 @@
+name: E2E Slow Run
+version: 1.0.0
+description: >-
+  Fixture for the [y] wait e2e test: a command that runs for a few silent
+  seconds, so the operator can stop waiting with any key and verify later.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables: {}
+
+steps:
+  - name: Slow rollout
+    type: automatic
+    command: sleep 4; echo SLOW_DONE
+    expect:
+      contains: SLOW_DONE
