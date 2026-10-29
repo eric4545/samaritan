@@ -170,6 +170,33 @@ export function sliceFromLastCommandEcho(
   return undefined;
 }
 
+/**
+ * From a pane's scrollback slice, return the text starting at an ABSOLUTE pane
+ * line — the deterministic sibling of `sliceFromLastCommandEcho`. The caller
+ * knows the exact line the command landed on (recorded when `[p]` pasted it as
+ * `history_size` + `cursor_y`), so stale output from an earlier run of the
+ * same command — which echo-anchoring can latch onto, e.g. a resumed run whose
+ * previous attempt printed a line that trips `not_contains` — is excluded.
+ * `baseLine` is the absolute line of `screen`'s first row (the scrollback size
+ * at capture time minus the number of captured lines; the visible screen
+ * starts at `history_size`). Returns undefined when no anchor line is given or
+ * it fell outside the captured window (e.g. the command scrolled off a long
+ * output), so the caller can fall back to echo-anchoring.
+ */
+export function sliceFromPaneLine(
+  screen: string,
+  startLine: number | undefined,
+  baseLine: number | undefined,
+): string | undefined {
+  if (startLine === undefined || !Number.isFinite(startLine)) return undefined;
+  if (baseLine !== undefined && !Number.isFinite(baseLine)) return undefined;
+  const start = startLine - (baseLine ?? 0);
+  if (start < 0) return undefined;
+  const lines = screen.split('\n');
+  if (start > lines.length) return undefined;
+  return lines.slice(start).join('\n');
+}
+
 // Characters a shell prompt conventionally ends with (bash `$`/`#`, zsh `%`,
 // PS2/fish `>`, and the common starship/oh-my-zsh glyphs).
 const PROMPT_SIGIL_RE = /[$#%>❯➜»λ]$/;

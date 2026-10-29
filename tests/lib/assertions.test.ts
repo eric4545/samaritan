@@ -7,6 +7,7 @@ import {
   renderExpectDescription,
   renderExpectParts,
   sliceFromLastCommandEcho,
+  sliceFromPaneLine,
   stripCommandEcho,
   stripControlChars,
   stripTrailingPrompt,
@@ -803,6 +804,52 @@ describe('sliceFromLastCommandEcho — scrollback fallback for a lost pipe', () 
     assert.strictEqual(
       sliceFromLastCommandEcho(screen, 'kubectl get pods'),
       undefined,
+    );
+  });
+});
+
+describe('sliceFromPaneLine — paste-anchored scrollback slice for a lost pipe', () => {
+  // A `-S -N` scrollback capture whose first row is pane-absolute line 40
+  // (baseLine). The command was [p]asted at absolute line 44; a previous
+  // attempt of the same command sits at 42-43 and must be excluded — the
+  // observed GCSGPSOPS-17126 failure, where stale output of an earlier run
+  // tripped `not_contains` on the fresh output.
+  const history = [
+    'older scrollback',
+    'still older',
+    '$ aws route53 list-resource-record-sets',
+    'stale env row carrying the old CNAME',
+    '$ aws route53 list-resource-record-sets',
+    'live env row',
+    '$ ',
+  ].join('\n');
+
+  it('starts at the absolute paste line, excluding earlier attempts', () => {
+    assert.strictEqual(
+      sliceFromPaneLine(history, 44, 40),
+      '$ aws route53 list-resource-record-sets\nlive env row\n$ ',
+    );
+  });
+
+  it('anchors on the first captured row (baseLine itself)', () => {
+    assert.strictEqual(sliceFromPaneLine(history, 40, 40), history);
+  });
+
+  it('is undefined when the anchor fell outside the captured window', () => {
+    // scrolled off the top (before baseLine) / beyond the last row
+    assert.strictEqual(sliceFromPaneLine(history, 39, 40), undefined);
+    assert.strictEqual(sliceFromPaneLine(history, 99, 40), undefined);
+  });
+
+  it('is undefined without a usable anchor line', () => {
+    assert.strictEqual(sliceFromPaneLine(history, undefined, 40), undefined);
+    assert.strictEqual(sliceFromPaneLine(history, Number.NaN, 40), undefined);
+  });
+
+  it('slices from line 0 when the capture base is unknown', () => {
+    assert.strictEqual(
+      sliceFromPaneLine(history, 4, undefined),
+      '$ aws route53 list-resource-record-sets\nlive env row\n$ ',
     );
   });
 });
