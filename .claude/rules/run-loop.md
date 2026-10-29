@@ -56,6 +56,22 @@ piped stdin) so scripted runs end as before. Single-key y/n via
 `confirmKey()` (`readActionKey(CONFIRM_KEYS, prompt)`). e2e: "--attach
 rollback" + "completion screen" (`e2e-rollback.yaml`).
 
+## `readActionKey` — burst discard + double-Enter debounce (#116)
+
+Keys typed in one burst arrive as ONE stdin chunk (`"v\r"`) and
+`emitKeypressEvents` emits them synchronously. The old handler restored
+readline's keypress listener inside the `v` keypress, so the trailing `\r`
+went to readline (no pending question → lost) when fast, but meant "done"
+when slow. `finish()` now sets `settled` (the handler ignores the rest of the
+chunk), `queueMicrotask(cleanup)` BEFORE `resolve()` (cleanup runs before the
+caller's continuation, so a following `question()` sees cooked mode). A bare
+Enter within `ENTER_DEBOUNCE_MS` (400) of the last acted-on bare Enter
+(`lastBareEnterAt`, reset to 0 by any other resolved key: only CONSECUTIVE
+Enters are a double press, e.g. `↵ r 1⏎ s ↵` in 300 ms is not) is ignored with a visible `Enter ignored: pressed twice`
+line, never silently. Debounced from the previous ENTER, not from step render:
+scripted drivers (and e2e tests) press ↵ as soon as a new step's box shows.
+TTY path only; piped stdin (`question()`) is unchanged. e2e: "Enter after [v]".
+
 ## `[p]` send to pane — bracketed paste, never Enter
 
 Pastes the `${VAR}`-resolved command via a tmux paste **buffer** with

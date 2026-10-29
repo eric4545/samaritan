@@ -110,6 +110,12 @@ const ROLLBACK_ACTION_KEYS: ReadonlySet<string> = new Set([
 // Cap free-form pasted evidence; larger payloads should be file attachments.
 const MAX_PASTED_EVIDENCE_BYTES = 10 * 1024 * 1024;
 
+/**
+ * A bare Enter this soon after the previous acted-on one is a double press,
+ * not a decision about the step that just rendered (#116). Exported for tests.
+ */
+export const ENTER_DEBOUNCE_MS = 400;
+
 interface FlatStep {
   step: Step;
   label: string;
@@ -812,6 +818,9 @@ class OperationRunner {
       'q',
     ]);
 
+    // When the last bare Enter was acted on, for the double-Enter debounce.
+    let lastBareEnterAt = 0;
+
     // `immediate` = keys that fire on press without Enter (default: the action
     // bar's); `prompt` = what to print before reading.
     const readActionKey = (
@@ -841,8 +850,26 @@ class OperationRunner {
 
       return new Promise((resolve) => {
         let buffer = '';
+        let settled = false;
+
+        // Keys typed in one burst arrive as ONE chunk and are emitted
+        // synchronously ("v\r"). Restoring readline's listener right away
+        // handed the rest of the chunk to readline, so the Enter of a fast
+        // `v⏎` vanished while a slower one meant "done" (#116). Stay attached
+        // until the chunk has been emitted, discarding the type-ahead, and
+        // clean up before the caller's continuation runs.
+        const finish = (value: string) => {
+          settled = true;
+          // Only CONSECUTIVE Enters count as a double press: any other key
+          // (r, then a rollback choice, …) means the operator moved on.
+          if (value !== '') lastBareEnterAt = 0;
+          process.stdout.write('\n');
+          queueMicrotask(cleanup);
+          resolve(value);
+        };
 
         const handler = (ch: string | undefined, key: any) => {
+          if (settled) return;
           if (key?.ctrl && key.name === 'c') {
             // Restore the terminal, then route through the single SIGINT
             // handler so Ctrl+C SAVES (pauses + resume hint) instead of
@@ -853,9 +880,23 @@ class OperationRunner {
             return;
           }
           if (key?.name === 'return' || key?.name === 'enter') {
-            cleanup();
-            process.stdout.write('\n');
-            resolve(buffer);
+            if (buffer === '') {
+              // A second bare Enter right after one that was acted on (e.g.
+              // the ↵ that completed the previous step) would silently
+              // complete whatever just rendered. Ignore it, visibly.
+              const now = Date.now();
+              if (
+                lastBareEnterAt &&
+                now - lastBareEnterAt < ENTER_DEBOUNCE_MS
+              ) {
+                process.stdout.write(
+                  `\n    ↩  Enter ignored: pressed twice within ${ENTER_DEBOUNCE_MS} ms. Press ↵ again if you meant it.\n${prompt}`,
+                );
+                return;
+              }
+              lastBareEnterAt = now;
+            }
+            finish(buffer);
             return;
           }
           if (key?.name === 'backspace' && buffer.length > 0) {
@@ -867,11 +908,7 @@ class OperationRunner {
           const c = ch.toLowerCase();
           buffer += c;
           process.stdout.write(c);
-          if (buffer.length === 1 && immediate.has(c)) {
-            cleanup();
-            process.stdout.write('\n');
-            resolve(c);
-          }
+          if (buffer.length === 1 && immediate.has(c)) finish(c);
         };
 
         const cleanup = () => {
@@ -1877,7 +1914,7 @@ class OperationRunner {
         if (assertResult.pass) {
           captureVerifiedEvidence(stepIndex, output, captureScreen);
           console.log(
-            '    ✅ Verify passed — press [v] again any time to re-check.',
+            '    ✅ Verify passed. The step is not done yet: press ↵ to mark it done, or [v] to re-check.',
           );
           return;
         }

@@ -94,6 +94,11 @@ After the last step, when anything can be rolled back, the run shows **All steps
 
 A multi-line `[p]` paste asks `Paste it? [y / n=cancel]`, and the global-rollback confirmation asks `[y/N]`. On a TTY both are answered with a single key, without Enter.
 
+Two guards keep a stray Enter from completing a step on a TTY:
+
+- **Keys typed after an action key in one burst are discarded.** Typing `v⏎` quickly runs `[v]` only; the Enter does not mark the step done.
+- **A second `↵` within 400 ms of one that was acted on, with no other key in between, is ignored**, with `↩ Enter ignored: pressed twice within 400 ms`. A double press on the step you just finished never completes the step that opened next. Press `↵` again to confirm.
+
 Before each step, samaritan prints `Expected: <criteria>` up front (e.g. `Expected: contains: Running, does not contain: CrashLoopBackOff`) so you know what `[v]` will check before you run anything.
 
 ## Verify output: checklist, highlighting, and the line-number gutter
@@ -140,7 +145,7 @@ On **FAIL**, a single-key menu follows:
 - `v` — **re-verify**: re-capture the pane output and re-run all checks (useful when the command is still finishing)
 - Enter — stop
 
-On **PASS**, samaritan prints `✅ Verify passed — press [v] again any time to re-check.` — `[v]` is not consumed by passing; you can re-run it as often as you like.
+On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: press ↵ to mark it done, or [v] to re-check.` A pass never completes the step by itself: `↵` does, and you can re-run `[v]` as often as you like.
 
 > Verification runs against **cleaned** pane output: ANSI color codes and escape sequences are stripped and `\r`-overwrites (progress bars, `\r\n` line endings) are resolved before `expect` assertions run — so `contains`/`equals` match what you actually see on screen, even when tools colorize their output.
 
