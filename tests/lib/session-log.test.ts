@@ -404,3 +404,40 @@ describe('readEvents', () => {
     assert.deepStrictEqual(readEvents(path), []);
   });
 });
+
+describe('foldEvents — [y] Enter sent from samaritan', () => {
+  it('marks the step command and the rollback entry it ran', () => {
+    const { steps, rollbacks } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({ type: 'command_displayed', session: 'w', command: 'echo deploy' }),
+      ev({
+        type: 'user_input',
+        action: 'send_to_pane',
+        command: 'echo deploy',
+      }),
+      ev({ type: 'user_input', action: 'enter_sent', command: 'echo deploy' }),
+      ev({ type: 'rollback_start', step: 0, context: 'rollback' }),
+      ev({
+        type: 'command_displayed',
+        session: 'w',
+        command: 'echo undo',
+        context: 'rollback',
+      }),
+      ev({
+        type: 'user_input',
+        action: 'send_to_pane',
+        command: 'echo undo',
+        context: 'rollback',
+      }),
+      ev({
+        type: 'user_input',
+        action: 'enter_sent',
+        command: 'echo undo',
+        context: 'rollback',
+      }),
+    ]);
+    assert.strictEqual(steps[0].commands[0].enterSent, true);
+    assert.strictEqual(rollbacks[0].commands[0].pasted, true);
+    assert.strictEqual(rollbacks[0].commands[0].enterSent, true);
+  });
+});

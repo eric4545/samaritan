@@ -264,10 +264,16 @@ describe('run command: interactive mode', () => {
 // ─── Manual-step note/evidence/verify actions ────────────────────────────────
 
 describe('run command: manual-step note/evidence/verify actions', () => {
-  it('manual step prompt offers [n] note and [e] evidence actions', () => {
+  it('manual step prompt offers [n] note and [e] evidence actions (under ?)', () => {
     const fixture = fixturePath('manualStepActions');
-    const result = runCli(['run', fixture, '--env', 'default'], {
+    const plain = runCli(['run', fixture, '--env', 'default'], {
       input: 'abort\n',
+    });
+    const bar = plain.stdout + plain.stderr;
+    assert.ok(bar.includes('more'), 'the compact bar offers ? more');
+    assert.ok(!bar.includes('note'), 'note is tucked behind ?');
+    const result = runCli(['run', fixture, '--env', 'default'], {
+      input: '?\nabort\n',
     });
     const combined = result.stdout + result.stderr;
     assert.ok(combined.includes('note'), 'should offer a note action');
@@ -349,7 +355,7 @@ describe('run command: manual-step note/evidence/verify actions', () => {
       'should warn that verify needs an attached capture',
     );
     assert.ok(
-      !combined.includes('re-verify') && !combined.includes('more'),
+      !combined.includes('re-verify') && !combined.includes('m=more'),
       'failure menu hints must not appear without a captured outcome',
     );
   });
@@ -892,7 +898,7 @@ describe('run command: sidecar mode', () => {
     // rendered nothing runnable in the run loop.
     const fixture = fixturePath('scriptOnlyStep');
     const result = runCli(['run', fixture, '--env', 'staging'], {
-      input: 'q\n',
+      input: '?\nq\n',
       timeout: 15_000,
     });
     const combined = result.stdout + result.stderr;
@@ -910,7 +916,7 @@ describe('run command: sidecar mode', () => {
     );
     assert.ok(
       combined.includes('copy'),
-      'should offer [c] copy for the script invocation',
+      'should offer [c] copy for the script invocation (under ?)',
     );
   });
 
@@ -986,18 +992,35 @@ describe('run command: sidecar mode', () => {
     );
   });
 
-  it('[j] jump hint is offered on an early step but not on the last step', () => {
-    // sidecar fixture has 2 steps. Complete step 1 (Enter), then abort on the
-    // last step (q). Jump must appear before the last step, not on it.
-    const fixture = fixturePath('sidecar');
-    const result = runCli(['run', fixture, '--env', 'staging'], {
-      input: '\nq\n',
+  it('without a pane, the command header says how to attach one for [p]/[v]', () => {
+    const r = runCli(['run', fixturePath('sidecar'), '--env', 'staging'], {
+      input: 'q\n',
       timeout: 15_000,
     });
-    const combined = result.stdout + result.stderr;
-    const [firstStepBlock, lastStepBlock] = combined.split(
-      /\] [A-Z]+: Verify Health/,
+    const combined = r.stdout + r.stderr;
+    assert.ok(
+      combined.includes(
+        'Run this command in your terminal ([t] attaches a pane for [p]/[v]):',
+      ),
+      combined.slice(-800),
     );
+  });
+
+  it('[j] jump hint is offered on an early step but not on the last step', () => {
+    // sidecar fixture has 2 steps. [j] lives under `?`; open it on step 1,
+    // then (separate run — piped multi-line stdin drops lines after `?`, the
+    // readline gotcha) on the last step via --from-step 2.
+    const fixture = fixturePath('sidecar');
+    const run = (extra: string[]): string => {
+      const r = runCli(['run', fixture, '--env', 'staging', ...extra], {
+        input: '?\nq\n',
+        timeout: 15_000,
+      });
+      return r.stdout + r.stderr;
+    };
+    const firstStepBlock = run([]);
+    const lastStepBlock = run(['--from-step', '2']);
+    assert.ok(lastStepBlock.includes('Verify Health'), lastStepBlock);
     // Note: labels are wrapped in ANSI codes (e.g. \x1b[2mjump\x1b[0m), so a
     // \bjump\b regex would fail on the leading boundary — use includes().
     assert.ok(
@@ -1005,7 +1028,7 @@ describe('run command: sidecar mode', () => {
       'the [j] jump action must appear on a step that has later steps',
     );
     assert.ok(
-      lastStepBlock !== undefined && !lastStepBlock.includes('jump'),
+      !lastStepBlock.includes('jump'),
       'the [j] jump action must not appear on the last step',
     );
   });

@@ -70,7 +70,8 @@ open the matching source (manuals, parser/schema, run loop, tests, CI workflows)
 (`--lint` shellcheck, `expect` regex-lint), Git metadata, evidence models +
 embedding (`evidence.results`), `schema` export, interactive `run` (sidecar /
 manual / automatic / hybrid), session persistence + `resume`/`sessions`,
-`run --mock`, auto-capture on verify, retryable verification (`expect.retry`),
+`run --mock`, sidecar `[p]` paste + guarded `[y]` Enter (operator key per
+command, pane-state checked — `src/lib/pane-enter-guard.ts`), auto-capture on verify, retryable verification (`expect.retry`),
 multi-operator `--pic` focus + `report merge`, rollback (step + operation-level,
 full parity), postmortem / incident-report (RCA) documents.
 CLI: `validate`, `generate manual|docs|postmortem|schedule`, `postmortem`,
