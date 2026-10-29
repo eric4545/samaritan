@@ -2058,7 +2058,35 @@ class OperationRunner {
       // infinite go-back loop under piped/EOF stdin (empty answer = go back).
       const gatedBackOnce = new Set<number>();
 
+      // Set by [b] → "re-run only": the step to come back to once the revisited
+      // step is done. The steps in between keep their status (#117).
+      let returnTo: number | undefined;
+      let revisiting = -1;
+
       stepLoop: for (let i = startIndex; i < steps.length; i++) {
+        // Wait until the loop has moved PAST the revisited step (done, skipped
+        // or rolled back), then go straight back.
+        if (returnTo !== undefined && i > revisiting) {
+          if (i < returnTo) {
+            const back = returnTo;
+            returnTo = undefined;
+            executor.returnToStep(back);
+            persistProgress();
+            logger.emit({
+              type: 'user_input',
+              action: 'rerun_return',
+              step: back,
+              actor: state.context.operator,
+              notes: `back at step ${back + 1}`,
+            });
+            console.log(
+              `\n    ↪  Back at step ${back + 1}: "${steps[back].step.name}". The steps in between keep their status.`,
+            );
+            i = back - 1;
+            continue;
+          }
+          returnTo = undefined;
+        }
         const { step } = steps[i];
         // Heading uses the single-env manual's dotted number (`Step 10.2`)
         // plus the flat progress position, so the sidecar maps 1:1 onto the
@@ -2193,9 +2221,11 @@ class OperationRunner {
         console.log(`${stepNum} ${typeLabel}: ${step.name}`);
         if (position.parent) console.log(`    Section  : ${position.parent}`);
         console.log(
-          position.next
-            ? `    Next     : ${position.next} (${position.remaining} remaining)`
-            : '    Next     : — last step',
+          returnTo !== undefined && i === revisiting
+            ? `    Next     : back to step ${returnTo + 1}: ${steps[returnTo].step.name} (re-running this step only)`
+            : position.next
+              ? `    Next     : ${position.next} (${position.remaining} remaining)`
+              : '    Next     : — last step',
         );
         if (step.description)
           console.log(`    ${tryResolve(step.description, step.variables)}`);
@@ -2440,6 +2470,8 @@ class OperationRunner {
           // from a backward rewind (reset later steps to pending).
           let navTarget: number | undefined;
           let navIsJump = false;
+          // [b] → re-run only the picked step, then come back (#117).
+          let navRerunOnly = false;
           const earlierPaste = unrunPaste(lastPaste);
           if (earlierPaste && earlierPaste.step !== i) {
             console.log(
@@ -2698,6 +2730,14 @@ class OperationRunner {
                 continue;
               }
               navTarget = picked - 1;
+              // With steps in between, a rewind would reset all of them (and
+              // a [j] back over them would record them skipped). Offer to
+              // re-run only the picked step and come back here instead.
+              if (navTarget < i - 1) {
+                navRerunOnly = await confirmKey(
+                  `    Re-run only "${steps[navTarget].step.name}", then come back to "${step.name}"? [y / n=rewind: steps ${picked}–${i + 1} run again]: `,
+                );
+              }
               break;
             }
             if (
@@ -2784,23 +2824,33 @@ class OperationRunner {
               // Record the jumped-over steps (current step i through the target)
               // as skipped in the black box, so the report reflects them.
               for (let k = i; k < navTarget; k++) logSkip(k);
+            } else if (navRerunOnly) {
+              executor.revisitStep(navTarget);
+              revisiting = navTarget;
+              // Keep the furthest point if a re-run nests another re-run.
+              returnTo = Math.max(returnTo ?? i, i);
             } else {
               executor.goToStep(navTarget);
+              returnTo = undefined;
             }
             persistProgress();
             logger.emit({
               type: 'user_input',
-              action: navIsJump ? 'jump' : 'back',
+              action: navIsJump ? 'jump' : navRerunOnly ? 'rerun' : 'back',
               step: i,
               actor: state.context.operator,
               notes: navIsJump
                 ? `jumped to step ${navTarget + 1}`
-                : `re-running from step ${navTarget + 1}`,
+                : navRerunOnly
+                  ? `re-running step ${navTarget + 1} only, then back to step ${(returnTo ?? i) + 1}`
+                  : `re-running from step ${navTarget + 1}`,
             });
             console.log(
               navIsJump
                 ? `    ⏭  Jumping to step ${navTarget + 1} — steps in between marked skipped.`
-                : `    ↩  Going back to step ${navTarget + 1} — re-running from there.`,
+                : navRerunOnly
+                  ? `    ↩  Re-running step ${navTarget + 1} only. Step ${(returnTo ?? i) + 1} comes next.`
+                  : `    ↩  Going back to step ${navTarget + 1} — re-running from there.`,
             );
             i = navTarget - 1;
             continue;

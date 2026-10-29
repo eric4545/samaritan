@@ -134,6 +134,17 @@ the `needs` dep graph is still `/^\d+$/` on the label.
 
 ## `[b]` back / `[j]` jump / `--from-step`
 
+**Re-run only (#117):** `[b]` with steps in between asks `Re-run only …? [y /
+n=rewind]` (`confirmKey`). `y` → `navRerunOnly` → `executor.revisitStep(t)`
+(resets ONLY `t`), sets `revisiting = t` + `returnTo = max(returnTo ?? i, i)`.
+At the loop top, once `i > revisiting` and `i < returnTo`,
+`executor.returnToStep(returnTo)` (index only, no status change) + `rerun_return`
+event + `i = returnTo - 1; continue`. Header `Next :` says `back to step N`. A
+plain rewind clears `returnTo`. Not persisted: abort mid-re-run resumes after
+the re-run step. Why not `[b]` + `[j]`: `jumpToStep` marks the rewound
+(`pending`) steps `skipped` even though they ran. Tests: `run command: [b]
+re-run one earlier step` (`rerun-step.yaml`), executor `revisitStep`.
+
 `executor.goToStep(index)` (rewind) resets the target + every later step to
 `pending`, rewinds counters, sets `currentStepIndex`. `executor.jumpToStep(target)`
 marks every still-`pending` step from `currentStepIndex` up to `target` as

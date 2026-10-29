@@ -40,6 +40,7 @@ function fixturePath(name: string): string {
     nearestRollback: 'tests/fixtures/operations/features/nearest-rollback.yaml',
     whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
     runVariants: 'tests/fixtures/operations/features/run-variants.yaml',
+    rerunStep: 'tests/fixtures/operations/features/rerun-step.yaml',
   };
   return resolve(map[name]);
 }
@@ -1467,6 +1468,78 @@ describe('run command: --from-step starts at a later step', () => {
 });
 
 // ─── needs forward-gating in the run loop ────────────────────────────────────
+
+describe('run command: [b] re-run one earlier step and come back (#117)', () => {
+  // One line per prompt, a second apart (readline drops batched lines; see
+  // .claude/rules/testing.md).
+  function runLines(args: string[], lines: string[]): string {
+    const quote = (v: string) => `'${v.replace(/'/g, "'\\''")}'`;
+    const piped = lines
+      .map((l) => `printf ${quote(`${l}\\n`)}`)
+      .join('; sleep 1; ');
+    const cmd = `(sleep 1; ${piped}) | timeout 30 ${quote(CLI)} ${quote(INDEX)} ${args.map(quote).join(' ')}`;
+    const r = spawnSync('bash', ['-c', cmd], {
+      encoding: 'utf8',
+      timeout: 35_000,
+    });
+    return `${r.stdout ?? ''}${r.stderr ?? ''}`;
+  }
+
+  const reportOf = (out: string): string => {
+    const m = /📄 Report: (\S+)/.exec(out);
+    assert.ok(m, `no report path in output:\n${out.slice(-600)}`);
+    return readFileSync(m[1], 'utf8');
+  };
+
+  it('y: re-runs only the picked step; the steps in between stay completed', () => {
+    const out = runLines(
+      ['run', fixturePath('rerunStep'), '--env', 'default'],
+      // A, B, C done → on D: [b] → 1 → y → A again → back on D → done.
+      ['', '', '', 'b', '1', 'y', '', ''],
+    );
+    assert.ok(
+      out.includes(
+        'Re-run only "Rerun alpha", then come back to "Rerun delta"?',
+      ),
+      out.slice(-1500),
+    );
+    assert.ok(out.includes('Re-running step 1 only. Step 4 comes next.'));
+    assert.ok(
+      out.includes(
+        'Next     : back to step 4: Rerun delta (re-running this step only)',
+      ),
+    );
+    assert.ok(out.includes('Back at step 4: "Rerun delta"'), out.slice(-1500));
+    assert.ok(
+      out.includes('Operation completed successfully'),
+      out.slice(-800),
+    );
+    const report = reportOf(out);
+    assert.ok(report.includes('Steps completed: 4/4'), report.slice(0, 800));
+    assert.ok(!/skip/i.test(report), 'B and C were never skipped');
+  });
+
+  it('n: rewinds as before (steps from the picked one run again)', () => {
+    const out = runLines(
+      ['run', fixturePath('rerunStep'), '--env', 'default'],
+      ['', '', '', 'b', '1', 'n', 'q'],
+    );
+    assert.ok(
+      out.includes('Going back to step 1 — re-running from there.'),
+      out.slice(-1500),
+    );
+    assert.ok(!out.includes('Back at step'));
+  });
+
+  it('no prompt when going back to the immediately previous step', () => {
+    const out = runLines(
+      ['run', fixturePath('rerunStep'), '--env', 'default'],
+      ['', 'b', '1', 'q'],
+    );
+    assert.ok(out.includes('Going back to step 1'), out.slice(-1500));
+    assert.ok(!out.includes('Re-run only'));
+  });
+});
 
 describe('run command: needs forward-gating', () => {
   it('warns and lets the operator proceed when a dependency is skipped', () => {

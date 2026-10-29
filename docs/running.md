@@ -181,6 +181,11 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
     - Entering a later step warns when an earlier step's paste is still on the pane's input line.
     - Rollback `p` and `↵` follow the same rules.
 - **`[b]` back** — go back to an earlier, already-processed step to re-run it (e.g. an external dependency was fixed and you want to retry from there). Shows a numbered picker of the prior steps; the chosen step **and every step after it** are reset to pending and execution resumes from there. The append-only JSONL audit log keeps the full history of the earlier attempt, and the rewound step index is persisted so `resume` stays consistent. Not offered on the first step.
+  - **Re-run only one step.** When there are steps between the one you pick and the one you are on, `[b]` asks `Re-run only "<picked>", then come back to "<current>"? [y / n=rewind]`.
+    - `y` resets **only** the picked step. Its header shows `Next : back to step N`. Once it is done (or skipped), the run returns straight to where you were, and the steps in between keep their status: they are neither re-run nor marked skipped.
+    - `n` rewinds as described above.
+    - Logged as `user_input` `rerun` / `rerun_return`. If you abort during the re-run, `resume` continues after the re-run step, not at the step you came from.
+    - Prefer this over `[b]` followed by `[j]`: a `[j]` back over the rewound steps records them as **skipped** even though they ran.
 - **`[j]` jump** — jump **forward** to a later step (e.g. steps 3–5 are irrelevant this run and you want to go straight to step 6). Shows a numbered picker of the steps after the current one; the current step and every step up to (but not including) the target are recorded as **skipped** (⏭) in the run report, and execution resumes at the target. The append-only JSONL audit log keeps the full history. Not offered on the last step. To start a fresh run partway through instead, use `run --from-step <N>` (see below).
 
 ## Evidence-required gate
