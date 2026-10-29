@@ -145,7 +145,7 @@ Operator-driven rollback walks the entries one at a time — `↩ Rollback 1/3: 
 | Key | Action |
 |---|---|
 | `↵` | done — I ran it |
-| `p` | paste into the attached pane (bracketed paste, **no Enter** — same as the forward `[p]`) |
+| `p` | paste into the attached pane (bracketed paste, **no Enter** — same as the forward `[p]`, including its refusal while an earlier paste is still un-run on the pane's input line) |
 | `c` | copy the command |
 | `v` | verify the entry's `expect` against the pane output since it was shown |
 | `s` | skip this entry |

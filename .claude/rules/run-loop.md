@@ -81,6 +81,23 @@ sh/dash ignore bracketed paste and run each line on arrival, and tmux 3.4
 exposes no pane flag to detect that. e2e regression in
 `tests/e2e/sidecar-tmux.e2e.ts` (CRLF continuation block).
 
+### Un-run paste guard (#115)
+
+`[p]` never presses Enter, so an un-run paste stays on the pane's input line
+across step changes. The NEXT `[p]` used to append to it (`echo hello-becho
+hello-c`) and `↵` marked a never-run step done. `lastPaste` (loop-level, set by
+forward AND rollback `[p]`) + `unrunPaste()` (`src/lib/paste-guard.ts`): the
+paste is un-run while `backend.promptLine()` (cursor line) still ends with the
+command's last line (`pasteStillOnInputLine`; a wrapped long line matches by a
+≥16-char tail; an unreadable cursor line never blocks). Then:
+`blockedByUnrunPaste()` refuses `[p]` (`Nothing pasted.`), never sends keys to
+clear it (paste stays the ONLY write); `confirmDoneWithUnrunPaste(step,
+context)` asks `Mark done anyway?` on `↵` for THAT step's/rollback entry's own
+paste (`y` → `user_input`/`paste_not_run`, folded to a ⚠️ step note); step
+start warns about an earlier step's un-run paste. Deliberately NOT cleared on
+step change: the pane text is still there. e2e: "un-run [p] paste"
+(`e2e-paste-guard.yaml`); unit: `tests/lib/paste-guard.test.ts`.
+
 ## `variants.<env>` resolved once, in `flattenAndMarkForEnv`
 
 Every flat step is `mergeStepVariant(step, targetEnv)` before anything else

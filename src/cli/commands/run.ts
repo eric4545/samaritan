@@ -29,6 +29,11 @@ import { OperationExecutor } from '../../lib/executor';
 import { findShellVarRefs } from '../../lib/expect-lint';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
+import {
+  type PendingPaste,
+  pastePreview,
+  unrunPaste,
+} from '../../lib/paste-guard';
 import { generateReport, renderReport } from '../../lib/report-generator';
 import {
   filterRollbackByEnv,
@@ -885,6 +890,55 @@ class OperationRunner {
     const state = executor.getState();
     const logger = createEventLogger(state.context.sessionId, operationFile);
     console.log(`📝 Audit log: ${logger.path}`);
+
+    // The last [p] paste (forward or rollback). Kept across step changes on
+    // purpose: [p] never presses Enter, so the text stays on the pane's input
+    // line until the operator runs or clears it. A later [p] would append to
+    // it (`echo aecho b`), and ↵ would mark a never-run step done (#115).
+    let lastPaste: PendingPaste | undefined;
+
+    /** Refuse a new [p] while an earlier paste is still un-run. */
+    const blockedByUnrunPaste = (indent = '    '): boolean => {
+      const stale = unrunPaste(lastPaste);
+      if (!stale) return false;
+      console.log(
+        `${indent}⚠️  ${stale.backend.describeTarget(stale.sessionName)} still has an earlier paste on its input line, not run: ${pastePreview(stale.command)}`,
+      );
+      console.log(
+        `${indent}   Run it or clear it there (Ctrl+U), then [p] again. Nothing pasted.`,
+      );
+      return true;
+    };
+
+    /**
+     * Before ↵ done: when THIS step's (or rollback entry's) paste was never
+     * run, say so and ask. `false` = go back to the bar.
+     */
+    const confirmDoneWithUnrunPaste = async (
+      step: number,
+      context?: string,
+      indent = '    ',
+    ): Promise<boolean> => {
+      const stale = unrunPaste(lastPaste);
+      if (!stale || stale.step !== step || stale.context !== context) {
+        return true;
+      }
+      console.log(
+        `\n${indent}⚠️  The command pasted into ${stale.backend.describeTarget(stale.sessionName)} was not run. It is still on the pane's input line: ${pastePreview(stale.command)}`,
+      );
+      if (!(await confirmKey(`${indent}Mark done anyway? [y / n=go back]: `))) {
+        return false;
+      }
+      logger.emit({
+        type: 'user_input',
+        action: 'paste_not_run',
+        step,
+        actor: state.context.operator,
+        command: stale.command,
+        ...(context ? { context } : {}),
+      });
+      return true;
+    };
     const sessionState = new SessionState();
 
     // Fixed run-start time for RUN_START_* / ELAPSED_TIME built-in variables.
@@ -1232,6 +1286,7 @@ class OperationRunner {
             .trim()
             .toLowerCase();
           if (choice === 'p' && canPaste && cmd && backend?.pasteCommand) {
+            if (blockedByUnrunPaste()) continue;
             if (
               isMultiLinePaste(cmd) &&
               !(await confirmKey(
@@ -1242,6 +1297,13 @@ class OperationRunner {
               continue;
             }
             backend.pasteCommand(sessionName, cmd);
+            lastPaste = {
+              backend,
+              sessionName,
+              command: cmd,
+              step: stepIndex,
+              context,
+            };
             logger.emit({
               type: 'user_input',
               action: 'send_to_pane',
@@ -1285,7 +1347,9 @@ class OperationRunner {
           }
           if (choice === 's' || choice === 'skip') outcome = 'skipped';
           else if (choice === 'a' || choice === 'abort') outcome = 'aborted';
-          else outcome = 'executed';
+          else if (await confirmDoneWithUnrunPaste(stepIndex, context)) {
+            outcome = 'executed';
+          }
         }
 
         logger.emit({
@@ -2339,6 +2403,12 @@ class OperationRunner {
           // from a backward rewind (reset later steps to pending).
           let navTarget: number | undefined;
           let navIsJump = false;
+          const earlierPaste = unrunPaste(lastPaste);
+          if (earlierPaste && earlierPaste.step !== i) {
+            console.log(
+              `\n    ⚠️  ${earlierPaste.backend.describeTarget(earlierPaste.sessionName)} still has the paste from "${steps[earlierPaste.step]?.step.name ?? `step ${earlierPaste.step + 1}`}" on its input line, not run: ${pastePreview(earlierPaste.command)}`,
+            );
+          }
           while (true) {
             const evidenceForStep = stepEvidence(i);
             if (step.expect) {
@@ -2526,6 +2596,7 @@ class OperationRunner {
                 );
                 continue;
               }
+              if (blockedByUnrunPaste()) continue;
               // A multi-line block lands atomically only when the pane's shell
               // has bracketed paste on (bash ≥ 4.4, zsh ≥ 5.1). In sh/dash, or
               // with it off, every embedded newline is an Enter — lines run as
@@ -2540,6 +2611,12 @@ class OperationRunner {
                 }
               }
               backend.pasteCommand(sessionName, runnableCommand);
+              lastPaste = {
+                backend,
+                sessionName,
+                command: runnableCommand,
+                step: i,
+              };
               // Recorded as a user_input breadcrumb (not command_sent): sidecar
               // never executes, so folding it into the step's command list would
               // render a misleading duplicate "Command sent" row in the report.
@@ -2644,6 +2721,14 @@ class OperationRunner {
                 '\n    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.',
               );
               continue; // re-render only the bar; header/command stay put
+            }
+            if (
+              !isSkip(pending) &&
+              !isRollback(pending) &&
+              pending !== 'abort' &&
+              !(await confirmDoneWithUnrunPaste(i))
+            ) {
+              continue;
             }
             manualNotes = input;
             break;
