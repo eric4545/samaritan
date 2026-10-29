@@ -20,6 +20,7 @@ import {
   cleanTerminalOutput,
   renderExpectDescription,
   sliceFromLastCommandEcho,
+  sliceFromPaneLine,
 } from '../../lib/assertions';
 import { getBuiltinVariables } from '../../lib/builtin-variables';
 import type { CaptureBackend, PaneOwner } from '../../lib/capture-backend';
@@ -1114,6 +1115,15 @@ class OperationRunner {
       backend: CaptureBackend | undefined;
       stepOffset: number;
       interrupted: boolean;
+      // The command-delivery anchor for the current step, recorded when [p]
+      // pastes the command (before the paste lands). [v] judges only output
+      // AFTER it: text from an earlier attempt of this step — or a resumed run
+      // from a previous day — would otherwise trip checks like `not_contains`.
+      // `pipeOffset` is the pipe byte the paste starts at; `startLine` is the
+      // pane line (history_size + cursor_y) the paste lands on, used when the
+      // pipe slice is lost and the scrollback must be sliced instead. Cleared
+      // at step start and on [t] attach — a new pane has no paste yet.
+      pasteAnchor?: { pipeOffset: number; startLine?: number };
     } = {
       backend: captureBackend,
       stepOffset: 0,
@@ -1140,6 +1150,28 @@ class OperationRunner {
         notes: `re-attached: pipe ${cause}`,
       });
       return true;
+    };
+
+    // [p] pastes the command into the pane; the operator then runs it (Enter
+    // in the pane, or [y] here). [v] must judge only output produced AFTER
+    // that paste — text printed by an earlier attempt of this step (e.g. a
+    // resumed run from a previous day) is stale. Recorded BEFORE the paste
+    // lands: the pipe byte it starts at, plus the pane line it lands on (the
+    // prompt row, `history_size + cursor_y`), so a verify whose pipe slice
+    // was lost can slice the scrollback from the paste point instead of
+    // guessing at a stale command echo.
+    const recordPasteAnchor = (
+      backend: CaptureBackend,
+      sessionName: string,
+      beforePaste: PaneState | undefined,
+    ): void => {
+      captureRef.pasteAnchor = {
+        pipeOffset: backend.currentOffset(sessionName),
+        startLine:
+          beforePaste !== undefined
+            ? beforePaste.historySize + beforePaste.cursorY
+            : undefined,
+      };
     };
 
     // [p] → [y]: the one paste [y] may press Enter for. `where` ties it to
@@ -2667,9 +2699,11 @@ class OperationRunner {
           // Uses captureRef so [t] can swap the backend and this closure stays fresh.
           const sessionName = step.session ?? 'default';
           // Repair a stolen/closed pipe BEFORE baselining, so this step's
-          // output is captured in full.
+          // output is captured in full. A new step also forgets the previous
+          // paste anchor: its command has not been pasted yet.
           repairCapture(sessionName);
           captureRef.interrupted = false;
+          captureRef.pasteAnchor = undefined;
           captureRef.stepOffset = captureRef.backend?.hasTarget(sessionName)
             ? captureRef.backend.currentOffset(sessionName)
             : 0;
@@ -2677,24 +2711,47 @@ class OperationRunner {
             const { backend } = captureRef;
             if (!backend || !backend.hasTarget(sessionName)) return undefined;
             if (repairCapture(sessionName)) captureRef.interrupted = true;
-            const slice = backend.readOutput(
-              sessionName,
-              captureRef.stepOffset,
-            );
+            // [v] judges only output after this step's last [p] paste: text
+            // from an earlier attempt (or a resumed run from a previous day)
+            // is stale. Without a paste (the operator typed the command) the
+            // step-start baseline applies.
+            const from = captureRef.pasteAnchor
+              ? Math.max(
+                  captureRef.stepOffset,
+                  captureRef.pasteAnchor.pipeOffset,
+                )
+              : captureRef.stepOffset;
+            const slice = backend.readOutput(sessionName, from);
             if (!captureRef.interrupted) return slice;
             // The pipe missed part of this step: read the pane's scrollback
-            // from the last echo of the command instead.
-            const recovered = sliceFromLastCommandEcho(
-              backend.captureHistory?.(sessionName) ?? '',
+            // from the line the command was pasted on (a deterministic anchor),
+            // falling back to the last echo of the command when there was no
+            // paste or the anchor scrolled off — that older fallback may
+            // include an earlier attempt's output.
+            const history = backend.captureHistory?.(sessionName);
+            const fromPaste = sliceFromPaneLine(
+              history?.text ?? '',
+              captureRef.pasteAnchor?.startLine,
+              history?.baseLine,
               runnableCommand,
             );
-            if (recovered === undefined) return slice;
+            if (fromPaste !== undefined) {
+              console.log(
+                '    ℹ️  Pipe capture was interrupted this step — reading the pane scrollback from the paste point.',
+              );
+              return fromPaste.trimEnd();
+            }
+            const echoed = sliceFromLastCommandEcho(
+              history?.text ?? '',
+              runnableCommand,
+            );
+            if (echoed === undefined) return slice;
             // Screen rows below the prompt are padding, not output — trim so
             // the prompt is the last line again (stripTrailingPrompt).
             console.log(
-              '    ℹ️  Pipe capture was interrupted this step — reading the pane scrollback from the last run of the command.',
+              '    ℹ️  Pipe capture was interrupted this step — reading the pane scrollback from the last echo of the command (no paste anchor; an earlier attempt may be included).',
             );
-            return recovered.trimEnd();
+            return echoed.trimEnd();
           };
 
           let manualNotes = '';
@@ -2857,6 +2914,8 @@ class OperationRunner {
                 console.warn(`  ${paneTakeoverWarning(previousOwner)}`);
               captureRef.backend = newCapture;
               captureRef.interrupted = false;
+              // A different pane: its command has not been pasted yet.
+              captureRef.pasteAnchor = undefined;
               sessionManager.setAttachTarget(
                 state.context.sessionId,
                 newPaneId ?? targetAns,
@@ -2894,6 +2953,8 @@ class OperationRunner {
               }
               if (blockedByUnrunPaste()) continue;
               const beforePaste = backend.paneState?.(sessionName);
+              // Anchor [v] to this paste: only output after it counts.
+              recordPasteAnchor(backend, sessionName, beforePaste);
               backend.pasteCommand(sessionName, runnableCommand);
               lastPaste = {
                 backend,

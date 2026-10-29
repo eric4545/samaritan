@@ -8,6 +8,18 @@ export interface PaneOwner {
   since: string;
 }
 
+/**
+ * A pane's scrollback + screen captured as clean text, together with the
+ * ABSOLUTE line of its first row — line 0 is the oldest scrollback line and
+ * the visible screen starts at `history_size`. Both use the tmux number space,
+ * so a line anchor recorded earlier (e.g. `history_size + cursor_y` when `[p]`
+ * pasted a command) can be mapped into the slice.
+ */
+export interface CaptureHistory {
+  text: string;
+  baseLine: number;
+}
+
 /** Result of `CaptureBackend.ensureCapture()`. */
 export type CaptureCheck =
   | { status: 'ok' }
@@ -73,9 +85,12 @@ export interface CaptureBackend {
   ensureCapture?(sessionName: string): CaptureCheck;
   /**
    * Optional: the pane's scrollback + screen as clean text — the fallback for
-   * a verify whose pipe slice was lost while the capture was detached.
+   * a verify whose pipe slice was lost while the capture was detached. The
+   * accompanying `baseLine` lets the caller slice from a line anchor (e.g. the
+   * row `[p]` pasted the command on) instead of guessing from an echo.
+   * Returns undefined when the backend cannot produce a screen.
    */
-  captureHistory?(sessionName: string): string | undefined;
+  captureHistory?(sessionName: string): CaptureHistory | undefined;
   /**
    * Tear down this backend (close pipe, unlink temp files, etc.).
    * MUST NOT kill-session when the pane belongs to the operator (TmuxPaneCapture).

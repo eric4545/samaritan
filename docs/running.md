@@ -38,9 +38,10 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 - tmux allows **one** `pipe-pane` per pane, so attaching replaces any existing pipe on it. Run one samaritan per pane. If a second run attaches to the same pane anyway:
   - it warns at attach (`This pane was captured by samaritan session <id> (pid N)`)
   - the first run notices at its next step or `[v]`/`[e]`, prints `Capture pipe on … was taken over by …`, and re-attaches
-  - a verify whose pipe missed part of the step reads the pane scrollback from the last run of the command instead of reporting `missing:` for output that is on screen
+  - a verify whose pipe missed part of the step reads the pane scrollback instead of reporting `missing:` for output that is on screen: from the line `[p]` pasted the command on, or, when the command was typed rather than pasted, from its last echo (which may include an earlier attempt)
   - a run only closes the pipe on exit while it still owns it, so one run exiting never cuts the other's capture
 - `[v]` with nothing captured since the step began prints a hint to run the command in the pane first.
+- After `[p]`, `[v]` judges only output from that paste on, so output left by an earlier attempt of the same step (a retry, or a resumed run from another day) cannot trip a check such as `not_contains`. A new step or a `[t]` pane switch starts without a paste.
 - `samaritan` **never kills** your session on exit — only the temporary capture pipe and temp file are cleaned up.
 
 **Step display in sidecar:**

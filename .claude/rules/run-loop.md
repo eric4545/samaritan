@@ -305,9 +305,19 @@ marker and re-attaches when closed or taken (`{status:'reattached', takenBy}`).
 The loop's `repairCapture(sessionName)` runs at step start (before the offset
 baseline) and inside `captureSinceStepStart`; a repair mid-step sets
 `captureRef.interrupted`, and reads then come from `captureHistory()`
-(`capture-pane -S -2000`) via `sliceFromLastCommandEcho` (trimEnd'd so the
-prompt is last again). `teardown()` only closes the pipe + deletes the marker
-while it still owns the pane. e2e: "two runs on one pane".
+(`capture-pane -S -2000`, returns `{text, baseLine}` — `baseLine` = absolute
+line of the first row) sliced by `sliceFromPaneLine` from the `[p]` paste
+anchor, else `sliceFromLastCommandEcho` (both trimEnd'd so the prompt is last
+again). **Paste anchor:** forward `[p]` records `captureRef.pasteAnchor`
+`{pipeOffset, startLine = history_size + cursor_y}` BEFORE pasting (cleared at
+step start and `[t]`); the pipe read starts at `max(stepOffset, pipeOffset)`
+so an earlier attempt's output is never judged. Once scrollback is full
+(`history-limit`, tmux default 2000 = `PANE_HISTORY_LINES`) `history_size`
+stops growing and `startLine` points K rows too low, so `sliceFromPaneLine`
+takes the command and walks back to the nearest echo at/before the anchor
+(caught only in real tmux: the slice began at the output's last lines).
+`teardown()` only closes the pipe + deletes the marker while it still owns
+the pane. e2e: "two runs on one pane".
 
 ## Resume re-attaches the sidecar pane (`attach_target`)
 

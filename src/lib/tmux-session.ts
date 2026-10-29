@@ -13,6 +13,7 @@ import type { SessionConfig } from '../models/operation';
 import type {
   CaptureBackend,
   CaptureCheck,
+  CaptureHistory,
   PaneOwner,
 } from './capture-backend';
 import type { PaneState } from './pane-enter-guard';
@@ -688,9 +689,17 @@ export class TmuxPaneCapture implements CaptureBackend {
     return sendEnterTo(paneId);
   }
 
-  /** Scrollback + screen of the attached pane as clean text (no escapes). */
-  captureHistory(_sessionName: string): string | undefined {
-    return capturePaneScreen(this.target, PANE_HISTORY_LINES);
+  /** Scrollback + screen of the attached pane, plus its first row's absolute line. */
+  captureHistory(_sessionName: string): CaptureHistory | undefined {
+    const text = capturePaneScreen(this.target, PANE_HISTORY_LINES);
+    if (text === undefined) return undefined;
+    let baseLine = 0;
+    const size = paneFormat(this.target, '#{history_size}');
+    if (size !== undefined) {
+      const hs = Number.parseInt(size, 10);
+      if (Number.isInteger(hs)) baseLine = Math.max(0, hs - PANE_HISTORY_LINES);
+    }
+    return { text, baseLine };
   }
 
   /**
