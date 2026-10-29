@@ -91,6 +91,9 @@ type RollbackStatus = 'completed' | 'partial' | 'not_executed';
 
 // Single-key answers for a y/n confirmation (fire without Enter on a TTY).
 const CONFIRM_KEYS: ReadonlySet<string> = new Set(['y', 'n']);
+// Single-key answers for the multi-line paste confirm (a = don't ask again
+// for this pane).
+const PASTE_CONFIRM_KEYS: ReadonlySet<string> = new Set(['y', 'a', 'n']);
 // Single-key actions on the all-steps-done completion screen.
 const COMPLETION_KEYS: ReadonlySet<string> = new Set(['r', 'g']);
 // Single-key actions on an operator-driven rollback step.
@@ -787,6 +790,35 @@ class OperationRunner {
       return ans === 'y' || ans === 'yes';
     };
 
+    // A multi-line block lands atomically only when the pane's shell has
+    // bracketed paste on (bash ≥ 4.4, zsh ≥ 5.1). In sh/dash, or with it off,
+    // every embedded newline is an Enter — lines run as they arrive. tmux
+    // can't report the pane's mode, so ask — but only until the operator
+    // answers [a]: from then on that pane (by its target) pastes silently for
+    // the rest of the run. Re-attaching a different pane asks again.
+    const multiLinePasteOk = new Set<string>();
+    const confirmMultiLinePaste = async (pane: string): Promise<boolean> => {
+      if (multiLinePasteOk.has(pane)) return true;
+      console.log(
+        '    ⚠️  Multi-line command. It lands as one un-run block only if the pane shell supports bracketed paste (bash ≥ 4.4, zsh ≥ 5.1); in sh/dash each line runs as it arrives.',
+      );
+      const ans = (
+        await readActionKey(
+          PASTE_CONFIRM_KEYS,
+          "    Paste it? [y / a=yes, don't ask again for this pane / n=cancel]: ",
+        )
+      )
+        .trim()
+        .toLowerCase();
+      if (ans === 'a' || ans === 'always') {
+        multiLinePasteOk.add(pane);
+        return true;
+      }
+      if (ans === 'y' || ans === 'yes') return true;
+      console.log('    ↩  Cancelled — nothing pasted.');
+      return false;
+    };
+
     if (process.stdin.isTTY) emitKeypressEvents(process.stdin);
 
     // Single-char action keys that fire immediately without pressing Enter.
@@ -1234,13 +1266,9 @@ class OperationRunner {
           if (choice === 'p' && canPaste && cmd && backend?.pasteCommand) {
             if (
               isMultiLinePaste(cmd) &&
-              !(await confirmKey(
-                '    ⚠️  Multi-line command — it lands as one block only with bracketed paste (bash ≥ 4.4, zsh ≥ 5.1). Paste it? [y / n=cancel]: ',
-              ))
-            ) {
-              console.log('    ↩  Cancelled — nothing pasted.');
+              !(await confirmMultiLinePaste(target ?? sessionName))
+            )
               continue;
-            }
             backend.pasteCommand(sessionName, cmd);
             logger.emit({
               type: 'user_input',
@@ -2526,19 +2554,15 @@ class OperationRunner {
                 );
                 continue;
               }
-              // A multi-line block lands atomically only when the pane's shell
-              // has bracketed paste on (bash ≥ 4.4, zsh ≥ 5.1). In sh/dash, or
-              // with it off, every embedded newline is an Enter — lines run as
-              // they arrive. tmux can't report the pane's mode, so ask first.
-              if (isMultiLinePaste(runnableCommand)) {
-                console.log(
-                  '    ⚠️  Multi-line command. It lands as one un-run block only if the pane shell supports bracketed paste (bash ≥ 4.4, zsh ≥ 5.1); in sh/dash each line runs as it arrives.',
-                );
-                if (!(await confirmKey('    Paste it? [y / n=cancel]: '))) {
-                  console.log('    ↩  Cancelled — nothing pasted.');
-                  continue;
-                }
-              }
+              // Multi-line: confirm (once per pane after [a]) — see
+              // confirmMultiLinePaste.
+              if (
+                isMultiLinePaste(runnableCommand) &&
+                !(await confirmMultiLinePaste(
+                  backend.describeTarget(sessionName),
+                ))
+              )
+                continue;
               backend.pasteCommand(sessionName, runnableCommand);
               // Recorded as a user_input breadcrumb (not command_sent): sidecar
               // never executes, so folding it into the step's command list would

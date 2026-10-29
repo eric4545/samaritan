@@ -76,10 +76,10 @@ command lands WITHOUT a trailing newline.
 rewrites LF→CR, so `\r\n` became `\r\r` — a blank line after each `\`
 continuation and a broken command), trailing newlines stripped (a YAML `|`
 block's final `\n` is an Enter in a non-bracketed shell). A multi-line command
-(`isMultiLinePaste`) asks `Paste it? [y / n=cancel]` (single key via `confirmKey`) before pasting —
+(`isMultiLinePaste`) asks via `confirmMultiLinePaste(pane)` (`PASTE_CONFIRM_KEYS` y/a/n, single key) before pasting — `a` adds the pane's `describeTarget` to the in-memory `multiLinePasteOk` set so later pastes to that pane (forward AND rollback) skip the prompt for the rest of the run; a different pane asks again. Not persisted (`resume` asks again) —
 sh/dash ignore bracketed paste and run each line on arrival, and tmux 3.4
 exposes no pane flag to detect that. e2e regression in
-`tests/e2e/sidecar-tmux.e2e.ts` (CRLF continuation block).
+`tests/e2e/sidecar-tmux.e2e.ts` (CRLF continuation block; "[p] multi-line confirm" for `a`, fixture `e2e-multiline-paste.yaml`).
 
 ## `variants.<env>` resolved once, in `flattenAndMarkForEnv`
 
