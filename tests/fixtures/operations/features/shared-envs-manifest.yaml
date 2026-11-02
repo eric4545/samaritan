@@ -9,5 +9,5 @@ environments:
   - name: dev
     description: Dev
     variables:
-      ENDPOINT: https://dev.api.com
+      ENDPOINT: https://dev.api.example.com
       NAMESPACE: dev

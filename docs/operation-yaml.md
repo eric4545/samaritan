@@ -8,7 +8,7 @@ A guide to the operation document. For the exhaustive field list see the generat
 name: Deploy Web Application
 version: 1.0.0
 description: Deploys web application with database migrations
-author: sre-team@company.com
+author: sre-team@example.com
 category: deployment
 emergency: false
 
@@ -18,14 +18,14 @@ environments:
     description: Staging environment
     variables:
       REPLICAS: 2
-      DB_HOST: staging-db.company.com
+      DB_HOST: staging-db.example.com
     approval_required: false
 
   - name: production
     description: Production environment
     variables:
       REPLICAS: 5
-      DB_HOST: prod-db.company.com
+      DB_HOST: prod-db.example.com
     approval_required: true
     validation_required: true
 
@@ -85,7 +85,7 @@ steps:
   - name: Health Check
     type: manual
     instruction: |
-      1. Open application dashboard: https://dashboard.company.com
+      1. Open application dashboard: https://dashboard.example.com
       2. Verify all services show green status
       3. Test critical user flows
     evidence:
@@ -96,7 +96,7 @@ steps:
     type: approval
     description: Require manager approval for production
     instruction: |
-      Request approval from manager@company.com before proceeding.
+      Request approval from manager@example.com before proceeding.
       Document approval in evidence.
 ```
 

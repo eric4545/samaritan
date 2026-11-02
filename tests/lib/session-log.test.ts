@@ -31,9 +31,25 @@ describe('foldEvents', () => {
     ]);
   });
 
+  it('records ↵ with nothing pasted or run as a step note', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({ type: 'user_input', action: 'done_without_run' }),
+      ev({ type: 'step_complete', step: 0 }),
+    ]);
+    assert.deepStrictEqual(steps[0].notes, [
+      '⚠️ Marked done with nothing pasted or run in the attached pane',
+    ]);
+  });
+
   it('captures command input and attaches pane output', () => {
     const { steps } = foldEvents([
-      ev({ type: 'step_start', step: 0, name: 'Deploy', pic: 'ops@x.com' }),
+      ev({
+        type: 'step_start',
+        step: 0,
+        name: 'Deploy',
+        pic: 'ops@example.com',
+      }),
       ev({
         type: 'command_sent',
         session: 'execution',
@@ -45,7 +61,7 @@ describe('foldEvents', () => {
     assert.strictEqual(steps.length, 1);
     const step = steps[0];
     assert.strictEqual(step.status, 'completed');
-    assert.strictEqual(step.pic, 'ops@x.com');
+    assert.strictEqual(step.pic, 'ops@example.com');
     assert.strictEqual(step.commands.length, 1);
     assert.strictEqual(step.commands[0].command, 'kubectl apply');
     assert.strictEqual(step.commands[0].output, 'created');
@@ -281,7 +297,7 @@ describe('foldEvents', () => {
         type: 'user_input',
         action: 'approved',
         step: 0,
-        actor: 'lead@x.com',
+        actor: 'lead@example.com',
         rationale: 'Change ticket CHG-42 signed off',
       }),
       ev({ type: 'step_complete', step: 0 }),
@@ -289,7 +305,7 @@ describe('foldEvents', () => {
     const a = steps[0].approval;
     assert.ok(a);
     assert.strictEqual(a.approved, true);
-    assert.strictEqual(a.approver, 'lead@x.com');
+    assert.strictEqual(a.approver, 'lead@example.com');
     assert.strictEqual(a.rationale, 'Change ticket CHG-42 signed off');
   });
 
@@ -300,7 +316,7 @@ describe('foldEvents', () => {
         type: 'user_input',
         action: 'rejected',
         step: 0,
-        actor: 'lead@x.com',
+        actor: 'lead@example.com',
       }),
     ]);
     assert.strictEqual(steps[0].approval?.approved, false);

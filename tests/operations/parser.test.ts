@@ -597,7 +597,7 @@ steps:
       assert.strictEqual(staging?.variables.REGION, 'us-east-1');
       assert.strictEqual(
         staging?.variables.ENDPOINT,
-        'https://staging.api.com',
+        'https://staging.api.example.com',
       );
     });
 
@@ -621,7 +621,10 @@ steps:
       const dev = operation.environments.find((e) => e.name === 'dev');
 
       assert.ok(dev, 'dev environment imported from manifest file');
-      assert.strictEqual(dev?.variables.ENDPOINT, 'https://dev.api.com');
+      assert.strictEqual(
+        dev?.variables.ENDPOINT,
+        'https://dev.api.example.com',
+      );
     });
 
     it('throws when the uses file is missing', async () => {

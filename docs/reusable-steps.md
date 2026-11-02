@@ -76,7 +76,7 @@ version: 2.0.0
 environments:
   - name: staging
     variables:
-      ENDPOINT: https://staging.api.com
+      ENDPOINT: https://staging.api.example.com
       DB_HOST: staging-db
       SERVICE_NAME: my-service
       NAMESPACE: staging

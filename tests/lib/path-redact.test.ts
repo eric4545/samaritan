@@ -20,8 +20,8 @@ describe('redactLocalPaths', () => {
 
   it('strips the operation directory prefix', () => {
     const out = redactLocalPaths(
-      'TEMPLATE_FILE="/tmp/operation/repository/rpsp-lambda/config/x.j2"',
-      { opDir: '/tmp/operation/repository/rpsp-lambda' },
+      'TEMPLATE_FILE="/tmp/operation/repository/example-lambda/config/x.j2"',
+      { opDir: '/tmp/operation/repository/example-lambda' },
     );
     assert.strictEqual(out, 'TEMPLATE_FILE="config/x.j2"');
   });

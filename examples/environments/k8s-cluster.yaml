@@ -12,8 +12,8 @@ environments:
     variables:
       NAMESPACE: dev
       REPLICAS: 1
-      DB_HOST: dev-db.company.com
-      DOMAIN: dev.company.com
+      DB_HOST: dev-db.example.com
+      DOMAIN: dev.example.com
       LOG_LEVEL: debug
     targets:
       - cluster-dev-us-east-1
@@ -25,8 +25,8 @@ environments:
     variables:
       NAMESPACE: staging
       REPLICAS: 2
-      DB_HOST: staging-db.company.com
-      DOMAIN: staging.company.com
+      DB_HOST: staging-db.example.com
+      DOMAIN: staging.example.com
       LOG_LEVEL: info
     targets:
       - cluster-staging-us-east-1
@@ -38,8 +38,8 @@ environments:
     variables:
       NAMESPACE: prod
       REPLICAS: 5
-      DB_HOST: prod-db.company.com
-      DOMAIN: company.com
+      DB_HOST: prod-db.example.com
+      DOMAIN: example.com
       LOG_LEVEL: warn
     targets:
       - cluster-prod-us-east-1

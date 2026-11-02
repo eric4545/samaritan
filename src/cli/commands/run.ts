@@ -59,9 +59,17 @@ import {
   getSessionEvidenceDir,
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
-import { runCommandHeader, stepActionHints } from '../../lib/step-actions';
+import {
+  runCommandHeader,
+  stepActionHints,
+  unavailableKeyMessage,
+} from '../../lib/step-actions';
 import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
-import { childStepLabel, describeStepPosition } from '../../lib/step-position';
+import {
+  childStepLabel,
+  describeStepPosition,
+  resolveStepPick,
+} from '../../lib/step-position';
 import {
   mergeStepVariables,
   mergeStepVariant,
@@ -1369,6 +1377,10 @@ class OperationRunner {
     };
 
     const DIVIDER = '─'.repeat(60);
+    // [b]/[j] take the listed number, the manual's step number (2.7) or a
+    // unique piece of the step name (resolveStepPick).
+    const STEP_PICK_PROMPT =
+      '    Step (listed number, manual number like 2.7, or name) [Enter to cancel]: ';
     const isQuit = (c: string) => c === 'q' || c === 'quit';
     const isSkip = (c: string) => c === 's' || c === 'skip';
     const isRollback = (c: string) => c === 'r' || c === 'rollback';
@@ -1809,8 +1821,20 @@ class OperationRunner {
         // When set, offer `c=copy command` so the operator can re-copy the
         // (already ${VAR}-resolved) command and re-run it after a failed check.
         commandToCopy?: string;
+        // Sidecar with a pane: `y=re-run` pastes the command again, presses
+        // the guarded Enter and re-verifies — the one-key path for a check
+        // that waits on a state change (an environment still "Launching").
+        allowRerun?: boolean;
       },
-    ): Promise<'override' | 'rollback' | 'stop' | 'reverify' | 'more'> => {
+    ): Promise<
+      'override' | 'rollback' | 'stop' | 'reverify' | 'more' | 'rerun'
+    > => {
+      // Single key, like the action bar: each choice fires on press.
+      const keys = new Set(['o', 'r']);
+      if (opts?.commandToCopy) keys.add('c');
+      if (opts?.allowMore) keys.add('m');
+      if (opts?.allowReVerify) keys.add('v');
+      if (opts?.allowRerun) keys.add('y');
       // Loop so copying the command re-renders the prompt rather than
       // consuming the operator's choice — copy is not a terminal action.
       while (true) {
@@ -1820,10 +1844,17 @@ class OperationRunner {
           ...(opts?.allowReVerify ? ['v=re-verify'] : []),
         ];
         const extraLabel = extras.length ? ` / ${extras.join(' / ')}` : '';
-        const overrideAns = await question(
-          `    ⚠️  Assertion failed. [o=override with reason / r=rollback${extraLabel} / Enter=stop]: `,
+        const rerunLabel = opts?.allowRerun ? 'y=re-run / ' : '';
+        const overrideAns = await readActionKey(
+          keys,
+          `    ⚠️  Assertion failed. [${rerunLabel}o=override with reason / r=rollback${extraLabel} / Enter=stop]: `,
         );
         const oc = overrideAns.trim().toLowerCase();
+        if (
+          opts?.allowRerun &&
+          (oc === 'y' || oc === 're-run' || oc === 'rerun')
+        )
+          return 'rerun';
         if (opts?.commandToCopy && (oc === 'c' || oc === 'copy')) {
           await copyCommand(opts.commandToCopy, '    ');
           continue;
@@ -2130,6 +2161,9 @@ class OperationRunner {
       // Reads the pane's current prompt line so the trailing prompt is
       // stripped exactly before line-based checks (see stripTrailingPrompt).
       readPromptLine?: () => string | undefined,
+      // Sidecar with a pane: paste + guarded Enter + wait, again. True when
+      // the command ran to the end (verify again); false = back to the bar.
+      rerun?: () => Promise<boolean>,
     ): Promise<void> => {
       if (!step.expect) return;
 
@@ -2193,7 +2227,13 @@ class OperationRunner {
           allowReVerify: true,
           allowMore: !expand,
           commandToCopy,
+          allowRerun: !!rerun,
         });
+        if (action === 'rerun' && rerun) {
+          expand = false;
+          if (await rerun()) continue;
+          return;
+        }
         if (action === 'more') {
           expand = true;
           continue;
@@ -2286,6 +2326,10 @@ class OperationRunner {
 
     try {
       const steps = executor.getState().steps;
+      const pickableSteps = steps.map((s, k) => ({
+        label: flatSteps[k]?.label ?? String(k + 1),
+        name: s.step.name,
+      }));
 
       // Record a step as skipped in the black box so the report/step_log shows
       // it (StepRecord.status 'skipped'). Used by [j] jump and run --from-step.
@@ -2754,6 +2798,139 @@ class OperationRunner {
             return echoed.trimEnd();
           };
 
+          // [p] — paste the resolved command (or `bash <script>` for a
+          // script-only step) into the attached pane WITHOUT executing it (no
+          // Enter). Operator reviews it, then presses Enter there or [y] here
+          // (guarded — see pressArmedEnter), then [v] to verify. Multi-line
+          // commands paste without asking: bracketed paste lands them as one
+          // un-run block. Only available once a pane is attached (spawn-own
+          // session or [t]/--attach). True when something was pasted.
+          const pasteStepCommand = async (rerun = false): Promise<boolean> => {
+            const backend = captureRef.backend;
+            if (
+              !runnableCommand ||
+              !backend?.hasTarget(sessionName) ||
+              !backend.pasteCommand
+            ) {
+              console.log(
+                '    ⚠️  No tmux pane attached — press [t] to attach a pane first.',
+              );
+              return false;
+            }
+            if (blockedByUnrunPaste()) return false;
+            const beforePaste = backend.paneState?.(sessionName);
+            // Anchor [v] to this paste: only output after it counts.
+            recordPasteAnchor(backend, sessionName, beforePaste);
+            backend.pasteCommand(sessionName, runnableCommand);
+            lastPaste = {
+              backend,
+              sessionName,
+              command: runnableCommand,
+              step: i,
+            };
+            // Recorded as a user_input breadcrumb (not command_sent): sidecar
+            // never executes, so folding it into the step's command list would
+            // render a misleading duplicate "Command sent" row in the report.
+            logger.emit({
+              type: 'user_input',
+              action: 'send_to_pane',
+              step: i,
+              session: sessionName,
+              command: runnableCommand,
+              actor: state.context.operator,
+            });
+            const armed = await armAfterPaste(
+              backend,
+              sessionName,
+              runnableCommand,
+              `step:${i}`,
+              beforePaste,
+            );
+            const target = backend.describeTarget(sessionName);
+            if (rerun)
+              console.log(
+                armed
+                  ? `    ⌨️  Pasted again into ${target}.`
+                  : `    ⌨️  Pasted again into ${target} — press Enter there to run, then [v] to verify.`,
+              );
+            else
+              console.log(
+                armed
+                  ? `    ⌨️  Pasted into ${target} — review it there, then [y] to run it${step.expect ? ' (verify follows)' : ''}.`
+                  : `    ⌨️  Pasted into ${target} — review it, press Enter there to run, then [v] to verify.`,
+              );
+            return true;
+          };
+          // [y] — the guarded Enter for this step's armed paste, then wait for
+          // the command to finish. `undefined` = Enter not sent.
+          const runArmedStepPaste = async (): Promise<
+            'prompt' | 'quiet' | 'gone' | 'key' | undefined
+          > => {
+            const backend = captureRef.backend;
+            const watch = pressArmedEnter(`step:${i}`, i);
+            if (!watch || !backend) return undefined;
+            return waitForCommand(backend, sessionName, watch, !!step.expect);
+          };
+          // `y=re-run` on a failed verify: paste the same command again and
+          // press the same guarded Enter — one key instead of Enter=stop, [p],
+          // [y]. Offered only when both writes are possible on this pane.
+          const canRerun = (): boolean => {
+            const backend = captureRef.backend;
+            return (
+              mode === 'sidecar' &&
+              !!runnableCommand &&
+              !!backend?.hasTarget(sessionName) &&
+              !!backend.pasteCommand &&
+              !!backend.paneState &&
+              !!backend.sendEnter
+            );
+          };
+          const rerunStepCommand = async (): Promise<boolean> => {
+            if (!(await pasteStepCommand(true))) return false;
+            if (!isArmedAt(`step:${i}`)) return false;
+            const end = await runArmedStepPaste();
+            return end === 'prompt' || end === 'quiet';
+          };
+          const verifyStep = (): Promise<void> =>
+            verifyManualOutput(
+              step,
+              i,
+              captureSinceStepStart,
+              resolvedExpect,
+              runnableCommand,
+              () => captureRef.backend?.captureScreen?.(sessionName),
+              () => captureRef.backend?.promptLine?.(sessionName),
+              canRerun() ? rerunStepCommand : undefined,
+            );
+          // Stray-Enter guard: ↵ on a sidecar step whose pane shows nothing
+          // pasted and nothing run since the step started (typically the
+          // second Enter after a verify PASS landing on the NEXT step). A
+          // command typed by hand produces output, so it never asks.
+          const confirmDoneWithNothingRun = async (): Promise<boolean> => {
+            const backend = captureRef.backend;
+            if (
+              mode !== 'sidecar' ||
+              !runnableCommand ||
+              captureRef.pasteAnchor ||
+              !backend?.hasTarget(sessionName)
+            )
+              return true;
+            const output = captureSinceStepStart();
+            if (output === undefined || output.trim()) return true;
+            console.log(
+              `\n    ⚠️  Nothing was pasted or run in ${backend.describeTarget(sessionName)} since this step started.`,
+            );
+            if (!(await confirmKey('    Mark done anyway? [y / n=go back]: ')))
+              return false;
+            logger.emit({
+              type: 'user_input',
+              action: 'done_without_run',
+              step: i,
+              actor: state.context.operator,
+            });
+            return true;
+          };
+
           let manualNotes = '';
           // Set by the [b] back / [j] jump actions: the index to navigate to.
           // Handled right after the inner loop so step execution is bypassed.
@@ -2778,7 +2955,7 @@ class OperationRunner {
             }
             // Compact bar: the usual flow keys + `?` for the rest. Every key
             // works whether shown or not (see src/lib/step-actions.ts).
-            const hints = stepActionHints({
+            const barContext = {
               sidecar: mode === 'sidecar',
               armed: isArmedAt(`step:${i}`),
               hasCommand: !!runnableCommand,
@@ -2788,7 +2965,8 @@ class OperationRunner {
               canGoBack: i > 0,
               canJump: i < steps.length - 1,
               hasGlobalRollback,
-            });
+            };
+            const hints = stepActionHints(barContext);
             console.log(`\n${renderKeyHints(hints.primary)}`);
             const input = await readActionKey();
             const inputChoice = input.trim().toLowerCase();
@@ -2838,15 +3016,7 @@ class OperationRunner {
               step.expect &&
               (inputChoice === 'v' || inputChoice === 'verify')
             ) {
-              await verifyManualOutput(
-                step,
-                i,
-                captureSinceStepStart,
-                resolvedExpect,
-                runnableCommand,
-                () => captureRef.backend?.captureScreen?.(sessionName),
-                () => captureRef.backend?.promptLine?.(sessionName),
-              );
+              await verifyStep();
               continue;
             }
             if (
@@ -2937,54 +3107,8 @@ class OperationRunner {
               runnableCommand &&
               (inputChoice === 'p' || inputChoice === 'send')
             ) {
-              // [p] — paste the resolved command (or `bash <script>` for a
-              // script-only step) into the attached pane WITHOUT executing it
-              // (no Enter). Operator reviews it, then presses Enter there or
-              // [y] here (guarded — see pressArmedEnter), then [v] to verify.
-              // Multi-line commands paste without asking: bracketed paste lands
-              // them as one un-run block. Only available once a pane is
-              // attached (spawn-own session or [t]/--attach).
-              const backend = captureRef.backend;
-              if (!backend?.hasTarget(sessionName) || !backend.pasteCommand) {
-                console.log(
-                  '    ⚠️  No tmux pane attached — press [t] to attach a pane first.',
-                );
-                continue;
-              }
-              if (blockedByUnrunPaste()) continue;
-              const beforePaste = backend.paneState?.(sessionName);
-              // Anchor [v] to this paste: only output after it counts.
-              recordPasteAnchor(backend, sessionName, beforePaste);
-              backend.pasteCommand(sessionName, runnableCommand);
-              lastPaste = {
-                backend,
-                sessionName,
-                command: runnableCommand,
-                step: i,
-              };
-              // Recorded as a user_input breadcrumb (not command_sent): sidecar
-              // never executes, so folding it into the step's command list would
-              // render a misleading duplicate "Command sent" row in the report.
-              logger.emit({
-                type: 'user_input',
-                action: 'send_to_pane',
-                step: i,
-                session: sessionName,
-                command: runnableCommand,
-                actor: state.context.operator,
-              });
-              const armed = await armAfterPaste(
-                backend,
-                sessionName,
-                runnableCommand,
-                `step:${i}`,
-                beforePaste,
-              );
-              console.log(
-                armed
-                  ? `    ⌨️  Pasted into ${backend.describeTarget(sessionName)} — review it there, then [y] to run it${step.expect ? ' (verify follows)' : ''}.`
-                  : `    ⌨️  Pasted into ${backend.describeTarget(sessionName)} — review it, press Enter there to run, then [v] to verify.`,
-              );
+              // [p] — paste without Enter (see pasteStepCommand).
+              await pasteStepCommand();
               continue;
             }
             if (
@@ -2994,25 +3118,9 @@ class OperationRunner {
               // [y] — press Enter in the pane for THIS step's [p] paste, only
               // while the pane provably still holds it unrun (pressArmedEnter),
               // then wait for it to finish and auto-verify `expect`.
-              const backend = captureRef.backend;
-              const watch = pressArmedEnter(`step:${i}`, i);
-              if (!watch || !backend) continue;
-              const end = await waitForCommand(
-                backend,
-                sessionName,
-                watch,
-                !!step.expect,
-              );
+              const end = await runArmedStepPaste();
               if (step.expect && (end === 'prompt' || end === 'quiet'))
-                await verifyManualOutput(
-                  step,
-                  i,
-                  captureSinceStepStart,
-                  resolvedExpect,
-                  runnableCommand,
-                  () => captureRef.backend?.captureScreen?.(sessionName),
-                  () => captureRef.backend?.promptLine?.(sessionName),
-                );
+                await verifyStep();
               continue;
             }
             if (i > 0 && (inputChoice === 'b' || inputChoice === 'back')) {
@@ -3025,24 +3133,22 @@ class OperationRunner {
                   `      ${k + 1}) [${flatSteps[k].label}] ${steps[k].step.name} (${steps[k].status})`,
                 );
               }
-              const ans = (
-                await question('    Step number [Enter to cancel]: ')
-              ).trim();
+              const ans = (await question(STEP_PICK_PROMPT)).trim();
               if (!ans) {
                 console.log('    ↩  Cancelled.');
                 continue;
               }
-              const picked = Number.parseInt(ans, 10);
-              if (
-                !Number.isInteger(picked) ||
-                picked < 1 ||
-                picked > i ||
-                String(picked) !== ans
-              ) {
-                console.log('    ⚠️  Invalid step.');
+              const pick = resolveStepPick(
+                ans,
+                pickableSteps,
+                Array.from({ length: i }, (_, k) => k),
+              );
+              if ('error' in pick) {
+                console.log(`    ⚠️  ${pick.error}`);
                 continue;
               }
-              navTarget = picked - 1;
+              navTarget = pick.index;
+              const picked = navTarget + 1;
               // With steps in between, a rewind would reset all of them (and
               // a [j] back over them would record them skipped). Offer to
               // re-run only the picked step and come back here instead.
@@ -3068,24 +3174,24 @@ class OperationRunner {
                   `      ${k + 1}) [${flatSteps[k].label}] ${steps[k].step.name} (${steps[k].status})`,
                 );
               }
-              const ans = (
-                await question('    Step number [Enter to cancel]: ')
-              ).trim();
+              const ans = (await question(STEP_PICK_PROMPT)).trim();
               if (!ans) {
                 console.log('    ↩  Cancelled.');
                 continue;
               }
-              const picked = Number.parseInt(ans, 10);
-              if (
-                !Number.isInteger(picked) ||
-                picked < i + 2 ||
-                picked > steps.length ||
-                String(picked) !== ans
-              ) {
-                console.log('    ⚠️  Invalid step.');
+              const pick = resolveStepPick(
+                ans,
+                pickableSteps,
+                Array.from(
+                  { length: steps.length - i - 1 },
+                  (_, k) => i + 1 + k,
+                ),
+              );
+              if ('error' in pick) {
+                console.log(`    ⚠️  ${pick.error}`);
                 continue;
               }
-              navTarget = picked - 1;
+              navTarget = pick.index;
               navIsJump = true;
               break;
             }
@@ -3094,6 +3200,14 @@ class OperationRunner {
                 manualNotes = '';
                 break;
               }
+              continue;
+            }
+            // A known action key that does not apply here ([v] without
+            // expect, [p] without a command, …) used to fall through to
+            // "done". Say why and stay on the bar.
+            const unavailable = unavailableKeyMessage(inputChoice, barContext);
+            if (unavailable) {
+              console.log(`    ⚠️  ${unavailable}`);
               continue;
             }
             // About to complete this step (any non-action input = confirm or
@@ -3118,6 +3232,9 @@ class OperationRunner {
               pending !== 'abort' &&
               !(await confirmDoneWithUnrunPaste(i))
             ) {
+              continue;
+            }
+            if (pending === '' && !(await confirmDoneWithNothingRun())) {
               continue;
             }
             manualNotes = input;

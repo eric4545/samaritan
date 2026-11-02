@@ -5,8 +5,8 @@ description: Test variable handling in markdown
 environments:
   - name: staging
     variables:
-      API_ENDPOINT: "https://api.staging.com"
-      DB_HOST: "db.staging.com"
+      API_ENDPOINT: "https://api.staging.example.com"
+      DB_HOST: "db.staging.example.com"
 
 steps:
   - name: Manual Step with Variables

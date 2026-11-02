@@ -192,6 +192,12 @@ export function foldEvents(events: SessionEvent[]): {
             currentStep.notes.push(
               `⚠️ Marked done while the pasted command was not run: ${event.command as string}`,
             );
+          } else if (action === 'done_without_run') {
+            // ↵ confirmed though nothing was pasted or ran in the attached
+            // pane since the step started (stray-Enter guard).
+            currentStep.notes.push(
+              '⚠️ Marked done with nothing pasted or run in the attached pane',
+            );
           } else if (action === 'approved' || action === 'rejected') {
             currentStep.approval = {
               approver: event.actor as string,

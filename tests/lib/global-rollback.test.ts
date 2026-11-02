@@ -53,6 +53,23 @@ describe('buildGlobalRollback', () => {
     assert.equal(result[2].command, 'rm backup.sql');
   });
 
+  it("keeps a step's own rollback entries in authored order (steps reversed, entries not)", () => {
+    // Field report: restore-then-verify came out verify-then-restore because
+    // the whole flat entry list was reversed, not just the step order.
+    const multi: Step[] = [
+      step('Backup', [{ name: 'Discard backup', command: 'rm backup.sql' }]),
+      step('Deploy', [
+        { name: 'Restore previous version', command: './restore.sh' },
+        { name: 'Verify restore', command: './check.sh' },
+      ]),
+    ];
+    const result = buildGlobalRollback([], multi, { aggregate: true });
+    assert.deepEqual(
+      result.map((r) => r.command),
+      ['./restore.sh', './check.sh', 'rm backup.sql'],
+    );
+  });
+
   it('does not mutate the source step rollbacks (non-destructive clone)', () => {
     buildGlobalRollback(globalSteps, steps, { aggregate: true });
     assert.equal(steps[1].rollback?.[0].name, 'Undo deploy');

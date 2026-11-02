@@ -1,7 +1,7 @@
 # Implementation Plan: SAMARITAN - Operation Manual Automation Tool
 
 **Branch**: `001-i-want-to` | **Date**: 2025-09-09 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/Users/ericng/Developments/github/eric4545/samaritan/specs/001-i-want-to/spec.md`
+**Input**: Feature specification from `specs/001-i-want-to/spec.md`
 
 ## Execution Flow (/plan command scope)
 ```

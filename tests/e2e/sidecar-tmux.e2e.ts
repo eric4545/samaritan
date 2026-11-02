@@ -629,8 +629,11 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor('echo "deploy E2E_RB_MARK"', { timeoutMs: 40_000 });
 
         // Complete the step (global rollback aggregates COMPLETED steps'
-        // rollbacks), then trigger [g] from the all-steps-done screen.
+        // rollbacks), then trigger [g] from the all-steps-done screen. Nothing
+        // ran in the pane, so ↵ asks first (stray-Enter guard).
         d.enter();
+        await d.waitFor('Mark done anyway?', { timeoutMs: 15_000 });
+        d.key('y');
         await d.waitFor('All steps done.', { timeoutMs: 15_000 });
 
         // Global rollback: preview → single-key y (no Enter) → entry 1/2.
@@ -719,7 +722,9 @@ describe('sidecar e2e (real tmux)', () => {
         const work = d.work as string;
         d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
         await d.waitFor('echo "deploy E2E_RB_MARK"', { timeoutMs: 40_000 });
-        d.enter(); // complete the only step
+        d.enter(); // complete the only step (nothing ran: the guard asks)
+        await d.waitFor('Mark done anyway?', { timeoutMs: 15_000 });
+        d.key('y');
 
         await d.waitFor('All steps done.', { timeoutMs: 15_000 });
         d.key('r');
@@ -807,7 +812,9 @@ describe('sidecar e2e (real tmux)', () => {
         const work = d.work as string;
         d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
         await d.waitFor('echo "deploy E2E_RB_MARK"', { timeoutMs: 40_000 });
-        d.enter(); // complete the only step
+        d.enter(); // complete the only step (nothing ran: the guard asks)
+        await d.waitFor('Mark done anyway?', { timeoutMs: 15_000 });
+        d.key('y');
         await d.waitFor('All steps done.', { timeoutMs: 15_000 });
         d.key('r');
         await d.waitFor('Roll back which step?');
@@ -839,6 +846,78 @@ describe('sidecar e2e (real tmux)', () => {
             '(pasted into pane, Enter sent from samaritan `[y]`, verify ✅)',
           ),
           readReport(ws.dir),
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'failed verify: y=re-run pastes + runs the command again and re-verifies; ↵ with nothing run asks first',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-rerun.yaml');
+      const d = TmuxDriver.create({ split: true });
+      const work = d.work as string;
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('Env status', { timeoutMs: 40_000 });
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        d.key('y');
+        // First run: still LAUNCHING → the failure prompt offers y=re-run.
+        await d.waitFor('Assertion failed. [y=re-run', { timeoutMs: 15_000 });
+        await d.waitFor(/^STATUS_LAUNCHING$/m, { pane: work });
+
+        // ONE key: paste again + guarded Enter + wait + verify again.
+        d.key('y');
+        await d.waitFor('Pasted again into', { timeoutMs: 15_000 });
+        await d.waitFor('Verify passed', { timeoutMs: 15_000 });
+        assert.strictEqual(
+          (d.capture(work).match(/^STATUS_READY$/gm) ?? []).length,
+          1,
+          'the command ran exactly once more',
+        );
+        const events = readFileSync(
+          findFile(ws.dir, 'events.jsonl') as string,
+          'utf8',
+        );
+        assert.strictEqual(
+          (events.match(/"action":"enter_sent"/g) ?? []).length,
+          2,
+          'each run is its own audited Enter',
+        );
+
+        // ↵ completes step 1. The next ↵ lands on step 2 with nothing pasted
+        // or run in the pane: asked, not silently confirmed.
+        d.enter();
+        await d.waitFor('MANUAL: Next step', { timeoutMs: 15_000 });
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('Nothing was pasted or run', { timeoutMs: 15_000 });
+        d.key('n');
+        await sleep(500);
+        assert.ok(
+          !d.capture().includes('Operation completed'),
+          'n keeps the operator on step 2',
+        );
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor(/Mark done anyway\?[\s\S]*Mark done anyway\?/, {
+          timeoutMs: 15_000,
+        });
+        d.key('y');
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+        const report = readReport(ws.dir);
+        assert.ok(
+          report.includes(
+            'Marked done with nothing pasted or run in the attached pane',
+          ),
+          'the override is recorded on step 2',
         );
       } finally {
         d.kill();

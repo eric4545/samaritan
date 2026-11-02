@@ -61,6 +61,14 @@ wait on captured output (`TmuxDriver.waitFor`), not fixed sleeps. Named `*.e2e.t
 `npm run test:e2e`. Skip gracefully when tmux is absent unless
 `SAMARITAN_E2E_REQUIRE_TMUX=1`. Fixtures: `tests/fixtures/operations/features/e2e-*.yaml`.
 
+## Mock data in fixtures and tests
+
+Fixtures, test strings and e2e YAML use fictional names only (`web-server`,
+`staging`, `example.com`). A test that reproduces a field report keeps the
+failure's shape (keys, structure, which check failed) with new values, and its
+comments say "a failure seen in a real run", never a ticket key, product or
+date. See `.claude/rules/mock-data.md`.
+
 ## Debug files
 
 Create debug/temp files in `/tmp/` (descriptive names, e.g.

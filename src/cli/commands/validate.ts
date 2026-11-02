@@ -6,7 +6,9 @@ import {
   formatDiscardedVerifyFinding,
 } from '../../lib/deprecated-verify';
 import {
+  formatExpectMatchFinding,
   formatExpectShellVarFinding,
+  lintExpectMatches,
   lintExpectShellVars,
 } from '../../lib/expect-lint';
 import { formatRegexFinding, lintOperationRegex } from '../../lib/regex-lint';
@@ -16,7 +18,7 @@ import {
   lintOperationCommands,
 } from '../../lib/shell-lint';
 import { validateStepDeps } from '../../lib/step-deps';
-import type { Operation } from '../../models/operation';
+import type { Operation, Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 import {
   formatValidationError,
@@ -366,7 +368,12 @@ class OperationValidator {
       );
     }
 
-    if (operation.steps.filter((s) => s.evidence?.required).length === 0) {
+    // Sub-steps count: a group step usually carries no evidence itself.
+    const requiresEvidence = (steps: Step[] | undefined): boolean =>
+      (steps ?? []).some(
+        (s) => !!s.evidence?.required || requiresEvidence(s.sub_steps),
+      );
+    if (!requiresEvidence(operation.steps)) {
       result.warnings.push(
         'No steps require evidence collection (recommended for audit trails)',
       );
@@ -434,6 +441,11 @@ class OperationValidator {
       result.warnings.push(
         `expect-lint: ${formatExpectShellVarFinding(finding)}`,
       );
+    }
+    // A substring check that the echoed command line can satisfy, or a bare
+    // number that also matches 12/20: both pass without the real output.
+    for (const finding of lintExpectMatches(operation)) {
+      result.warnings.push(`expect-lint: ${formatExpectMatchFinding(finding)}`);
     }
   }
 

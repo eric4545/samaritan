@@ -1,0 +1,42 @@
+name: Sidecar Poll Status
+version: 1.0.0
+description: |
+  A check that waits on a state change, driven in sidecar mode. A fresh
+  rollout reports fewer ready replicas than desired for a while before it
+  settles. Run it with a pane attached:
+
+    samaritan run examples/sidecar-poll-status.yaml --env staging --attach <pane>
+
+  [p] pastes the status command, [y] runs it and verifies. While the rollout
+  is still in progress the check fails; press `y` (re-run) at the failure
+  prompt to paste and run the same command again and re-verify — one key per
+  attempt, each one audited. The second step shows the alternative that needs
+  no re-run: a command that waits by itself.
+author: sre-team
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: web-staging
+      DEPLOYMENT: web-server
+
+steps:
+  - name: Check rollout status
+    type: automatic
+    description: Check once; press `y` at the failure prompt to re-run while it rolls out.
+    command: >-
+      kubectl get deployment ${DEPLOYMENT} -n ${NAMESPACE}
+      -o jsonpath='{.status.conditions[?(@.type=="Available")].status}'
+    expect:
+      equals: 'True'
+
+  - name: Wait, then check (no re-run needed)
+    type: automatic
+    description: kubectl waits until the rollout finishes, so one run is enough.
+    command: >-
+      kubectl rollout status deployment/${DEPLOYMENT} -n ${NAMESPACE}
+      --timeout=10m
+    expect:
+      contains: successfully rolled out
