@@ -95,7 +95,7 @@ steps:
     type: manual
     instruction: |
       Clear Redis cache:
-      1. Connect to Redis: redis-cli -h cache.company.com
+      1. Connect to Redis: redis-cli -h cache.example.com
       2. Run: FLUSHALL
       3. Confirm with: INFO keyspace
     evidence:

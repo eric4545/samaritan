@@ -22,8 +22,8 @@ environments:
     variables:
       NAMESPACE: staging
       REPLICAS: 2
-      DB_HOST: staging-db.company.com
-      DOMAIN: staging.company.com
+      DB_HOST: staging-db.example.com
+      DOMAIN: staging.example.com
     approval_required: false
 
   - name: production
@@ -31,8 +31,8 @@ environments:
     variables:
       NAMESPACE: prod
       REPLICAS: 5
-      DB_HOST: prod-db.company.com
-      DOMAIN: company.com
+      DB_HOST: prod-db.example.com
+      DOMAIN: example.com
     approval_required: true
 ```
 
@@ -82,7 +82,7 @@ with identical `staging`/`production` blocks), import the whole set in one line 
 # file are both accepted.
 environments:
   - name: staging
-    variables: { ENDPOINT: https://staging.api.com, DB_HOST: staging-db, NAMESPACE: staging }
+    variables: { ENDPOINT: https://staging.api.example.com, DB_HOST: staging-db, NAMESPACE: staging }
   - name: production
     approval_required: true
     variables: { ENDPOINT: https://api.example.com, DB_HOST: prod-db, NAMESPACE: production }

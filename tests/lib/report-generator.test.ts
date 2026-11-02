@@ -20,7 +20,7 @@ function render(events: SessionEvent[], runDir?: string): string {
 
 describe('renderReport — terminal-noise cleaning', () => {
   it('strips ANSI/OSC escape sequences from auto-captured verify evidence', () => {
-    const noisy = `${ESC}[7mPERSONAL_TO="a@b.com"${ESC}[27m${ESC}[K\nMAIL_BODY_ROWS=2`;
+    const noisy = `${ESC}[7mPERSONAL_TO="a@example.com"${ESC}[27m${ESC}[K\nMAIL_BODY_ROWS=2`;
     const md = render([
       ev({ type: 'session_start', op: 'op.yaml' }),
       ev({ type: 'step_start', step: 0, name: 'Send mail' }),
@@ -36,7 +36,10 @@ describe('renderReport — terminal-noise cleaning', () => {
     ]);
     assert.ok(!md.includes(ESC), 'no raw escape bytes remain');
     assert.ok(!md.includes('[27m'), 'no SGR toggles remain');
-    assert.ok(md.includes('PERSONAL_TO="a@b.com"'), 'readable text preserved');
+    assert.ok(
+      md.includes('PERSONAL_TO="a@example.com"'),
+      'readable text preserved',
+    );
     assert.ok(md.includes('MAIL_BODY_ROWS=2'));
   });
 

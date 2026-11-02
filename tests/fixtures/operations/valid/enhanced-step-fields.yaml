@@ -67,5 +67,5 @@ steps:
     description: Require manager approval
     approval:
       required: true
-      approvers: [manager@company.com]
+      approvers: [manager@example.com]
       timeout: "24h"

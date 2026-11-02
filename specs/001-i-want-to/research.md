@@ -129,7 +129,7 @@ environments:
   staging:
     variables:
       REPLICAS: 2
-      DB_HOST: staging-db.company.com
+      DB_HOST: staging-db.example.com
       BACKUP_ENABLED: false
     targets:
       - k8s-staging-cluster
@@ -137,7 +137,7 @@ environments:
   production:
     variables:
       REPLICAS: 5
-      DB_HOST: prod-db.company.com
+      DB_HOST: prod-db.example.com
       BACKUP_ENABLED: true
     targets:
       - k8s-prod-cluster
@@ -484,7 +484,7 @@ environments:
     description: "Staging environment for testing"
     targets:
       - k8s-staging-cluster
-      - staging-db.company.com
+      - staging-db.example.com
     variables:
       REPLICAS: 2
       DATABASE_URL: "postgresql://staging-db:5432/app"
@@ -494,7 +494,7 @@ environments:
     description: "Production environment"  
     targets:
       - k8s-prod-cluster
-      - prod-db.company.com
+      - prod-db.example.com
     variables:
       REPLICAS: 5
       DATABASE_URL: "postgresql://prod-db:5432/app"

@@ -10,7 +10,7 @@ environments:
   - name: development
     description: Development database
     variables:
-      DB_HOST: dev-postgres.company.com
+      DB_HOST: dev-postgres.example.com
       DB_NAME: myapp_dev
       DB_PORT: 5432
       BACKUP_RETENTION_DAYS: 7
@@ -20,7 +20,7 @@ environments:
   - name: staging
     description: Staging database
     variables:
-      DB_HOST: staging-postgres.company.com
+      DB_HOST: staging-postgres.example.com
       DB_NAME: myapp_staging
       DB_PORT: 5432
       BACKUP_RETENTION_DAYS: 14
@@ -31,7 +31,7 @@ environments:
   - name: production
     description: Production database
     variables:
-      DB_HOST: prod-postgres.company.com
+      DB_HOST: prod-postgres.example.com
       DB_NAME: myapp_prod
       DB_PORT: 5432
       BACKUP_RETENTION_DAYS: 90

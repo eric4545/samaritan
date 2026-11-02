@@ -2,7 +2,7 @@
 name: Deploy Web Application
 version: 1.0.0
 description: Deploy web application using reusable environments
-author: sre-team@company.com
+author: sre-team@example.com
 category: deployment
 
 # Use simplified environment syntax with manifest inheritance

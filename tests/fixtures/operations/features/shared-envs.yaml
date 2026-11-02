@@ -3,7 +3,7 @@ environments:
   - name: staging
     description: Staging
     variables:
-      ENDPOINT: https://staging.api.com
+      ENDPOINT: https://staging.api.example.com
       SERVICE_NAME: svc
       NAMESPACE: staging
   - name: production

@@ -30,7 +30,7 @@ function escapeRegExp(s: string): string {
 /**
  * A base is only safe to strip when it's an absolute directory of real length —
  * a relative or root-ish base (`.`, `/`, ``) would match stray characters like
- * the `.` in `a@b.com` and mangle the report.
+ * the `.` in `a@example.com` and mangle the report.
  */
 function isUsableBase(prefix: string | undefined): prefix is string {
   if (!prefix) return false;

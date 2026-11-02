@@ -1,7 +1,7 @@
 name: Deploy Web Server with YAML Anchors
 version: 1.0.0
 description: Demonstrates YAML anchors and aliases for DRY configuration
-author: sre-team@company.com
+author: sre-team@example.com
 category: deployment
 
 # YAML Anchors Demo: Define reusable configurations once, reference multiple times
