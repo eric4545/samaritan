@@ -59,3 +59,39 @@ export function describeStepPosition(
     remaining: ahead.length,
   };
 }
+
+/**
+ * Resolve a `[b]`/`[j]` picker answer to a flat step index. Accepts the flat
+ * position (`11`, what the picker numbers), the manual's dotted number
+ * (`2.7`, what the operator has open), or a unique case-insensitive fragment
+ * of the step name. `allowed` = the flat indexes the picker offers.
+ */
+export function resolveStepPick(
+  answer: string,
+  steps: PositionedStep[],
+  allowed: number[],
+): { index: number } | { error: string } {
+  const ans = answer.trim();
+  const offered = allowed.filter((k) => steps[k]);
+  const describe = (k: number) => `${steps[k].label} ${steps[k].name}`;
+  if (/^\d+$/.test(ans)) {
+    const index = Number.parseInt(ans, 10) - 1;
+    return offered.includes(index)
+      ? { index }
+      : { error: `Step ${ans} is not one of the steps listed.` };
+  }
+  const byLabel = offered.find((k) => steps[k].label === ans);
+  if (byLabel !== undefined) return { index: byLabel };
+  if (/^\d+(\.\d+)+$/.test(ans))
+    return { error: `Step ${ans} is not one of the steps listed.` };
+  const needle = ans.toLowerCase();
+  const byName = offered.filter((k) =>
+    steps[k].name.toLowerCase().includes(needle),
+  );
+  if (byName.length === 1) return { index: byName[0] };
+  if (byName.length > 1)
+    return {
+      error: `"${ans}" matches ${byName.length} steps: ${byName.map(describe).join(', ')}. Be more specific.`,
+    };
+  return { error: `No listed step matches "${ans}".` };
+}

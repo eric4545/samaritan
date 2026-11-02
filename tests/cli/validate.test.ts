@@ -157,7 +157,85 @@ steps:
       writeOp('common_variables:\n  USER: deployer'),
     ]);
     assert.strictEqual(result.status, 0, result.stderr);
-    assert.doesNotMatch(result.stdout, /expect-lint:/);
+    // (The self-match lint still fires: `$USER` is in `echo $USER` too.)
+    assert.doesNotMatch(result.stdout, /is compared literally/);
+  });
+});
+
+describe('validate expect-lint (self-match, bare number)', () => {
+  function writeOp(steps: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-expect-match-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(
+      file,
+      `name: Expect Match Test
+version: 1.0.0
+environments:
+  - name: default
+steps:
+${steps}`,
+    );
+    return file;
+  }
+
+  it('warns when expect.contains also appears in the command', () => {
+    const result = runCli([
+      'validate',
+      writeOp(`  - name: Build
+    type: manual
+    command: npm run build && ls -la dist/main.js
+    expect:
+      contains: dist/main.js
+`),
+    ]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.match(
+      result.stdout,
+      /expect-lint: step "Build" \(expect\.contains\): "dist\/main\.js" also appears in the step's command/,
+    );
+  });
+
+  it('warns on a bare number in contains', () => {
+    const result = runCli([
+      'validate',
+      writeOp(`  - name: Count
+    type: manual
+    command: kubectl get deploy web -o jsonpath='{.status.readyReplicas}'
+    expect:
+      contains: '2'
+`),
+    ]);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.match(
+      result.stdout,
+      /expect-lint: step "Count" \(expect\.contains\): 2 is a substring check/,
+    );
+  });
+});
+
+describe('validate --strict evidence recommendation', () => {
+  it('counts evidence.required on sub-steps', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-strict-evidence-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(
+      file,
+      `name: Strict Evidence
+version: 1.0.0
+environments:
+  - name: default
+steps:
+  - name: Deploy group
+    type: manual
+    sub_steps:
+      - name: Deploy app
+        type: manual
+        command: ./deploy.sh
+        evidence:
+          required: true
+`,
+    );
+    const result = runCli(['validate', file, '--strict']);
+    assert.doesNotMatch(result.stdout, /No steps require evidence collection/);
   });
 });
 

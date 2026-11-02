@@ -83,3 +83,54 @@ export function runCommandHeader(opts: {
     return `${what} — [p] pastes it into ${opts.paneTarget}:`;
   return `Run this ${opts.script ? '' : 'command '}in your terminal ([t] attaches a pane for [p]/[v]):`;
 }
+
+/**
+ * Why an action key does nothing on this step, or `undefined` when the key is
+ * not an unavailable action (↵, skip, rollback, free-text notes). The run loop
+ * shows this and stays on the bar: a known key used to fall through to "done"
+ * — `[v]` on a step without `expect` marked it complete (field report).
+ */
+export function unavailableKeyMessage(
+  key: string,
+  ctx: StepActionContext,
+): string | undefined {
+  const reason = ((): string | undefined => {
+    switch (key) {
+      case 'v':
+        return ctx.hasExpect
+          ? undefined
+          : 'this step has no expect, so there is nothing to verify ([e] captures evidence)';
+      case 'p':
+        if (!ctx.sidecar)
+          return '[p] pastes into a tmux pane in sidecar mode only';
+        return ctx.hasCommand ? undefined : 'this step has no command to paste';
+      case 'y':
+        return ctx.sidecar
+          ? undefined
+          : '[y] runs a [p] paste in sidecar mode only';
+      case 't':
+        return ctx.sidecar
+          ? undefined
+          : '[t] attaches a tmux pane in sidecar mode only';
+      case 'c':
+        return ctx.hasCommand ? undefined : 'this step has no command to copy';
+      case 'x':
+        return ctx.hasEvidence
+          ? undefined
+          : 'this step has no evidence to remove';
+      case 'b':
+        return ctx.canGoBack ? undefined : 'this is the first step';
+      case 'j':
+        return ctx.canJump ? undefined : 'this is the last step';
+      case 'g':
+        return ctx.hasGlobalRollback
+          ? undefined
+          : 'this operation has no operation-level rollback';
+      default:
+        return undefined;
+    }
+  })();
+  return reason
+    ? `[${key}] — ${reason}. The step is not marked done (↵ does that).`
+    : undefined;
+}

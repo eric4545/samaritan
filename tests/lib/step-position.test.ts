@@ -4,6 +4,7 @@ import {
   childStepLabel,
   describeStepPosition,
   type PositionedStep,
+  resolveStepPick,
 } from '../../src/lib/step-position';
 
 // Flat run order for: 1 prep, 2 deploy { 2.1 upload, 2.2 review { 2.2.1 } }, 3
@@ -64,5 +65,44 @@ describe('describeStepPosition', () => {
     const pos = describeStepPosition(STEPS, 5);
     assert.strictEqual(pos.next, undefined);
     assert.strictEqual(pos.remaining, 0);
+  });
+});
+
+describe('resolveStepPick — [b]/[j] by position, manual number or name', () => {
+  // Pickable: everything after "deploy" (flat positions 3..6).
+  const allowed = [2, 3, 4, 5];
+
+  it('keeps a plain number as the flat position (unchanged behaviour)', () => {
+    assert.deepStrictEqual(resolveStepPick('4', STEPS, allowed), { index: 3 });
+  });
+
+  it('accepts a dotted manual number (2.2 is position 4, not 2)', () => {
+    assert.deepStrictEqual(resolveStepPick('2.2', STEPS, allowed), {
+      index: 3,
+    });
+    assert.deepStrictEqual(resolveStepPick('2.2.1', STEPS, allowed), {
+      index: 4,
+    });
+  });
+
+  it('accepts a unique, case-insensitive name fragment', () => {
+    assert.deepStrictEqual(resolveStepPick('Nested', STEPS, allowed), {
+      index: 4,
+    });
+  });
+
+  it('refuses an ambiguous name and lists the matches', () => {
+    const pick = resolveStepPick('upload', STEPS, allowed);
+    assert.ok('error' in pick);
+    assert.match(pick.error, /2\.1 upload/);
+    assert.match(pick.error, /2\.2 review-upload/);
+  });
+
+  it('refuses steps outside the allowed range and unknown input', () => {
+    assert.ok('error' in resolveStepPick('1', STEPS, allowed));
+    assert.ok('error' in resolveStepPick('2.1.9', STEPS, allowed));
+    assert.ok('error' in resolveStepPick('nope', STEPS, allowed));
+    // A label outside the range is refused even though it exists.
+    assert.ok('error' in resolveStepPick('prep', STEPS, allowed));
   });
 });

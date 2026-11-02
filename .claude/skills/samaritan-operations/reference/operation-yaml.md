@@ -52,6 +52,8 @@ rather than being silently dropped. The ONLY excluded field is `rollback` itself
 Set `rollback.aggregate_step_rollbacks: true` to **group** every step's own
 `rollback` into the global plan: after the explicit `steps:`, each step's
 rollback is appended in **reverse step order**, labelled `↩ Rollback for "<step>"`.
+One step's own entries keep their **authored order** (restore, then verify) —
+only the steps are reversed.
 This drives both the rendered Rollback Plan ("see all rollbacks at once") and the
 interactive `[g]` global-rollback jump (which uses only **completed** steps).
 Opt-in (default false). Example: `examples/global-rollback-aggregated.yaml`.
@@ -166,7 +168,10 @@ these: uncompilable patterns are errors, ReDoS-prone ones are warnings
 (errors under `--strict`).
 
 Only `${VAR}` operation variables resolve in `expect` — a bare `$USER` is
-compared as the literal text `$USER` (validate warns `expect-lint:`). In a
+compared as the literal text `$USER` (validate warns `expect-lint:`). validate
+also warns `expect-lint:` when a `contains`/`any_line_contains` value appears in
+the step's own command (it can match the echoed command line) or is a bare short
+number (`'2'` also matches `12` — use `matches: '\b2\b'`). In a
 sidecar capture the trailing shell prompt is stripped before checks, so
 `line_count`/`all_lines_match`/`equals` see only the command's output.
 

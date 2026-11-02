@@ -167,6 +167,28 @@ start warns about an earlier step's un-run paste. Deliberately NOT cleared on
 step change: the pane text is still there. e2e: "un-run [p] paste"
 (`e2e-paste-guard.yaml`); unit: `tests/lib/paste-guard.test.ts`.
 
+### Unavailable keys + stray-Enter guard
+
+A known action key whose action does not apply (`[v]` without `expect`, `[p]`
+without a command or outside sidecar, `[x]` without evidence, `[b]` first
+step, `[j]` last step, `[g]` without `operation.rollback`, …) used to fall
+through to "done" — `[v]` on a no-expect step marked it complete.
+`unavailableKeyMessage(key, barContext)` (`src/lib/step-actions.ts`, pure)
+prints why and the bar `continue`s. Only `↵`/free-text notes complete.
+`confirmDoneWithNothingRun()` (sidecar, runnable command, pane attached, NO
+`captureRef.pasteAnchor` this step, `captureSinceStepStart()` empty) makes a
+bare `↵` ask `Mark done anyway? [y / n=go back]`; `y` →
+`user_input`/`done_without_run` → ⚠️ step note in `foldEvents`. A command
+typed by hand produces output, so it never asks. e2e (2nd half of "failed
+verify: y=re-run").
+
+### `[b]`/`[j]` picker input
+
+`resolveStepPick(answer, pickableSteps, allowed)` (`src/lib/step-position.ts`):
+a plain integer is still the flat position; a dotted manual number (`2.7`)
+matches the step label; anything else is a unique case-insensitive name
+fragment (ambiguous → lists matches, refuses).
+
 ## `variants.<env>` resolved once, in `flattenAndMarkForEnv`
 
 Every flat step is `mergeStepVariant(step, targetEnv)` before anything else
@@ -281,8 +303,17 @@ worse). `verifyOutput` also returns `detailed` (`assertOutputDetailed()` —
 evaluates ALL checks, no short-circuit; `assertOutput` still short-circuits).
 `verifyManualOutput` loops on `[v]` via `renderVerifyOutcome(detailed, expect,
 {expand})` (PASS/FAIL header, per-check checklist, highlighted output tail
-`VERIFY_OUTPUT_TAIL_LINES=12`). On FAIL, `promptAssertFailureAction` offers
-`o`/`r`/`c` (copy resolved command)/`m` (full output)/`v` (re-capture)/Enter=stop.
+`VERIFY_OUTPUT_TAIL_LINES=12`). On FAIL, `promptAssertFailureAction` (single
+key via `readActionKey`) offers `y` re-run / `o` / `r` / `c` (copy resolved
+command) / `m` (full output) / `v` (re-capture) / Enter=stop. `y=re-run` is
+offered only when `canRerun()` (sidecar, runnable command, pane with
+`pasteCommand` + `paneState` + `sendEnter`): `rerunStepCommand` =
+`pasteStepCommand(true)` → must arm → `runArmedStepPaste()` (the SAME
+`pressArmedEnter` guard + `waitForCommand`) → verify again only on
+`prompt`/`quiet`, else back to the bar. `[p]`/`[y]`/`[v]` and the re-run
+share these step-scoped closures (`pasteStepCommand`, `runArmedStepPaste`,
+`verifyStep`) — never duplicate the paste/Enter path. e2e: "failed verify:
+y=re-run" (`e2e-rerun.yaml`).
 
 ## One `pipe-pane` per pane — ownership + repair
 

@@ -119,6 +119,14 @@ in this roadmap:
 - [x] Sidecar `[y]` run-it: operator-triggered Enter for a `[p]` paste, guarded by a pane-state check (not non-interactive execution)
 - [x] Rollback on failure
 - [x] Progress tracking and display
+- [x] Failed verify `y=re-run` (sidecar): paste + guarded Enter + re-verify in one key
+- [x] Stray-`↵` guard: asks before completing a sidecar step with nothing pasted or run
+- [x] `[b]`/`[j]` pick a step by manual number (`2.7`) or name
+- [ ] Per-step pane target (`target:` or a window name) with `[p]` warn/refuse on mismatch with the attached pane
+- [ ] Audited "clear the pending input line" action (today a stale paste blocks `[p]` and must be cleared in the pane with Ctrl+U)
+- [ ] Optional auto-advance on verify PASS (today a PASS never completes a step; `↵` does)
+- [ ] Artifact provenance checks (record an S3 ETag/sha at upload, assert it is unchanged before use, show both in `report`)
+- [ ] Sidecar `expect.retry` that re-runs the command between attempts (today `retry` re-captures; in sidecar the operator re-runs with `y`)
 
 `samaritan run` supports `sidecar` (default), `manual`, `automatic`, and `hybrid`
 modes. Sidecar mode displays each resolved command and verifies `step.expect`

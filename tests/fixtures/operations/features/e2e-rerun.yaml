@@ -1,0 +1,25 @@
+name: E2E Re-run
+version: 1.0.0
+description: >-
+  Fixture for `y=re-run` on a failed verify: the command reports LAUNCHING on
+  its first run and READY from the second (state kept in the pane's shell),
+  like polling an environment that is still starting. A second step checks
+  the stray-Enter guard (↵ with nothing pasted or run).
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables: {}
+
+steps:
+  - name: Env status
+    type: automatic
+    command: >-
+      RERUN_N=$((RERUN_N+1)); if [ $RERUN_N -ge 2 ]; then S=READY; else
+      S=LAUNCHING; fi; echo "STATUS_$S"
+    expect:
+      contains: STATUS_READY
+
+  - name: Next step
+    type: manual
+    command: echo NEXT_STEP_RAN

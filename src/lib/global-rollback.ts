@@ -57,8 +57,10 @@ export function buildEffectiveRollback(
  * The result is the explicit `globalSteps` as authored, followed — when
  * `opts.aggregate` is true — by every step's own `step.rollback` entries in
  * **reverse step order** (the most-recently-listed/completed step's rollback
- * first), so undoing proceeds in the opposite order of doing. Sub-steps are
- * walked too, since they can carry their own `rollback`.
+ * first), so undoing proceeds in the opposite order of doing. Only the STEPS
+ * are reversed: one step's own entries keep their authored order, because
+ * they are a procedure (restore, then verify the restore), not a stack.
+ * Sub-steps are walked too, since they can carry their own `rollback`.
  *
  * Each appended entry is shallow-cloned with a provenance-prefixed `name`
  * (e.g. `↩ Rollback for "Deploy app"`) so the existing operation-level rollback
@@ -78,37 +80,26 @@ export function buildGlobalRollback(
   const result: EffectiveRollbackStep[] = [...globalSteps];
   if (!opts.aggregate) return result;
 
-  // Collect (step, rollbackEntry) pairs in document order, recursing into
-  // sub-steps, then reverse so the last step's rollback runs first. Each pair
-  // carries the source step's anchor so the folded entry can advertise the
-  // jump-link target its inline rollback link points to.
-  const collected: Array<{
-    stepName: string;
-    anchor: string;
-    heading: string;
-    rollback: RollbackStep;
-  }> = [];
+  // Collect one group per step (its rollback entries in AUTHORED order) in
+  // document order, recursing into sub-steps, then reverse the GROUPS so the
+  // last step's rollback runs first. Reversing the flat entry list instead
+  // flipped a step's own restore-then-verify into verify-then-restore.
+  const groups: EffectiveRollbackStep[][] = [];
   const walk = (steps: Step[] | undefined): void => {
     if (!steps) return;
     for (const step of steps) {
-      for (const rb of step.rollback ?? []) {
-        if (hasRollbackContent(rb)) {
-          collected.push({
-            stepName: step.name,
-            anchor: stepRollbackAnchor(step),
-            heading: stepRollbackHeadingText(step),
-            rollback: rb,
-          });
-        }
-      }
+      const anchor = stepRollbackAnchor(step);
+      const heading = stepRollbackHeadingText(step);
+      const entries = (step.rollback ?? [])
+        .filter(hasRollbackContent)
+        .map((rb) => withProvenance(rb, step.name, anchor, heading));
+      if (entries.length > 0) groups.push(entries);
       walk(step.sub_steps);
     }
   };
   walk(stepsToAggregate);
 
-  for (const { stepName, anchor, heading, rollback } of collected.reverse()) {
-    result.push(withProvenance(rollback, stepName, anchor, heading));
-  }
+  for (const group of groups.reverse()) result.push(...group);
   return result;
 }
 

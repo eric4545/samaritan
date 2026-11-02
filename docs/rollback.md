@@ -109,7 +109,7 @@ The same required-variable rule as normal-step `uses:` applies: every `${VAR}` i
 
 ### Group per-step rollbacks into the global rollback (`aggregate_step_rollbacks`)
 
-Set `aggregate_step_rollbacks: true` on the operation-level `rollback:` to **group every step's own `rollback` into the global plan**. After the explicit `steps:` above, SAMARITAN appends each step's rollback in **reverse step order** (most-recently-completed step first), each labelled with the step it undoes (`↩ Rollback for "Deploy app"`). This lets you author each undo next to the step it reverses *and* still see — or run — one consolidated recovery:
+Set `aggregate_step_rollbacks: true` on the operation-level `rollback:` to **group every step's own `rollback` into the global plan**. After the explicit `steps:` above, SAMARITAN appends each step's rollback in **reverse step order** (most-recently-completed step first), each labelled with the step it undoes (`↩ Rollback for "Deploy app"`). Only the step order is reversed: a step with several rollback entries keeps them **in the order you wrote them**, so `restore` then `verify the restore` stays restore-then-verify. This lets you author each undo next to the step it reverses *and* still see — or run — one consolidated recovery:
 
 ```yaml
 rollback:

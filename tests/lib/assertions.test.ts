@@ -812,7 +812,7 @@ describe('sliceFromPaneLine — paste-anchored scrollback slice for a lost pipe'
   // A `-S -N` scrollback capture whose first row is pane-absolute line 40
   // (baseLine). The command was [p]asted at absolute line 44; a previous
   // attempt of the same command sits at 42-43 and must be excluded — the
-  // observed GCSGPSOPS-17126 failure, where stale output of an earlier run
+  // failure seen in a real run, where stale output of an earlier run
   // tripped `not_contains` on the fresh output.
   const history = [
     'older scrollback',

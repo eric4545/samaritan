@@ -4,6 +4,7 @@ import {
   runCommandHeader,
   type StepActionContext,
   stepActionHints,
+  unavailableKeyMessage,
 } from '../../src/lib/step-actions';
 
 const ctx = (over: Partial<StepActionContext> = {}): StepActionContext => ({
@@ -103,5 +104,51 @@ describe('runCommandHeader', () => {
       runCommandHeader({ script: true }),
       'Run this in your terminal ([t] attaches a pane for [p]/[v]):',
     );
+  });
+});
+
+describe('unavailableKeyMessage — a known key never falls through to done', () => {
+  it('[v] on a step without expect says there is nothing to verify', () => {
+    const msg = unavailableKeyMessage('v', ctx({ hasExpect: false }));
+    assert.match(msg ?? '', /no expect/);
+    assert.match(msg ?? '', /\[e\] captures evidence/);
+    assert.match(msg ?? '', /not marked done/);
+  });
+
+  it('covers keys whose action does not apply here', () => {
+    assert.match(
+      unavailableKeyMessage('p', ctx({ sidecar: false })) ?? '',
+      /sidecar/,
+    );
+    assert.match(
+      unavailableKeyMessage('p', ctx({ hasCommand: false })) ?? '',
+      /no command/,
+    );
+    assert.match(
+      unavailableKeyMessage('c', ctx({ hasCommand: false })) ?? '',
+      /no command/,
+    );
+    assert.match(
+      unavailableKeyMessage('x', ctx({ hasEvidence: false })) ?? '',
+      /no evidence/,
+    );
+    assert.match(
+      unavailableKeyMessage('b', ctx({ canGoBack: false })) ?? '',
+      /first step/,
+    );
+    assert.match(
+      unavailableKeyMessage('j', ctx({ canJump: false })) ?? '',
+      /last step/,
+    );
+    assert.match(
+      unavailableKeyMessage('g', ctx({ hasGlobalRollback: false })) ?? '',
+      /no operation-level rollback/,
+    );
+  });
+
+  it('returns undefined for done/skip/rollback and free text', () => {
+    for (const k of ['', 's', 'r', 'all good']) {
+      assert.strictEqual(unavailableKeyMessage(k, ctx()), undefined);
+    }
   });
 });

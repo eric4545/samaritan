@@ -31,6 +31,17 @@ describe('foldEvents', () => {
     ]);
   });
 
+  it('records ↵ with nothing pasted or run as a step note', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({ type: 'user_input', action: 'done_without_run' }),
+      ev({ type: 'step_complete', step: 0 }),
+    ]);
+    assert.deepStrictEqual(steps[0].notes, [
+      '⚠️ Marked done with nothing pasted or run in the attached pane',
+    ]);
+  });
+
   it('captures command input and attaches pane output', () => {
     const { steps } = foldEvents([
       ev({ type: 'step_start', step: 0, name: 'Deploy', pic: 'ops@x.com' }),

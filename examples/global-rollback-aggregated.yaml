@@ -50,13 +50,20 @@ steps:
     type: automatic
     phase: flight
     command: kubectl scale deployment/web-canary --replicas=3 -n ${NAMESPACE}
+    # Several entries on ONE step keep their authored order in the global
+    # plan (scale down, THEN confirm it) — only the steps are reversed.
     rollback:
       - name: Scale canary back down
         command: kubectl scale deployment/web-canary --replicas=0 -n ${NAMESPACE}
+      - name: Confirm the canary is gone
+        command: kubectl get deployment/web-canary -n ${NAMESPACE} -o jsonpath='{.status.replicas}'
+        expect:
+          matches: '^(0)?$'
 
 # Group every step's rollback into this global plan. The explicit step below
 # runs first, then each step's own rollback in reverse order (Scale up canary →
-# Deploy web server → Create database backup).
+# Deploy web server → Create database backup). Within a step, entries run in
+# the order written.
 rollback:
   automatic: false
   aggregate_step_rollbacks: true
