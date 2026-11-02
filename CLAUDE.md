@@ -40,6 +40,15 @@ execution feature** — most execution features are roadmap items, not shipped.
    declares a supported `runs.using:`. A `Node 20 is deprecated` warning comes from an
    **action's own** runtime, not from `node-version` — bump the action. Verify dates
    and runtimes, never recall them: see `.claude/rules/github-actions.md`.
+9. **Mock data only — never copy real operational data.** Pasted terminal output,
+   run reports, `events.jsonl` and incident notes are for understanding the bug,
+   never content. Every file, comment, test, fixture, example, doc, CHANGELOG entry,
+   commit message, branch name, PR and GitHub comment uses fictional names
+   (`web-server`, `staging`, `OPS-0000`, `example.com`, `123456789012`). No real
+   product, environment, ticket key, account, region, host, bucket, person or
+   date from the pasted material. Keep the failure's shape, not its values. Grep the
+   staged diff + commit message for the pasted material's distinctive tokens
+   before every commit. See `.claude/rules/mock-data.md`.
 
 ---
 
@@ -59,7 +68,8 @@ tests/             # fixtures/, manuals/ (snapshots), unit + integration
 ```
 
 Deeper, path-scoped guidance loads automatically from `.claude/rules/` when you
-open the matching source (manuals, parser/schema, run loop, tests, CI workflows).
+open the matching source (manuals, parser/schema, run loop, tests, CI workflows,
+mock data — `mock-data.md` applies to every file).
 
 ---
 
@@ -164,7 +174,7 @@ Per-area testing traps (readline multi-prompt gotcha, e2e notes) load from
 - **Skill `samaritan-operations`** (`.claude/skills/`) — how to author/validate/
   generate/run operations; `reference/{cli,operation-yaml,postmortem-yaml}.md`.
 - **`.claude/rules/`** — path-scoped code-editing traps (manuals, parser/schema,
-  run loop, tests, GitHub Actions runtimes), loaded on demand.
+  run loop, tests, GitHub Actions runtimes, mock data only), loaded on demand.
 - **Source of truth:** `src/schemas/operation.schema.json`; `examples/*.yaml` are
   validated, copy-ready samples.
 
