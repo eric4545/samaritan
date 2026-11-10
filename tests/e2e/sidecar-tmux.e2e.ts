@@ -1194,7 +1194,7 @@ describe('sidecar e2e (real tmux)', () => {
         numberOf(screen, workName);
         tmux(['kill-pane', '-t', extra]);
         d.type(gone);
-        screen = await d.waitFor('is gone — the pane list changed');
+        await d.waitFor('is gone — the pane list changed');
         await d.waitFor(/r=refresh[\s\S]*r=refresh/);
         screen = d.capture();
         const tail = screen.slice(screen.lastIndexOf('is gone'));
