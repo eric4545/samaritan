@@ -4,8 +4,8 @@
  * the hint line, so muscle memory never breaks.
  *
  * Shown: the keys of the usual sidecar flow (`[p]` → `[y]` → `↵`, `[v]`), skip,
- * rollback, and `[t]` while no pane is attached (attaching is the first thing
- * to do then). Everything else (copy, note, evidence, back, jump, global
+ * rollback, `[t]` while no pane is attached (attaching is the first thing
+ * to do then) and `[e]` while required evidence is missing. Everything else (copy, note, evidence, back, jump, global
  * rollback, abort, and `[t]` to swap an attached pane) is listed by `?`.
  */
 
@@ -26,6 +26,11 @@ export interface StepActionContext {
   paneAttached: boolean;
   /** Evidence already captured on this step (`[x]` can remove it). */
   hasEvidence: boolean;
+  /**
+   * `evidence.required` and nothing captured yet: `[e]` moves into the bar,
+   * since ↵ will refuse until it is used. Optional: absent = not required.
+   */
+  evidenceMissing?: boolean;
   canGoBack: boolean;
   canJump: boolean;
   hasGlobalRollback: boolean;
@@ -44,6 +49,7 @@ export function stepActionHints(ctx: StepActionContext): {
     { key: '↵', label: 'done' },
     ...when(ctx.sidecar && ctx.hasCommand, { key: 'p', label: 'paste' }),
     ...when(ctx.hasExpect, { key: 'v', label: 'verify' }),
+    ...when(!!ctx.evidenceMissing, { key: 'e', label: 'evidence' }),
     ...when(ctx.sidecar && !ctx.paneAttached, {
       key: 't',
       label: 'attach pane',
@@ -55,7 +61,7 @@ export function stepActionHints(ctx: StepActionContext): {
   const more: KeyHint[] = [
     ...when(ctx.hasCommand, { key: 'c', label: 'copy' }),
     { key: 'n', label: 'note' },
-    { key: 'e', label: 'evidence' },
+    ...when(!ctx.evidenceMissing, { key: 'e', label: 'evidence' }),
     ...when(ctx.hasEvidence, { key: 'x', label: 'remove evidence' }),
     ...when(ctx.sidecar && ctx.paneAttached, {
       key: 't',
@@ -67,6 +73,28 @@ export function stepActionHints(ctx: StepActionContext): {
     { key: 'abort', label: 'abort' },
   ];
   return { primary, more };
+}
+
+/**
+ * The sidecar completion flow, spelled out once per run (the first time the
+ * bar offers `[p]` with a pane attached): `p → y → ↵` is not guessable from
+ * the bar alone. Undefined when the flow does not apply to this step.
+ */
+export function sidecarFlowLegend(ctx: StepActionContext): string | undefined {
+  if (!ctx.sidecar || !ctx.hasCommand || !ctx.paneAttached) return undefined;
+  const verify = ctx.hasExpect ? ' (verify follows)' : '';
+  return `ℹ️  Flow: p pastes the command into the pane → y runs it${verify} → ↵ marks the step done. ? lists more keys.`;
+}
+
+/**
+ * The inline warning when ↵ is refused because `evidence.required` has
+ * nothing yet. With a pane attached it names the one-keystroke path — the
+ * output is already in the pane, so retyping it is never needed.
+ */
+export function evidenceGateMessage(paneAttached: boolean): string {
+  return paneAttached
+    ? '⚠️  This step requires evidence — press [e] then ↵ to capture the pane output (f = file, t = typed text), or [s] to skip.'
+    : '⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.';
 }
 
 /**

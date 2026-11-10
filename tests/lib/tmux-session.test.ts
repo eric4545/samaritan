@@ -7,10 +7,15 @@ import { describe, it } from 'node:test';
 import {
   buildPasteBufferArgs,
   capturePaneCursorLine,
+  capturePaneScreen,
   isLocalSession,
   listTmuxPanes,
   normalizePasteText,
+  PANE_FIELD_SEP,
+  paneDisplayName,
+  paneNameOf,
   paneOwnerFile,
+  parsePaneList,
   readPaneOwner,
   readPaneState,
   sanitizeSessionName,
@@ -421,8 +426,98 @@ describe('listTmuxPanes', () => {
       assert.strictEqual(typeof pane.id, 'string');
       assert.strictEqual(typeof pane.target, 'string');
       assert.ok(pane.target.includes(':'), 'target is session:window.pane');
+      assert.ok(pane.name.includes(':'), 'name is session:window.pane');
       assert.strictEqual(typeof pane.isSelf, 'boolean');
     }
+  });
+});
+
+describe('listTmuxPanes — real tmux', () => {
+  const hasTmux =
+    process.platform !== 'win32' &&
+    spawnSync('tmux', ['-V'], { encoding: 'utf8' }).status === 0;
+
+  it(
+    'lists a named window by name (tmux renders TAB as _, so no TAB split)',
+    { skip: !hasTmux },
+    () => {
+      const session = `sam-list-${process.pid}-${Date.now()}`;
+      spawnSync('tmux', ['new-session', '-d', '-s', session, '-n', 'deploy']);
+      try {
+        const mine = listTmuxPanes().filter((p) =>
+          p.target.startsWith(`${session}:`),
+        );
+        assert.strictEqual(mine.length, 1);
+        assert.strictEqual(mine[0].target, `${session}:0.0`);
+        assert.strictEqual(mine[0].name, `${session}:deploy.0`);
+        assert.match(mine[0].id, /^%\d+$/);
+      } finally {
+        spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
+      }
+    },
+  );
+});
+
+describe('paneDisplayName — the picker name', () => {
+  const parts = {
+    session: 'work',
+    windowIndex: '1',
+    windowName: 'deploy',
+    autoRename: '0',
+    paneIndex: '2',
+  };
+
+  it('uses the window name when the window was named on purpose', () => {
+    assert.strictEqual(paneDisplayName(parts), 'work:deploy.2');
+  });
+
+  it('uses the index while tmux auto-renames the window (name follows the program)', () => {
+    assert.strictEqual(
+      paneDisplayName({ ...parts, autoRename: '1' }),
+      'work:1.2',
+    );
+  });
+
+  it('uses the index when the name would not resolve back (empty, : or .)', () => {
+    for (const windowName of ['', '  ', 'db:primary', 'v1.2'])
+      assert.strictEqual(paneDisplayName({ ...parts, windowName }), 'work:1.2');
+  });
+});
+
+describe('parsePaneList', () => {
+  it('parses id, program, name parts and a title that may hold the separator', () => {
+    const row = (fields: string[]): string => fields.join(PANE_FIELD_SEP);
+    const out =
+      `${row(['%3', 'bash', 'work', '1', 'deploy', '0', '0', 'web-server', 'logs'])}\n` +
+      `${row(['%4', 'node', 'work', '2', 'node', '1', '1', ''])}\n`;
+    assert.deepStrictEqual(parsePaneList(out, '%4'), [
+      {
+        id: '%3',
+        target: 'work:1.0',
+        name: 'work:deploy.0',
+        currentCommand: 'bash',
+        title: `web-server${PANE_FIELD_SEP}logs`,
+        isSelf: false,
+      },
+      {
+        id: '%4',
+        target: 'work:2.1',
+        name: 'work:2.1',
+        currentCommand: 'node',
+        title: '',
+        isSelf: true,
+      },
+    ]);
+  });
+
+  it('drops malformed rows (a partial line racing a server teardown)', () => {
+    assert.deepStrictEqual(
+      parsePaneList(
+        `%3${PANE_FIELD_SEP}bash${PANE_FIELD_SEP}work\n\n`,
+        undefined,
+      ),
+      [],
+    );
   });
 });
 
@@ -609,6 +704,64 @@ describe('readPaneState', () => {
         assert.strictEqual(after?.inMode, true);
         assert.strictEqual(after?.synchronized, true);
       } finally {
+        spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
+      }
+    },
+  );
+});
+
+describe('TmuxPaneCapture — pinned to the pane id, not its position', () => {
+  const hasTmux =
+    process.platform !== 'win32' &&
+    spawnSync('tmux', ['-V'], { encoding: 'utf8' }).status === 0;
+
+  it(
+    'keeps pasting into the attached pane after an earlier pane closes',
+    { skip: !hasTmux },
+    async () => {
+      // A failure seen in a real-tmux repro: attached as `<s>:0.1`, then pane
+      // 0 closed, the window renumbered, and [p] pasted into the pane that
+      // became `<s>:0.1` — samaritan's own.
+      const session = `sam-pin-${process.pid}-${Date.now()}`;
+      spawnSync('tmux', ['new-session', '-d', '-s', session]);
+      spawnSync('tmux', ['split-window', '-t', `${session}:0`]);
+      spawnSync('tmux', ['split-window', '-t', `${session}:0`]);
+      spawnSync('tmux', ['rename-window', '-t', `${session}:0`, 'deploy']);
+      const id = (t: string): string =>
+        spawnSync('tmux', ['display-message', '-p', '-t', t, '#{pane_id}'], {
+          encoding: 'utf8',
+        }).stdout.trim();
+      const attachedId = id(`${session}:0.1`);
+      const cap = new TmuxPaneCapture(`pin-${process.pid}`, `${session}:0.1`);
+      try {
+        cap.attach();
+        assert.strictEqual(
+          cap.describeTarget('default'),
+          `tmux pane ${session}:deploy.1`,
+        );
+        spawnSync('tmux', ['kill-pane', '-t', `${session}:0.0`]);
+        assert.strictEqual(id(`${session}:0.0`), attachedId, 'renumbered');
+        cap.pasteCommand('default', 'echo PIN_MARK');
+        let text = '';
+        for (let k = 0; k < 20 && !text.includes('PIN_MARK'); k++) {
+          await new Promise((r) => setTimeout(r, 100));
+          text = capturePaneScreen(attachedId) ?? '';
+        }
+        assert.ok(
+          text.includes('PIN_MARK'),
+          'paste landed in the attached pane',
+        );
+        assert.ok(
+          !(capturePaneScreen(`${session}:0.1`) ?? '').includes('PIN_MARK'),
+          'the pane now at 0.1 got nothing',
+        );
+        assert.strictEqual(
+          cap.describeTarget('default'),
+          `tmux pane ${session}:deploy.0`,
+        );
+        assert.strictEqual(paneNameOf(attachedId), `${session}:deploy.0`);
+      } finally {
+        cap.teardown();
         spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
       }
     },

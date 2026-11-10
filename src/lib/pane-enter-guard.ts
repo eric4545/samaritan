@@ -130,6 +130,36 @@ function normalizePromptRow(row: string): string {
   return row.trim().replace(/\d/g, '0').replace(/\s+/g, ' ');
 }
 
+/** What the pane looked like right before a `[p]` paste: its bare prompt. */
+export interface PromptReference {
+  /** The cursor row before the paste — the bare shell prompt. */
+  promptRow?: string;
+  /** Foreground program at paste time (the shell, or `ssh` over a hop). */
+  shell?: string;
+}
+
+/**
+ * Whether the pane is visibly NOT back at the prompt the command was pasted
+ * at: another program in front, or a cursor row that is not the bare prompt.
+ * A polling loop (`until …; do sleep 30; done`) over ssh keeps `ssh` in
+ * front and prints nothing for 30s — `commandFinished`'s quiet fallback then
+ * reports it done mid-flight, and a verify sees partial output. This tells
+ * the operator so instead of calling a healthy command a failure. False when
+ * there is no reference or no pane state (cannot tell). A command that
+ * changes the prompt (`cd`) also reads as busy, so callers word it as "may".
+ */
+export function paneLooksBusy(
+  ref: PromptReference | undefined,
+  now: PaneState | undefined,
+): boolean {
+  if (!ref || !now) return false;
+  if (ref.shell && now.currentCommand !== ref.shell) return true;
+  if (!ref.promptRow?.trim()) return false;
+  return (
+    normalizePromptRow(now.cursorLine) !== normalizePromptRow(ref.promptRow)
+  );
+}
+
 /** Quiet time that confirms a finish when the prompt row matches. */
 export const FINISH_QUIET_MS = 300;
 /** Fallback quiet time when the prompt is not recognised (e.g. `cd` changed it). */

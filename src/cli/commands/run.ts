@@ -36,8 +36,11 @@ import {
   checkEnterSafe,
   commandFinished,
   type PaneState,
+  type PromptReference,
+  paneLooksBusy,
   type RunWatch,
 } from '../../lib/pane-enter-guard';
+import { renderPaneRow, resolvePanePick } from '../../lib/pane-picker';
 import {
   type PendingPaste,
   pastePreview,
@@ -60,7 +63,9 @@ import {
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
 import {
+  evidenceGateMessage,
   runCommandHeader,
+  sidecarFlowLegend,
   stepActionHints,
   unavailableKeyMessage,
 } from '../../lib/step-actions';
@@ -953,6 +958,8 @@ class OperationRunner {
     // line until the operator runs or clears it. A later [p] would append to
     // it (`echo aecho b`), and ↵ would mark a never-run step done (#115).
     let lastPaste: PendingPaste | undefined;
+    // The p → y → ↵ legend prints once per run (sidecarFlowLegend).
+    let flowLegendShown = false;
 
     /** Refuse a new [p] while an earlier paste is still un-run. */
     const blockedByUnrunPaste = (indent = '    '): boolean => {
@@ -1131,7 +1138,10 @@ class OperationRunner {
       // pane line (history_size + cursor_y) the paste lands on, used when the
       // pipe slice is lost and the scrollback must be sliced instead. Cleared
       // at step start and on [t] attach — a new pane has no paste yet.
-      pasteAnchor?: { pipeOffset: number; startLine?: number };
+      pasteAnchor?: {
+        pipeOffset: number;
+        startLine?: number;
+      } & PromptReference;
     } = {
       backend: captureBackend,
       stepOffset: 0,
@@ -1179,6 +1189,10 @@ class OperationRunner {
           beforePaste !== undefined
             ? beforePaste.historySize + beforePaste.cursorY
             : undefined,
+        // The bare prompt the paste landed on: a failed [v] while the pane
+        // is not back at it says "may still be running" (paneLooksBusy).
+        promptRow: beforePaste?.cursorLine,
+        shell: beforePaste?.currentCommand,
       };
     };
 
@@ -1363,6 +1377,15 @@ class OperationRunner {
           if (result === 'gone')
             console.log(
               '    ⚠️  Lost track of the pane — press [v] once the command is done.',
+            );
+          else if (
+            result === 'quiet' &&
+            paneLooksBusy(watch, backend.paneState?.(sessionName))
+          )
+            // Quiet but not back at the prompt: a sleep inside a polling
+            // loop over ssh looks exactly like this. Verify still runs.
+            console.log(
+              '    ⏸  No output for a few seconds, but the pane is not back at its prompt — the command may still be running.',
             );
           else console.log('    ✔  Finished.');
           return result;
@@ -1813,6 +1836,10 @@ class OperationRunner {
     // override (with reason) in the audit log when chosen; leaves rollback/stop
     // handling (which differ by call site — loop continue/break vs. a void
     // return) to the caller.
+    //
+    // Enter never ends the run (operators read ↵ as "done/advance"
+    // everywhere else): in `[v]` it goes back to the step bar, and where the
+    // caller would stop the run (`quitKey`) only `q` does.
     const promptAssertFailureAction = async (
       stepIndex: number,
       opts?: {
@@ -1825,35 +1852,49 @@ class OperationRunner {
         // the guarded Enter and re-verifies — the one-key path for a check
         // that waits on a state change (an environment still "Launching").
         allowRerun?: boolean;
+        // The pane is not back at its prompt (paneLooksBusy): the output is
+        // not final, so lead with `v` and title it as "still running", not
+        // as a failure. `y=re-run` is withheld — a paste would land in the
+        // running program.
+        stillRunning?: () => boolean;
+        // The caller stops the whole run on 'stop': ask for `q`, not Enter.
+        quitKey?: boolean;
       },
     ): Promise<
       'override' | 'rollback' | 'stop' | 'reverify' | 'more' | 'rerun'
     > => {
-      // Single key, like the action bar: each choice fires on press.
-      const keys = new Set(['o', 'r']);
-      if (opts?.commandToCopy) keys.add('c');
-      if (opts?.allowMore) keys.add('m');
-      if (opts?.allowReVerify) keys.add('v');
-      if (opts?.allowRerun) keys.add('y');
       // Loop so copying the command re-renders the prompt rather than
       // consuming the operator's choice — copy is not a terminal action.
       while (true) {
-        const extras = [
+        const running = opts?.stillRunning?.() ?? false;
+        const allowRerun = !!opts?.allowRerun && !running;
+        // Single key, like the action bar: each choice fires on press.
+        const keys = new Set(['o', 'r']);
+        if (opts?.commandToCopy) keys.add('c');
+        if (opts?.allowMore) keys.add('m');
+        if (opts?.allowReVerify) keys.add('v');
+        if (allowRerun) keys.add('y');
+        if (opts?.quitKey) keys.add('q');
+        const reverify = opts?.allowReVerify ? ['v=re-verify'] : [];
+        const labels = [
+          ...(running ? reverify : []),
+          ...(allowRerun ? ['y=re-run'] : []),
+          'o=override with reason',
+          'r=rollback',
           ...(opts?.commandToCopy ? ['c=copy command'] : []),
           ...(opts?.allowMore ? ['m=more'] : []),
-          ...(opts?.allowReVerify ? ['v=re-verify'] : []),
+          ...(running ? [] : reverify),
+          opts?.quitKey ? 'q=stop the run' : 'Enter=back to step',
         ];
-        const extraLabel = extras.length ? ` / ${extras.join(' / ')}` : '';
-        const rerunLabel = opts?.allowRerun ? 'y=re-run / ' : '';
+        const title = running
+          ? '⏳ Command may still be running — output not final yet.'
+          : '⚠️  Assertion failed.';
         const overrideAns = await readActionKey(
           keys,
-          `    ⚠️  Assertion failed. [${rerunLabel}o=override with reason / r=rollback${extraLabel} / Enter=stop]: `,
+          `    ${title} [${labels.join(' / ')}]: `,
         );
         const oc = overrideAns.trim().toLowerCase();
-        if (
-          opts?.allowRerun &&
-          (oc === 'y' || oc === 're-run' || oc === 'rerun')
-        )
+        if (allowRerun && (oc === 'y' || oc === 're-run' || oc === 'rerun'))
           return 'rerun';
         if (opts?.commandToCopy && (oc === 'c' || oc === 'copy')) {
           await copyCommand(opts.commandToCopy, '    ');
@@ -1878,6 +1919,12 @@ class OperationRunner {
           (oc === 'v' || oc === 're-verify' || oc === 'reverify')
         )
           return 'reverify';
+        if (opts?.quitKey && !isQuit(oc) && !rlClosed) {
+          console.log(
+            '    ℹ️  Enter does not stop the run here — press q to stop it, o to override.',
+          );
+          continue;
+        }
         return 'stop';
       }
     };
@@ -1902,13 +1949,26 @@ class OperationRunner {
     const captureEvidence = async (
       stepIndex: number,
       captureSinceStepStart: () => string | undefined,
+      // The pane's rendered screen — offered when nothing new was printed
+      // since the step started: a "record the result" step usually follows
+      // the step whose output it records, and that output is on screen.
+      captureScreen?: () => string | undefined,
     ): Promise<void> => {
-      const captured = captureSinceStepStart();
+      const sinceStart = captureSinceStepStart();
+      const screen =
+        sinceStart !== undefined && !sinceStart.trim()
+          ? captureScreen?.()
+          : undefined;
+      const fromScreen = !!screen?.trim();
+      const captured = fromScreen ? screen : sinceStart;
+      const captureLabel = fromScreen
+        ? 'capture the pane screen (no new output this step)'
+        : 'capture pane output since step start';
 
       console.log(
         `\n${renderKeyHints([
           ...(captured !== undefined
-            ? [{ key: '↵', label: 'capture terminal output' }]
+            ? [{ key: '↵', label: captureLabel }]
             : []),
           { key: 'f', label: 'file or image' },
           { key: 't', label: 'type/paste text' },
@@ -1928,14 +1988,17 @@ class OperationRunner {
         captured !== undefined &&
         (sourceAns === '' || sourceAns === 'capture')
       ) {
-        if (!captured || !captured.trim()) {
+        // Clean like the verify evidence: the raw pipe slice carries ANSI
+        // colours and cursor moves that would show up as junk in the record.
+        const text = cleanTerminalOutput(captured).trim();
+        if (!text) {
           console.log(
-            '    ⚠️  No new output captured in this pane since the step started.',
+            '    ⚠️  Nothing in this pane to capture — press [e] again and pick f or t.',
           );
           return;
         }
-        console.log(`\n${renderCodeBlock(captured)}`);
-        content = captured;
+        console.log(`\n${renderCodeBlock(text)}`);
+        content = text;
         automatic = true;
       } else if (sourceAns === 'f' || sourceAns === 'file') {
         const rawPath = await question(
@@ -2164,6 +2227,9 @@ class OperationRunner {
       // Sidecar with a pane: paste + guarded Enter + wait, again. True when
       // the command ran to the end (verify again); false = back to the bar.
       rerun?: () => Promise<boolean>,
+      // True while the pane is not back at the prompt this step's command
+      // was pasted at (paneLooksBusy) — a failed check is then "not final".
+      paneBusy?: () => boolean,
     ): Promise<void> => {
       if (!step.expect) return;
 
@@ -2228,6 +2294,7 @@ class OperationRunner {
           allowMore: !expand,
           commandToCopy,
           allowRerun: !!rerun,
+          stillRunning: paneBusy,
         });
         if (action === 'rerun' && rerun) {
           expand = false;
@@ -2245,7 +2312,8 @@ class OperationRunner {
         if (action === 'rollback') {
           await doRollback(step, stepIndex);
         } else if (action === 'stop') {
-          console.log('    ❌ Stopping due to failed assertion.');
+          // Back to the step bar — the run goes on; the step is not done.
+          console.log('    ↩  Back to the step — not marked done.');
         }
         return;
       }
@@ -2629,6 +2697,7 @@ class OperationRunner {
                 if (!assertResult.pass) {
                   const action = await promptAssertFailureAction(i, {
                     commandToCopy: resolvedCommand,
+                    quitKey: true,
                   });
                   if (action === 'rollback') {
                     await doRollback(step, i);
@@ -2872,7 +2941,7 @@ class OperationRunner {
             return waitForCommand(backend, sessionName, watch, !!step.expect);
           };
           // `y=re-run` on a failed verify: paste the same command again and
-          // press the same guarded Enter — one key instead of Enter=stop, [p],
+          // press the same guarded Enter — one key instead of Enter (back to the bar), [p],
           // [y]. Offered only when both writes are possible on this pane.
           const canRerun = (): boolean => {
             const backend = captureRef.backend;
@@ -2901,6 +2970,11 @@ class OperationRunner {
               () => captureRef.backend?.captureScreen?.(sessionName),
               () => captureRef.backend?.promptLine?.(sessionName),
               canRerun() ? rerunStepCommand : undefined,
+              () =>
+                paneLooksBusy(
+                  captureRef.pasteAnchor,
+                  captureRef.backend?.paneState?.(sessionName),
+                ),
             );
           // Stray-Enter guard: ↵ on a sidecar step whose pane shows nothing
           // pasted and nothing run since the step started (typically the
@@ -2962,11 +3036,19 @@ class OperationRunner {
               hasExpect: !!step.expect,
               paneAttached: !!captureRef.backend?.hasTarget(sessionName),
               hasEvidence: evidenceForStep.length > 0,
+              evidenceMissing: needsEvidenceGate(i, step),
               canGoBack: i > 0,
               canJump: i < steps.length - 1,
               hasGlobalRollback,
             };
             const hints = stepActionHints(barContext);
+            const legend = flowLegendShown
+              ? undefined
+              : sidecarFlowLegend(barContext);
+            if (legend) {
+              flowLegendShown = true;
+              console.log(`\n    ${legend}`);
+            }
             console.log(`\n${renderKeyHints(hints.primary)}`);
             const input = await readActionKey();
             const inputChoice = input.trim().toLowerCase();
@@ -3002,7 +3084,9 @@ class OperationRunner {
               continue;
             }
             if (inputChoice === 'e' || inputChoice === 'evidence') {
-              await captureEvidence(i, captureSinceStepStart);
+              await captureEvidence(i, captureSinceStepStart, () =>
+                captureRef.backend?.captureScreen?.(sessionName),
+              );
               continue;
             }
             if (
@@ -3024,36 +3108,10 @@ class OperationRunner {
               (inputChoice === 't' || inputChoice === 'attach')
             ) {
               // [t] — attach (or swap) a tmux pane for capture. Offer a
-              // numbered picker of existing panes; typing a raw target
-              // (e.g. mysession:0.0 or %3) still works.
-              const panes = listTmuxPanes();
-              let targetAns: string;
-              if (panes.length > 0) {
-                console.log('\n    Available tmux panes:');
-                panes.forEach((p, idx) => {
-                  const cmd = p.currentCommand ? `  ${p.currentCommand}` : '';
-                  const self = p.isSelf ? '  (this pane — samaritan)' : '';
-                  console.log(`      ${idx + 1}) ${p.target}${cmd}${self}`);
-                });
-                targetAns = (
-                  await question(
-                    '    Select pane [number or target, Enter to cancel]: ',
-                  )
-                ).trim();
-                const picked = Number.parseInt(targetAns, 10);
-                if (
-                  Number.isInteger(picked) &&
-                  picked >= 1 &&
-                  picked <= panes.length &&
-                  String(picked) === targetAns
-                ) {
-                  targetAns = panes[picked - 1].target;
-                }
-              } else {
-                targetAns = (
-                  await question('    Tmux pane target (Enter to cancel): ')
-                ).trim();
-              }
+              // numbered picker of existing panes by name; typing a raw
+              // target (e.g. mysession:deploy.0 or %3) still works. The
+              // answer is resolved against a fresh list-panes (resolvePanePick).
+              const targetAns = await pickTmuxPane(question);
               if (!targetAns) {
                 console.log('    ↩  Cancelled.');
                 continue;
@@ -3222,7 +3280,7 @@ class OperationRunner {
               needsEvidenceGate(i, step)
             ) {
               console.log(
-                '\n    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.',
+                `\n    ${evidenceGateMessage(!!captureRef.backend?.hasTarget(sessionName))}`,
               );
               continue; // re-render only the bar; header/command stay put
             }
@@ -3344,9 +3402,7 @@ class OperationRunner {
             }
             if (choice === 'approve') {
               if (needsEvidenceGate(i, step)) {
-                console.log(
-                  '\n    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.',
-                );
+                console.log(`\n    ${evidenceGateMessage(false)}`);
                 continue;
               }
               await recordApprovalDecision(i, step, true);
@@ -3545,6 +3601,44 @@ class OperationRunner {
  * and remembers the pane on the session so a later `resume` re-attaches.
  * Returns undefined when the target is not a live tmux pane.
  */
+/**
+ * The `[t]` picker: list panes by name, read the answer, and resolve it
+ * against `list-panes` read AGAIN at that moment — the printed list is a
+ * snapshot. `r` re-lists; a pane that closed meanwhile re-lists with a
+ * warning. Returns the target to attach (a pane id for a listed pane), or ''
+ * to cancel.
+ */
+async function pickTmuxPane(
+  question: (prompt: string) => Promise<string>,
+): Promise<string> {
+  let shown = listTmuxPanes();
+  if (shown.length === 0)
+    return (await question('    Tmux pane target (Enter to cancel): ')).trim();
+  while (true) {
+    console.log('\n    Available tmux panes:');
+    shown.forEach((p, idx) => {
+      console.log(renderPaneRow(p, idx));
+    });
+    const answer = await question(
+      '    Select pane [number, name or target · r=refresh · Enter=cancel]: ',
+    );
+    const live = listTmuxPanes();
+    const pick = resolvePanePick(answer, shown, live);
+    if (pick.kind === 'cancel') return '';
+    if (pick.kind === 'target') return pick.target;
+    if (pick.kind === 'pane') return pick.pane.id;
+    if (pick.kind === 'gone')
+      console.log(
+        `    ⚠️  ${pick.pane.name} (${pick.pane.id}) is gone — the pane list changed. Current panes:`,
+      );
+    shown = live;
+    if (shown.length === 0)
+      return (
+        await question('    Tmux pane target (Enter to cancel): ')
+      ).trim();
+  }
+}
+
 function attachSidecarPane(
   sessionId: string,
   target: string,

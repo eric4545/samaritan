@@ -1085,4 +1085,128 @@ describe('sidecar e2e (real tmux)', () => {
       }
     },
   );
+
+  it(
+    '[y] on a polling loop behind a hop: "still running", not a failure; [e] captures the pane',
+    {
+      skip:
+        skip || (process.platform !== 'linux' && 'needs util-linux script -c'),
+      timeout: 150_000,
+    },
+    async () => {
+      const ws = workspace('e2e-poll-loop.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        // `script` keeps ONE program in front of the pane, like ssh to a
+        // bastion: the loop's silent sleep looks finished to the quiet
+        // fallback (a failure seen in a real run).
+        d.type('script -q -c "bash --norc --noprofile" /dev/null', work);
+        await sleep(1000);
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('Wait for web-server', { timeoutMs: 40_000 });
+        assert.ok(
+          d
+            .capture()
+            .includes('Flow: p pastes the command into the pane → y runs it'),
+          'the p → y → ↵ legend is spelled out once',
+        );
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        d.key('y');
+        const dialog = await d.waitFor(
+          '⏳ Command may still be running — output not final yet. [v=re-verify',
+          { timeoutMs: 20_000 },
+        );
+        assert.ok(dialog.includes('the command may still be running'));
+        assert.ok(!dialog.includes('Assertion failed'), 'not called a failure');
+        assert.ok(
+          !/may still be running.*y=re-run/.test(dialog),
+          'no re-run into a running command',
+        );
+        d.enter(); // Enter = back to the step, the run goes on
+        await d.waitFor('Back to the step — not marked done');
+        await d.waitFor(/^web-server: rollout ready$/m, {
+          pane: work,
+          timeoutMs: 30_000,
+        });
+        d.key('v');
+        await d.waitFor('✅ contains: web-server: rollout ready', {
+          timeoutMs: 15_000,
+        });
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('[Step 2 · 2/2]');
+        await d.waitFor('e evidence'); // required + missing: [e] is in the bar
+        d.key('e');
+        await d.waitFor('↵ capture the pane screen (no new output this step)');
+        d.enter();
+        await d.waitFor('Description (optional)');
+        d.enter();
+        await d.waitFor('📎 Evidence captured');
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('Report:', { timeoutMs: 20_000 });
+        // Step 2's evidence is the pane screen, holding step 1's final line.
+        const report = readReport(ws.dir);
+        const step2 = report.slice(report.indexOf('Record web-server status'));
+        assert.match(step2, /web-server: rollout ready/);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '[t] picker lists panes by name and re-reads them when answered',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-paste.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        tmux(['rename-window', '-t', `${d.session}:0`, 'ops']);
+        // A pane that closes between the list and the answer.
+        const extra = tmux([
+          'new-window',
+          '-d',
+          '-P',
+          '-F',
+          '#{pane_id}',
+          '-t',
+          d.session,
+          '-n',
+          'scratch',
+        ]).stdout.trim();
+        d.type(launch(ws.dir, `run ${ws.op} --env staging`));
+        await d.waitFor('Paste check', { timeoutMs: 40_000 });
+        const numberOf = (screen: string, name: string): string => {
+          const rows = [...screen.matchAll(/^ +(\d+)\) (\S+) /gm)];
+          const row = rows.reverse().find((m) => m[2] === name);
+          assert.ok(row, `${name} listed by name in:\n${screen}`);
+          return row[1];
+        };
+        d.key('t');
+        let screen = await d.waitFor('r=refresh');
+        const workName = `${d.session}:ops.0`;
+        const gone = numberOf(screen, `${d.session}:scratch.0`);
+        numberOf(screen, workName);
+        tmux(['kill-pane', '-t', extra]);
+        d.type(gone);
+        screen = await d.waitFor('is gone — the pane list changed');
+        await d.waitFor(/r=refresh[\s\S]*r=refresh/);
+        screen = d.capture();
+        const tail = screen.slice(screen.lastIndexOf('is gone'));
+        assert.ok(!tail.includes(`${d.session}:scratch.0`), 'fresh list');
+        d.type(numberOf(tail, workName));
+        await d.waitFor(`Attached capture to: tmux pane ${workName}`);
+        d.key('p');
+        await d.waitFor(/printf '%s_%s\\n' PASTE EXECMARK/, { pane: work });
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
 });

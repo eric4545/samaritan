@@ -22,20 +22,28 @@ collection is NOT implemented. (Check `ROADMAP.md`.)
 
 The forward step bar (sidecar + manual) is COMPACT: `stepActionHints()` in
 `src/lib/step-actions.ts` (pure, unit-tested) splits keys into `primary`
-(`y` armed · `↵` · `p` · `v` · `t` only while no pane attached · `s` · `r` ·
-`?`) and `more` (printed by `?`: `c n e x`, `t` attach another pane, `b j g
+(`y` armed · `↵` · `p` · `v` · `e` only while required evidence is missing ·
+`t` only while no pane attached · `s` · `r` · `?`) and `more` (printed by `?`: `c n e x`, `t` attach another pane, `b j g
 abort`). The bar only decides HINTS — every key keeps working unshown, never
-gate a handler on the hint list. `runCommandHeader()` gives the sidecar
+gate a handler on the hint list. `sidecarFlowLegend(ctx)` prints a one-time
+`p → y → ↵` line (`flowLegendShown`) the first time the bar offers `[p]` with
+a pane. `runCommandHeader()` gives the sidecar
 command header (`Command — [p] pastes it into <pane>:` when a pane is
 attached). CLI tests asserting a `more` key must send `?` first and keep to
 one `?` per piped run (readline gotcha drops the lines after it).
 
-- `[n]` note, `[e]` evidence (capture pane / attach file / paste text), `[x]`
+- `[n]` note, `[e]` evidence (capture pane since step start — cleaned — or the
+  pane SCREEN when nothing was printed since step start; attach file; paste
+  text; the gate line `evidenceGateMessage(paneAttached)` names `[e] then ↵`), `[x]`
   remove evidence (only shown once evidence exists — deletes from the session
   record and from `~/.samaritan/sessions/<id>/evidence/` on disk; logged
   `evidence_removed`), `[v]` verify (`step.expect` against captured output).
-- Sidecar-only: `[t]` attach pane (fires immediately, numbered picker from
-  `listTmuxPanes()`), `[p]` send to pane (when step has a command + pane attached),
+- Sidecar-only: `[t]` attach pane (fires immediately, `pickTmuxPane` in
+  run.ts: numbered picker from `listTmuxPanes()`, rows `renderPaneRow` and the
+  answer `resolvePanePick` in `src/lib/pane-picker.ts` — resolved against a
+  FRESH `list-panes`, a number picks by pane id, a closed pane re-lists, `r`
+  refreshes; names from `paneDisplayName`: `session:windowName.pane` only when
+  `#{automatic-rename}` is 0, else positional), `[p]` send to pane (when step has a command + pane attached),
   `[y]` run it — Enter for that paste, guarded (see "`[y]` run it" below).
 - `[b]` back (not on first step), `[j]` jump forward (not on last step),
   `[r]` per-step rollback, `[g]` global rollback (when `operation.rollback`
@@ -305,7 +313,16 @@ evaluates ALL checks, no short-circuit; `assertOutput` still short-circuits).
 {expand})` (PASS/FAIL header, per-check checklist, highlighted output tail
 `VERIFY_OUTPUT_TAIL_LINES=12`). On FAIL, `promptAssertFailureAction` (single
 key via `readActionKey`) offers `y` re-run / `o` / `r` / `c` (copy resolved
-command) / `m` (full output) / `v` (re-capture) / Enter=stop. `y=re-run` is
+command) / `m` (full output) / `v` (re-capture) / Enter = back to the step bar
+(`↩ Back to the step — not marked done.`; the non-sidecar automatic call
+site passes `quitKey`, so only `q` stops the run there and Enter re-prompts,
+unless stdin is closed). `stillRunning` (`paneLooksBusy(captureRef.pasteAnchor,
+paneState)`, pure in `pane-enter-guard.ts`; the anchor stores the pre-paste
+`promptRow` + `shell`) retitles it `⏳ Command may still be running — output
+not final yet.`, puts `v` first and withholds `y=re-run`. `waitForCommand`'s
+`quiet` result prints `⏸ … may still be running` instead of `✔ Finished.`
+when `paneLooksBusy(watch, …)` (seen with a polling loop's `sleep` behind
+ssh/`script`: the foreground program never changes). Still verifies. `y=re-run` is
 offered only when `canRerun()` (sidecar, runnable command, pane with
 `pasteCommand` + `paneState` + `sendEnter`): `rerunStepCommand` =
 `pasteStepCommand(true)` → must arm → `runArmedStepPaste()` (the SAME
@@ -314,6 +331,18 @@ offered only when `canRerun()` (sidecar, runnable command, pane with
 share these step-scoped closures (`pasteStepCommand`, `runArmedStepPaste`,
 `verifyStep`) — never duplicate the paste/Enter path. e2e: "failed verify:
 y=re-run" (`e2e-rerun.yaml`).
+
+## Pane naming + pinning (`[t]`, `--attach`)
+
+`listTmuxPanes()` parses `list-panes -a -F` with `PANE_FIELD_SEP` (`|~|`),
+NOT TAB: tmux 3.4 renders control characters in ANY format output as `_`,
+so the old TAB split never parsed a row (the picker always fell back to the
+raw-target prompt). `TmuxPaneCapture` addresses every tmux call via `pane()`
+= the resolved `#{pane_id}`, never the positional target after attach:
+closing an earlier pane renumbers the window, and `work:0.1` then pointed at
+samaritan's own pane (real-tmux repro: `[p]` pasted into samaritan, whose
+letters fired action keys). `describeTarget` reads the live name
+(`paneNameOf`). Unit regression in `tests/lib/tmux-session.test.ts`.
 
 ## One `pipe-pane` per pane — ownership + repair
 

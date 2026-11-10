@@ -6,6 +6,7 @@ import {
   checkEnterSafe,
   commandFinished,
   type PaneState,
+  paneLooksBusy,
 } from '../../src/lib/pane-enter-guard';
 
 const pane = (over: Partial<PaneState> = {}): PaneState => ({
@@ -152,5 +153,47 @@ describe('commandFinished — after [y], when to auto-verify', () => {
 
   it('reports gone when the pane disappeared', () => {
     assert.strictEqual(commandFinished(watch, undefined, 150, 0), 'gone');
+  });
+});
+
+describe('paneLooksBusy — a failed verify while the command still runs', () => {
+  const ref = { promptRow: 'user@host:~$ ', shell: 'bash' };
+
+  it('busy: mid-loop over a hop — same program in front, cursor off the prompt', () => {
+    // A polling loop over ssh sleeps silently: the quiet fallback fired,
+    // but the cursor sits on an empty line under the last status line.
+    assert.strictEqual(
+      paneLooksBusy(
+        { promptRow: 'remote$ ', shell: 'ssh' },
+        pane({ currentCommand: 'ssh', cursorLine: '' }),
+      ),
+      true,
+    );
+  });
+
+  it('busy: another program in front of the shell', () => {
+    assert.strictEqual(
+      paneLooksBusy(ref, pane({ currentCommand: 'sleep', cursorLine: '' })),
+      true,
+    );
+  });
+
+  it('not busy: back at the same prompt (digits may differ, e.g. a clock)', () => {
+    assert.strictEqual(
+      paneLooksBusy(
+        { promptRow: '[12:00:01] $ ', shell: 'bash' },
+        pane({ cursorLine: '[12:00:39] $ ' }),
+      ),
+      false,
+    );
+  });
+
+  it('not busy when it cannot tell (no paste reference, no pane state)', () => {
+    assert.strictEqual(paneLooksBusy(undefined, pane()), false);
+    assert.strictEqual(paneLooksBusy(ref, undefined), false);
+    assert.strictEqual(
+      paneLooksBusy({ shell: 'bash' }, pane({ cursorLine: 'anything' })),
+      false,
+    );
   });
 });
