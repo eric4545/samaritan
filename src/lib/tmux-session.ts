@@ -250,8 +250,15 @@ export function validateTmuxTarget(target: string): boolean {
 export interface TmuxPaneInfo {
   /** Unique pane id, e.g. "%3" — stable even when windows are reordered */
   id: string;
-  /** Addressable target, e.g. "mysession:0.1" */
+  /** Positional target, e.g. "mysession:0.1" — shifts when panes close */
   target: string;
+  /**
+   * The name the picker shows: `session:windowName.pane` when the window was
+   * named on purpose (`rename-window`, `new-window -n`), else the positional
+   * target — an auto-renamed window's name follows its running program, so
+   * it would change under the operator's eyes.
+   */
+  name: string;
   /** Command currently running in the pane, e.g. "zsh" */
   currentCommand: string;
   title: string;
@@ -259,44 +266,131 @@ export interface TmuxPaneInfo {
   isSelf: boolean;
 }
 
+/** The pane fields `paneDisplayName` builds a name from. */
+export interface PaneNameParts {
+  session: string;
+  windowIndex: string;
+  windowName: string;
+  /** tmux's `automatic-rename` window option: "1" = name follows the program. */
+  autoRename: string;
+  paneIndex: string;
+}
+
+/**
+ * Field separator for `list-panes -F`. NOT a TAB: tmux 3.4 renders control
+ * characters in format output as `_` (in `list-panes` as in
+ * `display-message`), so a TAB-split row never parsed and the picker always
+ * fell back to "type a target". ASCII, so a non-UTF-8 locale keeps it.
+ */
+export const PANE_FIELD_SEP = '|~|';
+
+/** The `#{...}` fields `parsePaneNameParts` reads. */
+const PANE_NAME_FORMAT = [
+  '#{session_name}',
+  '#{window_index}',
+  '#{window_name}',
+  '#{automatic-rename}',
+  '#{pane_index}',
+].join(PANE_FIELD_SEP);
+
+/**
+ * `session:windowName.pane` for an explicitly named window, else the
+ * positional `session:index.pane`. A name tmux could not resolve back to one
+ * window (empty, or holding the `:`/`.` target separators) also falls back.
+ */
+export function paneDisplayName(p: PaneNameParts): string {
+  const positional = `${p.session}:${p.windowIndex}.${p.paneIndex}`;
+  const named =
+    p.autoRename === '0' &&
+    p.windowName.trim() !== '' &&
+    !/[:.]/.test(p.windowName);
+  return named ? `${p.session}:${p.windowName}.${p.paneIndex}` : positional;
+}
+
+function parsePaneNameParts(fields: string[]): PaneNameParts {
+  const [
+    session = '',
+    windowIndex = '',
+    windowName = '',
+    autoRename = '',
+    paneIndex = '',
+  ] = fields;
+  return { session, windowIndex, windowName, autoRename, paneIndex };
+}
+
+/**
+ * Parse `list-panes -a -F LIST_PANES_FORMAT` output (`PANE_FIELD_SEP`-
+ * separated; the pane title comes last, so a separator inside it stays in
+ * the title). Malformed rows
+ * (e.g. a partial line from `list-panes` racing a server teardown) are
+ * dropped so every pane has an id and a target.
+ */
+export function parsePaneList(
+  stdout: string,
+  selfPane: string | undefined,
+): TmuxPaneInfo[] {
+  return stdout
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => {
+      const [id = '', currentCommand = '', ...rest] =
+        line.split(PANE_FIELD_SEP);
+      const parts = parsePaneNameParts(rest.slice(0, 5));
+      const title = rest.slice(5).join(PANE_FIELD_SEP);
+      const target =
+        parts.session && parts.windowIndex && parts.paneIndex
+          ? `${parts.session}:${parts.windowIndex}.${parts.paneIndex}`
+          : '';
+      return {
+        id,
+        target,
+        name: target ? paneDisplayName(parts) : '',
+        currentCommand,
+        title,
+        isSelf: id === selfPane,
+      };
+    })
+    .filter((pane) => Boolean(pane.id) && Boolean(pane.target));
+}
+
+const LIST_PANES_FORMAT = [
+  '#{pane_id}',
+  '#{pane_current_command}',
+  PANE_NAME_FORMAT,
+  '#{pane_title}',
+].join(PANE_FIELD_SEP);
+
 /**
  * List all panes across all tmux sessions so the operator can pick one by
  * number instead of typing a target. Returns [] when tmux is unavailable or
- * no server is running — never throws.
+ * no server is running — never throws. Call it again right before using a
+ * pick: the list is a snapshot.
  */
 export function listTmuxPanes(): TmuxPaneInfo[] {
   try {
     const result = spawnSync(
       'tmux',
-      [
-        'list-panes',
-        '-a',
-        '-F',
-        '#{pane_id}\t#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_command}\t#{pane_title}',
-      ],
+      ['list-panes', '-a', '-F', LIST_PANES_FORMAT],
       { stdio: 'pipe' },
     );
     if (result.status !== 0) return [];
-    const selfPane = process.env.TMUX_PANE;
-    return (
-      (result.stdout?.toString() ?? '')
-        .split('\n')
-        .filter((line) => line.trim() !== '')
-        .map((line) => {
-          const [id, target, currentCommand = '', title = ''] =
-            line.split('\t');
-          return { id, target, currentCommand, title, isSelf: id === selfPane };
-        })
-        // Drop malformed rows (e.g. a partial line from `list-panes` racing a
-        // concurrent server teardown) so every returned pane has id + target.
-        .filter(
-          (pane): pane is TmuxPaneInfo =>
-            Boolean(pane.id) && Boolean(pane.target),
-        )
+    return parsePaneList(
+      result.stdout?.toString() ?? '',
+      process.env.TMUX_PANE,
     );
   } catch {
     return [];
   }
+}
+
+/**
+ * The live picker name of one pane (`paneDisplayName`), undefined when gone.
+ * One `list-panes` row parser for both, so the picker and messages agree.
+ */
+export function paneNameOf(target: string): string | undefined {
+  const id = paneFormat(target, '#{pane_id}');
+  if (!id) return undefined;
+  return listTmuxPanes().find((p) => p.id === id)?.name;
 }
 
 export class TmuxSession implements CaptureBackend {
@@ -574,7 +668,7 @@ export class TmuxPaneCapture implements CaptureBackend {
     spawnSync('tmux', [
       'pipe-pane',
       '-t',
-      this.target,
+      this.pane(),
       `cat >> ${shellQuotePath(this.pipeFile)}`,
     ]);
     if (key) {
@@ -601,7 +695,7 @@ export class TmuxPaneCapture implements CaptureBackend {
    * NOT in our pipe file. `unavailable` when tmux or the pane is gone.
    */
   ensureCapture(_sessionName: string): CaptureCheck {
-    const pipe = paneFormat(this.target, '#{pane_pipe}');
+    const pipe = paneFormat(this.pane(), '#{pane_pipe}');
     if (pipe === undefined) return { status: 'unavailable' };
     const key = this.ownerKey();
     const owner = key ? readPaneOwner(key) : undefined;
@@ -624,9 +718,19 @@ export class TmuxPaneCapture implements CaptureBackend {
     return this.paneId;
   }
 
+  /**
+   * What every tmux call addresses: the pane id once resolved. The
+   * positional target only names the pane at construction time — after an
+   * earlier pane in the window closes, `work:0.1` is a DIFFERENT pane (it was
+   * samaritan's own in a real-tmux repro, so [p] pasted into samaritan).
+   */
+  private pane(): string {
+    return this.resolvePaneId() ?? this.target;
+  }
+
   /** The owner-marker key for this pane (`paneKeyOf`), resolved once. */
   private ownerKey(): string | undefined {
-    this.paneKey ??= paneKeyOf(this.target);
+    this.paneKey ??= paneKeyOf(this.pane());
     return this.paneKey;
   }
 
@@ -660,28 +764,29 @@ export class TmuxPaneCapture implements CaptureBackend {
     }
   }
 
+  /** The pane's live name (`paneNameOf`), so it stays right after renumbering. */
   describeTarget(_sessionName: string): string {
-    return `tmux pane ${this.target}`;
+    return `tmux pane ${paneNameOf(this.pane()) ?? this.target}`;
   }
 
   /** Paste a command into the attached pane without executing it (no Enter). */
   pasteCommand(_sessionName: string, command: string): void {
-    pasteBufferTo(this.target, command);
+    pasteBufferTo(this.pane(), command);
   }
 
   /** Capture the attached pane's rendered screen as clean text. */
   captureScreen(_sessionName: string): string | undefined {
-    return capturePaneScreen(this.target);
+    return capturePaneScreen(this.pane());
   }
 
   /** The attached pane's cursor line (the prompt once a command finished). */
   promptLine(_sessionName: string): string | undefined {
-    return capturePaneCursorLine(this.target);
+    return capturePaneCursorLine(this.pane());
   }
 
   /** Pane state for the `[y]` Enter guard. */
   paneState(_sessionName: string): PaneState | undefined {
-    return readPaneState(this.target);
+    return readPaneState(this.pane());
   }
 
   /** Press Enter in the given pane id (the guard has already checked it). */
@@ -691,10 +796,10 @@ export class TmuxPaneCapture implements CaptureBackend {
 
   /** Scrollback + screen of the attached pane, plus its first row's absolute line. */
   captureHistory(_sessionName: string): CaptureHistory | undefined {
-    const text = capturePaneScreen(this.target, PANE_HISTORY_LINES);
+    const text = capturePaneScreen(this.pane(), PANE_HISTORY_LINES);
     if (text === undefined) return undefined;
     let baseLine = 0;
-    const size = paneFormat(this.target, '#{history_size}');
+    const size = paneFormat(this.pane(), '#{history_size}');
     if (size !== undefined) {
       const hs = Number.parseInt(size, 10);
       if (Number.isInteger(hs)) baseLine = Math.max(0, hs - PANE_HISTORY_LINES);
@@ -711,7 +816,7 @@ export class TmuxPaneCapture implements CaptureBackend {
     if (this.ownsPane()) {
       // Close the pipe by running pipe-pane without a command argument
       try {
-        spawnSync('tmux', ['pipe-pane', '-t', this.target]);
+        spawnSync('tmux', ['pipe-pane', '-t', this.pane()]);
       } catch {
         // best effort
       }

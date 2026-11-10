@@ -16,14 +16,19 @@ samaritan run deployment.yaml --env staging --attach mysession:0.0
 # Mid-flight: press [t] at any step to attach a pane
 ```
 
-Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker of all existing tmux panes — pick one by number, or type a raw target (`mysession:0.0`, `%3`). Samaritan's own pane is marked `(this pane — samaritan)`:
+Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker of all existing tmux panes — pick one by number or name, or type a raw target (`mysession:deploy.0`, `%3`). Samaritan's own pane is marked `(this pane — samaritan)`:
 
 ```
     Available tmux panes:
-      1) work:0.0  zsh
-      2) work:0.1  node  (this pane — samaritan)
-    Select pane [number or target, Enter to cancel]:
+      1) work:deploy.0  zsh  (%3)
+      2) work:deploy.1  node  (%4)  (this pane — samaritan)
+      3) work:2.0  bash  (%7)
+    Select pane [number, name or target · r=refresh · Enter=cancel]:
 ```
+
+- **Named targets.** A window you named (`tmux rename-window deploy`, `new-window -n deploy`) is listed as `session:windowName.pane`. A window tmux names after its running program (`automatic-rename`) keeps the index form (`work:2.0`), because that name changes whenever the program does.
+- **Live list.** Your answer is checked against the panes as they are when you press Enter, not the list printed earlier. A number picks the pane by its stable id (`%3`), so a pane that tmux renumbered in the meantime is still the one you picked. If that pane has closed, samaritan says so and prints the current list. `r` re-lists without picking.
+- **Pinned for the whole run.** Once attached, every paste, capture and `[y]` Enter goes to that pane id. Closing another pane in the window renumbers the panes, but samaritan keeps using the same pane. Messages show the pane's current name.
 
 **How sidecar attach works:**
 
@@ -89,7 +94,7 @@ Each step heading uses the **same number as the single-environment manual** (`ge
 | `manual` | `✋ Mark done` | Same compact bar: `Enter`/notes=confirm, `v`=verify, `p`/`y`/`t` (sidecar), `s`=skip, `r`=rollback, `?`=more (`n`=note, `e`=evidence, `b`=back, `j`=jump, `g`=global rollback, `q`/`abort`=quit) |
 | `approval` | `⚡ approve/reject` | `approve`, `reject`, `r`=rollback, `g`=global rollback, `skip` |
 
-**The step bar is compact.** It shows the keys of the usual flow (`[p]` → `[y]` → `↵`, `[v]`), plus `[s]`, `[r]` and `[?] more`. `[t]` is shown while no pane is attached. `?` prints the rest once (copy, note, evidence, back, jump, global rollback, abort…). **Every key works whether it is shown or not**, so `n`, `e`, `b` and `j` need no `?` first.
+**The step bar is compact.** It shows the keys of the usual flow (`[p]` → `[y]` → `↵`, `[v]`), plus `[s]`, `[r]` and `[?] more`. `[t]` is shown while no pane is attached, and `[e]` while a step's required evidence is missing. The first time the bar offers `[p]` with a pane attached, one line spells the flow out: `ℹ️  Flow: p pastes the command into the pane → y runs it (verify follows) → ↵ marks the step done. ? lists more keys.` `?` prints the rest once (copy, note, evidence, back, jump, global rollback, abort…). **Every key works whether it is shown or not**, so `n`, `e`, `b` and `j` need no `?` first.
 
 `g`=global rollback is only offered when the operation declares a top-level `rollback:` block. It runs the consolidated recovery (see [Group per-step rollbacks into the global rollback](./rollback.md#group-per-step-rollbacks-into-the-global-rollback-aggregate_step_rollbacks)) and then aborts.
 
@@ -138,18 +143,30 @@ On **FAIL**, a single-key menu follows:
   │ 2 →│ web-server-0   0/1     CrashLoopBackOff   3          2m  │
   │ 3  │ missing: Running                                         │
   ╰─────────────────────────────────────────────────────────────╯
-⚠️  Assertion failed. [y=re-run / o=override with reason / r=rollback / c=copy command / m=more / v=re-verify / Enter=stop]:
+⚠️  Assertion failed. [y=re-run / o=override with reason / r=rollback / c=copy command / m=more / v=re-verify / Enter=back to step]:
 ```
 
 Each choice fires on a single key press (no Enter needed).
 
-- `y` — **re-run** (sidecar, with a pane attached): paste the step's command into the pane again, press the same guarded Enter as `[y]` run it, wait for the command to finish, and verify again. Use it when the check waits on a state change — for example a rollout that still reports fewer ready replicas than desired. It is one key instead of Enter=stop → `[p]` → `[y]`. Each run is its own `send_to_pane` + `enter_sent` audit event. If the paste can't be armed (the command isn't at the cursor) or Enter is refused, nothing is run and you're back on the step bar. For a resource that takes minutes, prefer a command that waits by itself (for example `kubectl rollout status deployment/web-server --timeout=10m`) so one run is enough.
+- `y` — **re-run** (sidecar, with a pane attached): paste the step's command into the pane again, press the same guarded Enter as `[y]` run it, wait for the command to finish, and verify again. Use it when the check waits on a state change — for example a rollout that still reports fewer ready replicas than desired. It is one key instead of Enter → `[p]` → `[y]`. Each run is its own `send_to_pane` + `enter_sent` audit event. If the paste can't be armed (the command isn't at the cursor) or Enter is refused, nothing is run and you're back on the step bar. For a resource that takes minutes, prefer a command that waits by itself (for example `kubectl rollout status deployment/web-server --timeout=10m`) so one run is enough.
 - `o` — record an override reason in the audit log and continue
 - `r` — trigger rollback
 - `c` — **copy command**: copy the step's `${VAR}`-resolved command to the clipboard so you can paste and re-run it, then the menu re-renders (copy is not a terminal choice). Only shown when the step has a command.
 - `m` — **more**: re-render the same captured output in full (`output (full)`, starting the gutter at line 1) instead of just the tail
 - `v` — **re-verify**: re-capture the pane output and re-run all checks (useful when the command is still finishing)
-- Enter — stop
+- Enter — **back to the step bar**. The step is not marked done and the run goes on (`↩  Back to the step — not marked done.`). Enter never ends the run here. In the non-sidecar `automatic` mode, where a failed check can stop the whole run, that takes `q=stop the run`. Enter there only reminds you of `q`.
+
+### "Command may still be running" — a long command verified too early
+
+After `[y]`, samaritan waits for the pane to come back to its prompt before it verifies. When the pane prints nothing for a few seconds but is **not** back at the prompt it was pasted at, the command may still be running. A polling loop such as `until …; do sleep 30; done` does this when it runs over ssh, a bastion or `docker exec`: the same program stays in front of the pane during the `sleep`. Samaritan then says so instead of `✔ Finished.`, and a failing check is not called a failure:
+
+```
+    ⏸  No output for a few seconds, but the pane is not back at its prompt — the command may still be running.
+    ...
+    ⏳ Command may still be running — output not final yet. [v=re-verify / o=override with reason / r=rollback / c=copy command / m=more / Enter=back to step]:
+```
+
+Wait until the pane shows the final output, then press `v`. `y=re-run` is not offered while the command runs, because a paste would go into the running program. The same title appears for a `[v]` you press yourself while the pane is not back at the prompt of this step's `[p]` paste. A command that changes the prompt (for example `cd`) can also show it, so the title says "may". Without a `[p]` this step, samaritan cannot tell and shows `Assertion failed`. A command that waits on its own (`kubectl rollout status --timeout=10m`) avoids the question. See `examples/sidecar-long-running.yaml`.
 
 On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: press ↵ to mark it done, or [v] to re-check.` A pass never completes the step by itself: `↵` does, and you can re-run `[v]` as often as you like.
 
@@ -169,7 +186,7 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
 
 - **`[n]` note** — record a free-text annotation (e.g. "restarted pod manually, confirmed with on-call"). Stored in the JSONL audit log as a `user_input`/`note` event and rendered as a bullet list under the step in the `--report` Markdown.
 - **`[e]` evidence** — capture and persist evidence with the session, the same way you'd attach a file in Claude Code. You're offered up to three sources:
-  - **capture terminal output** (default, only offered when a tmux session is attached to the step) — grabs everything written to the pane since the step started and stores it as `command_output` evidence
+  - **`↵` capture pane output since step start** (default, only offered when a pane is attached to the step) — grabs everything written to the pane since the step started, cleaned of colour codes, and stores it as `command_output` evidence. When nothing was printed since the step started — a "record the result" step that follows the step that ran the command — the default becomes **capture the pane screen**: what the pane shows now, including the previous step's output. One key, nothing to retype.
   - **`[f]` file or image** — drag a file into the terminal (most terminals insert its path) or type/paste the path; SAMARITAN reads it from disk, copies it into `~/.samaritan/sessions/<session-id>/evidence/`, and stores it as a typed `EvidenceItem` (`screenshot` for `png`/`jpg`/`jpeg`/`webp`/`gif`, `video` for `mp4`/`webm`/`mov`, `file` for everything else)
   - **`[t]` type/paste text** — type or paste evidence content directly
   
@@ -217,8 +234,10 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
 When a step declares `evidence: { required: true }`, completing it (pressing `Enter`/notes on a `manual`/sidecar step, or `approve` on an `approval` step) is **blocked** until at least one item has been captured via `[e]`. There is no separate gate menu — trying to complete with nothing captured just prints a one-line warning **on the same action bar**, so you never leave it:
 
 ```
-    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.
+    ⚠️  This step requires evidence — press [e] then ↵ to capture the pane output (f = file, t = typed text), or [s] to skip.
 ```
+
+With no pane attached the line reads `press [e] to capture (typed text is fine)`. While the evidence is missing, `e evidence` is shown on the step bar itself, not only under `?`.
 
 - **`[e]`** — runs the same `[e]` capture flow described above; a captured item (including a quick typed-text note) satisfies the requirement, and the step completes on your next `Enter`. If you can't attach real evidence right now, type a note explaining why via `[e]` — it's recorded in the run report as the audit trail.
 - **`[s]`** — skip the step. It's recorded as **skipped** (not completed) in the run record, distinct from a completed step.

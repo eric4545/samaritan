@@ -1,0 +1,50 @@
+name: Sidecar Long-Running Command
+version: 1.0.0
+description: |
+  A long-running command driven in sidecar mode, plus a step that only
+  records its result. Run it with a pane attached:
+
+    samaritan run examples/sidecar-long-running.yaml --env staging --attach <pane>
+
+  Name the pane's window first (tmux rename-window deploy) and [t] lists it
+  as <session>:deploy.0.
+
+  Step 1 polls until the rollout reports complete, sleeping between checks.
+  [p] pastes it and [y] runs it. If the pane runs the loop behind ssh or
+  a bastion, a sleep can look like the end of the command; samaritan then
+  says "Command may still be running — output not final yet" instead of
+  calling it a failure. Wait for the final line and press v.
+
+  Step 2 needs evidence. Its output is already on screen from step 1, so
+  [e] then Enter records the pane screen: nothing to retype.
+author: sre-team
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      NAMESPACE: web-staging
+      DEPLOYMENT: web-server
+
+steps:
+  - name: Wait for the rollout to finish
+    type: automatic
+    description: Polls every 30s until all replicas are updated and available.
+    command: |
+      until [ "$(kubectl get deployment ${DEPLOYMENT} -n ${NAMESPACE} \
+          -o jsonpath='{.status.conditions[?(@.type=="Available")].status}')" = "True" ]; do
+        echo "${DEPLOYMENT}: rollout in progress"
+        sleep 30
+      done
+      # Built at runtime so `expect` matches the output, not the echoed command.
+      printf '%s: rollout %s\n' "${DEPLOYMENT}" complete
+    expect:
+      contains: rollout complete
+
+  - name: Record the rollout result
+    type: manual
+    instruction: Record the final rollout status from the pane as evidence.
+    evidence:
+      required: true
+      types: [command_output]

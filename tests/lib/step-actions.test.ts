@@ -1,8 +1,10 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
+  evidenceGateMessage,
   runCommandHeader,
   type StepActionContext,
+  sidecarFlowLegend,
   stepActionHints,
   unavailableKeyMessage,
 } from '../../src/lib/step-actions';
@@ -80,6 +82,59 @@ describe('stepActionHints — compact bar + ? more', () => {
     const all = [...keys(primary), ...keys(more)];
     for (const k of ['p', 'c', 'v', 'b', 'j', 'g', 'x'])
       assert.ok(!all.includes(k), `${k} should be hidden`);
+  });
+});
+
+describe('stepActionHints — required evidence', () => {
+  it('moves [e] into the bar while required evidence is missing', () => {
+    const { primary, more } = stepActionHints(ctx({ evidenceMissing: true }));
+    assert.deepStrictEqual(keys(primary), ['↵', 'p', 'v', 'e', 's', 'r', '?']);
+    assert.ok(!keys(more).includes('e'), '[e] is listed once');
+  });
+
+  it('keeps [e] under ? once evidence exists or is not required', () => {
+    for (const over of [{ evidenceMissing: false }, {}]) {
+      const { primary, more } = stepActionHints(ctx(over));
+      assert.ok(!keys(primary).includes('e'));
+      assert.ok(keys(more).includes('e'));
+    }
+  });
+});
+
+describe('evidenceGateMessage', () => {
+  it('names the one-keystroke pane capture when a pane is attached', () => {
+    const msg = evidenceGateMessage(true);
+    assert.match(msg, /\[e\] then ↵ to capture the pane output/);
+    assert.ok(!msg.includes('typed text is fine'));
+  });
+
+  it('falls back to typed text without a pane', () => {
+    assert.match(evidenceGateMessage(false), /typed text is fine/);
+  });
+});
+
+describe('sidecarFlowLegend — the p → y → ↵ flow, spelled out', () => {
+  it('spells the flow out for a sidecar step with a command and a pane', () => {
+    const legend = sidecarFlowLegend(ctx());
+    assert.match(
+      legend ?? '',
+      /p pastes .* → y runs it \(verify follows\) → ↵ marks the step done/,
+    );
+  });
+
+  it('omits "verify follows" for a step without expect', () => {
+    assert.ok(
+      !sidecarFlowLegend(ctx({ hasExpect: false }))?.includes('verify'),
+    );
+  });
+
+  it('is undefined when the flow does not apply', () => {
+    for (const over of [
+      { sidecar: false },
+      { hasCommand: false },
+      { paneAttached: false },
+    ])
+      assert.strictEqual(sidecarFlowLegend(ctx(over)), undefined);
   });
 });
 

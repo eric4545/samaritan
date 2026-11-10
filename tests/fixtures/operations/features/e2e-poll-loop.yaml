@@ -1,0 +1,32 @@
+name: E2E Poll Loop
+version: 1.0.0
+description: >-
+  Fixture for the "still running" e2e test: a polling loop that sleeps
+  silently between status lines (like waiting on a rollout), then a
+  step that only records the result as required evidence.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables: {}
+
+steps:
+  - name: Wait for web-server
+    type: automatic
+    command: |
+      n=0
+      until [ "$n" -ge 2 ]; do
+        echo "web-server: rollout pending"
+        n=$((n+1))
+        sleep 6
+      done
+      echo "web-server: rollout ready"
+    expect:
+      contains: "web-server: rollout ready"
+
+  - name: Record web-server status
+    type: manual
+    instruction: Record the final web-server status as evidence.
+    evidence:
+      required: true
+      types: [command_output]

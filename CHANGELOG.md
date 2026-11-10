@@ -15,6 +15,19 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- `[t]` pane picker lists named windows as `session:windowName.pane` (with the
+  pane id) and checks your answer against the panes as they are when you
+  answer: a number picks the pane by id, a pane that closed meanwhile re-lists
+  with a warning, `r` refreshes. Names and ids can be typed too.
+- `[y]` on a long command that goes quiet without returning to the prompt (a
+  polling loop's `sleep` behind ssh) prints `may still be running` instead of
+  `Finished`, and a failed check then reads `⏳ Command may still be running —
+  output not final yet.` with `v=re-verify` first and no `y=re-run`.
+- `[e]` on a step with no new pane output captures the pane screen, so a
+  "record the result" step needs one key instead of retyping what is on screen.
+  While required evidence is missing, `e evidence` is shown on the step bar and
+  the gate line says `press [e] then ↵ to capture the pane output`.
+- The first sidecar step with a pane prints the `p → y → ↵` flow once.
 - Sidecar failed-verify prompt: `y=re-run` pastes the command again, presses
   the guarded Enter, waits and re-verifies — one key per attempt. The prompt is
   now single-key.
@@ -27,6 +40,15 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- An attached pane stays attached when tmux renumbers the window. Before,
+  closing an earlier pane in the window made `[p]` paste into whichever pane
+  took the old position, including samaritan's own.
+- The `[t]` picker listed no panes on tmux 3.4 (tmux prints TAB as `_` in
+  `list-panes` output) and always asked for a raw target.
+- Failed-verify prompt: Enter no longer reads `stop`. In `[v]` it always went
+  back to the step bar and now says so (`Enter=back to step`). In non-sidecar
+  `automatic` mode, where it stopped the run, stopping now takes `q`.
+- Evidence captured from the pane is stored without terminal colour codes.
 - `[v]` on a step without `expect` (and other keys that do not apply to the
   step, such as `[p]` without a command) no longer marks the step done.
 - `validate --strict` counts `evidence.required` on sub-steps before warning
