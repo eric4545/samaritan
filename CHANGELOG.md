@@ -31,6 +31,11 @@ All notable changes to this project are documented here. This project follows
   stayed literal everywhere. With `--env --resolve-vars`, the Confluence, ADF
   and HTML manuals now resolve step names, operation rollback names, the
   description and the environments table like the Markdown manual does.
+- A sidecar capture whose tmux pane no longer exists no longer latches onto
+  another tmux session's pane. tmux answers a query for an unknown pane with
+  empty fields instead of an error, and the empty answer was then read as
+  "the current pane": the pane name shown and the capture re-attach could
+  land on an unrelated session.
 - `validate` warns when a variable's value references a name that no layer
   defines (`cache.${NAMESPCE}.example.com`), and no longer reports a step's
   own `variables:` as undefined.

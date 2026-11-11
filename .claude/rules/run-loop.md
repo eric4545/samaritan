@@ -358,6 +358,14 @@ closing an earlier pane renumbers the window, and `work:0.1` then pointed at
 samaritan's own pane (real-tmux repro: `[p]` pasted into samaritan, whose
 letters fired action keys). `describeTarget` reads the live name
 (`paneNameOf`). Unit regression in `tests/lib/tmux-session.test.ts`.
+**Unknown targets:** while ANY tmux server runs, `display-message -t
+<unknown>` exits 0 with every field EMPTY, and `-t ''` means tmux's current
+pane. `paneFormat` therefore asks for `#{pane_id}|~|<format>` and returns
+`undefined` when the id is empty (and refuses a blank target); before, a
+missing pane resolved to another session's pane and `ensureCapture`
+re-attached our pipe to it (a CI flake whenever another test file held a
+tmux session). Use `list-panes -t` (`validateTmuxTarget`) or `paneFormat`,
+never a bare `display-message` result, to decide that a pane exists.
 
 ## One `pipe-pane` per pane — ownership + repair
 
