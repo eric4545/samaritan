@@ -24,7 +24,13 @@ npx github:eric4545/samaritan generate manual deployment.yaml --all-envs
 # Write the per-environment files to a directory, with a custom base name
 #   →  out/release_preprod.md  out/release_production.md
 npx github:eric4545/samaritan generate manual deployment.yaml --all-envs --output-dir out --prefix release
+
+# An operation with groups: one directory per group
+#   →  out/web-server/deployment-with-groups.md  out/api-gateway/deployment-with-groups.md
+npx github:eric4545/samaritan generate manual deployment-with-groups.yaml --all-groups --output-dir out
 ```
+
+An operation that declares `groups:` needs `--group <name>` or `--all-groups`; see [Groups](./groups.md).
 
 **Generated YAML frontmatter example:**
 ```yaml

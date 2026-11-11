@@ -17,7 +17,7 @@ paths:
 add it to `StepContent` so both types benefit automatically.
 
 `Step`-only structural fields: `name`, `type`, `id`, `phase`, `if`, `foreach`,
-`sub_steps`, `when`, `variants`, `approval`, `needs`, `template`/`with`,
+`sub_steps`, `when`, `groups`, `variants`, `approval`, `needs`, `template`/`with`,
 `variables`, `capture`, `retry`, `rollback`, `section_heading`, `timeline`,
 `ticket`, `manual_override`, `manual_instructions`, `estimated_duration`, `env`,
 `usesGroup` (parser-set: groups steps expanded from one `uses:` block for
@@ -76,6 +76,26 @@ iterate its output unchanged. Fixtures: `global-rollback-substeps.yaml`,
 `step-rollback-substeps.yaml`, `rollback-foreach.yaml`, `rollback-with-uses.yaml`,
 `aggregated-global-rollback.yaml` (the sub-step jump-link case reuses
 `nested-substep-with-rollback.yaml` with the flag set in-test).
+
+## Groups are a parse-time projection (keep generators group-unaware)
+
+Top-level `groups:` + step-level `groups: [name]` are a second axis next to
+environments. `parseOperation(file, { group })` projects the operation onto one
+group: `inSelectedGroup()` drops other groups' entries at the top of BOTH
+`resolveStepReferences` and `resolveRollbackReferences` (before `uses:`
+expansion, so another group's file is never loaded), `pruneRollbackSubSteps`
+handles rollback `sub_steps` (they bypass the resolver), the group's
+`variables` are merged over `commonVariables`, and `operation.name` gets a
+` (<group>)` suffix. Generators, validate checks and the run loop therefore
+need NO group awareness: do not add group filtering to a renderer.
+
+Commands that act on one runbook call `parseOperationForGroup(file, group)`,
+which throws when the operation has groups and none was chosen. `validate`
+without `--group` validates every projection (`validateFileAndGroups`). The
+session stores `group` and `resume` re-applies it, because step indices depend
+on the projection. Undeclared names in a step's `groups:` are a parse error in
+every parse, selected or not. Tests: `tests/operations/groups.test.ts`,
+`tests/cli/groups.test.ts`; example `examples/deployment-with-groups.yaml`.
 
 ## Variable resolution layering (don't conflate the two layers)
 

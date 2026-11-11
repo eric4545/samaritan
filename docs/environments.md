@@ -110,4 +110,5 @@ See `examples/reuse-envs-a.yaml`, `examples/reuse-envs-b.yaml`, and
 **Which DRY mechanism when:** `common_variables:` for values shared across *all* envs in one
 file; `uses:` to reuse a *whole* environment set across files; per-env `from:` to inherit a
 single named environment from a manifest with overrides; native YAML anchors (`<<: *base`)
-for same-file env-to-env reuse.
+for same-file env-to-env reuse. For several near-identical runbooks that each span every
+environment, see [Groups](./groups.md).

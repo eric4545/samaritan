@@ -35,12 +35,14 @@ export class SessionManager {
     mode: ExecutionMode = 'automatic',
     variables?: Record<string, any>,
     operationFile?: string,
+    group?: string,
   ): OperationSession {
     const session: OperationSession = {
       id: randomUUID(),
       operation_id: operationId,
       operation_file: operationFile,
       environment,
+      group,
       status: 'running',
       current_step_index: 0,
       started_at: new Date(),

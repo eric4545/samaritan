@@ -76,7 +76,7 @@ mock data — `mock-data.md` applies to every file).
 ## ⚠️ Implementation Status
 
 **Implemented:** YAML parsing (env matrix, templates, `foreach`/matrix,
-`uses`/`with`), Markdown + Confluence ADF generation, JSON-Schema validation
+`uses`/`with`, `groups` + `--group` parse-time projection), Markdown + Confluence ADF generation, JSON-Schema validation
 (`--lint` shellcheck, `expect` regex-lint), Git metadata, evidence models +
 embedding (`evidence.results`), `schema` export, interactive `run` (sidecar /
 manual / automatic / hybrid), session persistence + `resume`/`sessions`,

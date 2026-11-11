@@ -15,6 +15,14 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Groups: several near-identical runbooks in one file.** Declare `groups:`
+  at the top level (each with its own `variables`) and put `groups: [name]` on
+  the steps, `uses:` entries or rollback steps that only some groups have.
+  `--group <name>` selects one on `validate`, `generate manual|docs|schedule`,
+  `diff` and `run`; `generate manual --all-groups --output-dir <dir>` writes
+  `<dir>/<group>/<file>.md` for every group. An operation with groups needs a
+  group on every command except `validate`, which checks them all. See
+  `docs/groups.md` and `examples/deployment-with-groups.yaml`.
 - `[t]` pane picker lists named windows as `session:windowName.pane` (with the
   pane id) and checks your answer against the panes as they are when you
   answer: a number picks the pane by id, a pane that closed meanwhile re-lists

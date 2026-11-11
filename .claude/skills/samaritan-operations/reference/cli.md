@@ -45,6 +45,16 @@ directory or example ships with this repo today.
   uncompilable patterns are errors; ReDoS-prone ones (e.g. `(a+)+`) are warnings
   (errors under `--strict`). No flag needed — regex compilation is built-in.
 
+### groups (`--group`)
+- An operation that declares `groups:` needs `-g, --group <name>` on
+  `generate manual|docs|schedule`, `diff` and `run`; without it they exit with
+  an error listing the groups. `resume` reads the group from the session.
+- `validate` without `--group` validates every group and prefixes
+  group-specific findings with `[group <name>]`.
+- `generate manual --all-groups --output-dir <dir>` writes
+  `<dir>/<group>/<base>.md`; add `--all-envs` for
+  `<dir>/<group>/<base>_<env>.md`.
+
 ### generate manual / confluence
 - `--env <name>` — single-environment heading format. Omitting it produces the
   multi-environment table format. These are two distinct rendering paths.

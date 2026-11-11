@@ -237,6 +237,7 @@ export interface Step extends StepContent {
   section_heading?: boolean; // If true, render as a new markdown heading instead of table row
   timeline?: string | TimelineConfig; // Expected date/time or duration for this step
   when?: string[]; // Conditional rendering: only show for these environments
+  groups?: string[]; // Only part of these operation groups (omit = every group)
   variants?: Record<string, Partial<Omit<Step, 'variants' | 'when'>>>; // Environment-specific overrides
   // Internal: set by the parser when this step was expanded from a `uses:` block.
   // All steps from the same outermost `uses:` share one id, keeping the block
@@ -247,6 +248,16 @@ export interface Step extends StepContent {
   // that authored name/id therefore matches ALL expanded instances. Not authored
   // in YAML.
   foreachSource?: { name?: string; id?: string };
+}
+
+/**
+ * A named flavour of one operation (a second axis next to environments): its
+ * own variables, plus the steps that list it in `groups:`.
+ */
+export interface OperationGroup {
+  name: string;
+  description?: string;
+  variables?: Record<string, any>;
 }
 
 export interface Environment {
@@ -286,6 +297,8 @@ export interface Operation {
   sessions?: Record<string, SessionConfig>;
   run?: RunConfig; // Flexible overview/metadata section with custom fields
   environments: Environment[];
+  groups?: OperationGroup[]; // Declared groups (see OperationGroup)
+  group?: string; // The group this parse was projected onto (`--group`)
   variables: VariableMatrix;
   common_variables?: Record<string, any>; // Common variables shared across all environments
   env_file?: string; // Path to .env file for loading variables

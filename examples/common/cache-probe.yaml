@@ -1,0 +1,6 @@
+# Shared steps used only by the `api-gateway` group of
+# examples/deployment-with-groups.yaml.
+- name: Probe the cache
+  type: manual
+  command: kubectl exec deploy/${APP} -n ${NAMESPACE} -- redis-cli -h ${CACHE_HOST} ping
+  expect: PONG

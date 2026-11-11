@@ -527,6 +527,8 @@ Variants apply everywhere an environment is chosen: `generate manual --env`, `ru
 
 See `tests/fixtures/operations/features/when-and-variants.yaml` for a complete example.
 
+To filter steps on a second axis (several near-identical runbooks that each have every environment), see [Groups](./groups.md).
+
 ## Foreach Loops (Repeatable Steps)
 
 Eliminate repetitive step definitions with `foreach` loops. Perfect for progressive rollouts, multi-service deployments, or any pattern where you repeat the same operation with different parameters.
