@@ -82,7 +82,7 @@ and `🖥 Session: <name>`.
 ## Step-only structural fields
 
 `name`, `type`, `id`, `phase` (`preflight`/`flight`/`postflight`), `if`,
-`foreach`, `sub_steps`, `when`, `variants`, `approval`, `needs`,
+`foreach`, `sub_steps`, `when`, `groups`, `variants`, `approval`, `needs`,
 `template`/`with`, `variables`, `capture`, `retry`, `rollback`,
 `section_heading`, `timeline`, `ticket`, `estimated_duration`, `env`.
 
@@ -90,6 +90,40 @@ and `🖥 Session: <name>`.
 > (use `sub_steps` for multi-part rollbacks). In particular `foreach`/`matrix`
 > AND `uses`/`with` file composition expand on rollback steps at parse time
 > just like normal steps.
+
+### `groups` — several near-identical runbooks in one file
+
+A second axis next to `environments`. Declare the groups at the top level and
+list on each step the groups it belongs to; a step without `groups:` is in
+every group.
+
+```yaml
+groups:
+  - name: web-server
+    variables: { APP: web-server }
+  - name: api-gateway
+    variables: { APP: api-gateway }
+steps:
+  - name: Deploy ${APP}            # every group
+    type: manual
+    command: kubectl apply -f ${APP}.yaml -n ${NAMESPACE}
+  - name: Purge the CDN
+    type: manual
+    groups: [web-server]           # this group only
+    command: curl -X POST https://cdn.example.com/purge/${APP}
+  - uses: ./common/cache-probe.yaml
+    groups: [api-gateway]          # file is only loaded for this group
+```
+
+- Selected with `--group <name>`; the parser then drops the other groups'
+  steps and adds the group's variables (parse-time projection, so every
+  manual format and the run loop see an ordinary operation).
+- Accepted on steps, sub-steps, `uses:` entries and rollback steps.
+- Variable precedence: `common_variables` < group `variables` < environment
+  `variables` < `step.variables`.
+- An undeclared name in a step's `groups:` is a parse error.
+- Not supported: per-group `variants`, per-group environment lists.
+- Example: `examples/deployment-with-groups.yaml`.
 
 ### `needs` — step dependencies (GitHub-Actions style)
 

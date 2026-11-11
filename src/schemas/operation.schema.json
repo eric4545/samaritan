@@ -109,6 +109,28 @@
       "type": "object",
       "description": "Variables shared across all environments (convenience alias of common_variables; common_variables wins on key conflict)"
     },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Groups of this operation: near-identical runbooks kept in one file. Each group has its own variables, and a step lists the groups it belongs to in `groups:`. Select one with --group.",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+            "description": "Group name; used on the command line and as the output directory"
+          },
+          "description": { "type": "string" },
+          "variables": {
+            "type": "object",
+            "description": "Variables for this group. They override common_variables; an environment's own variables override them."
+          }
+        }
+      }
+    },
     "common_variables": {
       "type": "object",
       "description": "Common variables shared across all environments (can be overridden by environment-specific variables)"
@@ -172,6 +194,12 @@
               "with": {
                 "type": "object",
                 "description": "Variables to pass to the included file (all ${VAR} placeholders must be provided)"
+              },
+              "groups": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "minItems": 1,
+                "description": "Only include this step for these groups (declared in the top-level `groups:`). Omit to include it for every group."
               }
             },
             "description": "Inline step composition — expands all steps from the referenced file at this position"
@@ -457,6 +485,12 @@
                 },
                 "additionalProperties": false,
                 "description": "Step-level rendering and substitution options"
+              },
+              "groups": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "minItems": 1,
+                "description": "Only include this step for these groups (declared in the top-level `groups:`). Omit to include it for every group."
               },
               "when": {
                 "type": "array",
@@ -771,6 +805,9 @@
         },
         "when": {
           "$ref": "#/properties/steps/items/oneOf/1/properties/when"
+        },
+        "groups": {
+          "$ref": "#/properties/steps/items/oneOf/1/properties/groups"
         },
         "variants": {
           "$ref": "#/properties/steps/items/oneOf/1/properties/variants"

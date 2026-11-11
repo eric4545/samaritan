@@ -34,6 +34,7 @@ export default defineConfig({
         items: [
           { text: 'Operation YAML', link: '/operation-yaml' },
           { text: 'Environments & variables', link: '/environments' },
+          { text: 'Groups', link: '/groups' },
           { text: 'Reusable steps', link: '/reusable-steps' },
           { text: 'Rollback', link: '/rollback' },
         ],

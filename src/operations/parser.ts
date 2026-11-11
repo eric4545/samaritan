@@ -13,6 +13,7 @@ import type {
   EvidenceConfig,
   EvidenceType,
   Operation,
+  OperationGroup,
   OperationMetadata,
   RollbackStep,
   SessionConfig,
@@ -33,6 +34,69 @@ interface ImportContext {
   templateFiles: Set<string>; // Prevent circular uses: imports
   baseDirectory: string; // Directory of the main operation file
   commonVariables: Record<string, any>; // Globals available for foreach/matrix value resolution
+  groupNames: string[]; // Names declared in the top-level `groups:`
+  group?: string; // Selected group: entries for other groups are dropped
+}
+
+export interface ParseOptions {
+  /**
+   * Project the operation onto one of its `groups:`: steps (and rollback
+   * steps) whose `groups:` omit it are dropped, and the group's variables
+   * join the common variables. Without it every step is kept.
+   */
+  group?: string;
+}
+
+/**
+ * Whether a raw step / rollback entry belongs to the selected group. Also
+ * rejects a `groups:` name the operation never declared, in every parse (with
+ * or without a selected group), so a typo cannot silently drop a step.
+ */
+function inSelectedGroup(
+  entry: any,
+  fieldPath: string,
+  importContext: ImportContext,
+): boolean {
+  const groups: unknown = entry?.groups;
+  if (!Array.isArray(groups)) return true;
+  const unknown = groups.filter((g) => !importContext.groupNames.includes(g));
+  if (unknown.length > 0) {
+    const declared =
+      importContext.groupNames.length > 0
+        ? `Declared groups: ${importContext.groupNames.join(', ')}`
+        : 'The operation declares no top-level `groups:`';
+    throw new OperationParseError(
+      `Unknown group(s) ${unknown.join(', ')} in ${fieldPath}.groups`,
+      [
+        {
+          field: `${fieldPath}.groups`,
+          message: `Unknown group(s): ${unknown.join(', ')}. ${declared}`,
+        },
+      ],
+    );
+  }
+  return !importContext.group || groups.includes(importContext.group);
+}
+
+/**
+ * Drop the nested rollback `sub_steps` that belong to other groups. Rollback
+ * sub-steps are normalized without going back through
+ * `resolveRollbackReferences`, so they are pruned on the raw entry here.
+ */
+function pruneRollbackSubSteps(
+  entry: any,
+  fieldPath: string,
+  importContext: ImportContext,
+): any {
+  if (!Array.isArray(entry?.sub_steps)) return entry;
+  const subSteps = entry.sub_steps
+    .filter((sub: any, i: number) =>
+      inSelectedGroup(sub, `${fieldPath}.sub_steps[${i}]`, importContext),
+    )
+    .map((sub: any, i: number) =>
+      pruneRollbackSubSteps(sub, `${fieldPath}.sub_steps[${i}]`, importContext),
+    );
+  return { ...entry, sub_steps: subSteps };
 }
 
 const FORBIDDEN_VARIABLE_KEYS = ['__proto__', 'constructor', 'prototype'];
@@ -719,6 +783,10 @@ async function resolveStepReferences(
   for (let i = 0; i < steps.length; i++) {
     const stepData = steps[i];
 
+    // A step for another group is dropped before anything is expanded, so a
+    // `uses:` file meant for that group is never loaded.
+    if (!inSelectedGroup(stepData, `steps[${i}]`, importContext)) continue;
+
     if (stepData.use !== undefined) {
       throw new OperationParseError(
         `'use:' has been removed — use 'uses: ./path/to/file.yaml' to include steps from a file`,
@@ -893,7 +961,15 @@ async function resolveRollbackReferences(
 ): Promise<RollbackStep[]> {
   const resolved: RollbackStep[] = [];
   for (let i = 0; i < rollbackData.length; i++) {
-    const entry = rollbackData[i];
+    if (
+      !inSelectedGroup(rollbackData[i], `rollback.steps[${i}]`, importContext)
+    )
+      continue;
+    const entry = pruneRollbackSubSteps(
+      rollbackData[i],
+      `rollback.steps[${i}]`,
+      importContext,
+    );
     if (entry?.use !== undefined || entry?.template !== undefined) {
       const bad = entry.use !== undefined ? 'use' : 'template';
       throw new OperationParseError(
@@ -1051,6 +1127,7 @@ async function parseStep(
     timeline: stepData.timeline,
     options: options,
     when: stepData.when,
+    groups: stepData.groups,
     variants: stepData.variants,
   };
 }
@@ -1126,7 +1203,10 @@ function loadSharedEnvironments(absolutePath: string, refPath: string): any[] {
   return parsed.environments;
 }
 
-export async function parseOperation(filePath: string): Promise<Operation> {
+export async function parseOperation(
+  filePath: string,
+  options: ParseOptions = {},
+): Promise<Operation> {
   let fileContents: string;
 
   try {
@@ -1176,12 +1256,51 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     envFileVariables = parseEnvFile(envFilePath);
   }
 
+  // Groups: a second axis next to environments. Selecting one (`--group`)
+  // projects the operation onto it at parse time, so generators, validate and
+  // the run loop all see an ordinary operation and need no group awareness.
+  const groups: OperationGroup[] = Array.isArray(rawOperation.groups)
+    ? rawOperation.groups.map((g: any) => ({
+        name: g.name,
+        description: g.description,
+        variables: g.variables,
+      }))
+    : [];
+  const groupNames = groups.map((g) => g.name);
+  const duplicateGroups = groupNames.filter(
+    (name, i) => groupNames.indexOf(name) !== i,
+  );
+  if (duplicateGroups.length > 0) {
+    throw new OperationParseError(
+      `Duplicate group name(s): ${[...new Set(duplicateGroups)].join(', ')}`,
+      [{ field: 'groups', message: 'Group names must be unique' }],
+    );
+  }
+  const selectedGroup = options.group
+    ? groups.find((g) => g.name === options.group)
+    : undefined;
+  if (options.group && !selectedGroup) {
+    const available =
+      groupNames.length > 0
+        ? `Available: ${groupNames.join(', ')}`
+        : 'This operation declares no `groups:`';
+    throw new OperationParseError(
+      `Group '${options.group}' not found in operation. ${available}`,
+      [{ field: 'groups', message: `Unknown group '${options.group}'` }],
+    );
+  }
+  for (const g of groups) {
+    assertSafeVariableKeys(g.variables ?? {}, `groups[${g.name}].variables`);
+  }
+
   // Parse common variables (shared across all environments)
-  // Priority: common_variables > top-level variables: > env_file
+  // Priority: selected group's variables > common_variables > top-level
+  // variables: > env_file. An environment's own variables still win over all.
   const commonVariables = {
     ...envFileVariables,
     ...(rawOperation.variables || {}),
     ...(rawOperation.common_variables || {}),
+    ...(selectedGroup?.variables || {}),
   };
 
   // Parse environments (supports both inline and manifest inheritance)
@@ -1350,6 +1469,8 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     templateFiles: new Set(),
     baseDirectory,
     commonVariables,
+    groupNames,
+    group: selectedGroup?.name,
   };
 
   const steps: Step[] = [];
@@ -1458,7 +1579,11 @@ export async function parseOperation(filePath: string): Promise<Operation> {
   // Construct full operation
   const operation: Operation = {
     id: rawOperation.id || randomUUID(),
-    name: rawOperation.name,
+    // A projected operation is titled with its group, so every manual format,
+    // the run banner and the report say which group they are for.
+    name: selectedGroup
+      ? `${rawOperation.name} (${selectedGroup.name})`
+      : rawOperation.name,
     version: rawOperation.version,
     description: rawOperation.description || '',
     author: rawOperation.author,
@@ -1469,6 +1594,8 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     sessions: normalizeSessions(rawOperation.sessions, commonVariables),
     run: rawOperation.run,
     environments,
+    groups: groups.length > 0 ? groups : undefined,
+    group: selectedGroup?.name,
     variables,
     common_variables: commonVariables,
     env_file: rawOperation.env_file,
@@ -1491,6 +1618,27 @@ export async function parseOperation(filePath: string): Promise<Operation> {
     reporting: rawOperation.reporting,
   };
 
+  return operation;
+}
+
+/**
+ * Parse an operation for a command that acts on ONE runbook (generate, run,
+ * diff). An operation that declares `groups:` is several runbooks in one
+ * file, so a group must be chosen: the unfiltered superset is not a runbook
+ * anyone should follow.
+ */
+export async function parseOperationForGroup(
+  filePath: string,
+  group?: string,
+): Promise<Operation> {
+  const operation = await parseOperation(filePath, { group });
+  if (!group && operation.groups && operation.groups.length > 0) {
+    throw new OperationParseError(
+      `This operation defines groups (${operation.groups
+        .map((g) => g.name)
+        .join(', ')}). Choose one with --group <name>.`,
+    );
+  }
   return operation;
 }
 

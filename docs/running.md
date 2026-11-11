@@ -289,6 +289,8 @@ Every `samaritan run`/`resume` writes a **run record next to the operation file*
 
 ## Sessions & resume
 
+A run started with `--group` (see [Groups](./groups.md)) stores the group in its session, so `resume` needs no flag for it.
+
 Every `samaritan run` also creates a resumable **session state** file at `~/.samaritan/sessions/<session-id>.json`, persisted after each completed step (the session ID is printed at the start of the run: `📋 Session: <id>`). This file now carries a structured **`step_log`** — per step it records the input command(s), captured output, verification result, approval (with rationale), notes, evidence references, status, and timing — derived by folding `events.jsonl`, so the saved session is meaningful on its own, not just metadata.
 
 ```bash

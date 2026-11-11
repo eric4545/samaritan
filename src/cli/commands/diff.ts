@@ -5,10 +5,11 @@ import {
   formatDiffAsMarkdown,
   formatDiffAsText,
 } from '../../lib/environment-diff';
-import { parseOperation } from '../../operations/parser';
+import { parseOperationForGroup } from '../../operations/parser';
 
 interface DiffOptions {
   output?: string;
+  group?: string;
 }
 
 export const diffCommand = new Command('diff')
@@ -16,6 +17,10 @@ export const diffCommand = new Command('diff')
   .argument('<operation>', 'Path to operation YAML file')
   .argument('<envA>', 'First environment to compare')
   .argument('<envB>', 'Second environment to compare')
+  .option(
+    '-g, --group <group>',
+    'Compare within one group of an operation that defines groups',
+  )
   .option(
     '-o, --output <file>',
     'Write Markdown report to file (in addition to terminal output)',
@@ -28,7 +33,10 @@ export const diffCommand = new Command('diff')
       options: DiffOptions,
     ) => {
       try {
-        const operation = await parseOperation(operationFile);
+        const operation = await parseOperationForGroup(
+          operationFile,
+          options.group,
+        );
         const report = diffEnvironments(operation, envA, envB);
 
         console.log(formatDiffAsText(report));

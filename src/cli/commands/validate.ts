@@ -38,6 +38,9 @@ interface ValidationOptions {
   env?: string;
   verbose?: boolean;
   lint?: boolean;
+  group?: string;
+  /** Internal: suppress the per-parse progress lines (group projections). */
+  quiet?: boolean;
 }
 
 class OperationValidator {
@@ -60,12 +63,16 @@ class OperationValidator {
       }
 
       // Parse operation
-      const operation = await parseOperation(filePath);
+      const operation = await parseOperation(filePath, {
+        group: options.group,
+      });
       result.operation = operation;
 
       // Basic validation (already done by parser)
-      console.log('✅ YAML syntax valid');
-      console.log('✅ Operation schema valid');
+      if (!options.quiet) {
+        console.log('✅ YAML syntax valid');
+        console.log('✅ Operation schema valid');
+      }
 
       // Deprecated `verify:` keys the parser discards. Scanned from the raw YAML —
       // by this point `operation` no longer carries `verify`, so the loss is
@@ -107,6 +114,53 @@ class OperationValidator {
       result.valid = false;
     }
 
+    result.valid = result.errors.length === 0;
+    return result;
+  }
+
+  /**
+   * Validate an operation; when it declares `groups:` and none was selected,
+   * validate every group's projection instead of the unfiltered file. The
+   * unfiltered step list is not a runbook: its variable checks would flag
+   * every group variable as undefined, and it would miss what only shows once
+   * the other groups' steps are gone (a `needs` on a step the group lacks).
+   * A finding shared by every group is reported once; the rest are prefixed
+   * `[group <name>]`.
+   */
+  async validateFileAndGroups(
+    filePath: string,
+    options: ValidationOptions = {},
+  ): Promise<ValidationResult> {
+    const result = await this.validateFile(filePath, options);
+    const groups = result.operation?.groups ?? [];
+    if (options.group || groups.length === 0) return result;
+
+    const perGroup: { name: string; result: ValidationResult }[] = [];
+    for (const group of groups) {
+      perGroup.push({
+        name: group.name,
+        result: await this.validateFile(filePath, {
+          ...options,
+          group: group.name,
+          quiet: true,
+        }),
+      });
+    }
+    for (const key of ['errors', 'warnings'] as const) {
+      const merged: string[] = [];
+      for (const { name, result: groupResult } of perGroup) {
+        for (const finding of groupResult[key]) {
+          const shared = perGroup.every((g) => g.result[key].includes(finding));
+          const line = shared ? finding : `[group ${name}] ${finding}`;
+          if (!merged.includes(line)) merged.push(line);
+        }
+      }
+      result[key] = merged;
+    }
+    result.lintSkipped = perGroup.some((g) => g.result.lintSkipped);
+    console.log(
+      `✅ Checked ${groups.length} group(s): ${groups.map((g) => g.name).join(', ')}`,
+    );
     result.valid = result.errors.length === 0;
     return result;
   }
@@ -477,6 +531,10 @@ const validateCommand = new Command('validate')
   .argument('<file>', 'Path to operation YAML file')
   .option('--strict', 'Enable strict validation with best practices')
   .option('-e, --env <environment>', 'Validate for specific environment')
+  .option(
+    '-g, --group <group>',
+    'Validate one group only (default: the whole file, then every group)',
+  )
   .option('-v, --verbose', 'Verbose output')
   .option(
     '--lint',
@@ -488,7 +546,7 @@ const validateCommand = new Command('validate')
     console.log(`🔍 Validating operation: ${file}\n`);
 
     try {
-      const result = await validator.validateFile(file, options);
+      const result = await validator.validateFileAndGroups(file, options);
 
       if (options.verbose && result.operation) {
         console.log(

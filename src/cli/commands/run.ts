@@ -111,7 +111,7 @@ import type {
   RollbackStep,
   Step,
 } from '../../models/operation';
-import { parseOperation } from '../../operations/parser';
+import { parseOperationForGroup } from '../../operations/parser';
 
 /** What an operator-driven rollback achieved (recorded on `rollback_complete`). */
 type RollbackStatus = 'completed' | 'partial' | 'not_executed';
@@ -147,6 +147,7 @@ interface FlatStep {
 
 interface RunOptions {
   env?: string;
+  group?: string;
   environment?: string;
   autoApprove?: boolean;
   dryRun?: boolean;
@@ -284,7 +285,7 @@ class OperationRunner {
     const absFile = existsSync(operationFile)
       ? realpathSync(operationFile)
       : operationFile;
-    const operation = await this.parseOperationFile(absFile);
+    const operation = await this.parseOperationFile(absFile, options.group);
 
     if (!operation.environments.some((e) => e.name === targetEnv)) {
       throw new Error(
@@ -341,7 +342,8 @@ class OperationRunner {
     console.log(`🚀 Starting operation: ${absFile}`);
     console.log(`🎯 Target environment: ${targetEnv}`);
 
-    const operation = await this.parseOperationFile(absFile);
+    const operation = await this.parseOperationFile(absFile, options.group);
+    if (operation.group) console.log(`👥 Group: ${operation.group}`);
 
     const environment = operation.environments.find(
       (env) => env.name === targetEnv,
@@ -378,6 +380,7 @@ class OperationRunner {
       executionMode,
       resolvedVars,
       absFile,
+      operation.group,
     );
 
     const context = {
@@ -647,6 +650,7 @@ class OperationRunner {
     console.log(`   Operation: ${session.operation_id}`);
     console.log(`   File: ${session.operation_file}`);
     console.log(`   Environment: ${session.environment}`);
+    if (session.group) console.log(`   Group: ${session.group}`);
     console.log(`   Resuming at step: ${session.current_step_index + 1}`);
     console.log(`   Progress: ${session.completion_percentage || 0}%`);
     console.log(
@@ -661,7 +665,12 @@ class OperationRunner {
       );
     }
 
-    const operation = await this.parseOperationFile(session.operation_file);
+    // Same group as the original run: the step list (and so every recorded
+    // step index) depends on it.
+    const operation = await this.parseOperationFile(
+      session.operation_file,
+      session.group,
+    );
 
     const context = {
       operationId: session.operation_id,
@@ -3503,11 +3512,14 @@ class OperationRunner {
     return logger.path;
   }
 
-  private async parseOperationFile(filePath: string): Promise<Operation> {
+  private async parseOperationFile(
+    filePath: string,
+    group?: string,
+  ): Promise<Operation> {
     if (!existsSync(filePath)) {
       throw new Error(`Operation file not found: ${filePath}`);
     }
-    return await parseOperation(filePath);
+    return await parseOperationForGroup(filePath, group);
   }
 
   private parseVariables(variableStrings: string[]): Record<string, any> {
@@ -3730,6 +3742,10 @@ const runCommand = new Command('run')
   .argument('<operation>', 'Operation file path')
   .option('-e, --env <environment>', 'Target environment')
   .option('--environment <environment>', 'Target environment (alias for --env)')
+  .option(
+    '-g, --group <group>',
+    'Run one group of an operation that defines groups',
+  )
   .option('--auto-approve', 'Auto-approve all manual steps and approvals')
   .option('--dry-run', 'Preview full operation plan without executing')
   .option(

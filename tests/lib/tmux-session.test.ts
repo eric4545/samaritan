@@ -676,9 +676,17 @@ describe('readPaneState', () => {
       ]);
       try {
         let st = readPaneState(`${session}:0.0`);
+        // readPaneState makes two tmux calls: the foreground program first,
+        // the cursor row second. While the pane is still exec'ing its way to
+        // bash, one read can pair an early program name with the prompt
+        // that appeared a moment later, so wait for both to settle.
         for (
           let i = 0;
-          i < 30 && !st?.cursorLine.includes('STATE_PROMPT');
+          i < 30 &&
+          !(
+            st?.cursorLine.includes('STATE_PROMPT') &&
+            st.currentCommand === 'bash'
+          );
           i++
         ) {
           await new Promise((r) => setTimeout(r, 100));

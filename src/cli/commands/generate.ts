@@ -25,7 +25,10 @@ import { generatePostmortemADFString } from '../../manuals/postmortem-adf-genera
 import { generatePostmortemConfluence } from '../../manuals/postmortem-confluence';
 import { generatePostmortemMarkdown } from '../../manuals/postmortem-generator';
 import type { Step } from '../../models/operation';
-import { parseOperation } from '../../operations/parser';
+import {
+  parseOperation,
+  parseOperationForGroup,
+} from '../../operations/parser';
 import { parsePostmortemFile } from '../../operations/postmortem-parser';
 import { parseRunManifest } from '../../operations/run-manifest-parser';
 
@@ -66,6 +69,8 @@ interface GenerateOptions {
   allEnvs?: boolean;
   outputDir?: string;
   prefix?: string;
+  group?: string;
+  allGroups?: boolean;
 }
 
 // File extension per output format for --all-envs naming
@@ -104,14 +109,87 @@ class DocumentationGenerator {
     operationFile: string,
     options: GenerateOptions,
   ): Promise<void> {
+    // --all-groups: emit the manuals of every group, one directory per group
+    if (options.allGroups) {
+      await this.generateAllGroupManuals(operationFile, options);
+      return;
+    }
+
     // --all-envs: emit one manual per environment defined in the operation
     if (options.allEnvs) {
       await this.generateAllEnvManuals(operationFile, options);
       return;
     }
 
-    const operation = await parseOperation(operationFile);
+    const operation = await parseOperationForGroup(
+      operationFile,
+      options.group,
+    );
     await this.renderManual(operation, operationFile, options);
+  }
+
+  /**
+   * Generate the manuals of every group declared in the operation, each into
+   * its own directory: `<output-dir>/<group>/<base>.<ext>`. Combined with
+   * --all-envs each group directory holds one manual per environment instead.
+   */
+  private async generateAllGroupManuals(
+    operationFile: string,
+    options: GenerateOptions,
+  ): Promise<void> {
+    if (options.group) {
+      throw new Error('Use either --group <name> or --all-groups, not both');
+    }
+    if (options.output) {
+      throw new Error(
+        '--all-groups writes one directory per group; use --output-dir instead of --output',
+      );
+    }
+    const groups = (await parseOperation(operationFile)).groups ?? [];
+    if (groups.length === 0) {
+      throw new Error(
+        `No groups defined in ${operationFile}; --all-groups needs a top-level 'groups:'`,
+      );
+    }
+    const format = options.format || 'markdown';
+    const ext = FORMAT_EXTENSIONS[format];
+    if (!ext) {
+      throw new Error(
+        `--all-groups does not support format '${format}'. Supported: ${Object.keys(
+          FORMAT_EXTENSIONS,
+        ).join(', ')}`,
+      );
+    }
+    const base = options.prefix || basename(operationFile, '.yaml');
+    const outputDir = options.outputDir || '.';
+
+    for (const group of groups) {
+      const groupDir = join(outputDir, group.name);
+      const groupOptions: GenerateOptions = {
+        ...options,
+        allGroups: false,
+        group: group.name,
+      };
+      if (options.allEnvs) {
+        await this.generateAllEnvManuals(operationFile, {
+          ...groupOptions,
+          outputDir: groupDir,
+        });
+        continue;
+      }
+      const operation = await parseOperation(operationFile, {
+        group: group.name,
+      });
+      await this.renderManual(operation, operationFile, {
+        ...groupOptions,
+        output: join(groupDir, `${base}${ext}`),
+      });
+    }
+    console.log(
+      `✅ Generated manuals for ${groups.length} group(s): ${groups
+        .map((g) => g.name)
+        .join(', ')}`,
+    );
   }
 
   /**
@@ -272,7 +350,10 @@ class DocumentationGenerator {
     operationFile: string,
     options: GenerateOptions,
   ): Promise<void> {
-    const operation = await parseOperation(operationFile);
+    const operation = await parseOperationForGroup(
+      operationFile,
+      options.group,
+    );
     const environments = operation.environments || [];
     if (environments.length === 0) {
       throw new Error(
@@ -480,7 +561,10 @@ class DocumentationGenerator {
   ): Promise<void> {
     console.log(`📚 Generating documentation for: ${operationFile}`);
 
-    const operation = await parseOperation(operationFile);
+    const operation = await parseOperationForGroup(
+      operationFile,
+      options.group,
+    );
     const operationName = basename(operationFile, '.yaml');
 
     switch (options.format) {
@@ -768,7 +852,10 @@ ${operation.rollback.conditions?.length ? `**Conditions**: ${operation.rollback.
   ): Promise<void> {
     console.log(`📅 Generating schedule for: ${operationFile}`);
 
-    const operation = await parseOperation(operationFile);
+    const operation = await parseOperationForGroup(
+      operationFile,
+      options.group,
+    );
     const schedule = this.createGanttSchedule(operation);
     const outputFile =
       options.output ||
@@ -2281,12 +2368,20 @@ generateCommand
     'Generate one manual per environment defined in the operation',
   )
   .option(
+    '-g, --group <group>',
+    'Generate for one group of an operation that defines groups',
+  )
+  .option(
+    '--all-groups',
+    'Generate the manuals of every group, each in its own directory under --output-dir',
+  )
+  .option(
     '--output-dir <dir>',
-    'Directory for --all-envs output (default: current directory)',
+    'Directory for --all-envs / --all-groups output (default: current directory)',
   )
   .option(
     '--prefix <name>',
-    'Base filename for --all-envs output (default: operation file name); env name is appended as suffix',
+    'Base filename for --all-envs / --all-groups output (default: operation file name); env name is appended as suffix',
   )
   .option(
     '--resolve-vars',
@@ -2317,6 +2412,10 @@ generateCommand
     'markdown',
   )
   .option('-e, --env <environment>', 'Generate for specific environment')
+  .option(
+    '-g, --group <group>',
+    'Generate for one group of an operation that defines groups',
+  )
   .option(
     '--resolve-vars',
     'Resolve variables to actual values instead of showing placeholders',
@@ -2354,6 +2453,10 @@ generateCommand
   .command('schedule <operation>')
   .description('Generate execution timeline and Gantt chart')
   .option('-o, --output <file>', 'Output file path')
+  .option(
+    '-g, --group <group>',
+    'Generate for one group of an operation that defines groups',
+  )
   .action(async (operation: string, options: GenerateOptions) => {
     try {
       const generator = new DocumentationGenerator();

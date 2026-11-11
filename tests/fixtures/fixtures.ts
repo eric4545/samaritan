@@ -20,6 +20,7 @@ export const FIXTURES = {
   multiRegion: 'examples/multi-region-deployment.yaml',
   complexDeployment: 'examples/complex-deployment.yaml',
   nestedDeployment: 'examples/nested-deployment.yaml',
+  deploymentWithGroups: 'examples/deployment-with-groups.yaml',
 
   // Test-specific valid fixtures
   minimal: 'tests/fixtures/operations/valid/minimal.yaml',

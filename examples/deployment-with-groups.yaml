@@ -1,0 +1,84 @@
+# Two near-identical deployments kept in ONE file.
+#
+# `groups:` is a second axis next to `environments:`. Each group has its own
+# variables, and a step lists the groups it belongs to. A step without
+# `groups:` is part of every group.
+#
+#   samaritan validate examples/deployment-with-groups.yaml
+#   samaritan generate manual examples/deployment-with-groups.yaml --group web-server
+#   samaritan generate manual examples/deployment-with-groups.yaml --all-groups --output-dir manuals
+#   samaritan run examples/deployment-with-groups.yaml --group api-gateway --env staging
+#
+# --all-groups writes manuals/web-server/deployment-with-groups.md and
+# manuals/api-gateway/deployment-with-groups.md, each covering every environment.
+name: Service Deployment
+version: 1.0.0
+description: Deploys one of two services that share most of their runbook.
+author: sre-team
+category: deployment
+
+groups:
+  - name: web-server
+    description: Public web tier
+    variables:
+      APP: web-server
+      REPLICAS: 4
+  - name: api-gateway
+    description: API tier, fronted by a cache
+    variables:
+      APP: api-gateway
+      REPLICAS: 2
+      CACHE_HOST: cache.example.com
+
+environments:
+  - name: staging
+    variables:
+      NAMESPACE: staging
+  - name: production
+    variables:
+      NAMESPACE: production
+    approval_required: true
+
+steps:
+  # Common: every group, every environment.
+  - name: Check cluster access
+    type: manual
+    phase: preflight
+    command: kubectl get nodes
+
+  # Same step for both groups; only the group variables differ.
+  - name: Deploy ${APP}
+    type: manual
+    command: kubectl apply -f ${APP}.yaml -n ${NAMESPACE} --replicas=${REPLICAS}
+    rollback:
+      - name: Roll back ${APP}
+        command: kubectl rollout undo deployment/${APP} -n ${NAMESPACE}
+      - name: Flush the cache after rollback
+        groups: [api-gateway]
+        command: kubectl exec deploy/${APP} -n ${NAMESPACE} -- redis-cli -h ${CACHE_HOST} flushall
+
+  # Only one group needs this step.
+  - name: Purge the CDN
+    type: manual
+    groups: [web-server]
+    command: curl -X POST https://cdn.example.com/purge/${APP}
+
+  # `groups:` works on `uses:` too: the file is only loaded for that group.
+  - uses: ./common/cache-probe.yaml
+    groups: [api-gateway]
+    with:
+      APP: ${APP}
+      NAMESPACE: ${NAMESPACE}
+      CACHE_HOST: ${CACHE_HOST}
+
+  # `groups:` and `when:` combine: this group, these environments.
+  - name: Announce the release
+    type: manual
+    groups: [web-server]
+    when: [production]
+    instruction: Post the release note in the status channel.
+
+  - name: Verify rollout
+    type: manual
+    phase: postflight
+    command: kubectl rollout status deployment/${APP} -n ${NAMESPACE}

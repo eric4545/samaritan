@@ -15,6 +15,7 @@ export interface OperationSession {
   operation_id: string;
   operation_file?: string; // Absolute path to the operation YAML — required for cross-process resume
   environment: string;
+  group?: string; // Operation group this run was started for (`--group`) — re-applied on resume
   status: SessionStatus;
   current_step_index: number;
   started_at: Date;
