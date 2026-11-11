@@ -8,6 +8,8 @@ import { candidateRunLogPaths, loadSession } from './session-persistence';
 interface SessionFold {
   sessionId: string;
   operationFile: string;
+  group?: string;
+  environment?: string;
   operator: string;
   events: SessionEvent[];
   steps: StepRecord[];
@@ -64,6 +66,8 @@ function loadSessionFold(sessionId: string): SessionFold {
   return {
     sessionId,
     operationFile: session.operation_file,
+    group: session.group,
+    environment: session.environment,
     operator: session.operator || 'unknown',
     events,
     steps,
@@ -107,6 +111,31 @@ export function mergeStepRecords(
 }
 
 /**
+ * Refuse to merge runs of different runbooks from one file. Steps are merged
+ * by INDEX, and the step list depends on the group (`--group` drops other
+ * groups' steps) — two groups merged would pair unrelated steps and report
+ * them as one complete run. Environments differ in variables and `when:`
+ * steps, so their evidence must not be blended either.
+ */
+export function assertSameRunbook(
+  folds: Array<{ sessionId: string; group?: string; environment?: string }>,
+): void {
+  const axes = [
+    ['group', 'groups'],
+    ['environment', 'environments'],
+  ] as const;
+  for (const [key, plural] of axes) {
+    if (new Set(folds.map((f) => f[key] ?? '')).size <= 1) continue;
+    const detail = folds
+      .map((f) => `${f.sessionId} (${f[key] ?? `no ${key}`})`)
+      .join(', ');
+    throw new Error(
+      `Cannot merge sessions from different ${plural}: ${detail}. Merge the sessions of one ${key} at a time.`,
+    );
+  }
+}
+
+/**
  * Build a merged Markdown report from several saved sessions of the same
  * operation. Validates that every session ran the same operation, folds each
  * run, merges per-step by completeness (attributing `executed_by`), and renders
@@ -129,6 +158,8 @@ export function mergeSessions(sessionIds: string[]): string {
       `Cannot merge sessions from different operations: ${[...operationFiles].join(', ')}`,
     );
   }
+
+  assertSameRunbook(folds);
 
   const steps = mergeStepRecords(folds);
   const rollbacks = folds.flatMap((f) => f.rollbacks);

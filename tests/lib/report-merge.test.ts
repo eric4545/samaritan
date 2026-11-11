@@ -1,6 +1,9 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { mergeStepRecords } from '../../src/lib/report-merge';
+import {
+  assertSameRunbook,
+  mergeStepRecords,
+} from '../../src/lib/report-merge';
 import type { StepRecord } from '../../src/models/step-record';
 
 function step(
@@ -71,6 +74,48 @@ describe('report merge: mergeStepRecords', () => {
     assert.deepStrictEqual(
       merged.map((s) => s.index),
       [0, 1, 2],
+    );
+  });
+});
+
+describe('report merge: assertSameRunbook', () => {
+  it('accepts sessions of the same group and environment', () => {
+    assert.doesNotThrow(() =>
+      assertSameRunbook([
+        { sessionId: 'a', group: 'web-server', environment: 'staging' },
+        { sessionId: 'b', group: 'web-server', environment: 'staging' },
+      ]),
+    );
+  });
+
+  it('accepts sessions of an operation without groups', () => {
+    assert.doesNotThrow(() =>
+      assertSameRunbook([
+        { sessionId: 'a', environment: 'staging' },
+        { sessionId: 'b', environment: 'staging' },
+      ]),
+    );
+  });
+
+  it('refuses sessions of different groups (their step indices differ)', () => {
+    assert.throws(
+      () =>
+        assertSameRunbook([
+          { sessionId: 'a', group: 'web-server', environment: 'staging' },
+          { sessionId: 'b', group: 'api-gateway', environment: 'staging' },
+        ]),
+      /different groups: a \(web-server\), b \(api-gateway\)/,
+    );
+  });
+
+  it('refuses sessions of different environments', () => {
+    assert.throws(
+      () =>
+        assertSameRunbook([
+          { sessionId: 'a', environment: 'staging' },
+          { sessionId: 'b', environment: 'production' },
+        ]),
+      /different environments: a \(staging\), b \(production\)/,
     );
   });
 });

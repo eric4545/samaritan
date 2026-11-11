@@ -13,6 +13,12 @@ All notable changes to this project are documented here. This project follows
   `verify` → `restore`. If you wrote entries in reverse to work around this,
   put them back in their natural order.
 
+### Fixed
+
+- `report merge` refuses sessions of different groups or environments. It
+  merges steps by position, so two groups were blended into one report that
+  claimed every step was completed.
+
 ### Added
 
 - **Groups: several near-identical runbooks in one file.** Declare `groups:`
@@ -23,6 +29,12 @@ All notable changes to this project are documented here. This project follows
   `<dir>/<group>/<file>.md` for every group. An operation with groups needs a
   group on every command except `validate`, which checks them all. See
   `docs/groups.md` and `examples/deployment-with-groups.yaml`.
+- A run now records which runbook it was. `report.md` starts its summary with
+  `Operation`, `Environment` and `Group`, `events.jsonl` has the same fields on
+  `session_start`, and `samaritan sessions` lists the group. Before, two groups
+  of one file produced reports that could not be told apart.
+- `run` and `resume` resolve `${VAR}` in step and rollback names, so the step
+  heading and `report.md` read `Deploy web-server`, not `Deploy ${APP}`.
 - `[t]` pane picker lists named windows as `session:windowName.pane` (with the
   pane id) and checks your answer against the panes as they are when you
   answer: a number picks the pane by id, a pane that closed meanwhile re-lists

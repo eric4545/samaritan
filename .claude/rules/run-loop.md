@@ -205,6 +205,17 @@ same overrides `generate manual --env` renders. Never read the authored
 `operation.steps` in the loop — use `executor.getState().steps` / `flatSteps`.
 Regression: `run-variants.yaml` + `run command: step variants.<env>`.
 
+## Step names are resolved once, in `prepareFlatOperation`
+
+A run has one environment (and one group), so `prepareFlatOperation(operation,
+env, vars)` runs every flat step's `name` through `substituteVariables` (run
+vars + `step.variables`). The heading, `Next :`/`Section :`, the `[b]`/`[j]`
+picker, `step_start` and therefore `report.md` show `Deploy web-server`; before,
+they showed the raw `Deploy ${APP}` and two groups' reports read the same.
+`FlatStep.authoredName` keeps the YAML name and the `needs` dep graph is built
+from it (`needs: ['Deploy ${APP}']` must keep matching). `resolveRollbackTree`
+resolves rollback `name` too. Tests: `tests/cli/groups.test.ts` "run / resume".
+
 ## Step heading — single-env manual numbering
 
 `flattenAndMarkForEnv` labels steps with `childStepLabel` (`src/lib/step-position.ts`):
@@ -281,6 +292,10 @@ operator. Not persisted (re-read on `resume`). `focusPic`/`skipOthers` are the
 (`src/lib/report-merge.ts` `mergeSessions`) consolidates operators' partial runs
 of the same operation (keyed by `operation_file`); `mergeStepRecords` picks the
 most-complete record per index (completed > failed > skipped > pending).
+`assertSameRunbook` refuses sessions whose `group` or `environment` differ:
+the merge is by step INDEX and the step list depends on the group, so two
+groups merged paired unrelated steps into one "5/5 completed" report (seen in
+a real tmux run). Anything new that changes the step list goes in that guard.
 
 ## Verify output cleaning & sidecar UX
 
@@ -429,7 +444,12 @@ Every `run`/`resume` writes an append-only `events.jsonl` AND an always-on
 `report.md` beside the operation at `<op-dir>/.samaritan-runs/<id>/` (helpers
 `getRunDir`/`getRunLogPath`/`getRunReportPath` in `src/lib/session-persistence.ts`,
 writable fallback to `~/.samaritan/sessions/<id>/`). `.samaritan-runs/` is
-gitignored (force-add to commit). Events are folded into records by
+gitignored (force-add to commit). `session_start` carries the run identity
+(`op`, `operation` = the name incl. ` (<group>)`, `environment`, `group` when
+selected); `renderReport` prints them as `- Operation:` / `- Environment:` /
+`- Group:` summary lines (`RUN_IDENTITY_FIELDS`), omitted for older logs. The
+report sees ONLY events, never the `Operation`: a new axis or selection must
+be emitted here or the report cannot show it. Events are folded into records by
 `src/lib/session-log.ts` (`foldEvents`/`buildStepRecords`/`readEvents` — single
 source of truth for the persisted `step_log` and the report). When adding a
 `StepRecord` field, update the `foldEvents` case that populates it AND the

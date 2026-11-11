@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { getFixturePath } from '../fixtures/fixtures';
 
@@ -299,12 +299,121 @@ steps:
         'api-gateway',
       );
 
+      // The run artifacts say which group they are: one file is several
+      // runbooks, so the file path alone does not identify a report.
+      const runDir = join(dirname(fixture), '.samaritan-runs', sessionId);
+      const report = readFileSync(join(runDir, 'report.md'), 'utf-8');
+      assert.match(report, /- Operation: .+ \(api-gateway\)/);
+      assert.match(report, /- Environment: staging/);
+      assert.match(report, /- Group: api-gateway/);
+      const sessionStart = JSON.parse(
+        readFileSync(join(runDir, 'events.jsonl'), 'utf-8').split('\n')[0],
+      );
+      assert.equal(sessionStart.group, 'api-gateway');
+      assert.equal(sessionStart.environment, 'staging');
+
+      const sessions = runCli(['sessions']);
+      assert.match(
+        sessions.out,
+        new RegExp(`${sessionId}\\n.*Group: api-gateway`),
+      );
+
       const resume = runCli(['resume', sessionId], 'q\n');
       assert.match(resume.out, /Group: api-gateway/);
       assert.ok(
         !resume.out.includes('Choose one with --group'),
         `resume must re-apply the session's group:\n${resume.out}`,
       );
+    });
+
+    it('run shows and records step names with the group variables resolved', () => {
+      // Enter completes step 1, then EOF stops on step 2 (`Deploy ${APP}`).
+      const run = runCli(
+        [
+          'run',
+          fixture,
+          '--env',
+          'staging',
+          '--group',
+          'api-gateway',
+          '--mode',
+          'manual',
+        ],
+        '\n',
+      );
+      assert.match(run.out, /Next {5}: Step 2: Deploy api-gateway/);
+      assert.match(run.out, /\[Step 2 · 2\/4\] MANUAL: Deploy api-gateway/);
+      assert.ok(
+        !run.out.includes('Deploy ${APP}'),
+        `the run must not show an unresolved step name:\n${run.out}`,
+      );
+
+      const sessionId = run.out.match(/📋 Session: ([0-9a-f-]{36})/)?.[1];
+      assert.ok(sessionId);
+      // Stdin closed mid-run, so no report.md was written: render it from
+      // the event log, the same source the run's own report uses.
+      const report = runCli([
+        'report',
+        join(dirname(fixture), '.samaritan-runs', sessionId, 'events.jsonl'),
+      ]).out;
+      assert.match(report, /## Step 2: Deploy api-gateway/);
+    });
+
+    it('needs still matches a step by its authored ${VAR} name', () => {
+      const dir = makeDir();
+      const file = join(dir, 'needs-by-name.yaml');
+      writeFileSync(
+        file,
+        [
+          'name: Needs by name',
+          'version: 1.0.0',
+          'groups:',
+          '  - name: web-server',
+          '    variables: { APP: web-server }',
+          'environments:',
+          '  - name: staging',
+          'steps:',
+          '  - name: Build ${APP}',
+          '    type: manual',
+          '    command: echo build',
+          '  - name: Deploy',
+          '    type: manual',
+          '    command: echo deploy',
+          "    needs: ['Build ${APP}']",
+          '',
+        ].join('\n'),
+      );
+      // --from-step 2 skips the build step, so the gate must fire.
+      const run = runCli(
+        [
+          'run',
+          file,
+          '--env',
+          'staging',
+          '--group',
+          'web-server',
+          '--from-step',
+          '2',
+        ],
+        'y\n',
+      );
+      assert.match(run.out, /This step needs: Build web-server \(skipped\)/);
+      assert.match(run.out, /Start anyway\?/);
+    });
+
+    it('report merge refuses sessions of two different groups', () => {
+      const ids = ['web-server', 'api-gateway'].map((group) => {
+        const run = runCli(
+          ['run', fixture, '--env', 'staging', '--group', group],
+          'q\n',
+        );
+        const id = run.out.match(/📋 Session: ([0-9a-f-]{36})/)?.[1];
+        assert.ok(id, `run output must include the session id:\n${run.out}`);
+        return id;
+      });
+      const merge = runCli(['report', 'merge', ...ids]);
+      assert.notEqual(merge.status, 0);
+      assert.match(merge.out, /Cannot merge sessions from different groups/);
     });
   });
 });

@@ -73,7 +73,7 @@ The complete file is `examples/deployment-with-groups.yaml`.
 - `groups:` is accepted on steps, sub-steps, `uses:` entries, and rollback steps (step-level and operation-level, including their sub-steps).
 - Every name in a step's `groups:` must be declared in the top-level `groups:`. A typo is an error, not a silently dropped step.
 - Group names may contain letters, digits, `-` and `_`. They become directory names.
-- A manual, run or report for a group is titled `<operation name> (<group>)`.
+- A manual and the run banner for a group are titled `<operation name> (<group>)`.
 
 ### Variable precedence
 
@@ -127,9 +127,26 @@ samaritan run deployment-with-groups.yaml --group api-gateway --env staging
 | `diff`, `run` | Error that lists the groups. |
 | `resume` | Not needed: the session remembers its group. |
 
+## Runs and reports
+
+A run belongs to one group, and its records say which one.
+
+| Where | What you see |
+|---|---|
+| Run banner | `👥 Group: api-gateway` and the name `Service Deployment (api-gateway)` |
+| Step headings, `Next :`, rollback titles | Names with the group's variables filled in: `Deploy ${APP}` shows as `Deploy api-gateway` |
+| `samaritan sessions` | `Env: staging  Group: api-gateway` |
+| `report.md` summary | `- Operation: Service Deployment (api-gateway)`, `- Environment: staging`, `- Group: api-gateway` |
+| `events.jsonl` | `session_start` has `operation`, `environment` and `group` |
+
+The run walks only the selected group's steps and rollback entries, in every mode (sidecar, manual, automatic, hybrid and `--mock`). Commands shown, pasted with `p` and checked with `v` use the group's variables.
+
+`report merge` only merges sessions of the same group and environment. Each group has its own step list, so step 3 of one group is not step 3 of another; mixing them exits with an error that lists each session and its group.
+
 `validate` checks each group on its own because some problems only appear once the other groups' steps are removed, such as a `needs` that points at a step the group does not have.
 
 ## Not supported
 
 - Per-group overrides of a step's fields (the group equivalent of `variants:`). Use group variables, or two steps with `groups:`.
+- A different `evidence.results` per group. Pre-captured results are keyed by environment only, so a step shared by two groups has one result per environment.
 - A different environment list per group. Every group has every environment; use `when:` to leave a step out of one.

@@ -14,6 +14,13 @@ import { foldEvents, readEvents, type SessionEvent } from './session-log';
 /** Redacts operator-local path prefixes; identity when no bases are known. */
 type Redact = (text: string) => string;
 
+/** `session_start` fields that say which runbook a run was (label, key). */
+const RUN_IDENTITY_FIELDS = [
+  ['Operation', 'operation'],
+  ['Environment', 'environment'],
+  ['Group', 'group'],
+] as const;
+
 export function generateReport(jsonlPath: string): string {
   const events = readEvents(jsonlPath);
   return renderReport(events, foldEvents(events), dirname(jsonlPath));
@@ -98,6 +105,12 @@ export function renderReport(
   lines.push('');
   lines.push('## Summary');
   lines.push('');
+  // Run identity: one operation file is several runbooks (environments x
+  // groups). Absent on logs written before these fields were recorded.
+  for (const [label, key] of RUN_IDENTITY_FIELDS) {
+    const value = sessionStart?.[key];
+    if (typeof value === 'string' && value) lines.push(`- ${label}: ${value}`);
+  }
   lines.push(`- Steps completed: ${stepsCompleted}/${totalSteps}`);
   if (stepsSkipped > 0) {
     lines.push(`- Steps skipped: ${stepsSkipped}`);
