@@ -2373,7 +2373,7 @@ generateCommand
   )
   .option(
     '--all-groups',
-    'Generate the manuals of every group, each in <output-dir>/<group>/',
+    'Generate the manuals of every group, each in its own directory under --output-dir',
   )
   .option(
     '--output-dir <dir>',
