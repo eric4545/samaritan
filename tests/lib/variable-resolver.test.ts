@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
   hasUnresolvedVars,
+  resolveVariableChains,
   resolveVars,
   resolveVarsSafe,
 } from '../../src/lib/variable-resolver';
@@ -94,5 +95,87 @@ describe('hasUnresolvedVars', () => {
 
   it('returns false for shell parameter expansions like ${X:?}', () => {
     assert.strictEqual(hasUnresolvedVars('echo "${X:?unset}"', {}), false);
+  });
+});
+
+describe('resolveVariableChains', () => {
+  it('follows a value that references another variable', () => {
+    const vars = resolveVariableChains({
+      CACHE_ID: '${CACHE_ID_WEB}',
+      CACHE_ID_WEB: 'cache-0001',
+    });
+    assert.strictEqual(vars.CACHE_ID, 'cache-0001');
+  });
+
+  it('does not depend on declaration order (reference declared first or last)', () => {
+    const forward = resolveVariableChains({
+      APP: 'web-server',
+      FULL_NAME: '${APP}-staging',
+    });
+    const backward = resolveVariableChains({
+      FULL_NAME: '${APP}-staging',
+      APP: 'web-server',
+    });
+    assert.strictEqual(forward.FULL_NAME, 'web-server-staging');
+    assert.strictEqual(backward.FULL_NAME, 'web-server-staging');
+  });
+
+  it('follows chains of any depth and embedded references', () => {
+    const vars = resolveVariableChains({
+      A: 'host-${B}.example.com',
+      B: '${C}',
+      C: '${D}-1',
+      D: 'staging',
+    });
+    assert.strictEqual(vars.A, 'host-staging-1.example.com');
+  });
+
+  it('leaves unknown names literal for the shell', () => {
+    const vars = resolveVariableChains({
+      LOG_DIR: '${HOME}/logs/${APP}',
+      APP: 'web-server',
+    });
+    assert.strictEqual(vars.LOG_DIR, '${HOME}/logs/web-server');
+  });
+
+  it('leaves cycles and self-references literal instead of looping', () => {
+    const vars = resolveVariableChains({
+      A: '${B}',
+      B: '${A}',
+      SELF: 'x-${SELF}',
+    });
+    // The walk stops where a reference would repeat; the value keeps a
+    // literal placeholder rather than looping or throwing.
+    assert.match(vars.A, /^\$\{[AB]\}$/);
+    assert.match(vars.B, /^\$\{[AB]\}$/);
+    assert.strictEqual(vars.SELF, 'x-${SELF}');
+  });
+
+  it('keeps non-string values and stringifies them when referenced', () => {
+    const vars = resolveVariableChains({
+      REPLICAS: 4,
+      FLAG: '--replicas=${REPLICAS}',
+    });
+    assert.strictEqual(vars.REPLICAS, 4);
+    assert.strictEqual(vars.FLAG, '--replicas=4');
+  });
+
+  it('leaves shell parameter expansions alone', () => {
+    const vars = resolveVariableChains({
+      APP: 'web-server',
+      GUARD: '${APP:?unset} ${APP}',
+    });
+    assert.strictEqual(vars.GUARD, '${APP:?unset} web-server');
+  });
+
+  it('returns the same object when no value references a variable', () => {
+    const input = { APP: 'web-server', HOME_DIR: '${HOME}' };
+    assert.strictEqual(resolveVariableChains(input), input);
+  });
+
+  it('resolveVars and resolveVarsSafe resolve chains', () => {
+    const vars = { CACHE_ID: '${CACHE_ID_WEB}', CACHE_ID_WEB: 'c-1' };
+    assert.strictEqual(resolveVars('id=${CACHE_ID}', vars), 'id=c-1');
+    assert.strictEqual(resolveVarsSafe('id=${CACHE_ID}', vars), 'id=c-1');
   });
 });

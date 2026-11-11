@@ -15,6 +15,15 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **A variable whose value references another variable now resolves in the
+  run, not just in the manual.** A group variable set to an environment
+  variable (`CACHE_HOST: cache.${NAMESPACE}.example.com`), or a `with:` value
+  set to a group variable, showed and pasted with `[p]` as a literal
+  `${NAMESPACE}`, and `[v]` checked `expect` against the literal; the shell
+  then expanded it to an empty string. Manuals resolved the same chain only
+  when the variables happened to be declared in the right order. Every
+  engine now follows chains to the end, in any order; unknown names
+  (`${HOME}`) and cycles are left as written.
 - `report merge` refuses sessions of different groups or environments. It
   merges steps by position, so two groups were blended into one report that
   claimed every step was completed.

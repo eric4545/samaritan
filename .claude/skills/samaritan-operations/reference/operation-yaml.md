@@ -121,6 +121,11 @@ steps:
 - Accepted on steps, sub-steps, `uses:` entries and rollback steps.
 - Variable precedence: `common_variables` < group `variables` < environment
   `variables` < `step.variables`.
+- A value may reference another variable in any layer (group →
+  env, env → group, `with:` → group → env), e.g.
+  `CACHE_HOST: cache.${NAMESPACE}.example.com`. Chains resolve fully,
+  independent of declaration order, identically in manuals and the run
+  (`resolveVariableChains`); unknown names (`${HOME}`) and cycles stay literal.
 - An undeclared name in a step's `groups:` is a parse error.
 - Not supported: per-group `variants`, per-group environment lists.
 - Example: `examples/deployment-with-groups.yaml`.

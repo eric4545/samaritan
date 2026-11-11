@@ -28,7 +28,9 @@ groups:
     variables:
       APP: api-gateway
       REPLICAS: 2
-      CACHE_HOST: cache.example.com
+      # A group variable may reference an environment variable: it resolves
+      # per environment (cache.staging.example.com, cache.production.example.com).
+      CACHE_HOST: cache.${NAMESPACE}.example.com
 
 environments:
   - name: staging

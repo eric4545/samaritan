@@ -1,5 +1,6 @@
 import type { ExpectConfig, Step } from '../models/operation';
 import { isPrimitiveExpectShorthand } from './assertions';
+import { resolveVariableChains } from './variable-resolver';
 
 /** Escape regex metacharacters so a string can be matched literally. */
 function escapeRegExp(text: string): string {
@@ -41,16 +42,19 @@ export function mergeStepVariables(
  * Resolve `${VAR}` placeholders, prioritizing step-scoped variables over
  * environment variables (see `mergeStepVariables` for the layering rule).
  *
- * Substitution iterates the merged keys in insertion order over the working
- * string, so a value inserted by an earlier key may still be expanded by a
- * later key, but never loops.
+ * Values that reference other variables are chain-resolved first
+ * (`resolveVariableChains`), so the result does not depend on key order and
+ * matches what the run loop pastes. Inserted values are never re-scanned, so
+ * this never loops.
  */
 export function substituteVariables(
   command: string,
   envVariables: Record<string, any>,
   stepVariables?: Record<string, any>,
 ): string {
-  const mergedVariables = mergeStepVariables(envVariables, stepVariables);
+  const mergedVariables = resolveVariableChains(
+    mergeStepVariables(envVariables, stepVariables),
+  );
 
   let result = command;
   for (const key in mergedVariables) {

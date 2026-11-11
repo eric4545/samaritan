@@ -124,6 +124,16 @@ every parse, selected or not. Tests: `tests/operations/groups.test.ts`,
    variables, `step.variables` taking priority. `stepVariables` values that are
    themselves `${VAR}` references are pre-resolved against `envVariables` in one
    pass before merging, so chained references resolve in a single call.
+3. **Chains, every engine** — `resolveVariableChains(vars)`
+   (`src/lib/variable-resolver.ts`) expands `${OTHER}` INSIDE variable values
+   against the same map (DFS, order-independent, any depth; unknown names and
+   cycles stay literal — never throw, `${HOME}` in a value is a shell var).
+   `substituteVariables`, `resolveVars`/`resolveVarsSafe` (run TUI display +
+   `[p]`) and `SessionState.interpolate` (`[v]` expect, automatic send) all
+   call it first. Never add a substitution engine that skips it: the run
+   pasted `${GROUP_VAR_TARGET}` literally while manuals resolved it, because
+   each engine resolved chains differently (or not at all).
+   `tests/lib/variable-chain-parity.test.ts` asserts the engines agree.
 
 Shell parameter expansions (`${X:?}`, `${X:-default}`, `${X##*/}` — any name
 that isn't a plain `\w+` identifier) are NOT template variables:
