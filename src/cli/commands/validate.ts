@@ -18,6 +18,7 @@ import {
   lintOperationCommands,
 } from '../../lib/shell-lint';
 import { validateStepDeps } from '../../lib/step-deps';
+import { resolveVariableChains } from '../../lib/variable-resolver';
 import type { Operation, Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
 import {
@@ -346,43 +347,72 @@ class OperationValidator {
     result: ValidationResult,
     _options: ValidationOptions,
   ): void {
-    // Collect all variable references from steps
+    // Plain ${variable} references only — shell parameter expansions
+    // (${X:?}, ${X:-default}, …) are shell constructs, not operation vars.
+    const referencedNames = (text: string): string[] =>
+      [...text.matchAll(/\$\{(\w+)\}/g)].map((m) => m[1]);
+    const isBuiltin = (name: string): boolean =>
+      ['DATE', 'TIME', 'USER', 'environment'].includes(name) ||
+      (BUILTIN_VARIABLE_NAMES as readonly string[]).includes(name);
+
+    // Collect variable references from steps. A step's own `variables:` are
+    // defined for that step, so they are not reported as missing.
     const usedVariables = new Set<string>();
-
     for (const step of operation.steps) {
-      // Plain ${variable} references only — shell parameter expansions
-      // (${X:?}, ${X:-default}, …) are shell constructs, not operation vars.
-      const variableRegex = /\$\{(\w+)\}/g;
-
+      const own = new Set(Object.keys(step.variables ?? {}));
       [step.command, step.instruction, JSON.stringify(step.env || {})]
         .filter(Boolean)
         .forEach((text) => {
-          let match: RegExpExecArray | null;
-          // biome-ignore lint/suspicious/noAssignInExpressions: regex.exec() pattern requires assignment in loop
-          while ((match = variableRegex.exec(text as string)) !== null) {
-            usedVariables.add(match[1]);
+          for (const name of referencedNames(text as string)) {
+            if (!own.has(name)) usedVariables.add(name);
           }
         });
     }
 
-    // Check if all used variables are defined in environments
     for (const envName of Object.keys(operation.variables)) {
-      const envVariables = new Set(Object.keys(operation.variables[envName]));
+      const envVars = operation.variables[envName];
+      const envVariables = new Set(Object.keys(envVars));
 
       for (const usedVar of usedVariables) {
         // Skip built-in variables (legacy names + run-time built-ins, which are
         // resolved late and never need an environment definition)
-        if (
-          ['DATE', 'TIME', 'USER', 'environment'].includes(usedVar) ||
-          (BUILTIN_VARIABLE_NAMES as readonly string[]).includes(usedVar)
-        ) {
-          continue;
-        }
+        if (isBuiltin(usedVar)) continue;
 
         if (!envVariables.has(usedVar)) {
           result.warnings.push(
             `Variable '${usedVar}' used in steps but not defined in environment '${envName}'`,
           );
+        }
+      }
+
+      // A value may reference another variable (`HOST: cache.${NAMESPACE}…`).
+      // Follow every chain the way manuals and the run do; a name still
+      // unresolved at the end is a typo or a missing variable, and would
+      // reach the pasted command as a literal `${NAME}`.
+      // Each scope: [label, variables in scope, keys to report on].
+      const scopes: Array<[string, Record<string, any>, string[]]> = [
+        ['', envVars, Object.keys(envVars)],
+      ];
+      for (const step of operation.steps) {
+        if (step.variables) {
+          scopes.push([
+            ` (step "${step.name}")`,
+            { ...envVars, ...step.variables },
+            Object.keys(step.variables),
+          ]);
+        }
+      }
+      for (const [where, vars, keys] of scopes) {
+        const resolved = resolveVariableChains(vars);
+        for (const key of keys) {
+          const value = resolved[key];
+          if (typeof value !== 'string') continue;
+          for (const name of referencedNames(value)) {
+            if (Object.hasOwn(vars, name) || isBuiltin(name)) continue;
+            result.warnings.push(
+              `Variable '${key}'${where} references '\${${name}}', which is not defined in environment '${envName}' — add it to variables: or pass --var ${name}=<value> when running`,
+            );
+          }
         }
       }
     }

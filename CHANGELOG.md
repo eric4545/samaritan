@@ -24,6 +24,16 @@ All notable changes to this project are documented here. This project follows
   when the variables happened to be declared in the right order. Every
   engine now follows chains to the end, in any order; unknown names
   (`${HOME}`) and cycles are left as written.
+- **Chained variables also resolve inside reusable files, loops and every
+  manual format.** A reusable file's own default that references another
+  default (`PORT: ${PORT_BASE}1`), a `with:` value that references another
+  `with:` value, and a `foreach` value that references a common variable
+  stayed literal everywhere. With `--env --resolve-vars`, the Confluence, ADF
+  and HTML manuals now resolve step names, operation rollback names, the
+  description and the environments table like the Markdown manual does.
+- `validate` warns when a variable's value references a name that no layer
+  defines (`cache.${NAMESPCE}.example.com`), and no longer reports a step's
+  own `variables:` as undefined.
 - `report merge` refuses sessions of different groups or environments. It
   merges steps by position, so two groups were blended into one report that
   claimed every step was completed.

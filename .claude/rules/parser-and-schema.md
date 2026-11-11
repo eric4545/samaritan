@@ -134,6 +134,15 @@ every parse, selected or not. Tests: `tests/operations/groups.test.ts`,
    pasted `${GROUP_VAR_TARGET}` literally while manuals resolved it, because
    each engine resolved chains differently (or not at all).
    `tests/lib/variable-chain-parity.test.ts` asserts the engines agree.
+   **Parse time too:** names that only exist inside a `uses:` expansion
+   (template `common_variables` defaults + `with:`) are chain-resolved in
+   `expandUsesEntry` (`mergedVars`), and `expandForeachItem` chain-resolves
+   its `contextVars` — nothing downstream can resolve those names later.
+   `validate` (`validateVariables`) chain-resolves each env (and each
+   `step.variables` scope) and warns on a leftover undefined name; a step's
+   own `variables:` count as defined for its command/instruction.
+   `tests/cli/variable-chains.test.ts` + fixture `variable-chains.yaml` walk
+   every consumer (parse, validate, 4 formats, multi-env, run).
 
 Shell parameter expansions (`${X:?}`, `${X:-default}`, `${X##*/}` — any name
 that isn't a plain `\w+` identifier) are NOT template variables:

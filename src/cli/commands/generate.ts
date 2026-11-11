@@ -11,6 +11,8 @@ import { groupByPhase } from '../../lib/phase-grouping';
 import { hasRollbackContent } from '../../lib/rollback';
 import {
   mergeStepVariant,
+  resolveDisplayText,
+  resolveOperationVariablesForManual,
   shouldRenderStepForEnvironment,
   substituteExpectVars,
   substituteVariables,
@@ -282,10 +284,13 @@ class DocumentationGenerator {
     operationFile: string,
     options: GenerateOptions,
   ): Promise<void> {
-    if (options.resolveVars) {
-      operation = this.injectBuiltinVariables(operation);
-    }
     const targetEnv = getTargetEnvironment(options);
+    if (options.resolveVars) {
+      operation = resolveOperationVariablesForManual(
+        this.injectBuiltinVariables(operation),
+        targetEnv,
+      );
+    }
     const envSuffix = targetEnv ? ` (${targetEnv})` : '';
     const format = options.format || 'markdown';
     console.log(
@@ -1835,7 +1840,7 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
     const emittedAnchors = new Set<string>();
     const emitRollbackRow = (rollbackStep: any, label: string): void => {
       const namedLabel = rollbackStep.name
-        ? `${label}: ${rollbackStep.name}`
+        ? `${label}: ${resolveDisplayText(rollbackStep.name, resolveVars, operation.common_variables, rollbackStep.variables)}`
         : label;
       // Prepend the {anchor} macro once per source step so inline jump-links
       // resolve to this folded entry.

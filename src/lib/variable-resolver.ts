@@ -1,15 +1,3 @@
-/**
- * Resolves ${VAR} placeholders from operation context variables.
- *
- * Rules:
- *  - ${VAR} with curly braces and a plain identifier name → operation
- *    variable; resolved from `vars`.
- *  - $VAR without curly braces → shell runtime variable; left untouched.
- *  - Shell parameter expansions (${X:?}, ${X:-default}, ${X#pattern}, …) →
- *    shell constructs; left untouched for the shell to evaluate.
- *  - Throws with a clear error listing every unresolved ${VAR} so operators
- *    know exactly which variables are missing from the environment definition.
- */
 const VAR_REF = /\$\{(\w+)\}/g;
 
 /**
@@ -66,6 +54,18 @@ export function resolveVariableChains(
   return result;
 }
 
+/**
+ * Resolves ${VAR} placeholders from operation context variables.
+ *
+ * Rules:
+ *  - ${VAR} with curly braces and a plain identifier name → operation
+ *    variable; resolved from `vars`.
+ *  - $VAR without curly braces → shell runtime variable; left untouched.
+ *  - Shell parameter expansions (${X:?}, ${X:-default}, ${X#pattern}, …) →
+ *    shell constructs; left untouched for the shell to evaluate.
+ *  - Throws with a clear error listing every unresolved ${VAR} so operators
+ *    know exactly which variables are missing from the environment definition.
+ */
 export function resolveVars(text: string, vars: Record<string, any>): string {
   vars = resolveVariableChains(vars);
   const unresolved: string[] = [];

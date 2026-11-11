@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
   mergeStepVariant,
+  resolveOperationVariablesForManual,
   substituteExpectVars,
   substituteVariables,
 } from '../../src/lib/step-resolution';
@@ -197,5 +198,64 @@ describe('mergeStepVariant (variables merge)', () => {
     const merged = mergeStepVariant(step, 'production');
 
     assert.strictEqual(merged.variables, undefined);
+  });
+});
+
+describe('resolveOperationVariablesForManual', () => {
+  const operation = {
+    description: 'Deploys to ${SITE_URL}',
+    common_variables: { SITE_URL: 'https://${NAMESPACE}.example.com' },
+    variables: {
+      staging: {
+        SITE_URL: 'https://${NAMESPACE}.example.com',
+        NAMESPACE: 'staging',
+      },
+    },
+    environments: [
+      {
+        name: 'staging',
+        variables: {
+          SITE_URL: 'https://${NAMESPACE}.example.com',
+          NAMESPACE: 'staging',
+        },
+      },
+    ],
+  };
+
+  it('chain-resolves every environment table', () => {
+    const resolved = resolveOperationVariablesForManual(operation);
+    assert.strictEqual(
+      resolved.variables.staging.SITE_URL,
+      'https://staging.example.com',
+    );
+    assert.strictEqual(
+      resolved.environments[0].variables.SITE_URL,
+      'https://staging.example.com',
+    );
+  });
+
+  it('without --env, shared cells keep env-specific placeholders', () => {
+    const resolved = resolveOperationVariablesForManual(operation);
+    assert.strictEqual(
+      resolved.description,
+      'Deploys to https://${NAMESPACE}.example.com',
+    );
+  });
+
+  it('with --env, shared cells resolve against the selected environment', () => {
+    const resolved = resolveOperationVariablesForManual(operation, 'staging');
+    assert.strictEqual(
+      resolved.description,
+      'Deploys to https://staging.example.com',
+    );
+    assert.strictEqual(
+      resolved.common_variables.SITE_URL,
+      'https://staging.example.com',
+    );
+  });
+
+  it('does not change its input', () => {
+    resolveOperationVariablesForManual(operation, 'staging');
+    assert.strictEqual(operation.description, 'Deploys to ${SITE_URL}');
   });
 });

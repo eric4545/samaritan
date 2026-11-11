@@ -92,10 +92,7 @@ Group variables behave like `common_variables` for that group, so they are also 
 
 ### A variable can reference another variable
 
-A value may use `${OTHER}`, in either direction between layers: a group variable can point at an environment variable (`CACHE_HOST: cache.${NAMESPACE}.example.com`), an environment variable at a group variable, and a `with:` value at either. The chain is followed to the end, however many hops, whatever the order the variables were declared in. Manuals (`--resolve-vars`) and the run (the command shown, pasted with `p`, the `expect` checked with `v`) resolve it the same way.
-
-- A reference to a name that is not a variable stays as written, for the shell: `LOG_DIR: ${HOME}/logs` pastes `${HOME}/logs`.
-- A cycle (`A: ${B}` and `B: ${A}`) is not an error; the repeating reference stays as written.
+A group variable can point at an environment variable (`CACHE_HOST: cache.${NAMESPACE}.example.com`) and the other way round. See [Variables that reference other variables](./environments.md#variables-that-reference-other-variables).
 
 ## Commands
 

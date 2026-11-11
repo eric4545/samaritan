@@ -115,6 +115,18 @@ All generators (`generator.ts` single/multi-env, `adf-generator.ts`,
 `substituteVariables` (`src/lib/step-resolution.ts`) so step names, commands,
 instructions, and `expect`/rollback content resolve correctly.
 
+## `--resolve-vars` pre-pass: `resolveOperationVariablesForManual`
+
+`renderManual` (generate.ts) runs every `--resolve-vars` manual through
+`resolveOperationVariablesForManual(op, targetEnv)` (`step-resolution.ts`)
+after `injectBuiltinVariables`: env variable tables are chain-resolved, the
+description resolves, and with `--env` `common_variables` is REBOUND to the
+selected env's variables — ADF/Confluence/HTML keep the shared-cell table
+layout for `--env`, so their name cells would otherwise leave env-specific
+`${VAR}` literal. Operation-level rollback row labels (`Rollback Step N:
+<name>`, all three table emitters) and ADF `Rollback for:` go through
+`resolveDisplayText` like step names. Never print `rb.name`/`step.name` raw.
+
 ## Snapshot workflow
 
 After changing a generator, run `npm run test:snapshots:update`, review the

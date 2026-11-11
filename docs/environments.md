@@ -107,6 +107,29 @@ environments:
 See `examples/reuse-envs-a.yaml`, `examples/reuse-envs-b.yaml`, and
 `examples/environments/shared-app-envs.yaml`.
 
+## Variables that reference other variables
+
+A variable's value may use `${OTHER}`. The chain is followed to the end, however many hops, in any layer and whatever order the variables were declared in:
+
+| Where the reference is | Example |
+|---|---|
+| `common_variables` → environment | `SITE_URL: https://${NAMESPACE}.example.com` |
+| group → environment | `CACHE_HOST: cache.${NAMESPACE}.example.com` |
+| environment → group | `RELEASE: ${APP}-${NAMESPACE}` |
+| `step.variables` → any of the above | `TARGET: ${RELEASE}/${TRACK}` |
+| `uses:` `with:` → caller variables, or another `with:` value | `PROBE_HOST: ${APP_HOST}`, `PROBE_ALIAS: ${PROBE_NICK}` |
+| a reusable file's own `common_variables` | `PROBE_PORT: ${PROBE_PORT_BASE}1` |
+| `foreach` values → `common_variables` | `values: ["${PRIMARY_ZONE}"]` |
+
+Every place that shows a value resolves it the same way: `generate manual --resolve-vars` in every format (with `--env`, the step and rollback names and the environments table too), `diff`, and `run` (the command shown, pasted with `p`, the `expect` checked with `v`, rollback with `r`/`g`, and `resume`).
+
+- A reference to a name that is not a variable stays as written, for the shell: `LOG_DIR: ${HOME}/logs` pastes `${HOME}/logs`.
+- A cycle (`A: ${B}` and `B: ${A}`) is not an error; the repeating reference stays as written.
+- `validate` warns when a chain ends at a name that no layer defines, for example a typo (`cache.${NAMESPCE}.example.com`). Pass a value that only exists at run time with `run --var`.
+- A multi-environment manual (no `--env`) has one name cell for all environment columns, so a name whose value differs per environment keeps its placeholder there. The commands in each environment column are resolved.
+
+See `tests/fixtures/operations/features/variable-chains.yaml` for every layer in one file, and `examples/deployment-with-groups.yaml` for a group variable built from an environment variable.
+
 **Which DRY mechanism when:** `common_variables:` for values shared across *all* envs in one
 file; `uses:` to reuse a *whole* environment set across files; per-env `from:` to inherit a
 single named environment from a manifest with overrides; native YAML anchors (`<<: *base`)

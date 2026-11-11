@@ -1,0 +1,56 @@
+# A variable whose value references another variable, in every layer:
+# common -> env, group -> env, env -> group, step -> env -> group,
+# with: -> group -> env, with: -> with:, template default -> default,
+# foreach value -> common -> common. Manuals (every format, --env and
+# multi-env) and the run must show the same fully resolved text.
+name: Variable chains
+version: 1.0.0
+description: Deploys to ${SITE_URL}
+author: sre-team
+common_variables:
+  SITE_URL: https://${NAMESPACE}.example.com
+  PRIMARY_ZONE: ${DEFAULT_ZONE}
+  DEFAULT_ZONE: zone-a
+groups:
+  - name: web
+    variables:
+      APP: web-server
+      APP_HOST: host.${NAMESPACE}.example.com
+environments:
+  - name: staging
+    variables:
+      NAMESPACE: staging
+      RELEASE: ${APP}-${NAMESPACE}
+  - name: production
+    variables:
+      NAMESPACE: production
+      RELEASE: ${APP}-${NAMESPACE}
+steps:
+  - name: Deploy ${RELEASE}
+    type: manual
+    description: Deploy to ${SITE_URL}
+    instruction: Target ${APP_HOST}
+    variables:
+      TARGET: ${RELEASE}/${TRACK}
+      TRACK: stable
+    command: echo deploying ${TARGET} to ${APP_HOST}
+    expect:
+      contains: deployed ${TARGET}
+    rollback:
+      - name: Undo ${RELEASE}
+        command: echo undo ${APP_HOST}
+  - name: Check zone
+    type: manual
+    foreach:
+      var: ZONE
+      values: ["${PRIMARY_ZONE}"]
+    command: echo zone ${ZONE} on ${APP_HOST}
+  - uses: ../../templates/chained-probe.yaml
+    with:
+      PROBE_HOST: ${APP_HOST}
+      PROBE_ALIAS: ${PROBE_NICK}
+      PROBE_NICK: probe-${NAMESPACE}
+rollback:
+  steps:
+    - name: Global undo ${RELEASE}
+      command: echo global undo ${APP_HOST}
