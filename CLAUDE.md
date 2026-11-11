@@ -50,6 +50,16 @@ execution feature** — most execution features are roadmap items, not shipped.
    staged diff + commit message for the pasted material's distinctive tokens
    before every commit. See `.claude/rules/mock-data.md`.
 
+10. **Full picture, not just the manual.** A change to the operation YAML, the
+   schema, the parser's output or a selecting CLI flag is walked through EVERY
+   consumer before it is called done: validate, manuals (multi-env + `--env`,
+   Markdown + ADF), the run loop in **sidecar** mode, the session + `resume`,
+   `sessions`, `events.jsonl`, `report.md` and `report merge`. Fill in the
+   surface matrix from `.claude/rules/feature-surface.md` in the PR, and prove
+   the run rows with a real tmux sidecar run whose `report.md` you read, not
+   with a parse or a `q`-piped banner check. `report.md` is built only from
+   events: what it must show has to be emitted.
+
 ---
 
 ## 🏗️ Architecture
@@ -69,14 +79,15 @@ tests/             # fixtures/, manuals/ (snapshots), unit + integration
 
 Deeper, path-scoped guidance loads automatically from `.claude/rules/` when you
 open the matching source (manuals, parser/schema, run loop, tests, CI workflows,
-mock data — `mock-data.md` applies to every file).
+mock data — `mock-data.md` and `feature-surface.md` apply to every file).
 
 ---
 
 ## ⚠️ Implementation Status
 
 **Implemented:** YAML parsing (env matrix, templates, `foreach`/matrix,
-`uses`/`with`, `groups` + `--group` parse-time projection), Markdown + Confluence ADF generation, JSON-Schema validation
+`uses`/`with`, `groups` + `--group` parse-time projection, recorded on the
+session, `session_start` and `report.md`; `report merge` refuses mixed groups), Markdown + Confluence ADF generation, JSON-Schema validation
 (`--lint` shellcheck, `expect` regex-lint), Git metadata, evidence models +
 embedding (`evidence.results`), `schema` export, interactive `run` (sidecar /
 manual / automatic / hybrid), session persistence + `resume`/`sessions`,
@@ -174,7 +185,8 @@ Per-area testing traps (readline multi-prompt gotcha, e2e notes) load from
 - **Skill `samaritan-operations`** (`.claude/skills/`) — how to author/validate/
   generate/run operations; `reference/{cli,operation-yaml,postmortem-yaml}.md`.
 - **`.claude/rules/`** — path-scoped code-editing traps (manuals, parser/schema,
-  run loop, tests, GitHub Actions runtimes, mock data only), loaded on demand.
+  run loop, tests, GitHub Actions runtimes, mock data only), loaded on demand,
+  plus the always-on `feature-surface.md` consumer matrix (rule 10).
 - **Source of truth:** `src/schemas/operation.schema.json`; `examples/*.yaml` are
   validated, copy-ready samples.
 

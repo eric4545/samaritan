@@ -28,7 +28,7 @@ export const sessionsCommand = new Command('sessions')
       const emoji = SessionUtils.getSessionStatusEmoji(s.status);
       console.log(`${emoji} ${s.id}`);
       console.log(
-        `   Operation: ${s.operation_id}  Env: ${s.environment}  Mode: ${s.mode ?? '-'}`,
+        `   Operation: ${s.operation_id}  Env: ${s.environment}${s.group ? `  Group: ${s.group}` : ''}  Mode: ${s.mode ?? '-'}`,
       );
       console.log(
         `   Status: ${s.status}  Step: ${s.current_step_index + 1}  Progress: ${s.completion_percentage ?? 0}%`,

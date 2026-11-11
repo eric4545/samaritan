@@ -49,6 +49,11 @@ directory or example ships with this repo today.
 - An operation that declares `groups:` needs `-g, --group <name>` on
   `generate manual|docs|schedule`, `diff` and `run`; without it they exit with
   an error listing the groups. `resume` reads the group from the session.
+- A run records its group: `sessions` lists `Group: <name>`, and `report.md`
+  has `- Operation:`, `- Environment:` and `- Group:` summary lines.
+- `report merge` exits with an error when the sessions are from different
+  groups or environments (steps are merged by index; each group has its own
+  step list). Merge one group's sessions at a time.
 - `validate` without `--group` validates every group and prefixes
   group-specific findings with `[group <name>]`.
 - `generate manual --all-groups --output-dir <dir>` writes
@@ -106,7 +111,7 @@ directory or example ships with this repo today.
   most-complete record wins (completed > failed > skipped) and is attributed to
   the operator who ran it (`**Operator**:` line + a summary `- Operators:` list).
   `-o, --output <file>` writes to a file (default: stdout). Errors if the
-  sessions are from different operations.
+  sessions are from different operations, groups or environments.
 
 ## Interactive run loop actions
 

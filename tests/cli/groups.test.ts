@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { getFixturePath } from '../fixtures/fixtures';
 
@@ -299,12 +299,46 @@ steps:
         'api-gateway',
       );
 
+      // The run artifacts say which group they are: one file is several
+      // runbooks, so the file path alone does not identify a report.
+      const runDir = join(dirname(fixture), '.samaritan-runs', sessionId);
+      const report = readFileSync(join(runDir, 'report.md'), 'utf-8');
+      assert.match(report, /- Operation: .+ \(api-gateway\)/);
+      assert.match(report, /- Environment: staging/);
+      assert.match(report, /- Group: api-gateway/);
+      const sessionStart = JSON.parse(
+        readFileSync(join(runDir, 'events.jsonl'), 'utf-8').split('\n')[0],
+      );
+      assert.equal(sessionStart.group, 'api-gateway');
+      assert.equal(sessionStart.environment, 'staging');
+
+      const sessions = runCli(['sessions']);
+      assert.match(
+        sessions.out,
+        new RegExp(`${sessionId}\\n.*Group: api-gateway`),
+      );
+
       const resume = runCli(['resume', sessionId], 'q\n');
       assert.match(resume.out, /Group: api-gateway/);
       assert.ok(
         !resume.out.includes('Choose one with --group'),
         `resume must re-apply the session's group:\n${resume.out}`,
       );
+    });
+
+    it('report merge refuses sessions of two different groups', () => {
+      const ids = ['web-server', 'api-gateway'].map((group) => {
+        const run = runCli(
+          ['run', fixture, '--env', 'staging', '--group', group],
+          'q\n',
+        );
+        const id = run.out.match(/📋 Session: ([0-9a-f-]{36})/)?.[1];
+        assert.ok(id, `run output must include the session id:\n${run.out}`);
+        return id;
+      });
+      const merge = runCli(['report', 'merge', ...ids]);
+      assert.notEqual(merge.status, 0);
+      assert.match(merge.out, /Cannot merge sessions from different groups/);
     });
   });
 });

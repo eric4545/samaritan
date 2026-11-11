@@ -1085,6 +1085,11 @@ class OperationRunner {
       type: 'session_start',
       op: operationFile,
       total_steps: state.totalSteps,
+      // Which runbook this run is: one file holds several (environments x
+      // groups), so the file path alone does not identify the report.
+      operation: operation.name,
+      environment: targetEnv,
+      ...(operation.group ? { group: operation.group } : {}),
     });
 
     if (tmuxSession && operation.sessions) {

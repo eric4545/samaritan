@@ -87,7 +87,11 @@ expansion, so another group's file is never loaded), `pruneRollbackSubSteps`
 handles rollback `sub_steps` (they bypass the resolver), the group's
 `variables` are merged over `commonVariables`, and `operation.name` gets a
 ` (<group>)` suffix. Generators, validate checks and the run loop therefore
-need NO group awareness: do not add group filtering to a renderer.
+need NO group FILTERING: do not add group filtering to a renderer. The run
+ARTIFACTS still have to say which group they are (`session.group`,
+`session_start.group`, the report's `- Group:` line, `sessions`), and
+`report merge` refuses mixed groups because it merges by step index. See
+`.claude/rules/feature-surface.md`.
 
 Commands that act on one runbook call `parseOperationForGroup(file, group)`,
 which throws when the operation has groups and none was chosen. `validate`

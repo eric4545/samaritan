@@ -216,6 +216,8 @@ The report includes a summary (steps, duration, PIC/reviewer), per-step command 
 - ❌ (line_count) — expected: `2`, actual: `3`
 ```
 
+The summary starts with the run's `Operation`, `Environment` and, for an operation with [groups](./groups.md), `Group`, so a report can be told apart from another run of the same file.
+
 The report is plain UTF-8 Markdown: terminal escapes are stripped and any remaining control byte (NUL, SI, a stray ESC, …) is removed, so Slack, GitHub and `file` treat it as text.
 
 When several operators each ran their own slice of one operation with
@@ -225,3 +227,5 @@ step attributed to the operator who actually ran it (see [Multi-operator focus m
 ```bash
 samaritan report merge <alice-session-id> <bob-session-id> --output merged-report.md
 ```
+
+The sessions must be runs of the same operation file, environment and [group](./groups.md). Steps are merged by position, so sessions of two groups or two environments are refused.

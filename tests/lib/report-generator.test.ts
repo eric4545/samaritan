@@ -526,3 +526,46 @@ describe('renderReport — [y] Enter sent from samaritan', () => {
     );
   });
 });
+
+describe('renderReport — run identity', () => {
+  it('names the operation, environment and group of the run', () => {
+    const md = render([
+      ev({
+        type: 'session_start',
+        op: 'op.yaml',
+        operation: 'Service Deployment (web-server)',
+        environment: 'staging',
+        group: 'web-server',
+      }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    assert.ok(md.includes('- Operation: Service Deployment (web-server)'));
+    assert.ok(md.includes('- Environment: staging'));
+    assert.ok(md.includes('- Group: web-server'));
+  });
+
+  it('omits the group line for an operation without groups', () => {
+    const md = render([
+      ev({
+        type: 'session_start',
+        op: 'op.yaml',
+        operation: 'Service Deployment',
+        environment: 'staging',
+      }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    assert.ok(md.includes('- Environment: staging'));
+    assert.ok(!md.includes('- Group:'));
+  });
+
+  it('renders a log written before the identity fields existed', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml' }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    assert.ok(!md.includes('- Operation:'));
+    assert.ok(!md.includes('- Environment:'));
+  });
+});

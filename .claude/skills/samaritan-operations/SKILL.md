@@ -87,6 +87,22 @@ non-interactive command execution, automatic evidence collection, a QRH
 directory; nothing is bundled or hosted), external integrations (Jira/Slack), AI
 assistant. When unsure, check `ROADMAP.md`.
 
+## Check the whole path, not only the manual
+
+An operation is authored once and consumed by the manuals AND by a run. After
+changing an operation (or the tool itself), `generate manual` passing is half
+the check:
+
+| Check | Command |
+|---|---|
+| Every group and environment parses | `samaritan validate <file>` |
+| The manual reads right | `samaritan generate manual <file> --env <env>` (add `--group <name>` when the file has groups) |
+| The run walks the same steps | `samaritan run <file> --env <env>` in sidecar mode, with the same `--group` |
+| The record is right | read `.samaritan-runs/<session-id>/report.md`: its summary names the Operation, Environment and Group |
+
+When changing SAMARITAN's own code, the contributor version of this is the
+surface matrix in `.claude/rules/feature-surface.md` (CLAUDE.md rule 10).
+
 ## When to load the reference files
 
 - Writing/extending operation YAML, or unsure which fields are valid →
