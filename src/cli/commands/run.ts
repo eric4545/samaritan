@@ -80,6 +80,7 @@ import {
   mergeStepVariant,
   shouldRenderStepForEnvironment,
   substituteExpectVars,
+  substituteVariables,
 } from '../../lib/step-resolution';
 import {
   bootstrapSessions,
@@ -141,6 +142,8 @@ export const ENTER_DEBOUNCE_MS = 400;
 
 interface FlatStep {
   step: Step;
+  /** The name as written in the YAML; `needs` references match this one. */
+  authoredName?: string;
   label: string;
   filteredByEnv?: boolean;
 }
@@ -396,6 +399,7 @@ class OperationRunner {
     const { flatSteps, execOperation } = this.prepareFlatOperation(
       operation,
       targetEnv,
+      resolvedVars,
     );
 
     this.displayOperationSummary(
@@ -685,6 +689,7 @@ class OperationRunner {
     const { flatSteps, execOperation } = this.prepareFlatOperation(
       operation,
       session.environment,
+      context.variables,
     );
     const executor = new OperationExecutor(execOperation, context);
     sessionManager.associateExecutor(session.id, executor);
@@ -782,6 +787,7 @@ class OperationRunner {
   private prepareFlatOperation(
     operation: Operation,
     targetEnv: string,
+    vars: Record<string, any>,
   ): {
     flatSteps: FlatStep[];
     execOperation: Operation;
@@ -789,7 +795,26 @@ class OperationRunner {
     // All steps are included in flatSteps (with filteredByEnv flag) so that
     // authored step numbers are stable — `--from-step N` always means the Nth
     // step the author wrote, not the Nth step after env filtering.
-    const flatSteps = flattenAndMarkForEnv(operation.steps, targetEnv);
+    // A run always has one environment (and one group), so every `${VAR}` in
+    // a step NAME can be resolved up front: the heading, `Next :`, the [b]/[j]
+    // picker, `step_start` and so report.md all show `Deploy web-server`, not
+    // `Deploy ${APP}`. The authored name is kept for `needs` matching.
+    const flatSteps = flattenAndMarkForEnv(operation.steps, targetEnv).map(
+      (flat) => {
+        const name = substituteVariables(
+          flat.step.name,
+          vars,
+          flat.step.variables,
+        );
+        return name === flat.step.name
+          ? flat
+          : {
+              ...flat,
+              authoredName: flat.step.name,
+              step: { ...flat.step, name },
+            };
+      },
+    );
     return {
       flatSteps,
       execOperation: { ...operation, steps: flatSteps.map((f) => f.step) },
@@ -1029,8 +1054,14 @@ class OperationRunner {
     // a letter suffix, e.g. "1a") have their outgoing needs cleared here.
     const depGraph = buildStepDepGraph(
       executor.getState().steps.map((s, idx) => {
-        const isTopLevel = /^\d+$/.test(flatSteps[idx]?.label ?? '');
-        return isTopLevel ? s.step : { ...s.step, needs: undefined };
+        const flat = flatSteps[idx];
+        const isTopLevel = /^\d+$/.test(flat?.label ?? '');
+        // `needs` names a step as the author wrote it (`Deploy ${APP}`), so
+        // the graph matches on the authored name, not the resolved one.
+        const authored = flat?.authoredName
+          ? { ...s.step, name: flat.authoredName }
+          : s.step;
+        return isTopLevel ? authored : { ...authored, needs: undefined };
       }),
     );
     const stepIsCompleted = (idx: number): boolean =>
@@ -1490,6 +1521,7 @@ class OperationRunner {
         const scope = { ...ownerVars, ...rb.variables };
         return {
           ...rb,
+          name: tryResolve(rb.name, scope),
           command: tryResolve(rb.command, scope),
           instruction: tryResolve(rb.instruction, scope),
           sub_steps: rb.sub_steps

@@ -134,9 +134,12 @@ A run belongs to one group, and its records say which one.
 | Where | What you see |
 |---|---|
 | Run banner | `👥 Group: api-gateway` and the name `Service Deployment (api-gateway)` |
+| Step headings, `Next :`, rollback titles | Names with the group's variables filled in: `Deploy ${APP}` shows as `Deploy api-gateway` |
 | `samaritan sessions` | `Env: staging  Group: api-gateway` |
 | `report.md` summary | `- Operation: Service Deployment (api-gateway)`, `- Environment: staging`, `- Group: api-gateway` |
 | `events.jsonl` | `session_start` has `operation`, `environment` and `group` |
+
+The run walks only the selected group's steps and rollback entries, in every mode (sidecar, manual, automatic, hybrid and `--mock`). Commands shown, pasted with `p` and checked with `v` use the group's variables.
 
 `report merge` only merges sessions of the same group and environment. Each group has its own step list, so step 3 of one group is not step 3 of another; mixing them exits with an error that lists each session and its group.
 

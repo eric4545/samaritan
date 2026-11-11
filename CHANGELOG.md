@@ -33,6 +33,8 @@ All notable changes to this project are documented here. This project follows
   `Operation`, `Environment` and `Group`, `events.jsonl` has the same fields on
   `session_start`, and `samaritan sessions` lists the group. Before, two groups
   of one file produced reports that could not be told apart.
+- `run` and `resume` resolve `${VAR}` in step and rollback names, so the step
+  heading and `report.md` read `Deploy web-server`, not `Deploy ${APP}`.
 - `[t]` pane picker lists named windows as `session:windowName.pane` (with the
   pane id) and checks your answer against the panes as they are when you
   answer: a number picks the pane by id, a pane that closed meanwhile re-lists

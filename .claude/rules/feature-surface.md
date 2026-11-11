@@ -52,9 +52,5 @@ on `report.md`, `events.jsonl`, `sessions` and `report merge`.
 
 ## Known gaps (do not assume these work)
 
-- A `${VAR}` in a step **name** is shown raw in the run heading and in
-  `report.md`; only `generate manual --resolve-vars` resolves names. `needs`
-  matches steps by authored name, so resolving names in the run loop needs the
-  dependency graph built first.
 - A step filtered out by `when:` still counts in the report's
   `Steps completed: N/M` total.

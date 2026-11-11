@@ -326,6 +326,81 @@ steps:
       );
     });
 
+    it('run shows and records step names with the group variables resolved', () => {
+      // Enter completes step 1, then EOF stops on step 2 (`Deploy ${APP}`).
+      const run = runCli(
+        [
+          'run',
+          fixture,
+          '--env',
+          'staging',
+          '--group',
+          'api-gateway',
+          '--mode',
+          'manual',
+        ],
+        '\n',
+      );
+      assert.match(run.out, /Next {5}: Step 2: Deploy api-gateway/);
+      assert.match(run.out, /\[Step 2 · 2\/4\] MANUAL: Deploy api-gateway/);
+      assert.ok(
+        !run.out.includes('Deploy ${APP}'),
+        `the run must not show an unresolved step name:\n${run.out}`,
+      );
+
+      const sessionId = run.out.match(/📋 Session: ([0-9a-f-]{36})/)?.[1];
+      assert.ok(sessionId);
+      // Stdin closed mid-run, so no report.md was written: render it from
+      // the event log, the same source the run's own report uses.
+      const report = runCli([
+        'report',
+        join(dirname(fixture), '.samaritan-runs', sessionId, 'events.jsonl'),
+      ]).out;
+      assert.match(report, /## Step 2: Deploy api-gateway/);
+    });
+
+    it('needs still matches a step by its authored ${VAR} name', () => {
+      const dir = makeDir();
+      const file = join(dir, 'needs-by-name.yaml');
+      writeFileSync(
+        file,
+        [
+          'name: Needs by name',
+          'version: 1.0.0',
+          'groups:',
+          '  - name: web-server',
+          '    variables: { APP: web-server }',
+          'environments:',
+          '  - name: staging',
+          'steps:',
+          '  - name: Build ${APP}',
+          '    type: manual',
+          '    command: echo build',
+          '  - name: Deploy',
+          '    type: manual',
+          '    command: echo deploy',
+          "    needs: ['Build ${APP}']",
+          '',
+        ].join('\n'),
+      );
+      // --from-step 2 skips the build step, so the gate must fire.
+      const run = runCli(
+        [
+          'run',
+          file,
+          '--env',
+          'staging',
+          '--group',
+          'web-server',
+          '--from-step',
+          '2',
+        ],
+        'y\n',
+      );
+      assert.match(run.out, /This step needs: Build web-server \(skipped\)/);
+      assert.match(run.out, /Start anyway\?/);
+    });
+
     it('report merge refuses sessions of two different groups', () => {
       const ids = ['web-server', 'api-gateway'].map((group) => {
         const run = runCli(

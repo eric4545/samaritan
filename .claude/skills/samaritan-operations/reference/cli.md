@@ -49,6 +49,8 @@ directory or example ships with this repo today.
 - An operation that declares `groups:` needs `-g, --group <name>` on
   `generate manual|docs|schedule`, `diff` and `run`; without it they exit with
   an error listing the groups. `resume` reads the group from the session.
+- `run --group <name>` walks only that group's steps and rollback entries in
+  every mode; step and rollback names show with the variables resolved.
 - A run records its group: `sessions` lists `Group: <name>`, and `report.md`
   has `- Operation:`, `- Environment:` and `- Group:` summary lines.
 - `report merge` exits with an error when the sessions are from different

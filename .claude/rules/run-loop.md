@@ -205,6 +205,17 @@ same overrides `generate manual --env` renders. Never read the authored
 `operation.steps` in the loop — use `executor.getState().steps` / `flatSteps`.
 Regression: `run-variants.yaml` + `run command: step variants.<env>`.
 
+## Step names are resolved once, in `prepareFlatOperation`
+
+A run has one environment (and one group), so `prepareFlatOperation(operation,
+env, vars)` runs every flat step's `name` through `substituteVariables` (run
+vars + `step.variables`). The heading, `Next :`/`Section :`, the `[b]`/`[j]`
+picker, `step_start` and therefore `report.md` show `Deploy web-server`; before,
+they showed the raw `Deploy ${APP}` and two groups' reports read the same.
+`FlatStep.authoredName` keeps the YAML name and the `needs` dep graph is built
+from it (`needs: ['Deploy ${APP}']` must keep matching). `resolveRollbackTree`
+resolves rollback `name` too. Tests: `tests/cli/groups.test.ts` "run / resume".
+
 ## Step heading — single-env manual numbering
 
 `flattenAndMarkForEnv` labels steps with `childStepLabel` (`src/lib/step-position.ts`):
