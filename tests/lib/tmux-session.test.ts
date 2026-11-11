@@ -570,6 +570,37 @@ describe('TmuxPaneCapture — one pipe-pane per pane (ownership)', () => {
       encoding: 'utf8',
     }).stdout.trim();
 
+  it(
+    'a missing pane never resolves to another session’s pane',
+    { skip: !hasTmux },
+    () => {
+      // While ANY tmux server runs, `display-message -t <unknown>` exits 0
+      // with empty fields, and an empty `-t` means tmux's current pane. A
+      // missing target therefore used to resolve to whatever session another
+      // process had open: describeTarget named it and ensureCapture
+      // re-attached our pipe to it (seen as a flaky CI failure while other
+      // test files held tmux sessions).
+      const stray = `sam-stray-${process.pid}-${Date.now()}`;
+      spawnSync('tmux', ['new-session', '-d', '-s', stray]);
+      const missing = `samaritan-no-such-${process.pid}:0.0`;
+      try {
+        assert.strictEqual(paneNameOf(missing), undefined);
+        const cap = new TmuxPaneCapture(`own-stray-${process.pid}`, missing);
+        assert.strictEqual(cap.resolvePaneId(), undefined);
+        assert.strictEqual(
+          cap.describeTarget('default'),
+          `tmux pane ${missing}`,
+        );
+        assert.deepStrictEqual(cap.ensureCapture('default'), {
+          status: 'unavailable',
+        });
+        assert.strictEqual(pipeOn(`${stray}:0.0`), '0', 'stray pane untouched');
+      } finally {
+        spawnSync('tmux', ['kill-session', '-t', stray], { stdio: 'ignore' });
+      }
+    },
+  );
+
   it('ensureCapture reports unavailable when the pane does not exist', () => {
     const cap = new TmuxPaneCapture('own-missing', 'samaritan-no-such-xyz:0.0');
     assert.deepStrictEqual(cap.ensureCapture('default'), {

@@ -95,7 +95,8 @@ describe('operation groups (CLI)', () => {
         manual,
         /kubectl apply -f api-gateway\.yaml -n staging --replicas=2/,
       );
-      assert.match(manual, /redis-cli -h cache\.example\.com ping/);
+      // CACHE_HOST is a group variable that references the env's NAMESPACE.
+      assert.match(manual, /redis-cli -h cache\.staging\.example\.com ping/);
       assert.match(manual, /Flush the cache after rollback/);
       assert.ok(!manual.includes('Purge the CDN'));
     });
@@ -357,6 +358,35 @@ steps:
         join(dirname(fixture), '.samaritan-runs', sessionId, 'events.jsonl'),
       ]).out;
       assert.match(report, /## Step 2: Deploy api-gateway/);
+    });
+
+    it('run resolves a group variable that references an environment variable', () => {
+      // `CACHE_HOST: cache.${NAMESPACE}.example.com` reaches the cache-probe
+      // step through `with:` (with -> group -> env). The manual resolved it;
+      // the run used to show and paste `${NAMESPACE}` literally.
+      const run = runCli(
+        [
+          'run',
+          fixture,
+          '--env',
+          'staging',
+          '--group',
+          'api-gateway',
+          '--from-step',
+          '3',
+        ],
+        'q\n',
+      );
+      assert.match(run.out, /MANUAL: Probe the cache/);
+      assert.match(
+        run.out,
+        /redis-cli -h cache\.staging\.example\.com ping/,
+        run.out,
+      );
+      assert.ok(
+        !run.out.includes('${NAMESPACE}'),
+        `the run must not show an unresolved chained variable:\n${run.out}`,
+      );
     });
 
     it('needs still matches a step by its authored ${VAR} name', () => {

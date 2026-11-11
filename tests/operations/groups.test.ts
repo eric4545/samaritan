@@ -100,7 +100,10 @@ environments:
       const api = await parseOperation(fixture, { group: 'api-gateway' });
       assert.equal(api.variables.staging.APP, 'api-gateway');
       assert.equal(api.variables.production.REPLICAS, 2);
-      assert.equal(api.common_variables?.CACHE_HOST, 'cache.example.com');
+      assert.equal(
+        api.common_variables?.CACHE_HOST,
+        'cache.${NAMESPACE}.example.com',
+      );
       // The environment's own variables are still there.
       assert.equal(api.variables.production.NAMESPACE, 'production');
     });

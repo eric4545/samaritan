@@ -8,6 +8,7 @@ import {
   isRemoteTemplate,
   resolveGithubUrl,
 } from '../lib/template-fetcher';
+import { resolveVariableChains } from '../lib/variable-resolver';
 import type {
   Environment,
   EvidenceConfig,
@@ -365,7 +366,13 @@ function expandForeachItem<
 >(item: T, contextVars: Record<string, any>, label: string): T[] {
   if (!item.foreach) return [item];
 
-  const foreach = substituteVariables(item.foreach, contextVars) as StepForeach;
+  // A value may reference another variable (`PRIMARY: ${DEFAULT_REGION}`):
+  // follow the chain so the loop value is a literal and gets baked in, as the
+  // run loop (which resolves chains) would show it.
+  const foreach = substituteVariables(
+    item.foreach,
+    resolveVariableChains(contextVars),
+  ) as StepForeach;
 
   let combinations: Array<Record<string, any>> = [];
   if (foreach.matrix) {
@@ -717,8 +724,12 @@ async function expandUsesEntry<T>(
         prevBaseDir,
       );
 
-      // Composition: template defaults are the base; with: overrides them
-      const mergedVars = { ...defaultVars, ...withVars };
+      // Composition: template defaults are the base; with: overrides them.
+      // Values may reference each other (`PORT: ${PORT_BASE}1`, a with: value
+      // set to another with: key): follow those chains here, because these
+      // names only exist inside the template and nothing later can resolve
+      // them. References to outer variables stay for generation/run time.
+      const mergedVars = resolveVariableChains({ ...defaultVars, ...withVars });
 
       // Validate — only vars absent from BOTH defaults and with: are errors.
       // Foreach loop variables are self-declared and injected at expansion time;

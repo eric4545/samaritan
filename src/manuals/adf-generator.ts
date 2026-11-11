@@ -410,7 +410,13 @@ export function generateADF(
       const rollbacks = (step.rollback ?? []).filter(hasRollbackContent);
       if (rollbacks.length === 0) return;
 
-      content.push(heading({ level: 3 })(text(`Rollback for: ${step.name}`)));
+      content.push(
+        heading({ level: 3 })(
+          text(
+            `Rollback for: ${resolveDisplayText(step.name, resolveVariables, operation.common_variables, step.variables)}`,
+          ),
+        ),
+      );
 
       rollbacks.forEach((rb, rbIndex) => {
         if (rollbacks.length > 1) {
@@ -499,7 +505,9 @@ export function generateADF(
       rb: EffectiveRollbackStep,
       label: string,
     ): void => {
-      const namedLabel = rb.name ? `${label}: ${rb.name}` : label;
+      const namedLabel = rb.name
+        ? `${label}: ${resolveDisplayText(rb.name, resolveVariables, operation.common_variables, rb.variables)}`
+        : label;
       // Prepend the Confluence anchor macro once per source step so the inline
       // jump-links resolve to this folded entry.
       const labelNodes: any[] = [paragraph(text(namedLabel))];

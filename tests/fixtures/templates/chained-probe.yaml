@@ -1,0 +1,12 @@
+# Template whose own defaults chain (PORT -> PORT_BASE). Used by
+# features/variable-chains.yaml; the caller's with: values chain too.
+common_variables:
+  PROBE_PORT: ${PROBE_PORT_BASE}1
+  PROBE_PORT_BASE: "808"
+steps:
+  - name: Probe ${PROBE_HOST}
+    type: manual
+    instruction: Probe ${PROBE_HOST} on port ${PROBE_PORT} as ${PROBE_ALIAS}
+    command: curl -s https://${PROBE_HOST}:${PROBE_PORT}/health
+    expect:
+      contains: healthy ${PROBE_ALIAS}

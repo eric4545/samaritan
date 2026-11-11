@@ -1,5 +1,6 @@
 import type { ExpectConfig, Step } from '../models/operation';
 import { isPrimitiveExpectShorthand } from './assertions';
+import { resolveVariableChains } from './variable-resolver';
 
 /** Escape regex metacharacters so a string can be matched literally. */
 function escapeRegExp(text: string): string {
@@ -41,16 +42,19 @@ export function mergeStepVariables(
  * Resolve `${VAR}` placeholders, prioritizing step-scoped variables over
  * environment variables (see `mergeStepVariables` for the layering rule).
  *
- * Substitution iterates the merged keys in insertion order over the working
- * string, so a value inserted by an earlier key may still be expanded by a
- * later key, but never loops.
+ * Values that reference other variables are chain-resolved first
+ * (`resolveVariableChains`), so the result does not depend on key order and
+ * matches what the run loop pastes. Inserted values are never re-scanned, so
+ * this never loops.
  */
 export function substituteVariables(
   command: string,
   envVariables: Record<string, any>,
   stepVariables?: Record<string, any>,
 ): string {
-  const mergedVariables = mergeStepVariables(envVariables, stepVariables);
+  const mergedVariables = resolveVariableChains(
+    mergeStepVariables(envVariables, stepVariables),
+  );
 
   let result = command;
   for (const key in mergedVariables) {
@@ -63,6 +67,52 @@ export function substituteVariables(
   }
 
   return result;
+}
+
+/**
+ * Prepare an operation for a `--resolve-vars` manual, in every format.
+ *
+ * - Each environment's variables (both `variables[env]` and
+ *   `environments[].variables`) are chain-resolved, so the environments
+ *   overview shows `cache.staging.example.com`, not the authored
+ *   `cache.${NAMESPACE}.example.com`.
+ * - With one environment selected (`--env`), the shared cells (step and
+ *   rollback names, descriptions) resolve against THAT environment: the
+ *   formats that keep the table layout for `--env` (ADF, Confluence, HTML)
+ *   otherwise left `Deploy ${APP_ENV}` literal while the commands next to it
+ *   were resolved.
+ * - The operation description resolves the same way.
+ *
+ * Pure: returns a new operation, the input is not changed.
+ */
+export function resolveOperationVariablesForManual<
+  T extends {
+    description?: string;
+    common_variables?: Record<string, any>;
+    variables?: Record<string, Record<string, any>>;
+    environments?: Array<{ name: string; variables?: Record<string, any> }>;
+  },
+>(operation: T, targetEnv?: string): T {
+  const variables: Record<string, Record<string, any>> = {};
+  for (const [envName, envVars] of Object.entries(operation.variables ?? {})) {
+    variables[envName] = resolveVariableChains(envVars ?? {});
+  }
+  const environments = (operation.environments ?? []).map((env) => ({
+    ...env,
+    variables: resolveVariableChains(env.variables ?? {}),
+  }));
+  const selected = targetEnv ? variables[targetEnv] : undefined;
+  const shared =
+    selected ?? resolveVariableChains(operation.common_variables ?? {});
+  return {
+    ...operation,
+    variables,
+    environments,
+    common_variables: shared,
+    ...(operation.description
+      ? { description: substituteVariables(operation.description, shared) }
+      : {}),
+  };
 }
 
 /**

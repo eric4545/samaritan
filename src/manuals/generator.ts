@@ -1736,7 +1736,9 @@ function generateManualContent(
         rb: EffectiveRollbackStep,
         label: string,
       ): void => {
-        const namedLabel = rb.name ? `${label}: ${rb.name}` : label;
+        const namedLabel = rb.name
+          ? `${label}: ${resolveDisplayText(rb.name, resolveVariables, operation.common_variables, rb.variables)}`
+          : label;
         markdown += `| ${namedLabel} |`;
         operation.environments.forEach((env) => {
           const cellContent = renderRollbackCellMarkdown(

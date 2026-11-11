@@ -1,3 +1,59 @@
+const VAR_REF = /\$\{(\w+)\}/g;
+
+/**
+ * Expand `${VAR}` references INSIDE variable values against the same map, so
+ * a value that points at another variable (a group variable set to an
+ * environment variable, a `with:` value set to a group variable, …) carries
+ * the final value, however long the chain and whatever the key order.
+ *
+ * - A reference to a name not in `vars` stays literal (it may be a shell
+ *   variable such as `${HOME}`, left for the shell).
+ * - A cycle (`A: ${B}`, `B: ${A}`, or `A: ${A}`) stays literal at the point
+ *   it would repeat, instead of looping.
+ * - Non-string values are untouched; a non-string referenced from inside a
+ *   string is inserted via `String()`.
+ *
+ * Every substitution engine (manuals, the run TUI, `SessionState`) resolves
+ * through this first, so they cannot disagree on chained values. Returns
+ * `vars` itself when no value holds a reference to another key.
+ */
+export function resolveVariableChains(
+  vars: Record<string, any>,
+): Record<string, any> {
+  const hasChain = Object.values(vars).some(
+    (value) =>
+      typeof value === 'string' &&
+      [...value.matchAll(VAR_REF)].some(([, name]) =>
+        Object.hasOwn(vars, name),
+      ),
+  );
+  if (!hasChain) return vars;
+
+  const done = new Map<string, any>();
+  const resolveKey = (key: string, stack: Set<string>): any => {
+    if (done.has(key)) return done.get(key);
+    const value = vars[key];
+    if (typeof value !== 'string') return value;
+    stack.add(key);
+    const resolved = value.replace(VAR_REF, (match, name) =>
+      Object.hasOwn(vars, name) && !stack.has(name)
+        ? String(resolveKey(name, stack))
+        : match,
+    );
+    stack.delete(key);
+    // Memoize only complete walks: mid-walk, a reference back up the stack
+    // was left literal, so the result depends on where the walk started.
+    if (stack.size === 0) done.set(key, resolved);
+    return resolved;
+  };
+
+  const result: Record<string, any> = {};
+  for (const key of Object.keys(vars)) {
+    result[key] = resolveKey(key, new Set());
+  }
+  return result;
+}
+
 /**
  * Resolves ${VAR} placeholders from operation context variables.
  *
@@ -11,6 +67,7 @@
  *    know exactly which variables are missing from the environment definition.
  */
 export function resolveVars(text: string, vars: Record<string, any>): string {
+  vars = resolveVariableChains(vars);
   const unresolved: string[] = [];
   const result = text.replace(/\$\{(\w+)\}/g, (match, name) => {
     if (Object.hasOwn(vars, name)) {
@@ -38,6 +95,7 @@ export function resolveVarsSafe(
   text: string,
   vars: Record<string, any>,
 ): string {
+  vars = resolveVariableChains(vars);
   return text.replace(/\$\{(\w+)\}/g, (match, name) => {
     if (Object.hasOwn(vars, name)) {
       return String(vars[name]);

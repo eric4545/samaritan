@@ -536,16 +536,26 @@ export class TmuxSession implements CaptureBackend {
 
 /** Read a tmux format string for a pane; undefined when tmux/the pane is gone. */
 function paneFormat(target: string, format: string): string | undefined {
+  // An empty `-t` means tmux's CURRENT pane, never "no pane".
+  if (!target.trim()) return undefined;
   try {
+    // While any tmux server runs, `display-message -t <unknown target>` exits
+    // 0 with every field empty. Ask for the pane id too and treat an empty id
+    // as "no such pane"; otherwise the empty result became the target of the
+    // next call (`-t ''` = current pane), so a missing pane resolved to some
+    // other session's pane, and ensureCapture re-attached our pipe there.
     const r = spawnSync('tmux', [
       'display-message',
       '-p',
       '-t',
       target,
-      format,
+      `#{pane_id}${PANE_FIELD_SEP}${format}`,
     ]);
     if (r.status !== 0) return undefined;
-    return r.stdout?.toString('utf-8').trim();
+    const out = r.stdout?.toString('utf-8').trim() ?? '';
+    const sep = out.indexOf(PANE_FIELD_SEP);
+    if (sep <= 0) return undefined;
+    return out.slice(sep + PANE_FIELD_SEP.length).trim();
   } catch {
     return undefined;
   }

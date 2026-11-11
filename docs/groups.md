@@ -24,7 +24,7 @@ groups:
     variables:
       APP: api-gateway
       REPLICAS: 2
-      CACHE_HOST: cache.example.com
+      CACHE_HOST: cache.${NAMESPACE}.example.com   # resolves per environment
 
 environments:
   - name: staging
@@ -89,6 +89,10 @@ Lowest to highest:
 | 6 | `step.variables` |
 
 Group variables behave like `common_variables` for that group, so they are also available to `foreach` values.
+
+### A variable can reference another variable
+
+A group variable can point at an environment variable (`CACHE_HOST: cache.${NAMESPACE}.example.com`) and the other way round. See [Variables that reference other variables](./environments.md#variables-that-reference-other-variables).
 
 ## Commands
 

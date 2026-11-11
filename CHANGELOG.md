@@ -15,6 +15,30 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **A variable whose value references another variable now resolves in the
+  run, not just in the manual.** A group variable set to an environment
+  variable (`CACHE_HOST: cache.${NAMESPACE}.example.com`), or a `with:` value
+  set to a group variable, showed and pasted with `[p]` as a literal
+  `${NAMESPACE}`, and `[v]` checked `expect` against the literal; the shell
+  then expanded it to an empty string. Manuals resolved the same chain only
+  when the variables happened to be declared in the right order. Every
+  engine now follows chains to the end, in any order; unknown names
+  (`${HOME}`) and cycles are left as written.
+- **Chained variables also resolve inside reusable files, loops and every
+  manual format.** A reusable file's own default that references another
+  default (`PORT: ${PORT_BASE}1`), a `with:` value that references another
+  `with:` value, and a `foreach` value that references a common variable
+  stayed literal everywhere. With `--env --resolve-vars`, the Confluence, ADF
+  and HTML manuals now resolve step names, operation rollback names, the
+  description and the environments table like the Markdown manual does.
+- A sidecar capture whose tmux pane no longer exists no longer latches onto
+  another tmux session's pane. tmux answers a query for an unknown pane with
+  empty fields instead of an error, and the empty answer was then read as
+  "the current pane": the pane name shown and the capture re-attach could
+  land on an unrelated session.
+- `validate` warns when a variable's value references a name that no layer
+  defines (`cache.${NAMESPCE}.example.com`), and no longer reports a step's
+  own `variables:` as undefined.
 - `report merge` refuses sessions of different groups or environments. It
   merges steps by position, so two groups were blended into one report that
   claimed every step was completed.

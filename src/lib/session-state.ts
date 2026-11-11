@@ -1,4 +1,5 @@
 import type { CaptureRule } from '../models/operation';
+import { resolveVariableChains } from './variable-resolver';
 
 export class SessionState {
   private vars: Map<string, string> = new Map();
@@ -12,11 +13,15 @@ export class SessionState {
   }
 
   interpolate(template: string): string {
+    // A value may reference another variable (a group var set to an env var):
+    // resolve those chains first, the same way the manuals do, so the command
+    // sent and the expect checked never keep a literal `${OTHER}`.
+    const vars = resolveVariableChains(Object.fromEntries(this.vars));
     // ${VAR} (plain identifier name) → strict: throw if not captured.
     // Shell parameter expansions (${X:?}, ${X:-default}, …) never match and
     // are left for the shell to evaluate.
     const step1 = template.replace(/\$\{(\w+)\}/g, (_match, name) => {
-      const value = this.vars.get(name);
+      const value = Object.hasOwn(vars, name) ? vars[name] : undefined;
       if (value === undefined) {
         throw new Error(`Undefined captured variable: ${name}`);
       }
@@ -24,7 +29,7 @@ export class SessionState {
     });
     // $VAR → lenient: resolve if captured, otherwise leave for shell expansion
     return step1.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, name) => {
-      const value = this.vars.get(name);
+      const value = Object.hasOwn(vars, name) ? vars[name] : undefined;
       return value ?? match;
     });
   }

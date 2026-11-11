@@ -220,6 +220,10 @@ export const FIXTURES = {
   // has no per-entry when: — split into separate steps with when: instead.
   rollbackMatrixEnvScope:
     'tests/fixtures/operations/features/rollback-matrix-env-scope.yaml',
+  // A variable value referencing another variable, in every layer (group,
+  // env, step, with:, template defaults, foreach): must resolve identically
+  // in manuals and the run.
+  variableChains: 'tests/fixtures/operations/features/variable-chains.yaml',
 } as const;
 
 /**
