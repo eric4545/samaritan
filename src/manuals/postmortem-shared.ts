@@ -153,7 +153,7 @@ export function isZonelessDateTime(ts: string): boolean {
 /**
  * Parse an ISO-8601 timestamp to epoch ms. A value with a zone is exact; a
  * bare date or zone-less date-time is read as wall time in `timezone`.
- * Returns `undefined` for free-form strings (`15:44`) and impossible dates.
+ * Returns `undefined` for free-form strings (`16:20`) and impossible dates.
  */
 export function parseInstant(
   ts: string,
@@ -385,7 +385,7 @@ interface ClockTime {
 
 const CLOCK = String.raw`(\d{1,2}):(\d{2})(?::(\d{2}))?`;
 const CLOCK_ZONE = String.raw`(Z|UTC|[+-]\d{2}:?\d{2})`;
-/** `17:52-17:56Z`: a dash between two times is a range, never an offset. */
+/** `18:05-18:10Z`: a dash between two times is a range, never an offset. */
 const CLOCK_RANGE_RE = new RegExp(
   String.raw`^${CLOCK}\s*[-–]\s*${CLOCK}\s*${CLOCK_ZONE}?$`,
   'i',
@@ -394,7 +394,7 @@ const CLOCK_SINGLE_RE = new RegExp(
   String.raw`^${CLOCK}\s*${CLOCK_ZONE}?$`,
   'i',
 );
-/** Anything else that starts with a time, e.g. `15:44 (approx.)`. */
+/** Anything else that starts with a time, e.g. `16:20 (approx.)`. */
 const CLOCK_PREFIX_RE = new RegExp(String.raw`^${CLOCK}\b`);
 
 function zoneOffsetMin(zone: string | undefined): number | undefined {
@@ -409,7 +409,7 @@ function clockSecs(h: string, m: string, s?: string): number {
   return Number(h) * 3600 + Number(m) * 60 + (s ? Number(s) : 0);
 }
 
-/** Parse a bare clock string (`15:44`, `17:52-17:56Z`, `09:05+09:00`). */
+/** Parse a bare clock string (`16:20`, `18:05-18:10Z`, `09:05+09:00`). */
 export function parseClock(at: string): ClockTime | undefined {
   const v = at.trim();
   const range = CLOCK_RANGE_RE.exec(v);
@@ -463,7 +463,7 @@ export interface SortedTimeline {
  * order is not time order.
  *
  * - ISO-8601 entries sort by instant (zone-less ones read in `timezone`).
- * - Bare clock times (`15:44`) sort by time of day.
+ * - Bare clock times (`16:20`) sort by time of day.
  * - A mix is sorted by placing each clock time on the calendar day of the
  *   ISO entries, in the clock's own zone (`Z`, `+09:00`) or else `timezone`.
  *   That needs every ISO entry to fall on that one day; otherwise, or when an
