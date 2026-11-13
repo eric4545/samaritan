@@ -19,6 +19,7 @@ description: |
   From that same bar:
     [e] add evidence — one prompt, the kind is worked out from what you give:
                          a file path (drag a screenshot in)  -> copied beside report.md
+                         Ctrl+V (screenshot on the clipboard) -> saved beside report.md
                          a URL (chat message, CI build)      -> recorded as a link
                          anything else, one line or many     -> recorded as text
                          Enter alone, with a pane attached   -> the pane output

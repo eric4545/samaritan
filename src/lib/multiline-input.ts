@@ -27,6 +27,8 @@ export type FeedResult =
   | { action: 'enter' }
   | { action: 'submit' }
   | { action: 'cancel' }
+  /** Ctrl+V on an empty prompt: take the IMAGE on the clipboard. */
+  | { action: 'clipboard' }
   | { action: 'interrupt' };
 
 export class MultilineBuffer {
@@ -71,6 +73,9 @@ export class MultilineBuffer {
         : { action: 'more', echo: '' };
     }
     if (key?.ctrl && name === 'd') return { action: 'submit' };
+    if (key?.ctrl && name === 'v' && this.chars.length === 0) {
+      return { action: 'clipboard' };
+    }
     if (name === 'escape') return { action: 'cancel' };
     if (name === 'backspace') return { action: 'more', echo: this.erase() };
     if (key?.ctrl || key?.meta) return { action: 'more', echo: '' };

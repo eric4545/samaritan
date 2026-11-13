@@ -26,6 +26,9 @@ steps:
   - name: Sign off
     type: approval
     instruction: Sign off on the deploy.
+    evidence:
+      required: true
+      types: [text, link]
     rollback:
       - name: Withdraw the notice
         instruction: Tell the channel the deploy is rolled back.

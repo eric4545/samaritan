@@ -63,6 +63,16 @@ describe('MultilineBuffer', () => {
     );
   });
 
+  it('Ctrl+V asks for the clipboard image only on an empty prompt', () => {
+    const ctrlV: KeyLike = { name: 'v', ctrl: true };
+    const empty = new MultilineBuffer();
+    assert.strictEqual(empty.feed('\x16', ctrlV).action, 'clipboard');
+    const typing = new MultilineBuffer();
+    feed(typing, typed('pods'));
+    assert.strictEqual(typing.feed('\x16', ctrlV).action, 'more');
+    assert.strictEqual(typing.text, 'pods');
+  });
+
   it('an escape inside a paste is content noise, not a cancel', () => {
     const b = new MultilineBuffer();
     feed(b, [PASTE_START, ...typed('a')]);

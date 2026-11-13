@@ -280,6 +280,20 @@ muscle memory). `evidence.types` is a HINT: header line `evidenceHeaderLine`,
 the prompt, the gate message and `evidenceTypeMismatch` (a note after
 recording another kind); the gate counts ANY item.
 
+**Clipboard image (`Ctrl+V` / answer `v`).** A terminal paste is text only,
+so the image is fetched by a helper: `readClipboardImage(dest)`
+(`src/lib/clipboard-image.ts`; `clipboardImageTools`: darwin `pngpaste` then
+`osascript` writing `«class PNGf»` to the path passed as ARGV, never spliced
+into the script; linux `wl-paste --type image/png` under Wayland, `xclip -t
+image/png -o` under X11). The result must start with the PNG magic, else
+nothing is left on disk and `No image taken: <reason>` is printed
+(`clipboardUnavailableReason`: SSH, no helper, no desktop session).
+`MultilineBuffer` reports `clipboard` only for Ctrl+V on an EMPTY prompt.
+The e2e ("[e] Ctrl+V") puts a stand-in `xclip` on PATH: it proves key →
+file → report, NOT the real helpers. The `osascript` and `wl-paste` command
+lines have never been run against a real clipboard from this repo's tests;
+check on a real desktop before changing them.
+
 **Never read free text with `question()`** where a paste is plausible:
 readline ends at the first newline, so a pasted block gave line 1 to the
 evidence, line 2 to the description and the rest to the step bar, where a

@@ -25,6 +25,7 @@ import {
 import { getBuiltinVariables } from '../../lib/builtin-variables';
 import type { CaptureBackend, PaneOwner } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
+import { readClipboardImage } from '../../lib/clipboard-image';
 import { createEventLogger } from '../../lib/event-logger';
 import {
   classifyEvidenceInput,
@@ -151,6 +152,8 @@ const BRACKETED_PASTE_OFF = '\x1b[?2004l';
 // How long an Enter waits for more keys before it submits a multi-line
 // prompt (a paste into a terminal without bracketed paste is one burst).
 const PASTE_BURST_MS = 40;
+// What `readMultiline` resolves with for Ctrl+V on an empty prompt.
+const CLIPBOARD_KEY = '\x16';
 
 // Cap free-form pasted evidence; larger payloads should be file attachments.
 const MAX_PASTED_EVIDENCE_BYTES = 10 * 1024 * 1024;
@@ -1020,7 +1023,11 @@ class OperationRunner {
     // one-letter line fired that action key. Bracketed paste is switched on
     // while reading; without it a paste is one burst of keys, so an Enter
     // only submits once nothing follows it. Returns undefined on Esc.
-    const readMultiline = (prompt: string): Promise<string | undefined> => {
+    const readMultiline = (
+      prompt: string,
+      // Resolve with CLIPBOARD_KEY when Ctrl+V is pressed on an empty prompt.
+      opts: { clipboardKey?: boolean } = {},
+    ): Promise<string | undefined> => {
       if (!process.stdin.isTTY) return question(prompt);
 
       rl.pause();
@@ -1081,6 +1088,9 @@ class OperationRunner {
               return;
             case 'cancel':
               finish(undefined);
+              return;
+            case 'clipboard':
+              if (opts.clipboardKey) finish(CLIPBOARD_KEY);
               return;
             case 'interrupt':
               settled = true;
@@ -2130,7 +2140,9 @@ class OperationRunner {
           captureLabel: captured !== undefined ? captureLabel : undefined,
         }).join('\n')}`,
       );
-      const answer = await readMultiline('    Evidence > ');
+      const answer = await readMultiline('    Evidence > ', {
+        clipboardKey: true,
+      });
       if (answer === undefined) {
         console.log('    ↩ Cancelled — no evidence recorded.');
         return;
@@ -2138,7 +2150,7 @@ class OperationRunner {
 
       // The old two-step menu (`f` then a path, `t` then text) still works.
       const word = answer.trim().toLowerCase();
-      let input: EvidenceInput;
+      let input: EvidenceInput | { kind: 'clipboard' };
       if (word === 'f' || word === 'file') {
         const rawPath = await question(
           '    Path (drag & drop into terminal): ',
@@ -2166,6 +2178,12 @@ class OperationRunner {
           return;
         }
         input = { kind: 'link', url };
+      } else if (
+        answer === CLIPBOARD_KEY ||
+        word === 'v' ||
+        word === 'clipboard'
+      ) {
+        input = { kind: 'clipboard' };
       } else if (word === 'capture') {
         input = { kind: 'empty' };
       } else {
@@ -2178,6 +2196,7 @@ class OperationRunner {
       let storedPath: string | undefined;
       let size = 0;
       let automatic = false;
+      let source: string | undefined;
       const id = randomUUID();
 
       switch (input.kind) {
@@ -2220,6 +2239,24 @@ class OperationRunner {
           }
           break;
         }
+        case 'clipboard': {
+          // A terminal paste is text only: the image is fetched from the OS
+          // clipboard by a helper program, straight into the run directory.
+          filename = 'clipboard.png';
+          evidenceType = 'screenshot';
+          storedPath = join(
+            getRunEvidenceDir(operationFile, state.context.sessionId),
+            storedEvidenceName(filename, id),
+          );
+          const image = readClipboardImage(storedPath);
+          if (image.ok === false) {
+            console.log(`    ⚠️  No image taken: ${image.reason}.`);
+            return;
+          }
+          size = image.bytes;
+          source = 'clipboard';
+          break;
+        }
         case 'link':
           evidenceType = 'link';
           content = input.url;
@@ -2239,13 +2276,16 @@ class OperationRunner {
       }
 
       const lineCount = content.split('\n').length;
-      const what = storedPath
-        ? `${evidenceType} ${filename}`
-        : evidenceType === 'link'
-          ? `link ${content}`
-          : automatic
-            ? `pane output, ${lineCount} line${lineCount === 1 ? '' : 's'}`
-            : `text, ${lineCount} line${lineCount === 1 ? '' : 's'}`;
+      const what =
+        source === 'clipboard'
+          ? `screenshot from the clipboard, ${Math.ceil(size / 1024)} KB`
+          : storedPath
+            ? `${evidenceType} ${filename}`
+            : evidenceType === 'link'
+              ? `link ${content}`
+              : automatic
+                ? `pane output, ${lineCount} line${lineCount === 1 ? '' : 's'}`
+                : `text, ${lineCount} line${lineCount === 1 ? '' : 's'}`;
       console.log(`    Recording ${what}`);
       const description =
         (await question('    Description (optional, ↵ to skip): ')).trim() ||
@@ -2272,7 +2312,8 @@ class OperationRunner {
         metadata: {
           size,
           format,
-          source: automatic ? 'tmux' : storedPath ? 'file' : 'manual',
+          source:
+            source ?? (automatic ? 'tmux' : storedPath ? 'file' : 'manual'),
           ...(storedPath ? { original_path: storedPath } : {}),
         },
         description,

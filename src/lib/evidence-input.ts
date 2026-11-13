@@ -140,6 +140,7 @@ export function evidencePromptLines(ctx: {
   return [
     `    📎 Add evidence${ctx.wanted ? ` (this step asks for: ${ctx.wanted})` : ''}`,
     ...(ctx.captureLabel ? [`       ↵ alone    ${ctx.captureLabel}`] : []),
+    '       Ctrl+V     the screenshot on your clipboard',
     '       file       drag a screenshot or file in, or type its path',
     '       link       paste a URL (chat message, CI build, dashboard)',
     '       text       type or paste it, several lines are fine',

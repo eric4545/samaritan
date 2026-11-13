@@ -191,6 +191,7 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
   ```
       📎 Add evidence (this step asks for: screenshot)
          ↵ alone    capture pane output since step start
+         Ctrl+V     the screenshot on your clipboard
          file       drag a screenshot or file in, or type its path
          link       paste a URL (chat message, CI build, dashboard)
          text       type or paste it, several lines are fine
@@ -202,10 +203,22 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
   |---|---|---|
   | `↵` alone (a pane is attached) | `command_output`: the pane output since the step started, cleaned of colour codes. When nothing was printed since the step started (a "record the result" step that follows the step that ran the command), the pane **screen** instead | fenced code block |
   | A path to an existing file, dragged in or typed (quotes, `\ ` escapes and `~` are understood) | `screenshot` for `png`/`jpg`/`jpeg`/`webp`/`gif`, `video` for `mp4`/`webm`/`mov`, `file` for anything else. The file is **copied** to `evidence/` in the run directory, beside `report.md` | image (`![description](evidence/<file>)`) or link |
+  | `Ctrl+V` on the empty prompt (or the answer `v`) | `screenshot`: the **image** on your clipboard, saved as `evidence/<id>-clipboard.png` | image |
   | A single `http://` / `https://` URL: a chat message permalink, a CI build, a dashboard | `link` | clickable link |
   | Anything else, one line or many | `text` | fenced `text` block |
 
   A **multi-line paste is one answer**: every line stays in the evidence, and Enter submits only once the paste is in. A path that does not exist prints `File not found` and records nothing; an empty answer with no pane records nothing. `Esc` cancels. You are then asked for an optional description, which becomes the label in the report.
+
+  **Clipboard images.** A terminal paste carries text only, so a copied screenshot cannot arrive through the normal paste shortcut. `Ctrl+V` makes SAMARITAN fetch the image from the operating system's clipboard with a helper program:
+
+  | Where SAMARITAN runs | Helper | Notes |
+  |---|---|---|
+  | macOS | `pngpaste` when installed, else the built-in `osascript` | Nothing to install |
+  | Linux, Wayland | `wl-paste` (package `wl-clipboard`) | |
+  | Linux, X11 | `xclip` | |
+  | A host reached over SSH | none | The clipboard is on your own computer. Save the screenshot, copy it to the host and give its path, or paste a link to it |
+
+  When there is no image on the clipboard, or no helper, a line says why and nothing is recorded. Some terminals bind `Ctrl+V` to their own paste; answer `v` at the prompt instead.
 
   The old two-step answers still work: `f` asks for a path, `t` for text, `l` for a URL.
 

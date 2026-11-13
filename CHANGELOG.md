@@ -14,6 +14,11 @@ All notable changes to this project are documented here. This project follows
   manual format (Markdown, Confluence, ADF) renders it as a link. Typed or
   pasted text is recorded as the new `text` type instead of being labelled
   `command_output`.
+- **`Ctrl+V` at the evidence prompt takes the screenshot on your clipboard.**
+  The image is saved beside the report as a `screenshot`. It needs a helper
+  on the machine where SAMARITAN runs: built in on macOS, `wl-paste` or
+  `xclip` on Linux. On a host reached over SSH the clipboard is not
+  available; give a file path or a link instead.
 - **A run step says up front that it wants evidence**, and which kind:
   `Evidence : required — screenshot, link  ([e] adds it)`.
 - **`validate` warns about `evidence.results` that do nothing**: a key that is

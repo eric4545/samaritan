@@ -158,6 +158,7 @@ describe('evidence input helpers', () => {
     const without = evidencePromptLines({}).join('\n');
     assert.ok(!without.includes('↵ alone'));
     assert.match(without, /link {7}paste a URL/);
+    assert.match(without, /Ctrl\+V {5}the screenshot on your clipboard/);
   });
 
   it('evidenceLinkUrl: only a link-typed result holding a URL', () => {
