@@ -1,14 +1,18 @@
 import { existsSync, readFileSync } from 'node:fs';
 import type { Postmortem, SupportingInfo } from '../models/postmortem';
 import {
-  buildMermaidTimeline,
+  DEFAULT_POSTMORTEM_TIMEZONE,
   detectionRows,
+  type EventSegment,
+  eventLines,
   formatPostmortemTs,
   impactRows,
   incidentDuration,
+  type PostmortemRenderOptions,
   resolvePath,
   severityIcon,
   timelineKindIcon,
+  timelineView,
 } from './postmortem-shared';
 
 /** Escape Confluence macro braces in free text. */
@@ -24,6 +28,21 @@ function cell(t: string): string {
 }
 
 /**
+ * A timeline event as one wiki table cell: each YAML line on its own line
+ * (`\\` is the wiki line break) and `**bold**` as wiki `*bold*`.
+ */
+function wikiEventCell(event: string): string {
+  return eventLines(event)
+    .map((segs) => segs.map(wikiSegment).join(''))
+    .join(' \\\\ ');
+}
+
+function wikiSegment(seg: EventSegment): string {
+  const t = cell(seg.text);
+  return seg.bold ? `*${t}*` : t;
+}
+
+/**
  * Render a postmortem as Confluence wiki markup. The Mermaid timeline is wrapped
  * in the `{markdown}` macro exactly like the operation Gantt (opening tag on the
  * same line as the mermaid fence, closing `` ``` `` and `{markdown}` on their own
@@ -32,7 +51,9 @@ function cell(t: string): string {
 export function generatePostmortemConfluence(
   pm: Postmortem,
   postmortemDir?: string,
+  options: PostmortemRenderOptions = {},
 ): string {
+  const tz = options.timezone ?? DEFAULT_POSTMORTEM_TIMEZONE;
   const out: string[] = [];
   const sev = severityIcon(pm.severity);
 
@@ -51,9 +72,9 @@ export function generatePostmortemConfluence(
   // Metadata / linkage
   const meta: string[] = [];
   if (pm.occurred_at)
-    meta.push(`* *Occurred:* ${esc(formatPostmortemTs(pm.occurred_at))}`);
+    meta.push(`* *Occurred:* ${esc(formatPostmortemTs(pm.occurred_at, tz))}`);
   if (pm.resolved_at)
-    meta.push(`* *Resolved:* ${esc(formatPostmortemTs(pm.resolved_at))}`);
+    meta.push(`* *Resolved:* ${esc(formatPostmortemTs(pm.resolved_at, tz))}`);
   const duration = incidentDuration(pm);
   if (duration) meta.push(`* *Duration:* ${duration}`);
   if (pm.authors?.length)
@@ -92,35 +113,42 @@ export function generatePostmortemConfluence(
   if (pm.detection) {
     out.push('h2. Detection');
     out.push('');
-    for (const { label, value } of detectionRows(pm.detection)) {
+    for (const { label, value } of detectionRows(pm.detection, tz)) {
       out.push(`* *${label}:* ${esc(value)}`);
     }
     out.push('');
   }
 
   // Timeline
-  if (pm.timeline?.length) {
+  const timeline = timelineView(pm, tz);
+  if (timeline) {
     out.push('h2. Timeline');
     out.push('');
-    const mermaid = buildMermaidTimeline(pm);
-    if (mermaid) {
+    if (timeline.mermaid) {
       // Opening {markdown} must be on the same line as the mermaid fence.
       out.push('{markdown} ```mermaid');
-      out.push(mermaid);
+      out.push(timeline.mermaid);
       // Closing ``` and {markdown} on separate lines.
       out.push('```');
       out.push('{markdown}');
       out.push('');
     }
-    out.push('|| Time || Event || Who || Ref ||');
-    for (const entry of pm.timeline) {
-      out.push(
-        `| ${cell(formatPostmortemTs(entry.at))} | ${cell(`${timelineKindIcon(entry.kind)} ${entry.event}`)} | ${cell(entry.by ?? ' ')} | ${cell(entry.ref ?? ' ')} |`,
-      );
+    const headers = ['Time', 'Event'];
+    if (timeline.showWho) headers.push('Who');
+    if (timeline.showRef) headers.push('Ref');
+    out.push(`|| ${headers.join(' || ')} ||`);
+    for (const entry of timeline.entries) {
+      const cells = [
+        cell(formatPostmortemTs(entry.at, tz)),
+        `${timelineKindIcon(entry.kind)} ${wikiEventCell(entry.event)}`,
+      ];
+      if (timeline.showWho) cells.push(cell(entry.by ?? ' '));
+      if (timeline.showRef) cells.push(cell(entry.ref ?? ' '));
+      out.push(`| ${cells.join(' | ')} |`);
     }
     out.push('');
     // Inline any timeline-entry images beneath the table.
-    for (const entry of pm.timeline) {
+    for (const entry of timeline.entries) {
       if (entry.image) {
         const isUrl = /^https?:\/\//.test(entry.image);
         out.push(

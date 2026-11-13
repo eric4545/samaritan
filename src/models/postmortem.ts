@@ -32,11 +32,17 @@ export type ActionItemType = 'prevent' | 'mitigate' | 'detect' | 'process';
 
 export type ActionItemStatus = 'open' | 'in-progress' | 'done';
 
-/** A single chronological event. Rendered as a Mermaid timeline + a table. */
+/**
+ * A single chronological event. Rendered in time order as a table, plus a
+ * Mermaid timeline chart for short timelines.
+ */
 export interface TimelineEntry {
-  /** ISO-8601 timestamp (or free-form clock string) of the event. */
+  /**
+   * ISO-8601 timestamp WITH a zone (`Z` / `+09:00`), or a free-form clock
+   * string such as `16:20`.
+   */
   at: string;
-  /** What happened. */
+  /** What happened. One fact per line; `**bold**` is supported. */
   event: string;
   kind?: TimelineKind;
   /** Who performed/observed it. */

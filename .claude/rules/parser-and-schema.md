@@ -180,6 +180,14 @@ Because a postmortem has its OWN sections (not operation steps), the
 four-render-path `StepContent` parity concern does NOT apply. See the skill's
 `reference/postmortem-yaml.md` for the authoring surface.
 
+The parser also runs `validatePostmortemTimestamps` (zone-less ISO date-times
+are rejected: JS would read them as the renderer's local time). The three
+renderers draw the Timeline ONLY from `timelineView()` in
+`postmortem-shared.ts` (sort, chart-or-not, which optional columns) and split
+events with `eventLines()`; never iterate `pm.timeline` directly in a renderer
+or the formats drift. In Mermaid `timeline`, `:` must be written `#58;` (a bare
+colon is a parse error; verified on Mermaid 9.4, 10 and 11).
+
 ## Schema errors — prune `oneOf` noise, name the field
 
 Ajv (`allErrors`) reports EVERY failed branch of a `oneOf`. One wrong value in a

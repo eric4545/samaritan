@@ -19,6 +19,11 @@ All notable changes to this project are documented here. This project follows
   on the machine where SAMARITAN runs: built in on macOS, `wl-paste` or
   `xclip` on Linux. On a host reached over SSH the clipboard is not
   available; give a file path or a link instead.
+- **`generate postmortem --timezone <tz>`** shows every timestamp in one IANA
+  time zone (default `UTC`), e.g. `--timezone Asia/Tokyo`.
+- **A postmortem timeline event can hold one fact per line.** Each line of a
+  `|` block renders on its own line in Markdown, Confluence and ADF, and
+  `**Lead-in:**` renders bold.
 - **A run step says up front that it wants evidence**, and which kind:
   `Evidence : required — screenshot, link  ([e] adds it)`.
 - **`validate` warns about `evidence.results` that do nothing**: a key that is
@@ -27,6 +32,21 @@ All notable changes to this project are documented here. This project follows
 
 ### Changed
 
+- **The postmortem timeline is rendered in time order**, not YAML order, so
+  an entry appended later lands where it happened. All entries must be
+  ISO-8601 timestamps, or all bare `HH:MM` times; a mix keeps the YAML order
+  and `generate postmortem` prints a warning.
+- **A postmortem timestamp without a time zone is rejected.** A date-time
+  such as `2026-01-01T14:00:00` was read as the local time of whichever
+  machine rendered it. Append `Z` or an offset such as `+09:00`. Bare dates
+  and free-form clock strings (`16:20`) are still accepted.
+- **The postmortem Mermaid timeline is left out above 8 entries**, and a
+  long or multi-line event is cut to its first line in the chart, marked
+  `(see table)`. The table always has every entry in full.
+- **The postmortem timeline table shows `Who` and `Ref` only when some entry
+  has them.**
+- **`generate postmortem` lists each validation error with its field**, not
+  only `Schema validation failed`.
 - **`[e]` evidence is one prompt.** Give it a file path (drag a screenshot
   in), a URL, or text; press Enter alone to capture the pane; `Esc` cancels.
   The kind is worked out from what you give. The old `f` / `t` answers still
@@ -46,6 +66,11 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **Times in the postmortem Mermaid timeline keep their colons.** `16:20`
+  was rendered as `16-20` and a range as `18-05-18-10Z`; colons are now
+  written as Mermaid entity codes and display as `16:20`.
+- **A multi-line postmortem timeline event no longer breaks the Markdown
+  table**; in Confluence its lines were run together into one paragraph.
 - **A multi-line paste at the evidence prompt is kept whole.** Only the first
   line was recorded; the second became the description and the rest were read
   by the step bar, where a line that was a single letter triggered that

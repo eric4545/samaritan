@@ -76,6 +76,8 @@ directory or example ships with this repo today.
 - `-f, --format markdown|confluence|adf` (default `markdown`); `-o` writes to a
   file, otherwise stdout. Confluence output wraps the Mermaid timeline in the
   `{markdown}` macro (same pattern as the operation Gantt).
+- `--timezone <tz>` — render every timestamp in this IANA zone (default `UTC`);
+  an unknown zone is an error.
 - `postmortem from-run <session-id|events.jsonl>` seeds a postmortem YAML from a
   captured run record: timeline, participants, incident window, and
   `operation`/`run` back-references are auto-filled; narrative fields are `TODO`.

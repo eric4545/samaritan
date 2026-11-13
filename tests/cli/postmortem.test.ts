@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdtempSync,
@@ -59,6 +59,62 @@ describe('generate postmortem CLI', () => {
 
   it('exits non-zero with a schema error on an invalid document', () => {
     assert.throws(() => run(`generate postmortem ${INVALID}`));
+  });
+
+  it('--timezone shows every timestamp in that zone', () => {
+    const out = run(`generate postmortem ${EXAMPLE} --timezone Asia/Tokyo`);
+    // occurred_at 2026-07-01T14:32:00Z is 23:32 in Tokyo.
+    assert.ok(out.includes('Wed, 01 Jul 2026 23:32:00 Asia/Tokyo'), out);
+    assert.ok(!out.includes(' UTC'), 'no UTC timestamps left');
+  });
+
+  it('rejects an unknown --timezone', () => {
+    const r = spawnSync(
+      'npx',
+      [
+        'tsx',
+        'src/cli/index.ts',
+        'generate',
+        'postmortem',
+        EXAMPLE,
+        '--timezone',
+        'Nowhere/Zone',
+      ],
+      { encoding: 'utf-8' },
+    );
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /Unknown time zone 'Nowhere\/Zone'/);
+  });
+
+  it('names the field of a zone-less timestamp', () => {
+    const file = join(dir, 'zoneless.yaml');
+    writeFileSync(
+      file,
+      'title: T\nsummary: S\ntimeline:\n  - at: 2026-01-01T14:00:00\n    event: e\n',
+    );
+    const r = spawnSync(
+      'npx',
+      ['tsx', 'src/cli/index.ts', 'generate', 'postmortem', file],
+      { encoding: 'utf-8' },
+    );
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /\/timeline\/0\/at: timestamp .* has no time zone/);
+  });
+
+  it('warns when the timeline cannot be sorted, and still renders', () => {
+    const file = join(dir, 'mixed.yaml');
+    writeFileSync(
+      file,
+      'title: T\nsummary: S\ntimeline:\n  - at: 2026-01-01T15:00:00Z\n    event: b\n  - at: "14:00"\n    event: a\n',
+    );
+    const r = spawnSync(
+      'npx',
+      ['tsx', 'src/cli/index.ts', 'generate', 'postmortem', file],
+      { encoding: 'utf-8' },
+    );
+    assert.equal(r.status, 0);
+    assert.match(r.stderr, /timeline kept in YAML order/);
+    assert.ok(r.stdout.indexOf('• b') < r.stdout.indexOf('• a'));
   });
 
   it('postmortem init emits a schema-valid template', () => {

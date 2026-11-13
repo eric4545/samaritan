@@ -109,8 +109,14 @@
         "required": ["at", "event"],
         "additionalProperties": false,
         "properties": {
-          "at": { "type": "string", "description": "Event timestamp" },
-          "event": { "type": "string" },
+          "at": {
+            "type": "string",
+            "description": "When it happened: ISO-8601 with a zone (2026-01-01T14:00:00Z, +09:00 offset) or a bare clock string (16:20). Entries are rendered in time order."
+          },
+          "event": {
+            "type": "string",
+            "description": "What happened. Each line renders on its own line; **bold** renders bold."
+          },
           "kind": {
             "type": "string",
             "enum": ["cause", "detection", "action", "recovery", "note"]

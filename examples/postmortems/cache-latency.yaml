@@ -1,0 +1,89 @@
+# SAMARITAN Postmortem: a long timeline
+#
+# Shows how a busy timeline renders:
+#   samaritan generate postmortem examples/postmortems/cache-latency.yaml -o postmortem.md
+#   samaritan generate postmortem examples/postmortems/cache-latency.yaml --timezone Asia/Tokyo
+#
+# - Entries are sorted by `at` when rendered, so an event you remember later
+#   can be appended at the end of the list (see the last entry).
+# - Every `at` is a full ISO-8601 timestamp with a zone (Z or +09:00). A
+#   timestamp without a zone is rejected; mixing them with bare `HH:MM`
+#   strings keeps the YAML order and prints a warning.
+# - With more than 8 entries the Mermaid chart is left out and the table is
+#   the timeline. Shorter timelines keep the chart; long events are cut to
+#   their first line there, marked "(see table)".
+# - Use a `|` block with one fact per line: each line renders on its own line.
+#   `**Lead-in:**` renders bold.
+# - The Who / Ref columns appear only if some entry sets `by` / `ref`.
+
+title: API Gateway Latency After Cache Change
+id: OPS-0000
+severity: SEV2
+status: in-review
+occurred_at: 2026-01-01T14:00:00Z
+resolved_at: 2026-01-01T15:10:00Z
+authors: [alice@example.com]
+
+summary: |
+  A cache configuration change on web-server lowered the hit rate, and
+  api-gateway p99 latency rose above its SLO for 70 minutes until the change
+  was reverted and the cache warmed up again.
+
+detection:
+  method: alert
+  source: api-gateway p99 latency alert
+  detected_at: 2026-01-01T14:06:00Z
+
+timeline:
+  - at: 2026-01-01T14:00:00Z
+    event: Cache configuration change applied to web-server
+    kind: cause
+    by: ci-bot
+  - at: 2026-01-01T14:06:00Z
+    event: p99 latency alert fired for api-gateway
+    kind: detection
+  - at: 2026-01-01T14:12:00Z
+    event: |
+      **Triage:** on-call compared dashboards for web-server and api-gateway.
+      Cache hit rate had dropped from 94% to 41%.
+      No errors, only slow responses.
+    kind: action
+    by: alice
+  - at: 2026-01-01T14:25:00Z
+    event: |
+      **Decision:** revert the cache change instead of scaling out.
+      Scaling would not fix the hit rate.
+    kind: action
+    by: alice
+  - at: 2026-01-01T14:31:00Z
+    event: Revert deployed to web-server
+    kind: action
+    by: ci-bot
+  - at: 2026-01-01T14:40:00Z
+    event: Cache warm-up in progress; hit rate at 70%
+    kind: note
+  - at: 2026-01-01T14:58:00Z
+    event: Cache hit rate back to 93%
+    kind: recovery
+  - at: 2026-01-01T15:10:00Z
+    event: p99 latency within SLO for 10 minutes; incident resolved
+    kind: recovery
+  - at: 2026-01-01T15:20:00Z
+    event: Status page updated
+    kind: note
+    by: bob
+  # Remembered during review and appended here; it renders in time order.
+  - at: 2026-01-01T23:08:00+09:00
+    event: Incident declared, bob joined as communications lead
+    kind: note
+    by: alice
+
+root_cause:
+  summary: The new cache key format did not match keys already in the cache.
+  trigger: Cache configuration change on web-server
+
+action_items:
+  - title: Add a cache hit-rate alert
+    owner: bob@example.com
+    type: detect
+    status: open

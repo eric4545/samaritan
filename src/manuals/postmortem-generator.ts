@@ -8,14 +8,19 @@ import type {
 } from '../models/postmortem';
 import { evidenceLang } from './generator';
 import {
-  buildMermaidTimeline,
+  DEFAULT_POSTMORTEM_TIMEZONE,
   detectionRows,
+  type EventSegment,
+  eventLines,
   formatPostmortemTs,
   impactRows,
   incidentDuration,
+  type PostmortemRenderOptions,
   resolvePath,
   severityIcon,
+  type TimelineView,
   timelineKindIcon,
+  timelineView,
 } from './postmortem-shared';
 
 const ACTION_STATUS_ICON: Record<string, string> = {
@@ -33,7 +38,9 @@ const ACTION_STATUS_ICON: Record<string, string> = {
 export function generatePostmortemMarkdown(
   pm: Postmortem,
   postmortemDir?: string,
+  options: PostmortemRenderOptions = {},
 ): string {
+  const tz = options.timezone ?? DEFAULT_POSTMORTEM_TIMEZONE;
   const lines: string[] = [];
 
   // --- Header ---
@@ -53,9 +60,9 @@ export function generatePostmortemMarkdown(
   // --- Metadata / linkage ---
   const meta: string[] = [];
   if (pm.occurred_at)
-    meta.push(`- **Occurred**: ${formatPostmortemTs(pm.occurred_at)}`);
+    meta.push(`- **Occurred**: ${formatPostmortemTs(pm.occurred_at, tz)}`);
   if (pm.resolved_at)
-    meta.push(`- **Resolved**: ${formatPostmortemTs(pm.resolved_at)}`);
+    meta.push(`- **Resolved**: ${formatPostmortemTs(pm.resolved_at, tz)}`);
   const duration = incidentDuration(pm);
   if (duration) meta.push(`- **Duration**: ${duration}`);
   if (pm.authors?.length) meta.push(`- **Authors**: ${pm.authors.join(', ')}`);
@@ -96,31 +103,27 @@ export function generatePostmortemMarkdown(
   if (pm.detection) {
     lines.push('## Detection');
     lines.push('');
-    for (const { label, value } of detectionRows(pm.detection)) {
+    for (const { label, value } of detectionRows(pm.detection, tz)) {
       lines.push(`- **${label}**: ${value}`);
     }
     lines.push('');
   }
 
   // --- Timeline ---
-  if (pm.timeline?.length) {
+  const timeline = timelineView(pm, tz);
+  if (timeline) {
     lines.push('## Timeline');
     lines.push('');
-    const mermaid = buildMermaidTimeline(pm);
-    if (mermaid) {
+    if (timeline.mermaid) {
       lines.push('```mermaid');
-      lines.push(mermaid);
+      lines.push(timeline.mermaid);
       lines.push('```');
       lines.push('');
     }
-    lines.push('| Time | Event | Who | Ref |');
-    lines.push('| --- | --- | --- | --- |');
-    for (const entry of pm.timeline) {
-      lines.push(renderTimelineRow(entry));
-    }
+    lines.push(...renderTimelineTable(timeline, tz));
     lines.push('');
     // Inline any timeline-entry images beneath the table.
-    for (const entry of pm.timeline) {
+    for (const entry of timeline.entries) {
       if (entry.image) {
         lines.push(...renderImage(entry.image, entry.event, postmortemDir));
         lines.push('');
@@ -214,13 +217,40 @@ export function generatePostmortemMarkdown(
     .trimEnd()}\n`;
 }
 
-function renderTimelineRow(entry: TimelineEntry): string {
-  const icon = timelineKindIcon(entry.kind);
-  const time = formatPostmortemTs(entry.at);
-  const event = escapeTableText(`${icon} ${entry.event}`);
-  const who = escapeTableText(entry.by ?? '');
-  const ref = escapeTableText(entry.ref ?? '');
-  return `| ${time} | ${event} | ${who} | ${ref} |`;
+/** Timeline table; the Who/Ref columns appear only when some entry has one. */
+function renderTimelineTable(view: TimelineView, tz: string): string[] {
+  const headers = ['Time', 'Event'];
+  if (view.showWho) headers.push('Who');
+  if (view.showRef) headers.push('Ref');
+  const out = [
+    `| ${headers.join(' | ')} |`,
+    `| ${headers.map(() => '---').join(' | ')} |`,
+  ];
+  for (const entry of view.entries) {
+    const cells = [
+      escapeTableText(formatPostmortemTs(entry.at, tz)),
+      `${timelineKindIcon(entry.kind)} ${markdownEventCell(entry)}`,
+    ];
+    if (view.showWho) cells.push(escapeTableText(entry.by ?? ''));
+    if (view.showRef) cells.push(escapeTableText(entry.ref ?? ''));
+    out.push(`| ${cells.join(' | ')} |`);
+  }
+  return out;
+}
+
+/**
+ * One table cell for a multi-line event: each YAML line becomes its own line
+ * (`<br>`), so a raw newline can no longer break the table row.
+ */
+function markdownEventCell(entry: TimelineEntry): string {
+  return eventLines(entry.event)
+    .map((segs) => segs.map(markdownSegment).join(''))
+    .join('<br>');
+}
+
+function markdownSegment(seg: EventSegment): string {
+  const t = escapeTableText(seg.text);
+  return seg.bold ? `**${t}**` : t;
 }
 
 function renderActionRow(item: ActionItem): string {

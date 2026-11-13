@@ -33,7 +33,7 @@ report" — only `title` and `summary` are required; every other section is opti
 | `tickets` | string[] | related tickets |
 | `impact` | object | `scope`, `services[]`, `customers_affected`, `notes`, plus `detected_after` (MTTD) / `resolved_after` (MTTR) — auto-derived from `occurred_at`→`detected_at` / `occurred_at`→`resolved_at` when omitted; set explicitly to override |
 | `detection` | object | `method` (`alert`\|`customer`\|`monitoring`\|`manual`), `source`, `detected_at` |
-| `timeline` | array | `{ at, event, kind?, by?, ref?, image? }`; `kind` = `cause`\|`detection`\|`action`\|`recovery`\|`note`. Rendered as a Mermaid `timeline` diagram + table |
+| `timeline` | array | `{ at, event, kind?, by?, ref?, image? }`; `kind` = `cause`\|`detection`\|`action`\|`recovery`\|`note`. Rendered sorted by `at` as a table (Who/Ref columns only when used) plus a Mermaid `timeline` chart when there are at most 8 entries (long/multi-line events cut to their first line + `(see table)`). Each line of a multi-line `event` renders on its own line; `**bold**` renders bold |
 | `root_cause` | object | `summary` (required within), `trigger`, `contributing_factors[]`, `five_whys[]` |
 | `resolution` | string | |
 | `action_items` | array | `{ title, owner?, ticket?, type?, status?, due? }`; `type` = `prevent`\|`mitigate`\|`detect`\|`process`; `status` = `open`\|`in-progress`\|`done` |
@@ -44,6 +44,11 @@ report" — only `title` and `summary` are required; every other section is opti
 
 - Timestamps may be unquoted ISO-8601; the parser keeps them as strings (uses
   js-yaml `JSON_SCHEMA`), so bare dates like `2026-07-15` stay `2026-07-15`.
+- An ISO-8601 date-time (`occurred_at`, `resolved_at`, `detection.detected_at`,
+  `timeline[].at`) MUST carry a zone (`Z` or `+09:00`); the parser rejects one
+  without. `timeline[].at` may instead be a free-form clock string (`16:20`,
+  `18:05-18:10Z`), shown as written. The timeline sorts only when every `at` is
+  ISO-8601 or every `at` is `HH:MM`; a mix keeps YAML order with a warning.
 - The three renderers are self-contained (`src/manuals/postmortem-generator.ts`
   Markdown, `postmortem-adf-generator.ts` ADF, `postmortem-confluence.ts` wiki).
   The Confluence Mermaid timeline is wrapped in the `{markdown}` macro, matching

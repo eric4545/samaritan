@@ -58,4 +58,58 @@ describe('parsePostmortem', () => {
       SchemaValidationError,
     );
   });
+
+  describe('timestamps', () => {
+    const doc = (at: string) =>
+      `title: T\nsummary: S\ntimeline:\n  - at: ${at}\n    event: e\n`;
+
+    it('rejects a date-time without a time zone, naming the field', () => {
+      assert.throws(
+        () => parsePostmortem(doc('2026-01-01T14:00:00')),
+        (err: unknown) => {
+          assert.ok(err instanceof SchemaValidationError);
+          assert.equal(err.errors[0].field, '/timeline/0/at');
+          assert.match(err.errors[0].message, /no time zone/);
+          return true;
+        },
+      );
+    });
+
+    it('rejects a zone-less occurred_at, resolved_at and detected_at', () => {
+      assert.throws(
+        () =>
+          parsePostmortem(
+            'title: T\nsummary: S\noccurred_at: 2026-01-01 14:00\nresolved_at: 2026-01-01T15:00:00\ndetection:\n  detected_at: 2026-01-01T14:05:00\n',
+          ),
+        (err: unknown) => {
+          assert.ok(err instanceof SchemaValidationError);
+          assert.deepEqual(
+            err.errors.map((e) => e.field),
+            ['/occurred_at', '/resolved_at', '/detection/detected_at'],
+          );
+          return true;
+        },
+      );
+    });
+
+    it('rejects an impossible date', () => {
+      assert.throws(
+        () => parsePostmortem(doc('2026-13-45T14:00:00Z')),
+        /Schema validation failed/,
+      );
+    });
+
+    for (const ok of [
+      '2026-01-01T14:00:00Z',
+      '2026-01-01T23:00:00+09:00',
+      '2026-01-01T14:00:00.123-0500',
+      '2026-01-01',
+      '16:20',
+      '18:05-18:10Z',
+    ]) {
+      it(`accepts '${ok}'`, () => {
+        assert.equal(parsePostmortem(doc(ok)).timeline?.[0].at, ok);
+      });
+    }
+  });
 });

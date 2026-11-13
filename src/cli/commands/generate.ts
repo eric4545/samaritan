@@ -27,6 +27,10 @@ import {
 import { generatePostmortemADFString } from '../../manuals/postmortem-adf-generator';
 import { generatePostmortemConfluence } from '../../manuals/postmortem-confluence';
 import { generatePostmortemMarkdown } from '../../manuals/postmortem-generator';
+import {
+  assertValidTimezone,
+  sortTimeline,
+} from '../../manuals/postmortem-shared';
 import type { Step } from '../../models/operation';
 import {
   parseOperation,
@@ -74,6 +78,7 @@ interface GenerateOptions {
   prefix?: string;
   group?: string;
   allGroups?: boolean;
+  timezone?: string;
 }
 
 // File extension per output format for --all-envs naming
@@ -204,19 +209,28 @@ class DocumentationGenerator {
     options: GenerateOptions,
   ): Promise<void> {
     const format = options.format || 'markdown';
+    if (options.timezone) assertValidTimezone(options.timezone);
     const pm = parsePostmortemFile(postmortemFile);
     const postmortemDir = dirname(postmortemFile);
+    const renderOptions = { timezone: options.timezone };
+
+    const order = pm.timeline ? sortTimeline(pm.timeline) : undefined;
+    if (order?.unsortedReason) console.warn(`⚠️  ${order.unsortedReason}`);
 
     let content: string;
     switch (format) {
       case 'confluence':
-        content = generatePostmortemConfluence(pm, postmortemDir);
+        content = generatePostmortemConfluence(
+          pm,
+          postmortemDir,
+          renderOptions,
+        );
         break;
       case 'adf':
-        content = generatePostmortemADFString(pm, postmortemDir);
+        content = generatePostmortemADFString(pm, postmortemDir, renderOptions);
         break;
       case 'markdown':
-        content = generatePostmortemMarkdown(pm, postmortemDir);
+        content = generatePostmortemMarkdown(pm, postmortemDir, renderOptions);
         break;
       default:
         throw new Error(
@@ -2447,12 +2461,19 @@ generateCommand
     'Output format (markdown, confluence, adf)',
     'markdown',
   )
+  .option(
+    '--timezone <tz>',
+    'Show every timestamp in this IANA time zone, e.g. Asia/Tokyo (default: UTC)',
+  )
   .action(async (postmortem: string, options: GenerateOptions) => {
     try {
       const generator = new DocumentationGenerator();
       await generator.generatePostmortem(postmortem, options);
     } catch (error: any) {
       console.error(`❌ Failed to generate postmortem: ${error.message}`);
+      for (const e of error.errors ?? []) {
+        console.error(`   ${e.field}: ${e.message}`);
+      }
       process.exit(1);
     }
   });
