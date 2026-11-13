@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { JSON_SCHEMA, load as parseYaml } from 'js-yaml';
-import type { Postmortem } from '../models/postmortem';
+import { isIsoTimestamp, parseInstant } from '../manuals/postmortem-shared';
+import type { Postmortem, TimelineEntry } from '../models/postmortem';
 import {
   SchemaValidationError,
   type ValidationError,
@@ -40,29 +41,14 @@ export function validatePostmortemSchema(data: unknown): ValidationError[] {
   return errors;
 }
 
-/** An ISO-8601 date followed by a time (`T` or space separator). */
-const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
-/** A trailing `Z` or `±HH:MM` / `±HHMM` / `±HH` zone designator. */
-const ISO_ZONE_RE = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
-
 /**
- * Check one timestamp. A date-time without a zone is rejected: JavaScript
- * reads it as the renderer's LOCAL time, so the same YAML would render (and
- * sort) differently on two machines. Bare dates and free-form clock strings
- * such as `16:20` or `18:05-18:10Z` are allowed.
+ * An impossible ISO-8601 date (`2026-13-45T…`) is an error. A date-time
+ * without a zone is allowed: it is read in the display time zone and
+ * `generate postmortem` warns (see `postmortemWarnings`).
  */
 function timestampError(field: string, value: unknown): ValidationError[] {
-  if (typeof value !== 'string' || !ISO_DATETIME_RE.test(value)) return [];
-  if (!ISO_ZONE_RE.test(value)) {
-    return [
-      {
-        field,
-        message: `timestamp '${value}' has no time zone; append Z (UTC) or an offset such as +09:00`,
-        value,
-      },
-    ];
-  }
-  if (Number.isNaN(Date.parse(value))) {
+  if (typeof value !== 'string' || !isIsoTimestamp(value)) return [];
+  if (parseInstant(value) === undefined) {
     return [
       { field, message: `timestamp '${value}' is not a valid date`, value },
     ];
@@ -70,9 +56,39 @@ function timestampError(field: string, value: unknown): ValidationError[] {
   return [];
 }
 
+/** `until` must be the same kind as `at`, and not before it. */
+function untilError(i: number, entry: TimelineEntry): ValidationError[] {
+  if (entry.until === undefined) return [];
+  const field = `/timeline/${i}/until`;
+  const atIso = isIsoTimestamp(entry.at);
+  if (atIso !== isIsoTimestamp(entry.until)) {
+    return [
+      {
+        field,
+        message: atIso
+          ? `until '${entry.until}' must be a full ISO-8601 timestamp like at '${entry.at}'`
+          : `until '${entry.until}' must be a clock time like at '${entry.at}'`,
+        value: entry.until,
+      },
+    ];
+  }
+  const start = parseInstant(entry.at);
+  const end = parseInstant(entry.until);
+  if (start !== undefined && end !== undefined && end < start) {
+    return [
+      {
+        field,
+        message: `until '${entry.until}' is before at '${entry.at}'`,
+        value: entry.until,
+      },
+    ];
+  }
+  return [];
+}
+
 /**
- * Timestamp checks the JSON schema cannot express: every ISO-8601 date-time
- * (incident window, detection time, timeline entries) must carry a zone.
+ * Timestamp checks the JSON schema cannot express: real dates everywhere,
+ * and a timeline `until` that matches its `at`.
  */
 export function validatePostmortemTimestamps(
   pm: Postmortem,
@@ -84,8 +100,12 @@ export function validatePostmortemTimestamps(
   ];
   (pm.timeline ?? []).forEach((entry, i) => {
     errors.push(...timestampError(`/timeline/${i}/at`, entry.at));
+    errors.push(...timestampError(`/timeline/${i}/until`, entry.until));
+    errors.push(...untilError(i, entry));
   });
-  return errors;
+  // One message per field: an invalid date also fails the until check.
+  const seen = new Set<string>();
+  return errors.filter((e) => !seen.has(e.field) && seen.add(e.field));
 }
 
 /**

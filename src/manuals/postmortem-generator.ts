@@ -13,6 +13,7 @@ import {
   type EventSegment,
   eventLines,
   formatPostmortemTs,
+  formatTimelineTime,
   impactRows,
   incidentDuration,
   type PostmortemRenderOptions,
@@ -63,7 +64,7 @@ export function generatePostmortemMarkdown(
     meta.push(`- **Occurred**: ${formatPostmortemTs(pm.occurred_at, tz)}`);
   if (pm.resolved_at)
     meta.push(`- **Resolved**: ${formatPostmortemTs(pm.resolved_at, tz)}`);
-  const duration = incidentDuration(pm);
+  const duration = incidentDuration(pm, tz);
   if (duration) meta.push(`- **Duration**: ${duration}`);
   if (pm.authors?.length) meta.push(`- **Authors**: ${pm.authors.join(', ')}`);
   if (pm.reviewers?.length)
@@ -89,7 +90,7 @@ export function generatePostmortemMarkdown(
   lines.push('');
 
   // --- Impact ---
-  const impact = impactRows(pm);
+  const impact = impactRows(pm, tz);
   if (impact.length) {
     lines.push('## Impact');
     lines.push('');
@@ -228,7 +229,7 @@ function renderTimelineTable(view: TimelineView, tz: string): string[] {
   ];
   for (const entry of view.entries) {
     const cells = [
-      escapeTableText(formatPostmortemTs(entry.at, tz)),
+      escapeTableText(formatTimelineTime(entry, tz)),
       `${timelineKindIcon(entry.kind)} ${markdownEventCell(entry)}`,
     ];
     if (view.showWho) cells.push(escapeTableText(entry.by ?? ''));

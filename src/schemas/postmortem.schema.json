@@ -111,7 +111,11 @@
         "properties": {
           "at": {
             "type": "string",
-            "description": "When it happened: ISO-8601 with a zone (2026-01-01T14:00:00Z, +09:00 offset) or a bare clock string (16:20). Entries are rendered in time order."
+            "description": "When it happened: ISO-8601 (2026-01-01T14:00:00Z, or a +09:00 offset; without a zone it is read in the --timezone zone) or a bare clock string (16:20). Entries are rendered in time order."
+          },
+          "until": {
+            "type": "string",
+            "description": "When it ended, for an event that lasted a while. Same form as at: ISO-8601 if at is, a clock string if at is one."
           },
           "event": {
             "type": "string",

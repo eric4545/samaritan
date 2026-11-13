@@ -86,7 +86,7 @@ describe('generate postmortem CLI', () => {
     assert.match(r.stderr, /Unknown time zone 'Nowhere\/Zone'/);
   });
 
-  it('names the field of a zone-less timestamp', () => {
+  it('warns about a zone-less timestamp and reads it in --timezone', () => {
     const file = join(dir, 'zoneless.yaml');
     writeFileSync(
       file,
@@ -94,26 +94,67 @@ describe('generate postmortem CLI', () => {
     );
     const r = spawnSync(
       'npx',
-      ['tsx', 'src/cli/index.ts', 'generate', 'postmortem', file],
+      [
+        'tsx',
+        'src/cli/index.ts',
+        'generate',
+        'postmortem',
+        file,
+        '--timezone',
+        'Asia/Tokyo',
+      ],
       { encoding: 'utf-8' },
     );
-    assert.notEqual(r.status, 0);
-    assert.match(r.stderr, /\/timeline\/0\/at: timestamp .* has no time zone/);
+    assert.equal(r.status, 0);
+    assert.match(
+      r.stderr,
+      /timeline\[0\]\.at '2026-01-01T14:00:00' has no time zone; read as Asia\/Tokyo/,
+    );
+    assert.ok(r.stdout.includes('Thu, 01 Jan 2026 14:00:00 Asia/Tokyo'));
   });
 
-  it('warns when the timeline cannot be sorted, and still renders', () => {
-    const file = join(dir, 'mixed.yaml');
+  it('names the field of an invalid until', () => {
+    const file = join(dir, 'bad-until.yaml');
     writeFileSync(
       file,
-      'title: T\nsummary: S\ntimeline:\n  - at: 2026-01-01T15:00:00Z\n    event: b\n  - at: "14:00"\n    event: a\n',
+      'title: T\nsummary: S\ntimeline:\n  - at: 2026-01-01T15:00:00Z\n    until: 2026-01-01T14:00:00Z\n    event: e\n',
     );
     const r = spawnSync(
       'npx',
       ['tsx', 'src/cli/index.ts', 'generate', 'postmortem', file],
       { encoding: 'utf-8' },
     );
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /\/timeline\/0\/until: until .* is before at/);
+  });
+
+  it('sorts mixed ISO and clock times; warns when it cannot', () => {
+    const mixed = join(dir, 'mixed.yaml');
+    writeFileSync(
+      mixed,
+      'title: T\nsummary: S\ntimeline:\n  - at: 2026-01-01T15:00:00Z\n    event: b\n  - at: "14:00"\n    event: a\n',
+    );
+    const sorted = spawnSync(
+      'npx',
+      ['tsx', 'src/cli/index.ts', 'generate', 'postmortem', mixed],
+      { encoding: 'utf-8' },
+    );
+    assert.equal(sorted.status, 0);
+    assert.equal(sorted.stderr, '');
+    assert.ok(sorted.stdout.indexOf('• a') < sorted.stdout.indexOf('• b'));
+
+    const unsortable = join(dir, 'unsortable.yaml');
+    writeFileSync(
+      unsortable,
+      'title: T\nsummary: S\ntimeline:\n  - at: 2026-01-01T15:00:00Z\n    event: b\n  - at: after lunch\n    event: a\n',
+    );
+    const r = spawnSync(
+      'npx',
+      ['tsx', 'src/cli/index.ts', 'generate', 'postmortem', unsortable],
+      { encoding: 'utf-8' },
+    );
     assert.equal(r.status, 0);
-    assert.match(r.stderr, /timeline kept in YAML order/);
+    assert.match(r.stderr, /timeline kept in YAML order: 'after lunch'/);
     assert.ok(r.stdout.indexOf('• b') < r.stdout.indexOf('• a'));
   });
 

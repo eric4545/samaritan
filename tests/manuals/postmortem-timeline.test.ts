@@ -10,9 +10,13 @@ import {
   escapeMermaidTimelineText,
   eventLines,
   formatPostmortemTs,
+  formatTimelineTime,
+  parseInstant,
+  postmortemWarnings,
   sortTimeline,
   TIMELINE_CHART_LABEL_MAX,
   TIMELINE_CHART_MAX_ENTRIES,
+  timelineChartTime,
   timelineLabel,
   timelineView,
 } from '../../src/manuals/postmortem-shared';
@@ -69,11 +73,64 @@ describe('sortTimeline', () => {
     );
   });
 
-  it('keeps YAML order and says why when ISO and clock times are mixed', () => {
-    const input = [entry('2026-01-01T15:00:00Z'), entry('14:00')];
+  it('places clock times on the day of the ISO entries when mixed', () => {
+    const { entries, unsortedReason } = sortTimeline([
+      entry('2026-01-01T15:10:00Z', 'recovered'),
+      entry('14:30-14:35Z', 'range'),
+      entry('2026-01-01T14:00:00Z', 'start'),
+      entry('14:12', 'bare clock, read in the display zone'),
+    ]);
+    assert.equal(unsortedReason, undefined);
+    assert.deepEqual(
+      entries.map((e) => e.event),
+      ['start', 'bare clock, read in the display zone', 'range', 'recovered'],
+    );
+  });
+
+  it('reads a bare clock time in the display zone, a zoned one in its own', () => {
+    const timeline = [
+      entry('2026-01-01T05:00:00Z', 'iso 14:00 Tokyo'),
+      entry('13:00', 'bare = 13:00 Tokyo'),
+      entry('04:30Z', 'zoned = 13:30 Tokyo'),
+    ];
+    const { entries } = sortTimeline(timeline, 'Asia/Tokyo');
+    assert.deepEqual(
+      entries.map((e) => e.event),
+      ['bare = 13:00 Tokyo', 'zoned = 13:30 Tokyo', 'iso 14:00 Tokyo'],
+    );
+  });
+
+  it('keeps YAML order when ISO entries span days and a clock time has no date', () => {
+    const input = [
+      entry('2026-01-01T15:00:00Z'),
+      entry('2026-01-02T09:00:00Z'),
+      entry('14:00'),
+    ];
     const { entries, unsortedReason } = sortTimeline(input);
     assert.deepEqual(entries, input);
-    assert.match(unsortedReason ?? '', /mixes full ISO-8601/);
+    assert.match(unsortedReason ?? '', /'14:00' has no date/);
+  });
+
+  it('keeps YAML order when clock-only times use different zones', () => {
+    const input = [entry('15:00Z'), entry('14:00+09:00')];
+    const { entries, unsortedReason } = sortTimeline(input);
+    assert.deepEqual(entries, input);
+    assert.match(unsortedReason ?? '', /different zones/);
+  });
+
+  it('reads a zone-less ISO date-time in the display zone', () => {
+    const { entries } = sortTimeline(
+      [
+        entry('2026-01-01T14:00:00', 'local 14:00'),
+        entry('2026-01-01T06:00:00Z', 'utc 06:00'),
+      ],
+      'Asia/Tokyo',
+    );
+    // 14:00 Tokyo = 05:00Z, before 06:00Z.
+    assert.deepEqual(
+      entries.map((e) => e.event),
+      ['local 14:00', 'utc 06:00'],
+    );
   });
 
   it('keeps YAML order and names the entry that has no time', () => {
@@ -155,6 +212,108 @@ describe('timestamp display', () => {
       formatPostmortemTs('18:05-18:10Z', 'Asia/Tokyo'),
       '18:05-18:10Z',
     );
+  });
+});
+
+describe('parseInstant', () => {
+  it('is exact with a zone and reads a zone-less value in the given zone', () => {
+    assert.equal(
+      parseInstant('2026-01-01T14:00:00Z'),
+      Date.UTC(2026, 0, 1, 14),
+    );
+    assert.equal(
+      parseInstant('2026-01-01T23:00:00+09:00'),
+      Date.UTC(2026, 0, 1, 14),
+    );
+    assert.equal(
+      parseInstant('2026-01-01T23:00:00', 'Asia/Tokyo'),
+      Date.UTC(2026, 0, 1, 14),
+    );
+    assert.equal(
+      parseInstant('2026-07-01T10:00:00', 'Europe/London'),
+      Date.UTC(2026, 6, 1, 9),
+      'summer time offset applied',
+    );
+  });
+
+  it('rejects impossible dates and free-form strings', () => {
+    assert.equal(parseInstant('2026-13-45T14:00:00Z'), undefined);
+    assert.equal(parseInstant('2026-02-30'), undefined);
+    assert.equal(parseInstant('16:20'), undefined);
+  });
+});
+
+describe('time ranges (until)', () => {
+  const ranged = (until: string, at = '2026-01-01T14:30:00Z') => ({
+    at,
+    until,
+    event: 'Cache warm-up',
+  });
+
+  it('writes a same-day range once, with its duration', () => {
+    assert.equal(
+      formatTimelineTime(ranged('2026-01-01T14:35:00Z')),
+      'Thu, 01 Jan 2026 14:30:00 – 14:35:00 UTC (5m)',
+    );
+    assert.equal(
+      timelineChartTime(ranged('2026-01-01T14:35:00Z')),
+      '14:30–14:35',
+    );
+  });
+
+  it('writes both ends in full across midnight', () => {
+    assert.equal(
+      formatTimelineTime(
+        ranged('2026-01-02T00:10:00Z', '2026-01-01T23:50:00Z'),
+      ),
+      'Thu, 01 Jan 2026 23:50:00 UTC – Fri, 02 Jan 2026 00:10:00 UTC (20m)',
+    );
+  });
+
+  it('joins clock-string ranges as written', () => {
+    assert.equal(formatTimelineTime(ranged('14:35', '14:30')), '14:30 – 14:35');
+  });
+
+  it('renders the range in every format', () => {
+    const pm = small([ranged('2026-01-01T14:35:00Z')]);
+    const want = 'Thu, 01 Jan 2026 14:30:00 – 14:35:00 UTC (5m)';
+    const md = generatePostmortemMarkdown(pm);
+    assert.ok(md.includes(want));
+    assert.ok(md.includes('14#58;30–14#58;35 : Cache warm-up'), md);
+    assert.ok(generatePostmortemConfluence(pm).includes(want));
+    assert.ok(JSON.stringify(generatePostmortemADF(pm)).includes(want));
+  });
+});
+
+describe('postmortemWarnings', () => {
+  it('names zone-less fields with the zone they are read in', () => {
+    const pm: Postmortem = {
+      title: 'T',
+      summary: 'S',
+      occurred_at: '2026-01-01T14:00:00',
+      timeline: [
+        {
+          at: '2026-01-01T14:00:00Z',
+          until: '2026-01-01T14:10:00',
+          event: 'e',
+        },
+      ],
+    };
+    assert.deepEqual(
+      postmortemWarnings(pm, 'Asia/Tokyo').map((w) => w.split(' has')[0]),
+      [
+        "occurred_at '2026-01-01T14:00:00'",
+        "timeline[0].until '2026-01-01T14:10:00'",
+      ],
+    );
+    assert.match(
+      postmortemWarnings(pm, 'Asia/Tokyo')[0],
+      /read as Asia\/Tokyo/,
+    );
+  });
+
+  it('is empty for a clean document', () => {
+    assert.deepEqual(postmortemWarnings(longPm()), []);
   });
 });
 

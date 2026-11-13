@@ -6,9 +6,10 @@
 #
 # - Entries are sorted by `at` when rendered, so an event you remember later
 #   can be appended at the end of the list (see the last entry).
-# - Every `at` is a full ISO-8601 timestamp with a zone (Z or +09:00). A
-#   timestamp without a zone is rejected; mixing them with bare `HH:MM`
-#   strings keeps the YAML order and prints a warning.
+# - Give `at` a zone (Z or +09:00). A timestamp without one is read in the
+#   --timezone zone (default UTC) and `generate` prints a warning.
+# - `until` marks the end of an event that lasted a while; it renders as a
+#   range with its duration (see the warm-up entry).
 # - With more than 8 entries the Mermaid chart is left out and the table is
 #   the timeline. Shorter timelines keep the chart; long events are cut to
 #   their first line there, marked "(see table)".
@@ -59,11 +60,12 @@ timeline:
     event: Revert deployed to web-server
     kind: action
     by: ci-bot
-  - at: 2026-01-01T14:40:00Z
-    event: Cache warm-up in progress; hit rate at 70%
+  - at: 2026-01-01T14:35:00Z
+    until: 2026-01-01T14:58:00Z
+    event: Cache warm-up; hit rate climbed from 41% to 93%
     kind: note
-  - at: 2026-01-01T14:58:00Z
-    event: Cache hit rate back to 93%
+  - at: 2026-01-01T15:00:00Z
+    event: Error budget burn back to normal
     kind: recovery
   - at: 2026-01-01T15:10:00Z
     event: p99 latency within SLO for 10 minutes; incident resolved

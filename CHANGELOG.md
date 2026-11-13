@@ -21,6 +21,9 @@ All notable changes to this project are documented here. This project follows
   available; give a file path or a link instead.
 - **`generate postmortem --timezone <tz>`** shows every timestamp in one IANA
   time zone (default `UTC`), e.g. `--timezone Asia/Tokyo`.
+- **A postmortem timeline entry can be a range**: add `until` (same form as
+  `at`). It renders as `14:35:00 – 14:58:00 UTC (23m)` in the table and
+  `14:35–14:58` in the chart.
 - **A postmortem timeline event can hold one fact per line.** Each line of a
   `|` block renders on its own line in Markdown, Confluence and ADF, and
   `**Lead-in:**` renders bold.
@@ -33,13 +36,11 @@ All notable changes to this project are documented here. This project follows
 ### Changed
 
 - **The postmortem timeline is rendered in time order**, not YAML order, so
-  an entry appended later lands where it happened. All entries must be
-  ISO-8601 timestamps, or all bare `HH:MM` times; a mix keeps the YAML order
-  and `generate postmortem` prints a warning.
-- **A postmortem timestamp without a time zone is rejected.** A date-time
-  such as `2026-01-01T14:00:00` was read as the local time of whichever
-  machine rendered it. Append `Z` or an offset such as `+09:00`. Bare dates
-  and free-form clock strings (`16:20`) are still accepted.
+  an entry appended later lands where it happened. Bare clock times
+  (`16:20`, `18:05-18:10Z`) mixed with full timestamps are placed on the
+  timestamps' day. When that is not possible (the timestamps span several
+  days, or an `at` is not a time) the YAML order is kept and `generate
+  postmortem` says why.
 - **The postmortem Mermaid timeline is left out above 8 entries**, and a
   long or multi-line event is cut to its first line in the chart, marked
   `(see table)`. The table always has every entry in full.
@@ -66,6 +67,12 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **A postmortem timestamp without a time zone renders the same on every
+  machine.** `2026-01-01T14:00:00` was read as the local time of whichever
+  machine rendered it. It is now read in the `--timezone` zone (default
+  `UTC`), and `generate postmortem` warns so you can add `Z` or an offset.
+  An impossible date (`2026-02-30`) is now an error instead of being shown
+  as written.
 - **Times in the postmortem Mermaid timeline keep their colons.** `16:20`
   was rendered as `16-20` and a range as `18-05-18-10Z`; colons are now
   written as Mermaid entity codes and display as `16:20`.

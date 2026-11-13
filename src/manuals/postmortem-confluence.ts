@@ -6,6 +6,7 @@ import {
   type EventSegment,
   eventLines,
   formatPostmortemTs,
+  formatTimelineTime,
   impactRows,
   incidentDuration,
   type PostmortemRenderOptions,
@@ -75,7 +76,7 @@ export function generatePostmortemConfluence(
     meta.push(`* *Occurred:* ${esc(formatPostmortemTs(pm.occurred_at, tz))}`);
   if (pm.resolved_at)
     meta.push(`* *Resolved:* ${esc(formatPostmortemTs(pm.resolved_at, tz))}`);
-  const duration = incidentDuration(pm);
+  const duration = incidentDuration(pm, tz);
   if (duration) meta.push(`* *Duration:* ${duration}`);
   if (pm.authors?.length)
     meta.push(`* *Authors:* ${esc(pm.authors.join(', '))}`);
@@ -99,7 +100,7 @@ export function generatePostmortemConfluence(
   out.push('');
 
   // Impact
-  const impact = impactRows(pm);
+  const impact = impactRows(pm, tz);
   if (impact.length) {
     out.push('h2. Impact');
     out.push('');
@@ -139,7 +140,7 @@ export function generatePostmortemConfluence(
     out.push(`|| ${headers.join(' || ')} ||`);
     for (const entry of timeline.entries) {
       const cells = [
-        cell(formatPostmortemTs(entry.at, tz)),
+        cell(formatTimelineTime(entry, tz)),
         `${timelineKindIcon(entry.kind)} ${wikiEventCell(entry.event)}`,
       ];
       if (timeline.showWho) cells.push(cell(entry.by ?? ' '));

@@ -38,10 +38,15 @@ export type ActionItemStatus = 'open' | 'in-progress' | 'done';
  */
 export interface TimelineEntry {
   /**
-   * ISO-8601 timestamp WITH a zone (`Z` / `+09:00`), or a free-form clock
-   * string such as `16:20`.
+   * ISO-8601 timestamp (`Z` / `+09:00`; without a zone it is read in the
+   * display time zone), or a free-form clock string such as `16:20`.
    */
   at: string;
+  /**
+   * End of the event when it lasted a while (a range from `at` to `until`).
+   * Same form as `at`: an ISO-8601 timestamp, or a clock string if `at` is one.
+   */
+  until?: string;
   /** What happened. One fact per line; `**bold**` is supported. */
   event: string;
   kind?: TimelineKind;

@@ -21,6 +21,7 @@ import {
   detectionRows,
   eventLines,
   formatPostmortemTs,
+  formatTimelineTime,
   impactRows,
   incidentDuration,
   type PostmortemRenderOptions,
@@ -93,7 +94,7 @@ export function generatePostmortemADF(
     content.push(kv('Occurred', formatPostmortemTs(pm.occurred_at, tz)));
   if (pm.resolved_at)
     content.push(kv('Resolved', formatPostmortemTs(pm.resolved_at, tz)));
-  const duration = incidentDuration(pm);
+  const duration = incidentDuration(pm, tz);
   if (duration) content.push(kv('Duration', duration));
   if (pm.authors?.length) content.push(kv('Authors', pm.authors.join(', ')));
   if (pm.reviewers?.length)
@@ -109,7 +110,7 @@ export function generatePostmortemADF(
   content.push(paragraph(text(pm.summary.trim())));
 
   // --- Impact ---
-  const impactItems = impactRows(pm).map((r) => `${r.label}: ${r.value}`);
+  const impactItems = impactRows(pm, tz).map((r) => `${r.label}: ${r.value}`);
   if (impactItems.length) {
     content.push(h2('Impact'));
     content.push(bullets(impactItems));
@@ -138,7 +139,7 @@ export function generatePostmortemADF(
     ];
     for (const entry of timeline.entries) {
       const cells = [
-        tableCell()(paragraph(text(formatPostmortemTs(entry.at, tz)))),
+        tableCell()(paragraph(text(formatTimelineTime(entry, tz)))),
         tableCell()(eventParagraph(entry.kind, entry.event)),
       ];
       if (timeline.showWho) cells.push(textCell(entry.by));

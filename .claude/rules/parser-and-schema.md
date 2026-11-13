@@ -180,8 +180,12 @@ Because a postmortem has its OWN sections (not operation steps), the
 four-render-path `StepContent` parity concern does NOT apply. See the skill's
 `reference/postmortem-yaml.md` for the authoring surface.
 
-The parser also runs `validatePostmortemTimestamps` (zone-less ISO date-times
-are rejected: JS would read them as the renderer's local time). The three
+The parser also runs `validatePostmortemTimestamps` (impossible dates, and a
+timeline `until` of another kind than `at` or before it, are errors). Never
+read a postmortem time with `new Date(ts)`: it reads a zone-less value as the
+RENDERER's local time. Every time goes through `parseInstant(ts, timezone)`
+(zone-less = wall time in the `--timezone` zone, default UTC), and
+`postmortemWarnings()` tells the author which fields had no zone. The three
 renderers draw the Timeline ONLY from `timelineView()` in
 `postmortem-shared.ts` (sort, chart-or-not, which optional columns) and split
 events with `eventLines()`; never iterate `pm.timeline` directly in a renderer

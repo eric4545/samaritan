@@ -29,7 +29,7 @@ import { generatePostmortemConfluence } from '../../manuals/postmortem-confluenc
 import { generatePostmortemMarkdown } from '../../manuals/postmortem-generator';
 import {
   assertValidTimezone,
-  sortTimeline,
+  postmortemWarnings,
 } from '../../manuals/postmortem-shared';
 import type { Step } from '../../models/operation';
 import {
@@ -214,8 +214,9 @@ class DocumentationGenerator {
     const postmortemDir = dirname(postmortemFile);
     const renderOptions = { timezone: options.timezone };
 
-    const order = pm.timeline ? sortTimeline(pm.timeline) : undefined;
-    if (order?.unsortedReason) console.warn(`⚠️  ${order.unsortedReason}`);
+    for (const warning of postmortemWarnings(pm, options.timezone)) {
+      console.warn(`⚠️  ${warning}`);
+    }
 
     let content: string;
     switch (format) {
