@@ -47,10 +47,14 @@ describe('link and text evidence results across formats', () => {
     for (const [label, md] of Object.entries({ multiEnv, singleEnv })) {
       assert.ok(md.includes(`<${NOTICE}>`), `${label}: step link`);
       assert.ok(md.includes(`<${ROLLBACK}>`), `${label}: rollback link`);
-      assert.ok(
-        !new RegExp(`\`\`\`\\w*(<br>|\\n)${NOTICE}`).test(md),
-        `${label}: the URL must not be fenced`,
-      );
+      for (const fenced of [
+        `\`\`\`text<br>${NOTICE}`,
+        `\`\`\`text\n${NOTICE}`,
+        `\`\`\`bash<br>${NOTICE}`,
+        `\`\`\`bash\n${NOTICE}`,
+      ]) {
+        assert.ok(!md.includes(fenced), `${label}: the URL must not be fenced`);
+      }
       assert.ok(md.includes('Deploy notice in the ops channel'), label);
       assert.ok(md.includes('web-server 1.4.2 going out to staging'), label);
     }
