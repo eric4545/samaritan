@@ -58,4 +58,93 @@ describe('parsePostmortem', () => {
       SchemaValidationError,
     );
   });
+
+  describe('timestamps', () => {
+    const doc = (at: string) =>
+      `title: T\nsummary: S\ntimeline:\n  - at: ${at}\n    event: e\n`;
+
+    it('accepts zone-less date-times (read in the display zone)', () => {
+      const pm = parsePostmortem(
+        'title: T\nsummary: S\noccurred_at: 2026-01-01 14:00\nresolved_at: 2026-01-01T15:00:00\ndetection:\n  detected_at: 2026-01-01T14:05:00\n',
+      );
+      assert.equal(pm.resolved_at, '2026-01-01T15:00:00');
+    });
+
+    it('names every impossible date', () => {
+      assert.throws(
+        () =>
+          parsePostmortem(
+            'title: T\nsummary: S\noccurred_at: 2026-02-30T14:00:00Z\ndetection:\n  detected_at: 2026-01-01T25:00:00Z\n',
+          ),
+        (err: unknown) => {
+          assert.ok(err instanceof SchemaValidationError);
+          assert.deepEqual(
+            err.errors.map((e) => e.field),
+            ['/occurred_at', '/detection/detected_at'],
+          );
+          return true;
+        },
+      );
+    });
+
+    const ranged = (at: string, until: string) =>
+      `title: T\nsummary: S\ntimeline:\n  - at: "${at}"\n    until: "${until}"\n    event: e\n`;
+
+    it('accepts an until of the same kind as at', () => {
+      const pm = parsePostmortem(
+        ranged('2026-01-01T14:30:00Z', '2026-01-01T14:35:00Z'),
+      );
+      assert.equal(pm.timeline?.[0].until, '2026-01-01T14:35:00Z');
+      assert.equal(
+        parsePostmortem(ranged('14:30', '14:35')).timeline?.[0].until,
+        '14:35',
+      );
+    });
+
+    it('rejects an until that is a clock time when at is ISO-8601', () => {
+      assert.throws(
+        () => parsePostmortem(ranged('2026-01-01T14:30:00Z', '14:35')),
+        (err: unknown) => {
+          assert.ok(err instanceof SchemaValidationError);
+          assert.equal(err.errors[0].field, '/timeline/0/until');
+          assert.match(err.errors[0].message, /must be a full ISO-8601/);
+          return true;
+        },
+      );
+    });
+
+    it('rejects an until before at', () => {
+      assert.throws(
+        () =>
+          parsePostmortem(
+            ranged('2026-01-01T14:30:00Z', '2026-01-01T14:00:00Z'),
+          ),
+        (err: unknown) => {
+          assert.ok(err instanceof SchemaValidationError);
+          assert.match(err.errors[0].message, /is before at/);
+          return true;
+        },
+      );
+    });
+
+    it('rejects an impossible date', () => {
+      assert.throws(
+        () => parsePostmortem(doc('2026-13-45T14:00:00Z')),
+        /Schema validation failed/,
+      );
+    });
+
+    for (const ok of [
+      '2026-01-01T14:00:00Z',
+      '2026-01-01T23:00:00+09:00',
+      '2026-01-01T14:00:00.123-0500',
+      '2026-01-01',
+      '16:20',
+      '18:05-18:10Z',
+    ]) {
+      it(`accepts '${ok}'`, () => {
+        assert.equal(parsePostmortem(doc(ok)).timeline?.[0].at, ok);
+      });
+    }
+  });
 });

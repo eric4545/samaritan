@@ -109,8 +109,18 @@
         "required": ["at", "event"],
         "additionalProperties": false,
         "properties": {
-          "at": { "type": "string", "description": "Event timestamp" },
-          "event": { "type": "string" },
+          "at": {
+            "type": "string",
+            "description": "When it happened: ISO-8601 (2026-01-01T14:00:00Z, or a +09:00 offset; without a zone it is read in the --timezone zone) or a bare clock string (16:20). Entries are rendered in time order."
+          },
+          "until": {
+            "type": "string",
+            "description": "When it ended, for an event that lasted a while. Same form as at: ISO-8601 if at is, a clock string if at is one."
+          },
+          "event": {
+            "type": "string",
+            "description": "What happened. Each line renders on its own line; **bold** renders bold."
+          },
           "kind": {
             "type": "string",
             "enum": ["cause", "detection", "action", "recovery", "note"]

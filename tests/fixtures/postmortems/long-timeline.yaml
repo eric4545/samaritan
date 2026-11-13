@@ -1,0 +1,36 @@
+# Timeline rendering fixture: more entries than the chart shows, entries
+# appended out of time order, a multi-line event with a bold lead-in, and no
+# `ref` on any entry (so the Ref column is omitted).
+title: Web Server Latency
+summary: Mock incident used to test timeline rendering.
+occurred_at: 2026-01-01T14:00:00Z
+timeline:
+  - at: 2026-01-01T14:00:00Z
+    event: Deploy of web-server started
+    kind: cause
+  - at: 2026-01-01T14:05:00Z
+    event: Latency alert fired
+    kind: detection
+  - at: 2026-01-01T14:10:00Z
+    event: |
+      **Mitigation:** rolled back web-server.
+      Error rate dropped within two minutes.
+    kind: action
+    by: alice
+  - at: 2026-01-01T14:15:00Z
+    event: Cache warm-up started
+  - at: 2026-01-01T14:20:00Z
+    event: Cache warm-up finished
+  - at: 2026-01-01T14:25:00Z
+    event: Traffic back to baseline
+  - at: 2026-01-01T14:30:00Z
+    event: Monitoring period started
+  - at: 2026-01-01T14:45:00Z
+    event: Incident resolved
+    kind: recovery
+  - at: 2026-01-01T14:50:00Z
+    event: Status page updated
+  # Remembered later and appended at the end of the list.
+  - at: 2026-01-01T14:02:00Z
+    event: Incident declared
+    kind: note

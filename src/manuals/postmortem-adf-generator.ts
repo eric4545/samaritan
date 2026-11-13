@@ -4,6 +4,7 @@ import {
   codeBlock,
   doc,
   em,
+  hardBreak,
   heading,
   listItem,
   paragraph,
@@ -16,14 +17,18 @@ import {
 } from '@atlaskit/adf-utils/builders';
 import type { Postmortem, SupportingInfo } from '../models/postmortem';
 import {
-  buildMermaidTimeline,
+  DEFAULT_POSTMORTEM_TIMEZONE,
   detectionRows,
+  eventLines,
   formatPostmortemTs,
+  formatTimelineTime,
   impactRows,
   incidentDuration,
+  type PostmortemRenderOptions,
   resolvePath,
   severityIcon,
   timelineKindIcon,
+  timelineView,
 } from './postmortem-shared';
 
 /** `**key**: value` paragraph. */
@@ -34,6 +39,28 @@ function kv(key: string, value: string): any {
 /** Bullet list from plain strings. */
 function bullets(items: string[]): any {
   return bulletList(...items.map((i) => listItem([paragraph(text(i))])));
+}
+
+/**
+ * A table cell's paragraph. ADF rejects an empty text node, so an absent
+ * value is an empty paragraph.
+ */
+function textCell(value?: string): any {
+  return tableCell()(value ? paragraph(text(value)) : paragraph());
+}
+
+/**
+ * A timeline event as one paragraph: each YAML line separated by a hard
+ * break, `**bold**` as a strong mark, prefixed by the kind badge.
+ */
+function eventParagraph(kind: string | undefined, event: string): any {
+  const nodes: any[] = [text(`${timelineKindIcon(kind)} `)];
+  eventLines(event).forEach((segs, i) => {
+    if (i > 0) nodes.push(hardBreak());
+    for (const seg of segs)
+      nodes.push(seg.bold ? strong(text(seg.text)) : text(seg.text));
+  });
+  return paragraph(...nodes);
 }
 
 function h2(t: string): any {
@@ -47,7 +74,9 @@ function h2(t: string): any {
 export function generatePostmortemADF(
   pm: Postmortem,
   postmortemDir?: string,
+  options: PostmortemRenderOptions = {},
 ): object {
+  const tz = options.timezone ?? DEFAULT_POSTMORTEM_TIMEZONE;
   const content: any[] = [];
 
   // --- Header ---
@@ -62,10 +91,10 @@ export function generatePostmortemADF(
 
   // --- Metadata / linkage ---
   if (pm.occurred_at)
-    content.push(kv('Occurred', formatPostmortemTs(pm.occurred_at)));
+    content.push(kv('Occurred', formatPostmortemTs(pm.occurred_at, tz)));
   if (pm.resolved_at)
-    content.push(kv('Resolved', formatPostmortemTs(pm.resolved_at)));
-  const duration = incidentDuration(pm);
+    content.push(kv('Resolved', formatPostmortemTs(pm.resolved_at, tz)));
+  const duration = incidentDuration(pm, tz);
   if (duration) content.push(kv('Duration', duration));
   if (pm.authors?.length) content.push(kv('Authors', pm.authors.join(', ')));
   if (pm.reviewers?.length)
@@ -81,7 +110,7 @@ export function generatePostmortemADF(
   content.push(paragraph(text(pm.summary.trim())));
 
   // --- Impact ---
-  const impactItems = impactRows(pm).map((r) => `${r.label}: ${r.value}`);
+  const impactItems = impactRows(pm, tz).map((r) => `${r.label}: ${r.value}`);
   if (impactItems.length) {
     content.push(h2('Impact'));
     content.push(bullets(impactItems));
@@ -90,43 +119,38 @@ export function generatePostmortemADF(
   // --- Detection ---
   if (pm.detection) {
     content.push(h2('Detection'));
-    const items = detectionRows(pm.detection).map(
+    const items = detectionRows(pm.detection, tz).map(
       (r) => `${r.label}: ${r.value}`,
     );
     if (items.length) content.push(bullets(items));
   }
 
   // --- Timeline ---
-  if (pm.timeline?.length) {
+  const timeline = timelineView(pm, tz);
+  if (timeline) {
     content.push(h2('Timeline'));
-    const mermaid = buildMermaidTimeline(pm);
-    if (mermaid)
-      content.push(codeBlock({ language: 'mermaid' })(text(mermaid)));
+    if (timeline.mermaid)
+      content.push(codeBlock({ language: 'mermaid' })(text(timeline.mermaid)));
+    const headers = ['Time', 'Event'];
+    if (timeline.showWho) headers.push('Who');
+    if (timeline.showRef) headers.push('Ref');
     const rows = [
-      tableRow([
-        tableHeader()(paragraph(text('Time'))),
-        tableHeader()(paragraph(text('Event'))),
-        tableHeader()(paragraph(text('Who'))),
-        tableHeader()(paragraph(text('Ref'))),
-      ]),
+      tableRow(headers.map((h) => tableHeader()(paragraph(text(h))))),
     ];
-    for (const entry of pm.timeline) {
-      rows.push(
-        tableRow([
-          tableCell()(paragraph(text(formatPostmortemTs(entry.at)))),
-          tableCell()(
-            paragraph(text(`${timelineKindIcon(entry.kind)} ${entry.event}`)),
-          ),
-          tableCell()(paragraph(text(entry.by ?? ''))),
-          tableCell()(paragraph(text(entry.ref ?? ''))),
-        ]),
-      );
+    for (const entry of timeline.entries) {
+      const cells = [
+        tableCell()(paragraph(text(formatTimelineTime(entry, tz)))),
+        tableCell()(eventParagraph(entry.kind, entry.event)),
+      ];
+      if (timeline.showWho) cells.push(textCell(entry.by));
+      if (timeline.showRef) cells.push(textCell(entry.ref));
+      rows.push(tableRow(cells));
     }
     content.push(table(...rows));
     // Timeline-entry images (ADF can't embed external images without an
     // attachment id, so render the reference as a labelled paragraph — parity
     // with the supporting-info image handling below).
-    for (const entry of pm.timeline) {
+    for (const entry of timeline.entries) {
       if (entry.image) {
         const isUrl = /^https?:\/\//.test(entry.image);
         const target = isUrl
@@ -245,6 +269,11 @@ function renderSupporting(
 export function generatePostmortemADFString(
   pm: Postmortem,
   postmortemDir?: string,
+  options: PostmortemRenderOptions = {},
 ): string {
-  return JSON.stringify(generatePostmortemADF(pm, postmortemDir), null, 2);
+  return JSON.stringify(
+    generatePostmortemADF(pm, postmortemDir, options),
+    null,
+    2,
+  );
 }
