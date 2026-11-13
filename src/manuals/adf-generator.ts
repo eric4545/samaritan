@@ -22,6 +22,7 @@ import {
 } from '@atlaskit/adf-utils/builders';
 import { stepRollbackAnchor, stepRollbackHeadingText } from '../lib/anchor';
 import { renderExpectParts } from '../lib/assertions';
+import { evidenceLinkUrl } from '../lib/evidence-input';
 import type { GenerationMetadata } from '../lib/git-metadata';
 import {
   buildEffectiveRollback,
@@ -1423,6 +1424,9 @@ function formatEvidenceInfo(
           } else {
             nodes.push(paragraph(text(`File: ${evidenceResult.file}`)));
           }
+        } else if (evidenceLinkUrl(evidenceResult)) {
+          const url = evidenceLinkUrl(evidenceResult) as string;
+          nodes.push(paragraph(link({ href: url })(text(url))));
         } else if (evidenceResult.content) {
           // Inline content - render in code block
           const language =
