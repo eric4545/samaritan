@@ -60,6 +60,20 @@ export function getRunDir(operationFile: string, sessionId: string): string {
   }
 }
 
+/**
+ * Where files attached as evidence during a run are copied: `evidence/`
+ * inside the run directory, beside `report.md`, so the report links to them
+ * with a relative path and the run directory can be shared as a whole.
+ */
+export function getRunEvidenceDir(
+  operationFile: string,
+  sessionId: string,
+): string {
+  const dir = join(getRunDir(operationFile, sessionId), 'evidence');
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 /** Path to the JSONL event log for a run (see `getRunDir`). */
 export function getRunLogPath(
   operationFile: string,

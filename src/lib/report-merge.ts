@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import type { RollbackRecord, StepRecord } from '../models/step-record';
-import { renderReport } from './report-generator';
+import { type ReportOptions, renderReport } from './report-generator';
 import { foldEvents, readEvents, type SessionEvent } from './session-log';
 import { candidateRunLogPaths, loadSession } from './session-persistence';
 
@@ -142,7 +142,10 @@ export function assertSameRunbook(
  * with the shared `renderReport` — the header/duration come from the combined,
  * timestamp-sorted event stream while the per-step body comes from the merge.
  */
-export function mergeSessions(sessionIds: string[]): string {
+export function mergeSessions(
+  sessionIds: string[],
+  options: ReportOptions = {},
+): string {
   if (sessionIds.length < 2) {
     throw new Error('report merge requires at least two session IDs.');
   }
@@ -170,5 +173,5 @@ export function mergeSessions(sessionIds: string[]): string {
     .flatMap((f) => f.events)
     .sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
 
-  return renderReport(events, { steps, rollbacks });
+  return renderReport(events, { steps, rollbacks }, undefined, options);
 }

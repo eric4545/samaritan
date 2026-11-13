@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { dirname } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { evidenceLang } from '../manuals/generator';
 import type {
   RollbackRecord,
@@ -21,9 +21,21 @@ const RUN_IDENTITY_FIELDS = [
   ['Group', 'group'],
 ] as const;
 
-export function generateReport(jsonlPath: string): string {
+export interface ReportOptions {
+  /**
+   * Directory the report is WRITTEN to, when that is not the run directory
+   * (`run --report <dir>`, `report --output`, `report merge --output`).
+   * Evidence files are linked relative to it, so the links still open.
+   */
+  linkFrom?: string;
+}
+
+export function generateReport(
+  jsonlPath: string,
+  options: ReportOptions = {},
+): string {
   const events = readEvents(jsonlPath);
-  return renderReport(events, foldEvents(events), dirname(jsonlPath));
+  return renderReport(events, foldEvents(events), dirname(jsonlPath), options);
 }
 
 /**
@@ -35,6 +47,7 @@ export function renderReport(
   events: SessionEvent[],
   folded: { steps: StepRecord[]; rollbacks: RollbackRecord[] },
   runDir?: string,
+  options: ReportOptions = {},
 ): string {
   const sessionStart = events.find((e) => e.type === 'session_start');
   const sessionEnd = events.find((e) => e.type === 'session_end');
@@ -50,6 +63,18 @@ export function renderReport(
       runDir,
       opDir: opFile !== 'unknown' ? dirname(opFile) : undefined,
     });
+  // Evidence files are linked relative to where the report is read from.
+  // A file outside that tree is only linked with `..` when the caller said
+  // where the report goes; otherwise the redacted path is shown.
+  const linkBase = options.linkFrom ?? runDir;
+  const href: Redact = (path) => {
+    if (!linkBase || !isAbsolute(path)) return markdownLinkTarget(redact(path));
+    const rel = relative(resolve(linkBase), path);
+    const outside = rel.startsWith('..') || isAbsolute(rel);
+    return markdownLinkTarget(
+      outside && !options.linkFrom ? redact(path) : rel.split(sep).join('/'),
+    );
+  };
   const status = (sessionEnd?.status as string) ?? 'unknown';
   const startTs = events[0]?.ts ? formatTs(events[0].ts) : 'unknown';
 
@@ -144,7 +169,7 @@ export function renderReport(
   lines.push('');
 
   for (const step of steps) {
-    lines.push(...renderStep(step, redact, abortedIndex));
+    lines.push(...renderStep(step, redact, href, abortedIndex));
   }
 
   // Approval Trail — aggregates every step-level approve/reject decision so
@@ -266,6 +291,7 @@ function rollbackStatusLabel(status: string): string {
 function renderStep(
   step: StepRecord,
   redact: Redact,
+  href: Redact,
   abortedIndex?: number,
 ): string[] {
   const lines: string[] = [];
@@ -336,12 +362,14 @@ function renderStep(
   if (step.notes.length) {
     lines.push('');
     lines.push('**Notes**');
-    for (const note of step.notes) lines.push(`- ${note}`);
+    // A pasted multi-line note stays inside its bullet.
+    for (const note of step.notes)
+      lines.push(`- ${note.replace(/\n/g, '\n  ')}`);
   }
 
   for (const evidence of step.evidence) {
     lines.push('');
-    lines.push(...renderEvidenceBlock(evidence, redact));
+    lines.push(...renderEvidenceBlock(evidence, redact, href));
   }
 
   lines.push('');
@@ -441,9 +469,22 @@ function renderApproval(approval: StepApproval): string[] {
   return lines;
 }
 
+/**
+ * A link destination Markdown accepts: one with spaces or brackets has to be
+ * wrapped in `<...>`, or the image/link renders as plain text.
+ */
+function markdownLinkTarget(target: string): string {
+  return /[\s()<>]/.test(target)
+    ? `<${target.replace(/[<>]/g, encodeURIComponent)}>`
+    : target;
+}
+
+const IMAGE_TYPES = new Set(['screenshot', 'photo']);
+
 function renderEvidenceBlock(
   evidence: StepEvidenceRef,
   redact: Redact,
+  href: Redact,
 ): string[] {
   const lines: string[] = [];
   const label = evidence.description
@@ -453,22 +494,37 @@ function renderEvidenceBlock(
   lines.push('');
 
   if (evidence.path) {
-    if (evidence.type === 'screenshot' || evidence.type === 'photo') {
-      lines.push(`![Evidence](${redact(evidence.path)})`);
-    } else {
-      lines.push(`[View ${evidence.type}](${redact(evidence.path)})`);
-    }
+    const name = evidence.filename ?? evidence.type;
+    lines.push(
+      IMAGE_TYPES.has(evidence.type)
+        ? `![${evidence.description ?? name}](${href(evidence.path)})`
+        : `[${name}](${href(evidence.path)})`,
+    );
+  } else if (evidence.type === 'link' && evidence.content) {
+    // A URL (chat message, CI build, dashboard): a link, not a code block.
+    lines.push(`<${evidence.content.trim()}>`);
   } else if (evidence.content) {
     // Reuse evidenceLang() so captured-evidence code blocks fence
     // consistently with evidence.results rendering in the manual generator.
     // Clean terminal noise then redact local paths so auto-captured verify
     // output reads well and doesn't leak the operator's filesystem.
-    lines.push(`\`\`\`${evidenceLang(evidence.type)}`);
-    lines.push(redact(cleanTerminalOutput(evidence.content)).trim());
-    lines.push('```');
+    const body = redact(cleanTerminalOutput(evidence.content)).trim();
+    const fence = codeFence(body);
+    lines.push(`${fence}${evidenceLang(evidence.type)}`);
+    lines.push(body);
+    lines.push(fence);
   }
 
   return lines;
+}
+
+/** A fence longer than any backtick run in the body, so it cannot end early. */
+function codeFence(body: string): string {
+  const longest = Math.max(
+    0,
+    ...(body.match(/`+/g) ?? []).map((run) => run.length),
+  );
+  return '`'.repeat(Math.max(3, longest + 1));
 }
 
 function formatTs(ts: string): string {

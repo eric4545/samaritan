@@ -5,11 +5,11 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import {
   createInterface as createReadlineInterface,
   emitKeypressEvents,
@@ -26,10 +26,23 @@ import { getBuiltinVariables } from '../../lib/builtin-variables';
 import type { CaptureBackend, PaneOwner } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { createEventLogger } from '../../lib/event-logger';
+import {
+  classifyEvidenceInput,
+  type EvidenceInput,
+  evidenceHeaderLine,
+  evidencePromptLines,
+  evidenceTypeMismatch,
+  inferEvidenceTypeFromExtension,
+  isEvidenceUrl,
+  resolveDroppedPath,
+  storedEvidenceName,
+  wantedEvidenceTypes,
+} from '../../lib/evidence-input';
 import { OperationExecutor } from '../../lib/executor';
 import { findShellVarRefs } from '../../lib/expect-lint';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
+import { MultilineBuffer } from '../../lib/multiline-input';
 import {
   type ArmedEnter,
   armEnter,
@@ -58,6 +71,7 @@ import {
 } from '../../lib/session-log';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import {
+  getRunEvidenceDir,
   getRunReportPath,
   getSessionEvidenceDir,
 } from '../../lib/session-persistence';
@@ -130,6 +144,13 @@ const ROLLBACK_ACTION_KEYS: ReadonlySet<string> = new Set([
   's',
   'a',
 ]);
+
+// Bracketed paste: the terminal wraps a paste in ESC[200~ / ESC[201~.
+const BRACKETED_PASTE_ON = '\x1b[?2004h';
+const BRACKETED_PASTE_OFF = '\x1b[?2004l';
+// How long an Enter waits for more keys before it submits a multi-line
+// prompt (a paste into a terminal without bracketed paste is one burst).
+const PASTE_BURST_MS = 40;
 
 // Cap free-form pasted evidence; larger payloads should be file attachments.
 const MAX_PASTED_EVIDENCE_BYTES = 10 * 1024 * 1024;
@@ -532,14 +553,14 @@ class OperationRunner {
             options.report,
             `samaritan-${session.id}-report.md`,
           );
-          // The canonical report.md was already written beside the operation;
-          // --report just places an extra copy. Copy it rather than rebuild it.
-          const runReport = getRunReportPath(absFile, session.id);
-          if (existsSync(runReport)) {
-            copyFileSync(runReport, reportFile);
-          } else {
-            writeFileSync(reportFile, generateReport(logPath), 'utf-8');
-          }
+          // The canonical report.md is beside the operation; --report places
+          // an extra copy. Rendered for ITS directory, so links to evidence
+          // files (stored in the run directory) still open from there.
+          writeFileSync(
+            reportFile,
+            generateReport(logPath, { linkFrom: resolve(options.report) }),
+            'utf-8',
+          );
           console.log(`📄 Report: ${reportFile}`);
         }
 
@@ -839,8 +860,18 @@ class OperationRunner {
       input: process.stdin,
       output: process.stdout,
     });
+    // readline (terminal mode) echoes and edits the line itself, which needs
+    // raw mode. The single-key readers leave the terminal cooked, where the
+    // kernel echoed the answer too: every typed answer showed up twice.
     const question = (prompt: string): Promise<string> =>
-      new Promise((resolve) => rl.question(prompt, resolve));
+      new Promise((resolve) => {
+        const tty = !!process.stdin.isTTY;
+        if (tty) process.stdin.setRawMode(true);
+        rl.question(prompt, (answer) => {
+          if (tty) process.stdin.setRawMode(false);
+          resolve(answer);
+        });
+      });
     // stdin reached EOF (piped/scripted input): no further prompt can be read.
     let rlClosed = false;
     rl.on('close', () => {
@@ -977,6 +1008,86 @@ class OperationRunner {
           }
           process.stdin.setRawMode(false);
           rl.resume();
+        };
+
+        process.stdin.on('keypress', handler);
+      });
+    };
+
+    // A prompt that takes a multi-line paste as ONE answer (evidence text,
+    // notes). `question()` ends at the first newline: the rest of a pasted
+    // block was read by the next prompt and then by the action bar, where a
+    // one-letter line fired that action key. Bracketed paste is switched on
+    // while reading; without it a paste is one burst of keys, so an Enter
+    // only submits once nothing follows it. Returns undefined on Esc.
+    const readMultiline = (prompt: string): Promise<string | undefined> => {
+      if (!process.stdin.isTTY) return question(prompt);
+
+      rl.pause();
+      const suspended = process.stdin.listeners('keypress').slice() as Array<
+        (...args: any[]) => void
+      >;
+      for (const listener of suspended) {
+        process.stdin.removeListener('keypress', listener);
+      }
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdout.write(`${BRACKETED_PASTE_ON}${prompt}`);
+
+      return new Promise((resolve) => {
+        const buffer = new MultilineBuffer();
+        let settled = false;
+        let pendingEnter: NodeJS.Timeout | undefined;
+
+        const cleanup = () => {
+          process.stdin.removeListener('keypress', handler);
+          for (const listener of suspended) {
+            process.stdin.on('keypress', listener);
+          }
+          process.stdout.write(BRACKETED_PASTE_OFF);
+          process.stdin.setRawMode(false);
+          rl.resume();
+        };
+        const finish = (value: string | undefined) => {
+          settled = true;
+          if (pendingEnter) clearTimeout(pendingEnter);
+          lastBareEnterAt = 0;
+          process.stdout.write('\n');
+          queueMicrotask(cleanup);
+          resolve(value);
+        };
+
+        const handler = (ch: string | undefined, key: any) => {
+          if (settled) return;
+          if (pendingEnter) {
+            // More keys right behind an Enter: it was a line of a paste.
+            clearTimeout(pendingEnter);
+            pendingEnter = undefined;
+            process.stdout.write(buffer.newline());
+          }
+          const result = buffer.feed(ch, key);
+          switch (result.action) {
+            case 'more':
+              if (result.echo) process.stdout.write(result.echo);
+              return;
+            case 'enter':
+              pendingEnter = setTimeout(
+                () => finish(buffer.text),
+                PASTE_BURST_MS,
+              );
+              return;
+            case 'submit':
+              finish(buffer.text);
+              return;
+            case 'cancel':
+              finish(undefined);
+              return;
+            case 'interrupt':
+              settled = true;
+              cleanup();
+              process.kill(process.pid, 'SIGINT');
+              return;
+          }
         };
 
         process.stdin.on('keypress', handler);
@@ -1989,11 +2100,13 @@ class OperationRunner {
       return choice;
     };
 
-    // Capture a piece of evidence (terminal output, a file/screenshot/image, or
-    // typed text) and store it with the session — like attaching a file in
-    // Claude Code: drag the file into the terminal, or type/paste its path.
+    // [e] evidence. ONE prompt takes whatever the operator has: a bare Enter
+    // captures the pane, a dragged/typed path attaches the file, a URL is
+    // recorded as a link and anything else as text (a multi-line paste is one
+    // answer). The kind is worked out by `classifyEvidenceInput`.
     const captureEvidence = async (
       stepIndex: number,
+      evidenceConfig: Step['evidence'],
       captureSinceStepStart: () => string | undefined,
       // The pane's rendered screen — offered when nothing new was printed
       // since the step started: a "record the result" step usually follows
@@ -2012,84 +2125,142 @@ class OperationRunner {
         : 'capture pane output since step start';
 
       console.log(
-        `\n${renderKeyHints([
-          ...(captured !== undefined
-            ? [{ key: '↵', label: captureLabel }]
-            : []),
-          { key: 'f', label: 'file or image' },
-          { key: 't', label: 'type/paste text' },
-        ])}`,
+        `\n${evidencePromptLines({
+          wanted: wantedEvidenceTypes(evidenceConfig),
+          captureLabel: captured !== undefined ? captureLabel : undefined,
+        }).join('\n')}`,
       );
-      const sourceAns = (await question('    Evidence source > '))
-        .trim()
-        .toLowerCase();
+      const answer = await readMultiline('    Evidence > ');
+      if (answer === undefined) {
+        console.log('    ↩ Cancelled — no evidence recorded.');
+        return;
+      }
 
-      let evidenceType: EvidenceType = 'command_output';
-      let content: string | Buffer = '';
-      let filename: string | undefined;
-      let storedPath: string | undefined;
-      let automatic = false;
-
-      if (
-        captured !== undefined &&
-        (sourceAns === '' || sourceAns === 'capture')
-      ) {
-        // Clean like the verify evidence: the raw pipe slice carries ANSI
-        // colours and cursor moves that would show up as junk in the record.
-        const text = cleanTerminalOutput(captured).trim();
-        if (!text) {
-          console.log(
-            '    ⚠️  Nothing in this pane to capture — press [e] again and pick f or t.',
-          );
-          return;
-        }
-        console.log(`\n${renderCodeBlock(text)}`);
-        content = text;
-        automatic = true;
-      } else if (sourceAns === 'f' || sourceAns === 'file') {
+      // The old two-step menu (`f` then a path, `t` then text) still works.
+      const word = answer.trim().toLowerCase();
+      let input: EvidenceInput;
+      if (word === 'f' || word === 'file') {
         const rawPath = await question(
           '    Path (drag & drop into terminal): ',
         );
-        const resolvedPath = resolveDroppedPath(rawPath);
-        if (!resolvedPath || !existsSync(resolvedPath)) {
-          console.log(`    ⚠️  File not found: ${rawPath.trim()}`);
+        const path = resolveDroppedPath(rawPath);
+        input =
+          path && existsSync(path)
+            ? { kind: 'file', path }
+            : { kind: 'missing_file', path: rawPath.trim() };
+      } else if (word === 't' || word === 'text') {
+        const typed = await readMultiline('    Text > ');
+        if (typed === undefined) {
+          console.log('    ↩ Cancelled — no evidence recorded.');
           return;
         }
-        try {
-          content = readFileSync(resolvedPath);
-        } catch (err: any) {
-          console.log(`    ⚠️  Could not read file: ${err.message}`);
-          return;
-        }
-        filename = basename(resolvedPath);
-        evidenceType = inferEvidenceTypeFromExtension(filename);
-
-        const evidenceDir = getSessionEvidenceDir(state.context.sessionId);
-        storedPath = join(evidenceDir, `${randomUUID()}-${filename}`);
-        copyFileSync(resolvedPath, storedPath);
-      } else {
-        content = await question('    Paste/type evidence content: ');
-        if (Buffer.byteLength(content, 'utf-8') > MAX_PASTED_EVIDENCE_BYTES) {
+        input = typed.trim()
+          ? { kind: 'text', text: typed.trimEnd() }
+          : { kind: 'empty' };
+      } else if (word === 'l' || word === 'link') {
+        const url = (await question('    URL: ')).trim();
+        if (!isEvidenceUrl(url)) {
           console.log(
-            '    ⚠️  Pasted content exceeds 10 MB — attach it as a file instead.',
+            '    ⚠️  Not an http(s) URL — nothing recorded. Press [e] and paste it as text if that is what you meant.',
           );
           return;
         }
+        input = { kind: 'link', url };
+      } else if (word === 'capture') {
+        input = { kind: 'empty' };
+      } else {
+        input = classifyEvidenceInput(answer);
       }
 
+      let evidenceType: EvidenceType = 'command_output';
+      let content = '';
+      let filename: string | undefined;
+      let storedPath: string | undefined;
+      let size = 0;
+      let automatic = false;
+      const id = randomUUID();
+
+      switch (input.kind) {
+        case 'empty': {
+          // Clean like the verify evidence: the raw pipe slice carries ANSI
+          // colours and cursor moves that would show up as junk in the record.
+          const text =
+            captured !== undefined ? cleanTerminalOutput(captured).trim() : '';
+          if (!text) {
+            console.log(
+              captured !== undefined
+                ? '    ⚠️  Nothing in this pane to capture — press [e] again and give a file, a URL or text.'
+                : '    ⚠️  Nothing entered — no evidence recorded.',
+            );
+            return;
+          }
+          console.log(`\n${renderCodeBlock(text)}`);
+          content = text;
+          automatic = true;
+          break;
+        }
+        case 'missing_file':
+          console.log(`    ⚠️  File not found: ${input.path}`);
+          return;
+        case 'file': {
+          filename = basename(input.path);
+          evidenceType = inferEvidenceTypeFromExtension(filename);
+          // Beside report.md, so the report can link to it and the run
+          // directory is complete on its own.
+          storedPath = join(
+            getRunEvidenceDir(operationFile, state.context.sessionId),
+            storedEvidenceName(filename, id),
+          );
+          try {
+            copyFileSync(input.path, storedPath);
+            size = statSync(storedPath).size;
+          } catch (err: any) {
+            console.log(`    ⚠️  Could not read file: ${err.message}`);
+            return;
+          }
+          break;
+        }
+        case 'link':
+          evidenceType = 'link';
+          content = input.url;
+          break;
+        case 'text':
+          evidenceType = 'text';
+          content = input.text;
+          break;
+      }
+
+      if (!storedPath) size = Buffer.byteLength(content, 'utf-8');
+      if (size > MAX_PASTED_EVIDENCE_BYTES && !storedPath) {
+        console.log(
+          '    ⚠️  Pasted content exceeds 10 MB — attach it as a file instead.',
+        );
+        return;
+      }
+
+      const lineCount = content.split('\n').length;
+      const what = storedPath
+        ? `${evidenceType} ${filename}`
+        : evidenceType === 'link'
+          ? `link ${content}`
+          : automatic
+            ? `pane output, ${lineCount} line${lineCount === 1 ? '' : 's'}`
+            : `text, ${lineCount} line${lineCount === 1 ? '' : 's'}`;
+      console.log(`    Recording ${what}`);
       const description =
-        (await question('    Description (optional): ')).trim() || undefined;
+        (await question('    Description (optional, ↵ to skip): ')).trim() ||
+        undefined;
 
-      const size = Buffer.isBuffer(content)
-        ? content.length
-        : Buffer.byteLength(content, 'utf-8');
-      const format = detectMimeType(evidenceType, content, filename);
+      const format =
+        evidenceType === 'link'
+          ? 'text/uri-list'
+          : detectMimeType(evidenceType, content, filename);
 
-      // For file/image/video evidence the bytes already live on disk under the
-      // session's evidence directory (copied above) — reference that path
-      // rather than duplicating the raw content into the persisted session.
+      // A file's bytes live on disk in the run's evidence directory (copied
+      // above) — reference that path rather than duplicating the content
+      // into the persisted session.
       const item: EvidenceItem = {
-        id: randomUUID(),
+        id,
         step_id: String(stepIndex),
         type: evidenceType,
         content: storedPath ?? content,
@@ -2116,15 +2287,14 @@ class OperationRunner {
         evidence_type: evidenceType,
         automatic,
         description,
-        ...(storedPath
-          ? { filename, path: storedPath }
-          : { content: typeof content === 'string' ? content : undefined }),
+        ...(storedPath ? { filename, path: storedPath } : { content }),
       });
 
-      const summary = storedPath
-        ? `${evidenceType}, saved to ${storedPath}`
-        : `${evidenceType}, ${item.metadata.size} bytes`;
-      console.log(`    📎 Evidence captured (${summary}).`);
+      console.log(
+        `    📎 Evidence recorded: ${what}${storedPath ? ` → ${storedPath}` : ''}`,
+      );
+      const mismatch = evidenceTypeMismatch(evidenceConfig, evidenceType);
+      if (mismatch) console.log(`    ℹ️  ${mismatch}`);
     };
 
     const stepEvidence = (stepIndex: number): EvidenceItem[] =>
@@ -2182,10 +2352,15 @@ class OperationRunner {
       // directory — never touch the operator's original source file. Compare
       // parent directories rather than a string prefix so trailing slashes or
       // relative segments can't produce a false match.
-      const evidenceDir = getSessionEvidenceDir(state.context.sessionId);
+      // (Runs made before evidence moved beside the report kept it under
+      // ~/.samaritan/sessions/<id>/evidence.)
+      const evidenceDirs = [
+        getRunEvidenceDir(operationFile, state.context.sessionId),
+        getSessionEvidenceDir(state.context.sessionId),
+      ];
       if (
         removed.metadata.original_path &&
-        dirname(removed.metadata.original_path) === evidenceDir &&
+        evidenceDirs.includes(dirname(removed.metadata.original_path)) &&
         existsSync(removed.metadata.original_path)
       ) {
         try {
@@ -2660,6 +2835,10 @@ class OperationRunner {
         }
         if (step.reviewer) console.log(`    Reviewer : ${step.reviewer}`);
         if (step.session) console.log(`    Session  : ${step.session}`);
+        const evidenceLine = evidenceHeaderLine(step.evidence, {
+          enforced: requireEvidence,
+        });
+        if (evidenceLine) console.log(`    ${evidenceLine}`);
         if (step.ticket)
           console.log(
             `    Ticket   : ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`,
@@ -3116,7 +3295,7 @@ class OperationRunner {
               continue;
             }
             if (inputChoice === 'n' || inputChoice === 'note') {
-              const note = (await question('    Note: ')).trim();
+              const note = (await readMultiline('    Note: '))?.trim();
               if (note) {
                 logger.emit({
                   type: 'user_input',
@@ -3130,8 +3309,11 @@ class OperationRunner {
               continue;
             }
             if (inputChoice === 'e' || inputChoice === 'evidence') {
-              await captureEvidence(i, captureSinceStepStart, () =>
-                captureRef.backend?.captureScreen?.(sessionName),
+              await captureEvidence(
+                i,
+                step.evidence,
+                captureSinceStepStart,
+                () => captureRef.backend?.captureScreen?.(sessionName),
               );
               continue;
             }
@@ -3326,7 +3508,7 @@ class OperationRunner {
               needsEvidenceGate(i, step)
             ) {
               console.log(
-                `\n    ${evidenceGateMessage(!!captureRef.backend?.hasTarget(sessionName))}`,
+                `\n    ${evidenceGateMessage(!!captureRef.backend?.hasTarget(sessionName), wantedEvidenceTypes(step.evidence))}`,
               );
               continue; // re-render only the bar; header/command stay put
             }
@@ -3435,7 +3617,7 @@ class OperationRunner {
               { key: 's', label: 'skip' },
             ]);
             if (choice === 'e' || choice === 'evidence') {
-              await captureEvidence(i, () => undefined);
+              await captureEvidence(i, step.evidence, () => undefined);
               continue;
             }
             if (isGlobalRollback(choice)) {
@@ -3448,7 +3630,9 @@ class OperationRunner {
             }
             if (choice === 'approve') {
               if (needsEvidenceGate(i, step)) {
-                console.log(`\n    ${evidenceGateMessage(false)}`);
+                console.log(
+                  `\n    ${evidenceGateMessage(false, wantedEvidenceTypes(step.evidence))}`,
+                );
                 continue;
               }
               await recordApprovalDecision(i, step, true);
@@ -3734,35 +3918,6 @@ function describePaneOwner(owner: PaneOwner): string {
 /** Warning printed when attaching takes a pane over from another live run. */
 function paneTakeoverWarning(owner: PaneOwner): string {
   return `⚠️  This pane was captured by ${describePaneOwner(owner)} — tmux allows one capture per pane, so that run's [v] now re-attaches and warns. Use one samaritan run per pane.`;
-}
-
-// Resolve a path the operator drags into the terminal or types — strips the
-// surrounding quotes and backslash-escapes most terminals add on drag-and-drop,
-// and expands a leading `~`.
-function resolveDroppedPath(raw: string): string | undefined {
-  let p = raw.trim();
-  if (!p) return undefined;
-  if (
-    (p.startsWith("'") && p.endsWith("'")) ||
-    (p.startsWith('"') && p.endsWith('"'))
-  ) {
-    p = p.slice(1, -1);
-  }
-  p = p.replace(/\\(.)/g, '$1');
-  if (p.startsWith('~')) {
-    p = join(homedir(), p.slice(1));
-  }
-  return p;
-}
-
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
-const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov'];
-
-function inferEvidenceTypeFromExtension(filename: string): EvidenceType {
-  const ext = filename.split('.').pop()?.toLowerCase();
-  if (ext && IMAGE_EXTENSIONS.includes(ext)) return 'screenshot';
-  if (ext && VIDEO_EXTENSIONS.includes(ext)) return 'video';
-  return 'file';
 }
 
 // ─── CLI commands ─────────────────────────────────────────────────────────────

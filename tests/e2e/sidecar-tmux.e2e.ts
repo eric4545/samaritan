@@ -1139,11 +1139,14 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor('[Step 2 · 2/2]');
         await d.waitFor('e evidence'); // required + missing: [e] is in the bar
         d.key('e');
-        await d.waitFor('↵ capture the pane screen (no new output this step)');
+        await d.waitFor(
+          '↵ alone    capture the pane screen (no new output this step)',
+        );
+        await d.waitFor('Evidence > ');
         d.enter();
-        await d.waitFor('Description (optional)');
+        await d.waitFor('Description (optional');
         d.enter();
-        await d.waitFor('📎 Evidence captured');
+        await d.waitFor('📎 Evidence recorded: pane output');
         await sleep(ENTER_DEBOUNCE_MS + 100);
         d.enter();
         await d.waitFor('Report:', { timeoutMs: 20_000 });
@@ -1151,6 +1154,92 @@ describe('sidecar e2e (real tmux)', () => {
         const report = readReport(ws.dir);
         const step2 = report.slice(report.indexOf('Record web-server status'));
         assert.match(step2, /web-server: rollout ready/);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  // Seen in a real run: a multi-line paste at the evidence prompt kept only
+  // its first line; line 2 became the description and the rest were read by
+  // the step bar, where a one-letter line fired that action key.
+  it(
+    '[e] multi-line paste is ONE evidence item (bracketed and plain paste)',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('evidence-kinds.yaml');
+      const d = TmuxDriver.create({ split: true });
+      const paste = (text: string, bracketed: boolean): void => {
+        tmux(['set-buffer', '-b', 'sam-e2e-paste', '--', text]);
+        tmux([
+          'paste-buffer',
+          '-d',
+          ...(bracketed ? ['-p'] : []),
+          '-b',
+          'sam-e2e-paste',
+          '-t',
+          d.main,
+        ]);
+      };
+      const recorded = async (count: number): Promise<void> => {
+        await d.waitFor(
+          new RegExp(`(📎 Evidence recorded[\\s\\S]*){${count}}`),
+        );
+      };
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
+        await d.waitFor('[Step 1 · 1/2]');
+        await d.waitFor('Evidence : required — screenshot');
+
+        // Bracketed paste (what tmux and modern terminals send): `s` and
+        // `q` lines would skip the step / abort the run if they leaked.
+        d.key('e');
+        await d.waitFor('Evidence > ');
+        paste('web-server: 3/3 ready\ns\n\nq\nlast line\n', true);
+        await d.waitFor('last line');
+        d.enter();
+        await d.waitFor('Recording text, 5 lines');
+        await d.waitFor('Description (optional');
+        d.type('pod status');
+        await recorded(1);
+
+        // A terminal without bracketed paste delivers one burst of keys.
+        d.key('e');
+        await d.waitFor(/(Evidence > [\s\S]*){2}/);
+        paste('alpha line\ns\nomega line', false);
+        await d.waitFor('omega line');
+        d.enter();
+        await d.waitFor('Recording text, 3 lines');
+        d.enter(); // no description
+        await recorded(2);
+
+        // Still on step 1, not skipped, not aborted.
+        const screen = d.capture();
+        assert.ok(
+          !screen.includes('[Step 2'),
+          'no pasted line reached the bar',
+        );
+        assert.ok(!screen.includes('Execution aborted'), 'run still going');
+
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('[Step 2 · 2/2]');
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        await d.waitFor('Report:', { timeoutMs: 20_000 });
+
+        const report = readReport(ws.dir);
+        assert.ok(
+          report.includes(
+            '**Evidence**: text — pod status\n\n```text\nweb-server: 3/3 ready\ns\n\nq\nlast line\n```',
+          ),
+          report,
+        );
+        assert.ok(
+          report.includes('```text\nalpha line\ns\nomega line\n```'),
+          report,
+        );
+        assert.match(report, /Step 1: Announce the deploy\n/);
       } finally {
         d.kill();
         ws.cleanup();

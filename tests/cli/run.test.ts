@@ -471,7 +471,7 @@ describe('run command: evidence-required gate', () => {
     );
     const combined = stdout + stderr;
     assert.ok(
-      combined.includes('📎 Evidence captured'),
+      combined.includes('📎 Evidence recorded: text, 1 line'),
       `should confirm evidence capture; output:\n${combined.slice(-1200)}`,
     );
     assert.ok(

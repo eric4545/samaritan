@@ -197,3 +197,15 @@ match only drops errors at the oneOf's OWN instance path (`fromBranch`).
 `formatValidationError` lines, capped at 10), and the parser forwards that
 message, so `generate`/`run`/`resume` print the field too; `validate` prints the
 headline once plus every line. Tests: `tests/schemas/schema-errors.test.ts`.
+
+## `evidence` is strict; `types` is a hint
+
+`evidence` and each `results` item are `additionalProperties: false`: a
+misspelled `require:` / `type:` used to validate, the parser dropped it and
+the run's evidence gate silently never applied. `EvidenceType` adds `link`
+(URL in `content`, rendered as a link by ALL four manual paths via
+`evidenceLinkUrl`) and `text`; the enum lives in the operation schema (twice)
+AND `run-manifest.schema.json`. What the schema cannot see is linted by
+`lintEvidenceResults` (`src/lib/evidence-lint.ts`, warnings from `validate`):
+a `results` key that is no environment, a missing `file`, a non-URL `link`,
+an image type with inline `content`.

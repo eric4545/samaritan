@@ -1,14 +1,20 @@
 import { writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { Command } from 'commander';
 import { generateReport } from '../../lib/report-generator';
 import { mergeSessions } from '../../lib/report-merge';
+
+function linkOptions(output?: string): { linkFrom?: string } {
+  return output ? { linkFrom: dirname(resolve(output)) } : {};
+}
 
 export const reportCommand = new Command('report')
   .description('Generate a Markdown evidence report from a JSONL session log')
   .argument('<jsonl>', 'Path to the JSONL session log file')
   .option('-o, --output <file>', 'Output file path (default: stdout)')
   .action((jsonlPath: string, options: { output?: string }) => {
-    const md = generateReport(jsonlPath);
+    // Evidence files are linked relative to where the report is written.
+    const md = generateReport(jsonlPath, linkOptions(options.output));
 
     if (options.output) {
       writeFileSync(options.output, md, 'utf-8');
@@ -31,7 +37,7 @@ reportCommand
   .action((sessions: string[], options: { output?: string }) => {
     let md: string;
     try {
-      md = mergeSessions(sessions);
+      md = mergeSessions(sessions, linkOptions(options.output));
     } catch (err: any) {
       console.error(`❌ ${err.message}`);
       process.exit(1);

@@ -159,29 +159,37 @@ Mutually exclusive — a step cannot have both.
 
 ```yaml
 evidence:
-  required: true
-  types: [screenshot, log, command_output]   # documentation only
-  results:                                    # embedded into the manual, keyed by env
+  required: true                              # run blocks ↵ until ANY item is recorded
+  types: [screenshot, link, command_output]   # hint shown to the operator, not a filter
+  results:                                    # hand-written, embedded into the manual, keyed by env
     staging:
       - type: command_output
         file: ./evidence/staging-deploy.log   # file content read + embedded
         description: Deploy output
+      - type: link                            # URL in `content` → rendered as a link
+        content: https://ci.example.com/job/web-server-deploy/42/console
     production:
       - type: command_output
         content: |                            # OR inline content (not both — oneOf)
           deployment.apps/web created
 ```
 
+Types: `screenshot`, `photo`, `video`, `file`, `command_output`, `log`, `text`,
+`link`. `evidence` and each result are strict (`additionalProperties: false`): a
+misspelled `require:` / `type:` is a schema error. `validate` warns when a
+`results` key is not an environment of the operation (never rendered), a `file`
+is missing, a `link` holds no URL, or an image type has inline `content`.
+
 When `results` are absent for an environment, every manual format (Markdown, single-env
 Markdown, Confluence markup, ADF) renders a `# Paste command output here` code block for
 `command_output` evidence. Other evidence types show only the metadata, with no placeholder.
 
-`evidence.required: true` is also **enforced live** in `samaritan run`: a step can't be
+`evidence.required: true` is **enforced live** in `samaritan run`: a step can't be
 completed (or, for `type: approval`, approved) until at least one evidence item is
-captured via `[e]` (a typed-text note counts), or the operator `[s]` skips it. See
-"Evidence-required gate" in `reference/cli.md`. `types`/`results` above remain
-documentation/embedding only — this enforcement is purely about whether *any*
-evidence was captured, not which types.
+recorded via `[e]` (a file, a URL or typed text all count), or the operator `[s]`
+skips it. See "Evidence-required gate" in `reference/cli.md`. A run never writes
+`results`; what the operator records goes to the run's `report.md` (files to
+`evidence/` beside it).
 
 ## Verification (`expect`)
 

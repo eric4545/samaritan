@@ -211,10 +211,128 @@ describe('generateReport (issue #10)', () => {
     try {
       const md = generateReport(jsonlPath);
       assert.ok(
+        // A run made before evidence moved beside the report: the file is
+        // outside the run directory, so the path is shown as recorded.
         md.includes(
-          '![Evidence](/home/user/.samaritan/sessions/abc123/evidence/uuid-dashboard.png)',
+          '![Dashboard screenshot](/home/user/.samaritan/sessions/abc123/evidence/uuid-dashboard.png)',
         ),
         'should embed the screenshot as an image',
+      );
+    } finally {
+      rmSync(dirname(jsonlPath), { recursive: true, force: true });
+    }
+  });
+
+  // Operator feedback: a screenshot attached with [e] was copied under the
+  // home directory and report.md pointed at a path that does not open.
+  it('links an evidence file relative to the report, in the run directory', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-report-'));
+    const jsonlPath = join(dir, 'events.jsonl');
+    writeFileSync(
+      jsonlPath,
+      makeJsonl([
+        { type: 'session_start', op: join(dir, 'deploy.yaml') },
+        { type: 'step_start', step: 0, name: 'Capture dashboard' },
+        {
+          type: 'evidence_captured',
+          step: 0,
+          evidence_id: 'ev-1',
+          evidence_type: 'screenshot',
+          description: 'Dashboard after deploy',
+          filename: 'dash board.png',
+          path: join(dir, 'evidence', '0123abcd-dash-board.png'),
+        },
+        {
+          type: 'evidence_captured',
+          step: 0,
+          evidence_id: 'ev-2',
+          evidence_type: 'file',
+          filename: 'deploy (1).log',
+          path: join(dir, 'evidence', 'old name (1).log'),
+        },
+        { type: 'step_complete', step: 0 },
+        { type: 'session_end', status: 'completed' },
+      ]),
+      'utf-8',
+    );
+    try {
+      const md = generateReport(jsonlPath);
+      assert.ok(
+        md.includes(
+          '![Dashboard after deploy](evidence/0123abcd-dash-board.png)',
+        ),
+        md,
+      );
+      // A path with spaces or brackets only renders inside <...>.
+      assert.ok(
+        md.includes('[deploy (1).log](<evidence/old name (1).log>)'),
+        md,
+      );
+
+      // A copy written elsewhere links back to the run directory.
+      const elsewhere = generateReport(jsonlPath, {
+        linkFrom: join(dir, 'reports', 'nested'),
+      });
+      assert.ok(
+        elsewhere.includes('](../../evidence/0123abcd-dash-board.png)'),
+        elsewhere,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('renders link evidence as a link and typed text as a text block', () => {
+    const jsonlPath = writeTempJsonl(
+      makeJsonl([
+        { type: 'session_start', op: 'deploy.yaml' },
+        { type: 'step_start', step: 0, name: 'Announce' },
+        {
+          type: 'evidence_captured',
+          step: 0,
+          evidence_id: 'ev-1',
+          evidence_type: 'link',
+          description: 'CI build',
+          content: 'https://ci.example.com/job/web-server-deploy/42/console',
+        },
+        {
+          type: 'user_input',
+          action: 'note',
+          step: 0,
+          notes: 'posted in the ops channel\nacknowledged by bob',
+        },
+        {
+          type: 'evidence_captured',
+          step: 0,
+          evidence_id: 'ev-2',
+          evidence_type: 'text',
+          content: 'pods: 3/3 ready\n```\nfenced by the operator\n```',
+        },
+        { type: 'step_complete', step: 0 },
+        { type: 'session_end', status: 'completed' },
+      ]),
+    );
+    try {
+      const md = generateReport(jsonlPath);
+      assert.ok(md.includes('**Evidence**: link — CI build'), md);
+      assert.ok(
+        md.includes(
+          '<https://ci.example.com/job/web-server-deploy/42/console>',
+        ),
+        md,
+      );
+      assert.ok(!md.includes('```bash\nhttps://ci.example.com'), md);
+      // A multi-line note stays one bullet.
+      assert.ok(
+        md.includes('- posted in the ops channel\n  acknowledged by bob'),
+        md,
+      );
+      // Pasted text holding a ``` fence must not close the block early.
+      assert.ok(
+        md.includes(
+          '````text\npods: 3/3 ready\n```\nfenced by the operator\n```\n````',
+        ),
+        md,
       );
     } finally {
       rmSync(dirname(jsonlPath), { recursive: true, force: true });
@@ -247,7 +365,7 @@ describe('generateReport (issue #10)', () => {
       const md = generateReport(jsonlPath);
       assert.ok(
         md.includes(
-          '[View file](/home/user/.samaritan/sessions/abc123/evidence/uuid-deploy.log)',
+          '[deploy.log](/home/user/.samaritan/sessions/abc123/evidence/uuid-deploy.log)',
         ),
         'should render file evidence as a link',
       );

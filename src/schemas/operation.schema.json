@@ -266,12 +266,16 @@
               },
               "evidence": {
                 "type": "object",
+                "additionalProperties": false,
+                "description": "What the operator records for this step. `required` and `types` drive the run; `results` is evidence written into the file by hand and embedded in generated manuals.",
                 "properties": {
                   "required": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "`run` refuses to complete the step until at least one piece of evidence is recorded with [e] (any kind counts). Off with --no-require-evidence."
                   },
                   "types": {
                     "type": "array",
+                    "description": "The kinds of evidence the step asks for. Shown to the operator in manuals and in the run; a hint, not a filter.",
                     "items": {
                       "type": "string",
                       "enum": [
@@ -280,17 +284,20 @@
                         "command_output",
                         "file",
                         "photo",
-                        "video"
+                        "video",
+                        "link",
+                        "text"
                       ]
                     }
                   },
                   "results": {
                     "type": "object",
-                    "description": "Environment-keyed evidence results (e.g., { staging: [...], production: [...] })",
+                    "description": "Evidence already collected, written here by hand and embedded in generated manuals, keyed by environment name (e.g., { staging: [...], production: [...] }). A run never writes to it; evidence recorded during a run goes to the run's report.md.",
                     "additionalProperties": {
                       "type": "array",
                       "items": {
                         "type": "object",
+                        "additionalProperties": false,
                         "required": ["type"],
                         "properties": {
                           "type": {
@@ -301,7 +308,9 @@
                               "command_output",
                               "file",
                               "photo",
-                              "video"
+                              "video",
+                              "link",
+                              "text"
                             ]
                           },
                           "file": {
@@ -310,7 +319,7 @@
                           },
                           "content": {
                             "type": "string",
-                            "description": "Inline content (for text-based evidence)"
+                            "description": "Inline content: the text itself, or the URL when type is link"
                           },
                           "description": {
                             "type": "string",

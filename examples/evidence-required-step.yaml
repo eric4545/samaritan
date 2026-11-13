@@ -8,18 +8,24 @@ description: |
   Run interactively:
     samaritan run evidence-required-step.yaml --env production
 
+  Each step shows what it wants in its header:
+    Evidence : required — screenshot, link  ([e] adds it)
+
   At either step below, pressing Enter (or "approve") with no evidence
-  captured yet shows an inline warning ON THE SAME action bar (no separate
+  recorded yet shows an inline warning ON THE SAME action bar (no separate
   gate menu, no re-entry):
-    ⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.
+    ⚠️  This step requires evidence (screenshot, link) — press [e] and give a file, a URL or text (typed text is fine). [s] skips.
 
   From that same bar:
-    [e] capture evidence — same [e] flow as any manual step (terminal output,
-                            a file/screenshot, or pasted text — a typed-text
-                            note counts); once at least one item is captured
-                            the step completes on your next Enter
-    [s] skip             — skip the step; recorded as skipped (not completed)
-                            in the run record
+    [e] add evidence — one prompt, the kind is worked out from what you give:
+                         a file path (drag a screenshot in)  -> copied beside report.md
+                         a URL (chat message, CI build)      -> recorded as a link
+                         anything else, one line or many     -> recorded as text
+                         Enter alone, with a pane attached   -> the pane output
+                       once one item is recorded the step completes on your
+                       next Enter
+    [s] skip         — skip the step; recorded as skipped (not completed)
+                       in the run record
 
   This enforcement is ON by default whenever evidence.required is true. To
   disable it (e.g. for a CI dry-run rehearsal), pass:
@@ -37,11 +43,18 @@ steps:
     type: manual
     instruction: |
       Check the deployment dashboard and confirm all pods are healthy before
-      continuing. Capture the dashboard screenshot or `kubectl get pods`
-      output as evidence.
+      continuing. Attach the dashboard screenshot, or the link to the
+      dashboard, as evidence.
     evidence:
       required: true
-      types: [screenshot, command_output]
+      types: [screenshot, link]
+      # Evidence you already have can be written here and is embedded in the
+      # generated manual. A run never writes to `results`.
+      results:
+        production:
+          - type: link
+            content: https://dashboard.example.com/d/web-server/rollout
+            description: Rollout dashboard
 
   - name: Sign off on rollout
     type: approval

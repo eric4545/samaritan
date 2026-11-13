@@ -38,6 +38,7 @@ export const FIXTURES = {
     'tests/fixtures/operations/invalid/missing-template-vars.yaml',
   deprecatedEvidenceFields:
     'tests/fixtures/operations/invalid/deprecated-evidence-fields.yaml',
+  evidenceTypo: 'tests/fixtures/operations/invalid/evidence-typo.yaml',
   expectShapeMismatch:
     'tests/fixtures/operations/invalid/expect-shape-mismatch.yaml',
 
@@ -99,6 +100,8 @@ export const FIXTURES = {
     'tests/fixtures/operations/features/evidence-with-results.yaml',
   evidenceWithFileResults:
     'tests/fixtures/operations/features/evidence-with-file-results.yaml',
+  // link / text evidence: results in every format + recorded during a run
+  evidenceKinds: 'tests/fixtures/operations/features/evidence-kinds.yaml',
   reviewerAndEnvEvidence:
     'tests/fixtures/operations/features/reviewer-and-env-evidence.yaml',
 

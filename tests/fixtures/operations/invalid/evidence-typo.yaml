@@ -1,0 +1,15 @@
+name: Evidence Typo
+version: 1.0.0
+description: Misspelled evidence keys used to pass validation and switch the gate off
+
+environments:
+  - name: staging
+    description: Staging environment
+
+steps:
+  - name: Check dashboard
+    type: manual
+    instruction: Check the web-server dashboard.
+    evidence:
+      require: true
+      type: [screenshot]
