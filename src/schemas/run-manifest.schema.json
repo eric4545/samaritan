@@ -101,7 +101,16 @@
     },
     "EvidenceType": {
       "type": "string",
-      "enum": ["screenshot", "file", "photo", "video", "log", "command_output"]
+      "enum": [
+        "screenshot",
+        "file",
+        "photo",
+        "video",
+        "log",
+        "command_output",
+        "link",
+        "text"
+      ]
     }
   }
 }

@@ -93,6 +93,7 @@ Evidence results are automatically rendered in generated manuals:
 - **Other files**: Rendered as download links
 - **`command_output`/`log` files**: File content is read and embedded as a code block (all formats, including Confluence ADF)
 - **Inline content**: Rendered as code blocks (bash for command_output, text for others)
+- **`link`**: Rendered as a link (Markdown autolink, Confluence wiki link, ADF link mark)
 - **Descriptions**: Displayed above the evidence content
 
 When `command_output` evidence is required (or optional) but no results have been
@@ -101,35 +102,46 @@ renders a `# Paste command output here` code block so the operator knows where t
 the output. Other evidence types (e.g. `screenshot`, `log`) show only the evidence
 metadata, with no placeholder body.
 
-**Evidence Result Schema:**
+**The three `evidence` fields:**
+
+| Field | What it does | What it does not do |
+|---|---|---|
+| `required` | `samaritan run` refuses to complete the step until one item is recorded with `[e]` | It does not check the kind: any item counts |
+| `types` | Tells the operator what to record. Shown in manuals and, during a run, in the step header and the `[e]` prompt | It is a hint, not a filter. A run that records another kind says so and carries on |
+| `results` | Evidence you already have, written into the YAML by hand and embedded in generated manuals, keyed by environment name | A run never writes to it. What an operator records during a run goes to that run's `report.md` |
+
+No other key is accepted under `evidence`: a misspelling such as `require:` or `type:` is a validation error (it used to pass and silently switch the gate off).
+
 ```yaml
 evidence:
-  required: true              # Optional: whether evidence is required
-  types: [screenshot, log]    # Optional: expected evidence types
-  results:                    # Optional: pre-captured evidence, keyed by environment name
-    staging:                  # Environment name (must match an environment defined in the operation)
-      - type: screenshot      # Required: evidence type
-        file: ./path/to/file  # Either 'file' OR 'content' required
-        description: Description text  # Optional
+  required: true
+  types: [screenshot, link]
+  results:
+    staging:                  # must be the name of one of the operation's environments
+      - type: screenshot      # required
+        file: ./path/to/file  # 'file' OR 'content', not both
+        description: Description text  # optional
+      - type: link
+        content: https://ci.example.com/job/web-server-deploy/42/console
+        description: CI build
       - type: command_output
-        content: |            # Inline content (alternative to 'file')
+        content: |
           Command output here
-        description: Description text  # Optional
-    production:
-      - type: screenshot
-        file: ./evidence/prod/dashboard.png
-        description: Production dashboard
 ```
 
-**Supported Evidence Types:**
-- `screenshot` - UI screenshots (renders as image if file path provided)
-- `photo` - Photos (renders as image if file path provided)
-- `log` - Log files or log content
-- `command_output` - Shell command output
-- `video` - Video recordings
-- `document` - PDF or document files
-- `config` - Configuration file snapshots
-- `custom` - Custom evidence types
+**Evidence types:**
+
+| Type | Use it for | `results` rendering |
+|---|---|---|
+| `screenshot`, `photo` | An image file | Embedded image (`file`) |
+| `video` | A recording | Link to the file |
+| `file` | Any other attachment | Link to the file |
+| `command_output` | Shell output | Code block; a `file` is read and embedded |
+| `log` | Log lines | Code block; a `file` is read and embedded |
+| `text` | A note or anything pasted | Code block |
+| `link` | A URL: a chat message, a CI build, a dashboard. The URL goes in `content` | A link, in every format |
+
+`samaritan validate` warns when a `results` key is not one of the operation's environments (those results are never rendered), when a `file` does not exist, when a `link` does not hold a URL, and when a `screenshot`/`photo`/`video` is given inline `content` instead of a `file`.
 
 See `tests/fixtures/operations/features/evidence-with-results.yaml` for a complete example.
 
@@ -205,6 +217,17 @@ samaritan report /tmp/samaritan-f3a9b2.jsonl --output evidence-report.md
 ```
 
 The report includes a summary (steps, duration, PIC/reviewer), per-step command + output, verification sign-offs, and a dedicated rollback events section. Attach it directly to a change ticket.
+
+**Evidence recorded during the run** is listed under its step:
+
+| Recorded with `[e]` | In the report |
+|---|---|
+| Pane output, typed or pasted text | Fenced code block |
+| A URL | `**Evidence**: link — <description>` and the link itself |
+| A screenshot or photo | `![<description>](evidence/<file>)`; the file is in `evidence/` beside `report.md` |
+| Any other file | `[<file name>](evidence/<file>)` |
+
+Share the whole run directory (`.samaritan-runs/<session-id>/`) and the images open. A report written to another place links to the same files with a relative path.
 
 **Verification shows the final state.** Each step renders its *last* verify attempt (the full checklist plus the output it was checked against), with an attempt count when it was re-verified. A failure the operator accepted with `o` reads as overridden, with who, when and the reason. It is also flagged in the step heading and listed in the summary:
 

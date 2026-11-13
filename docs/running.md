@@ -185,15 +185,47 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
 ```
 
 - **`[n]` note** — record a free-text annotation (e.g. "restarted pod manually, confirmed with on-call"). Stored in the JSONL audit log as a `user_input`/`note` event and rendered as a bullet list under the step in the `--report` Markdown.
-- **`[e]` evidence** — capture and persist evidence with the session, the same way you'd attach a file in Claude Code. You're offered up to three sources:
-  - **`↵` capture pane output since step start** (default, only offered when a pane is attached to the step) — grabs everything written to the pane since the step started, cleaned of colour codes, and stores it as `command_output` evidence. When nothing was printed since the step started — a "record the result" step that follows the step that ran the command — the default becomes **capture the pane screen**: what the pane shows now, including the previous step's output. One key, nothing to retype.
-  - **`[f]` file or image** — drag a file into the terminal (most terminals insert its path) or type/paste the path; SAMARITAN reads it from disk, copies it into `~/.samaritan/sessions/<session-id>/evidence/`, and stores it as a typed `EvidenceItem` (`screenshot` for `png`/`jpg`/`jpeg`/`webp`/`gif`, `video` for `mp4`/`webm`/`mov`, `file` for everything else)
-  - **`[t]` type/paste text** — type or paste evidence content directly
-  
-  Every captured item can include an optional description, and is rendered in the `--report` Markdown — screenshots as embedded images (`![Evidence](path)`), files/videos as download-style links (`[View file](path)`), and text/terminal captures as fenced code blocks.
+- **`[n]` note** accepts a multi-line paste as one note.
+- **`[e]` evidence** — one prompt takes whatever you have. SAMARITAN works out the kind from what you give it:
 
-  All evidence bytes — including dragged-in files, screenshots, and videos — are stored exclusively under `~/.samaritan/sessions/<session-id>/evidence/`, alongside the session's own JSON record. SAMARITAN never leaves a second copy elsewhere: the persisted session references the file by path rather than embedding its raw bytes.
-- **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's captured evidence (type, description, and stored path), lets you pick one by number to delete, removes it from the session record, and — for file/screenshot/video evidence copied into the session's evidence directory — deletes the copy from disk too (your original source file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event, and the `--report` Markdown omits removed items entirely.
+  ```
+      📎 Add evidence (this step asks for: screenshot)
+         ↵ alone    capture pane output since step start
+         Ctrl+V     the screenshot on your clipboard
+         file       drag a screenshot or file in, or type its path
+         link       paste a URL (chat message, CI build, dashboard)
+         text       type or paste it, several lines are fine
+         Esc        cancel
+      Evidence >
+  ```
+
+  | You give | Recorded as | In `report.md` |
+  |---|---|---|
+  | `↵` alone (a pane is attached) | `command_output`: the pane output since the step started, cleaned of colour codes. When nothing was printed since the step started (a "record the result" step that follows the step that ran the command), the pane **screen** instead | fenced code block |
+  | A path to an existing file, dragged in or typed (quotes, `\ ` escapes and `~` are understood) | `screenshot` for `png`/`jpg`/`jpeg`/`webp`/`gif`, `video` for `mp4`/`webm`/`mov`, `file` for anything else. The file is **copied** to `evidence/` in the run directory, beside `report.md` | image (`![description](evidence/<file>)`) or link |
+  | `Ctrl+V` on the empty prompt (or the answer `v`) | `screenshot`: the **image** on your clipboard, saved as `evidence/<id>-clipboard.png` | image |
+  | A single `http://` / `https://` URL: a chat message permalink, a CI build, a dashboard | `link` | clickable link |
+  | Anything else, one line or many | `text` | fenced `text` block |
+
+  A **multi-line paste is one answer**: every line stays in the evidence, and Enter submits only once the paste is in. A path that does not exist prints `File not found` and records nothing; an empty answer with no pane records nothing. `Esc` cancels. You are then asked for an optional description, which becomes the label in the report.
+
+  **Clipboard images.** A terminal paste carries text only, so a copied screenshot cannot arrive through the normal paste shortcut. `Ctrl+V` makes SAMARITAN fetch the image from the operating system's clipboard with a helper program:
+
+  | Where SAMARITAN runs | Helper | Notes |
+  |---|---|---|
+  | macOS | `pngpaste` when installed, else the built-in `osascript` | Nothing to install |
+  | Linux, Wayland | `wl-paste` (package `wl-clipboard`) | |
+  | Linux, X11 | `xclip` | |
+  | A host reached over SSH | none | The clipboard is on your own computer. Save the screenshot, copy it to the host and give its path, or paste a link to it |
+
+  When there is no image on the clipboard, or no helper, a line says why and nothing is recorded. Some terminals bind `Ctrl+V` to their own paste; answer `v` at the prompt instead.
+
+  The old two-step answers still work: `f` asks for a path, `t` for text, `l` for a URL.
+
+  When the step lists `evidence.types` and you record another kind (a link on a `types: [screenshot]` step), it is still recorded and still satisfies `evidence.required`; a line tells you so, and you can press `[e]` again to add the kind the step asked for.
+
+  Attached files live in `<operation-dir>/.samaritan-runs/<session-id>/evidence/`, so the run directory can be zipped or attached to a ticket as a whole and the report's images open. A report written somewhere else (`run --report <dir>`, `report --output <file>`) links back to that directory with a relative path.
+- **`[x]` remove evidence** — only offered once at least one item has been captured for the current step. Lists the step's evidence (type, description, stored path), lets you pick one by number, removes it from the session record and, for an attached file, deletes the copy in the run's `evidence/` directory (your original file is never touched). Recorded in the JSONL audit log as an `evidence_removed` event; the report omits removed items.
 - **A key that does not apply never marks the step done.** `[v]` on a step without `expect`, `[p]` on a step without a command, `[x]` with no evidence, `[b]` on the first step and so on print why (`[v] — this step has no expect, so there is nothing to verify ([e] captures evidence). The step is not marked done (↵ does that).`) and keep you on the bar. Only `↵` (or typed notes) completes a step.
 - **`↵` with nothing run asks first** (sidecar, pane attached). When the step has a command, nothing was pasted with `[p]`, and the pane has printed nothing since the step started, `↵` asks `Nothing was pasted or run in <pane> since this step started. Mark done anyway? [y / n=go back]`. This catches a stray Enter that lands on the next step after a verify pass. A command you type into the pane yourself produces output, so it never asks. `y` is logged (`user_input`/`done_without_run`) and shows as a ⚠️ note on the step in `report.md`.
 - **`[v]` verify** — only offered when the step defines `expect`. Reads the pane output captured since the step started and asserts it against `expect` (the same `assertOutputDetailed`/`interpolateExpect` machinery `automatic` steps use), evaluating **every** check (not just the first failure) and rendering the PASS/FAIL checklist + highlighted, line-numbered output described in [Verify output: checklist, highlighting, and the line-number gutter](#verify-output-checklist-highlighting-and-the-line-number-gutter) — and, on failure, the override/rollback/`[m]` more/`[v]` re-verify/stop prompt. This is what actually checks `expect` on `manual` steps; without pressing `[v]`, a manual step's `expect` is documentation only.
@@ -231,15 +263,22 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
 
 ## Evidence-required gate
 
-When a step declares `evidence: { required: true }`, completing it (pressing `Enter`/notes on a `manual`/sidecar step, or `approve` on an `approval` step) is **blocked** until at least one item has been captured via `[e]`. There is no separate gate menu — trying to complete with nothing captured just prints a one-line warning **on the same action bar**, so you never leave it:
+A step that declares evidence shows it in its header, before you start:
 
 ```
-    ⚠️  This step requires evidence — press [e] then ↵ to capture the pane output (f = file, t = typed text), or [s] to skip.
+[Step 1 · 1/2] MANUAL: Announce the deploy
+    Evidence : required — screenshot  ([e] adds it)
 ```
 
-With no pane attached the line reads `press [e] to capture (typed text is fine)`. While the evidence is missing, `e evidence` is shown on the step bar itself, not only under `?`.
+When a step declares `evidence: { required: true }`, completing it (pressing `Enter`/notes on a `manual`/sidecar step, or `approve` on an `approval` step) is **blocked** until at least one item has been recorded via `[e]`. There is no separate gate menu — trying to complete with nothing recorded just prints a one-line warning **on the same action bar**, so you never leave it:
 
-- **`[e]`** — runs the same `[e]` capture flow described above; a captured item (including a quick typed-text note) satisfies the requirement, and the step completes on your next `Enter`. If you can't attach real evidence right now, type a note explaining why via `[e]` — it's recorded in the run report as the audit trail.
+```
+    ⚠️  This step requires evidence (screenshot) — press [e] then ↵ to capture the pane output, or [e] and give a file, a URL or text. [s] skips.
+```
+
+With no pane attached the line reads `press [e] and give a file, a URL or text (typed text is fine)`. While the evidence is missing, `e evidence` is shown on the step bar itself, not only under `?`.
+
+- **`[e]`** — the same `[e]` flow described above; any recorded item (a file, a link, a typed note) satisfies the requirement, and the step completes on your next `Enter`. `evidence.types` says what the step would like; it does not restrict what counts. If you can't attach real evidence right now, type a note explaining why — it's recorded in the run report as the audit trail.
 - **`[s]`** — skip the step. It's recorded as **skipped** (not completed) in the run record, distinct from a completed step.
 
 `approval` steps get an `[e] evidence` key on their own bar too, so they're satisfied the same way (capture, then `approve`).

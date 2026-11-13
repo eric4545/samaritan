@@ -110,7 +110,7 @@ in this roadmap:
 ### 2.3 Interactive Execution Mode — ✅ IMPLEMENTED (v1.1)
 - [x] Step-by-step execution with user prompts
 - [x] Manual step instruction display
-- [x] Evidence upload interface (capture tmux output, attach file/screenshot/image, or paste text via `[e] evidence`)
+- [x] Evidence upload interface (`[e] evidence`: capture tmux output, attach a file/screenshot, record a URL as a link, or type/paste multi-line text; files are stored beside `report.md`)
 - [x] Step completion confirmation
 - [x] Pause/resume functionality
 - [x] Skip step capability

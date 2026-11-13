@@ -65,7 +65,9 @@ export type EvidenceType =
   | 'photo'
   | 'video'
   | 'log'
-  | 'command_output';
+  | 'command_output'
+  | 'link'
+  | 'text';
 export type SessionStatus =
   | 'running'
   | 'paused'

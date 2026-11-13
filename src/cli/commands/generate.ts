@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { stepRollbackAnchor, stepRollbackHeadingText } from '../../lib/anchor';
 import { renderExpectParts } from '../../lib/assertions';
 import { getBuiltinVariables } from '../../lib/builtin-variables';
+import { evidenceLinkUrl } from '../../lib/evidence-input';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
@@ -1156,6 +1157,8 @@ export function generateConfluenceContent(
           else {
             content += `\n[View ${evidenceResult.type}|${evidenceResult.file}]`;
           }
+        } else if (evidenceLinkUrl(evidenceResult)) {
+          content += `\n[${evidenceLinkUrl(evidenceResult)}]`;
         } else if (evidenceResult.content) {
           // Inline content - render in code block
           const language =

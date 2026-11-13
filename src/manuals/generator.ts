@@ -6,6 +6,7 @@ import {
   stepRollbackHeadingText,
 } from '../lib/anchor';
 import { renderExpectParts } from '../lib/assertions';
+import { evidenceLinkUrl } from '../lib/evidence-input';
 import {
   type GenerationMetadata,
   generateYamlFrontmatter,
@@ -186,6 +187,8 @@ function renderEvidenceItemMarkdown(
     } else {
       md += `[View ${item.type}](${item.file})\n\n`;
     }
+  } else if (evidenceLinkUrl(item)) {
+    md += `<${evidenceLinkUrl(item)}>\n\n`;
   } else if (item.content) {
     md += `\`\`\`${evidenceLang(item.type)}\n${item.content.trimEnd()}\n\`\`\`\n\n`;
   }
@@ -277,6 +280,8 @@ function formatEvidenceInfo(
           else {
             result += `<br>[View ${evidenceResult.type}](${evidenceResult.file})`;
           }
+        } else if (evidenceLinkUrl(evidenceResult)) {
+          result += `<br><${evidenceLinkUrl(evidenceResult)}>`;
         } else if (evidenceResult.content) {
           // Inline content - render in code block
           const language = evidenceLang(evidenceResult.type);

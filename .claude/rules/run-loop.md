@@ -32,11 +32,9 @@ command header (`Command — [p] pastes it into <pane>:` when a pane is
 attached). CLI tests asserting a `more` key must send `?` first and keep to
 one `?` per piped run (readline gotcha drops the lines after it).
 
-- `[n]` note, `[e]` evidence (capture pane since step start — cleaned — or the
-  pane SCREEN when nothing was printed since step start; attach file; paste
-  text; the gate line `evidenceGateMessage(paneAttached)` names `[e] then ↵`), `[x]`
+- `[n]` note (`readMultiline`), `[e]` evidence, `[x]`
   remove evidence (only shown once evidence exists — deletes from the session
-  record and from `~/.samaritan/sessions/<id>/evidence/` on disk; logged
+  record and from the run's `evidence/` directory on disk; logged
   `evidence_removed`), `[v]` verify (`step.expect` against captured output).
 - Sidecar-only: `[t]` attach pane (fires immediately, `pickTmuxPane` in
   run.ts: numbered picker from `listTmuxPanes()`, rows `renderPaneRow` and the
@@ -266,6 +264,54 @@ The approval `for` is labelled `stepLoop:` so the `while` can
 (`options.requireEvidence !== false`, ON by default; `--no-require-evidence`
 disables). Does NOT gate plain `type: automatic` steps. Fixture
 `evidence-required.yaml`.
+
+## `[e]` evidence — one prompt, kind from the input
+
+`captureEvidence` prints `evidencePromptLines()` and reads ONE answer with
+`readMultiline('    Evidence > ')`; `classifyEvidenceInput` (pure,
+`src/lib/evidence-input.ts`) decides: empty → pane capture (since step start,
+or the SCREEN when nothing was printed; no pane → nothing recorded, never an
+empty item) · existing file path (`resolveDroppedPath`: quotes, `\ `, `~`) →
+copied to `getRunEvidenceDir()` = `<run-dir>/evidence/` under
+`storedEvidenceName` (no spaces/brackets) · lone `http(s)` URL → `link` ·
+path-looking but missing → `File not found`, nothing recorded · else `text`.
+Legacy answers `f`/`t`/`l` still open the path/text/URL sub-prompt (tests and
+muscle memory). `evidence.types` is a HINT: header line `evidenceHeaderLine`,
+the prompt, the gate message and `evidenceTypeMismatch` (a note after
+recording another kind); the gate counts ANY item.
+
+**Clipboard image (`Ctrl+V` / answer `v`).** A terminal paste is text only,
+so the image is fetched by a helper: `readClipboardImage(dest)`
+(`src/lib/clipboard-image.ts`; `clipboardImageTools`: darwin `pngpaste` then
+`osascript` writing `«class PNGf»` to the path passed as ARGV, never spliced
+into the script; linux `wl-paste --type image/png` under Wayland, `xclip -t
+image/png -o` under X11). The result must start with the PNG magic, else
+nothing is left on disk and `No image taken: <reason>` is printed
+(`clipboardUnavailableReason`: SSH, no helper, no desktop session).
+`MultilineBuffer` reports `clipboard` only for Ctrl+V on an EMPTY prompt.
+The e2e ("[e] Ctrl+V") puts a stand-in `xclip` on PATH: it proves key →
+file → report, NOT the real helpers. The `osascript` and `wl-paste` command
+lines have never been run against a real clipboard from this repo's tests;
+check on a real desktop before changing them.
+
+**Never read free text with `question()`** where a paste is plausible:
+readline ends at the first newline, so a pasted block gave line 1 to the
+evidence, line 2 to the description and the rest to the step bar, where a
+one-letter line fired that action key (seen in real tmux). `readMultiline`
+(raw mode + `MultilineBuffer`, `src/lib/multiline-input.ts`) switches
+bracketed paste on (`ESC[?2004h`) so newlines between `paste-start`/
+`paste-end` are content; without bracketed paste an Enter submits only after
+`PASTE_BURST_MS` with no further key. Esc → `undefined`. Piped stdin falls
+back to `question()`. `question()` itself sets raw mode for the read:
+readline echoes the line itself, and in cooked mode every answer showed twice.
+
+**Report links.** `report.md` links an attached file relative to where the
+report is written (`ReportOptions.linkFrom`; default the run dir →
+`evidence/<file>`), wrapped in `<…>` when the path has spaces/brackets. The
+old location (`~/.samaritan/sessions/<id>/evidence/`) produced a link that
+never opened. `link` evidence renders `<url>`, text in a fence longer than
+any backtick run in it. e2e: "[e] multi-line paste"; CLI:
+`tests/cli/evidence.test.ts`.
 
 ## `q`/`Ctrl+C` abort — both SAVE (paused/resumable)
 

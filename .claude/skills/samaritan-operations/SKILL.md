@@ -45,8 +45,9 @@ Run any command with `--help` for full flags. Locally, use
 3. Use `command:` for a short inline command, `script:` for an external `.sh`
    file embedded into the manual (mutually exclusive).
 4. Attach `evidence.required` (enforced live in `samaritan run` — see
-   `reference/cli.md`) / `evidence.types` (documentation) and
-   `evidence.results.<env>` (pre-captured output embedded into the manual).
+   `reference/cli.md`) / `evidence.types` (what to record: a hint shown in
+   manuals and the run, e.g. `screenshot`, `link`, `command_output`) and
+   `evidence.results.<env>` (evidence you already have, embedded into the manual).
 5. Set `pic:` (Person In Charge) and `reviewer:` for sign-off checkboxes.
 6. **Always** `samaritan validate <file> --lint` before generating.
 

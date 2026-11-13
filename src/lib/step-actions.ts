@@ -91,10 +91,14 @@ export function sidecarFlowLegend(ctx: StepActionContext): string | undefined {
  * nothing yet. With a pane attached it names the one-keystroke path — the
  * output is already in the pane, so retyping it is never needed.
  */
-export function evidenceGateMessage(paneAttached: boolean): string {
+export function evidenceGateMessage(
+  paneAttached: boolean,
+  wanted?: string,
+): string {
+  const asks = wanted ? ` (${wanted})` : '';
   return paneAttached
-    ? '⚠️  This step requires evidence — press [e] then ↵ to capture the pane output (f = file, t = typed text), or [s] to skip.'
-    : '⚠️  This step requires evidence — press [e] to capture (typed text is fine) or [s] to skip.';
+    ? `⚠️  This step requires evidence${asks} — press [e] then ↵ to capture the pane output, or [e] and give a file, a URL or text. [s] skips.`
+    : `⚠️  This step requires evidence${asks} — press [e] and give a file, a URL or text (typed text is fine). [s] skips.`;
 }
 
 /**

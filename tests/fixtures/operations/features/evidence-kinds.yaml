@@ -1,0 +1,40 @@
+name: Evidence Kinds
+version: 1.0.0
+description: Evidence given as a link or as text, in results and during a run
+
+environments:
+  - name: staging
+    description: Staging environment
+
+steps:
+  - name: Announce the deploy
+    type: manual
+    instruction: Post the deploy notice and record where it was posted.
+    evidence:
+      required: true
+      types: [screenshot]
+      results:
+        staging:
+          - type: link
+            content: https://chat.example.com/archives/C0000000/p1700000000
+            description: Deploy notice in the ops channel
+          - type: text
+            content: |
+              web-server 1.4.2 going out to staging
+              no customer impact expected
+
+  - name: Sign off
+    type: approval
+    instruction: Sign off on the deploy.
+    evidence:
+      required: true
+      types: [text, link]
+    rollback:
+      - name: Withdraw the notice
+        instruction: Tell the channel the deploy is rolled back.
+        evidence:
+          results:
+            staging:
+              - type: link
+                content: https://ci.example.com/job/web-server-rollback/7/console
+                description: Rollback build

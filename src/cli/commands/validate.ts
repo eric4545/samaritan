@@ -1,10 +1,12 @@
 import { existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { Command } from 'commander';
 import { BUILTIN_VARIABLE_NAMES } from '../../lib/builtin-variables';
 import {
   findDiscardedVerifyKeysInFile,
   formatDiscardedVerifyFinding,
 } from '../../lib/deprecated-verify';
+import { lintEvidenceResults } from '../../lib/evidence-lint';
 import {
   formatExpectMatchFinding,
   formatExpectShellVarFinding,
@@ -80,6 +82,13 @@ class OperationValidator {
       // invisible from the parsed model.
       for (const finding of findDiscardedVerifyKeysInFile(filePath)) {
         result.warnings.push(formatDiscardedVerifyFinding(finding));
+      }
+
+      for (const warning of lintEvidenceResults(
+        operation,
+        dirname(resolve(filePath)),
+      )) {
+        result.warnings.push(warning);
       }
 
       // Additional validations

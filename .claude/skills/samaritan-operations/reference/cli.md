@@ -118,8 +118,8 @@ directory or example ships with this repo today.
 ## Interactive run loop actions
 
 Per manual/sidecar step:
-- `[n]` note — free-text annotation
-- `[e]` evidence — `↵` captures pane output since step start (cleaned), or the pane screen when nothing was printed since (a "record the result" step) / `f` attach file / `t` paste text. Shown in the bar while `evidence.required` is unmet
+- `[n]` note — free text; a multi-line paste is one note
+- `[e]` evidence — ONE prompt (`Evidence > `), kind worked out from the answer: `↵` alone captures pane output since step start (cleaned), or the pane screen when nothing was printed since (a "record the result" step); an existing file path (dragged in or typed) is copied to `<run-dir>/evidence/` (`screenshot`/`video`/`file` by extension); `Ctrl+V` on the empty prompt (or `v`) saves the IMAGE on the OS clipboard as a `screenshot` (macOS `pngpaste`/`osascript`, Linux `wl-paste`/`xclip`; not over SSH — the clipboard is on the operator's machine); a lone `http(s)` URL is a `link` (chat message, CI build, dashboard); anything else is `text`. A multi-line paste is one answer. `Esc` cancels; a missing path or an empty answer records nothing. `f`/`t`/`l` still open the old path/text/URL sub-prompt. Shown in the bar while `evidence.required` is unmet; the step header prints `Evidence : required — <types>`
 - `[x]` remove evidence — only shown once evidence exists
 - `[v]` verify — run `step.expect` against captured pane output (after a `[p]`, only output from that paste on — an earlier attempt's output is never judged). A PASS never completes the step: `↵` does. On a TTY, keys typed in the same burst as an action key are discarded (`v⏎` = verify only), and a second bare `↵` within 400 ms of an acted-on one (no other key between) is ignored (`Enter ignored: pressed twice`), so a double press never completes the next step
 - **Compact step bar** (`src/lib/step-actions.ts` `stepActionHints`): shows `y` (armed) · `↵` · `p` · `v` · `e` (only while required evidence is missing) · `t` (only while no pane is attached) · `s` · `r` · `?` more; `?` prints the rest (`c`, `n`, `e`, `x`, `t` attach another pane, `b`, `j`, `g`, `abort`). Hidden keys still work without `?`. With a pane attached the command header reads `Command — [p] pastes it into <pane>:` (`runCommandHeader`), else `Run this command in your terminal ([t] attaches a pane for [p]/[v]):`
@@ -143,11 +143,12 @@ Per manual/sidecar step:
 
 When a step has `evidence: { required: true }`, completing it (`manual`/sidecar
 `Enter`, or `approval`'s `approve`) is **blocked** by default until `[e]`
-captures at least one evidence item (a typed-text note counts). There is no
-separate gate menu — trying to complete with nothing captured just prints a
-one-line warning **on the same action bar** (`⚠️  This step requires evidence
-— press [e] to capture … or [s] to skip.`) and keeps you there. `[s]` skips
-the step (recorded as skipped, not completed). Disable with
+records at least one evidence item of ANY kind (file, link, text; `evidence.types`
+is a hint shown to the operator, not a filter — recording another kind prints a
+note and still counts). There is no separate gate menu — trying to complete with
+nothing recorded just prints a one-line warning **on the same action bar**
+(`⚠️  This step requires evidence (<types>) — press [e] …  [s] skips.`) and keeps
+you there. `[s]` skips the step (recorded as skipped, not completed). Disable with
 `--no-require-evidence`. Does NOT gate plain (non-sidecar) `type: automatic`
 steps.
 

@@ -11,11 +11,15 @@
 
 import assert from 'node:assert';
 import {
+  chmodSync,
   cpSync,
+  existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1139,11 +1143,14 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor('[Step 2 · 2/2]');
         await d.waitFor('e evidence'); // required + missing: [e] is in the bar
         d.key('e');
-        await d.waitFor('↵ capture the pane screen (no new output this step)');
+        await d.waitFor(
+          '↵ alone    capture the pane screen (no new output this step)',
+        );
+        await d.waitFor('Evidence > ');
         d.enter();
-        await d.waitFor('Description (optional)');
+        await d.waitFor('Description (optional');
         d.enter();
-        await d.waitFor('📎 Evidence captured');
+        await d.waitFor('📎 Evidence recorded: pane output');
         await sleep(ENTER_DEBOUNCE_MS + 100);
         d.enter();
         await d.waitFor('Report:', { timeoutMs: 20_000 });
@@ -1151,6 +1158,335 @@ describe('sidecar e2e (real tmux)', () => {
         const report = readReport(ws.dir);
         const step2 = report.slice(report.indexOf('Record web-server status'));
         assert.match(step2, /web-server: rollout ready/);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  // Seen in a real run: a multi-line paste at the evidence prompt kept only
+  // its first line; line 2 became the description and the rest were read by
+  // the step bar, where a one-letter line fired that action key.
+  it(
+    '[e] multi-line paste is ONE evidence item (bracketed and plain paste)',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('evidence-kinds.yaml');
+      const d = TmuxDriver.create({ split: true });
+      const paste = (text: string, bracketed: boolean): void => {
+        tmux(['set-buffer', '-b', 'sam-e2e-paste', '--', text]);
+        tmux([
+          'paste-buffer',
+          '-d',
+          ...(bracketed ? ['-p'] : []),
+          '-b',
+          'sam-e2e-paste',
+          '-t',
+          d.main,
+        ]);
+      };
+      const recorded = async (count: number): Promise<void> => {
+        await d.waitFor(
+          new RegExp(`(📎 Evidence recorded[\\s\\S]*){${count}}`),
+        );
+      };
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
+        await d.waitFor('[Step 1 · 1/2]');
+        await d.waitFor('Evidence : required — screenshot');
+
+        // Bracketed paste (what tmux and modern terminals send): `s` and
+        // `q` lines would skip the step / abort the run if they leaked.
+        d.key('e');
+        await d.waitFor('Evidence > ');
+        paste('web-server: 3/3 ready\ns\n\nq\nlast line\n', true);
+        await d.waitFor('last line');
+        d.enter();
+        await d.waitFor('Recording text, 5 lines');
+        await d.waitFor('Description (optional');
+        d.type('pod status');
+        await recorded(1);
+
+        // A terminal without bracketed paste delivers one burst of keys.
+        d.key('e');
+        await d.waitFor(/(Evidence > [\s\S]*){2}/);
+        paste('alpha line\ns\nomega line', false);
+        await d.waitFor('omega line');
+        d.enter();
+        await d.waitFor('Recording text, 3 lines');
+        d.enter(); // no description
+        await recorded(2);
+
+        // Still on step 1, not skipped, not aborted.
+        const screen = d.capture();
+        assert.ok(
+          !screen.includes('[Step 2'),
+          'no pasted line reached the bar',
+        );
+        assert.ok(!screen.includes('Execution aborted'), 'run still going');
+
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('[Step 2 · 2/2]');
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        await d.waitFor('Report:', { timeoutMs: 20_000 });
+
+        const report = readReport(ws.dir);
+        assert.ok(
+          report.includes(
+            '**Evidence**: text — pod status\n\n```text\nweb-server: 3/3 ready\ns\n\nq\nlast line\n```',
+          ),
+          report,
+        );
+        assert.ok(
+          report.includes('```text\nalpha line\ns\nomega line\n```'),
+          report,
+        );
+        assert.match(report, /Step 1: Announce the deploy\n/);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  // A minimal valid-looking PNG header: enough for the type sniffing.
+  const PNG_BYTES = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+  /** Wait until the run has printed `count` "Evidence recorded" lines. */
+  const evidenceRecorded = (d: TmuxDriver, count: number): Promise<string> =>
+    d.waitFor(new RegExp(`(📎 Evidence recorded[\\s\\S]*){${count}}`));
+  /** Wait for the `count`-th `Evidence > ` prompt. */
+  const evidencePrompt = (d: TmuxDriver, count: number): Promise<string> =>
+    d.waitFor(new RegExp(`(Evidence > [\\s\\S]*){${count}}`));
+  const runEvidenceDir = (dir: string): string => {
+    const report = findFile(dir, 'report.md');
+    assert.ok(report, `report.md not found under ${dir}`);
+    return join(report, '..', 'evidence');
+  };
+
+  // Operator feedback: a screenshot attached with [e] did not open from the
+  // report, and a URL could only be recorded as "command output".
+  it(
+    '[e] kinds: dragged file with a space, URL, Esc, missing path, approval step',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('evidence-kinds.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const shot = join(ws.dir, 'dash board.png');
+        writeFileSync(shot, PNG_BYTES);
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
+        await d.waitFor('[Step 1 · 1/2]');
+
+        // A file dragged into the terminal arrives as a quoted path.
+        d.key('e');
+        await evidencePrompt(d, 1);
+        d.type(`'${shot}'`);
+        await d.waitFor('Recording screenshot dash board.png');
+        await d.waitFor('Description (optional');
+        d.type('Dashboard after deploy');
+        await evidenceRecorded(d, 1);
+
+        // A URL is a link, and the step is told it asked for a screenshot.
+        d.key('e');
+        await evidencePrompt(d, 2);
+        d.type('https://ci.example.com/job/web-server-deploy/42/console');
+        await d.waitFor('Recording link https://ci.example.com');
+        d.type('CI build');
+        await evidenceRecorded(d, 2);
+        await d.waitFor('asks for screenshot; recorded: link');
+        assert.strictEqual(
+          d.capture().split('asks for screenshot; recorded:').length - 1,
+          1,
+          'the screenshot itself gets no mismatch note',
+        );
+
+        // Esc cancels; a path that is not there records nothing.
+        d.key('e');
+        await evidencePrompt(d, 3);
+        tmux(['send-keys', '-t', d.main, 'Escape']);
+        await d.waitFor('Cancelled — no evidence recorded', {
+          timeoutMs: 10_000,
+        });
+        d.key('e');
+        await evidencePrompt(d, 4);
+        d.type('/nope/missing.png');
+        await d.waitFor('File not found: /nope/missing.png');
+
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('[Step 2 · 2/2] APPROVAL');
+
+        // The approval bar has the same gate and the same [e].
+        d.type('approve');
+        await d.waitFor('This step requires evidence');
+        d.key('e');
+        await evidencePrompt(d, 5);
+        d.type('reviewed with bob, no open alerts');
+        await d.waitFor('Recording text, 1 line');
+        d.enter();
+        await evidenceRecorded(d, 3);
+        d.type('approve');
+        await d.waitFor('Rationale (optional)');
+        d.enter();
+        await d.waitFor('Report:', { timeoutMs: 20_000 });
+
+        const report = readReport(ws.dir);
+        const [stored, ...others] = readdirSync(runEvidenceDir(ws.dir));
+        assert.deepStrictEqual(others, [], 'only the one attached file');
+        assert.match(stored, /^[0-9a-f]{8}-dash-board\.png$/);
+        assert.ok(
+          report.includes(`![Dashboard after deploy](evidence/${stored})`),
+          report,
+        );
+        assert.ok(
+          readFileSync(join(runEvidenceDir(ws.dir), stored)).equals(PNG_BYTES),
+          'the copy beside the report is the file',
+        );
+        assert.ok(
+          report.includes(
+            '**Evidence**: link — CI build\n\n<https://ci.example.com/job/web-server-deploy/42/console>',
+          ),
+          report,
+        );
+        assert.ok(
+          report.includes('```text\nreviewed with bob, no open alerts\n```'),
+          report,
+        );
+        assert.ok(!report.includes('missing.png'), report);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  // The OS clipboard helper is replaced by a stand-in on PATH, so this
+  // covers the key, the prompt, the file and the report: not the real
+  // helper. Linux only (macOS would run the real osascript).
+  it(
+    '[e] Ctrl+V takes the image on the clipboard (stand-in helper)',
+    {
+      skip: skip || (process.platform === 'linux' ? false : 'linux only'),
+      timeout: 120_000,
+    },
+    async () => {
+      const ws = workspace('evidence-kinds.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const bin = join(ws.dir, 'bin');
+        mkdirSync(bin);
+        const clip = join(bin, 'clipboard.bin');
+        writeFileSync(
+          join(bin, 'xclip'),
+          '#!/bin/sh\ncat "$(dirname "$0")/clipboard.bin"\n',
+        );
+        chmodSync(join(bin, 'xclip'), 0o755);
+        writeFileSync(clip, 'just some copied text');
+
+        d.type(
+          `cd ${ROOT} && HOME=${ws.dir} DISPLAY=:99 WAYLAND_DISPLAY= PATH=${bin}:$PATH ${TSX} ${CLI} run ${ws.op} --env staging --attach ${d.work}`,
+        );
+        await d.waitFor('[Step 1 · 1/2]');
+
+        // Text on the clipboard is not an image: nothing recorded.
+        d.key('e');
+        await evidencePrompt(d, 1);
+        await d.waitFor('Ctrl+V     the screenshot on your clipboard');
+        tmux(['send-keys', '-t', d.main, 'C-v']);
+        await d.waitFor('No image taken: the clipboard holds no image');
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('This step requires evidence');
+
+        writeFileSync(clip, PNG_BYTES);
+        d.key('e');
+        await evidencePrompt(d, 2);
+        tmux(['send-keys', '-t', d.main, 'C-v']);
+        await d.waitFor('Recording screenshot from the clipboard');
+        await d.waitFor('Description (optional');
+        d.type('Alert panel');
+        await evidenceRecorded(d, 1);
+        assert.ok(
+          !d.capture().includes('asks for screenshot; recorded'),
+          'a clipboard image is the screenshot the step asked for',
+        );
+
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('[Step 2 · 2/2]');
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        await d.waitFor('Report:', { timeoutMs: 20_000 });
+
+        const [stored, ...others] = readdirSync(runEvidenceDir(ws.dir));
+        assert.deepStrictEqual(others, [], 'the failed attempt left no file');
+        assert.match(stored, /^[0-9a-f]{8}-clipboard\.png$/);
+        assert.ok(
+          readFileSync(join(runEvidenceDir(ws.dir), stored)).equals(PNG_BYTES),
+        );
+        assert.ok(
+          readReport(ws.dir).includes(`![Alert panel](evidence/${stored})`),
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'abort → resume keeps the evidence; [x] deletes the stored copy and the gate returns',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('evidence-kinds.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const shot = join(ws.dir, 'dashboard.png');
+        writeFileSync(shot, PNG_BYTES);
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
+        await d.waitFor('[Step 1 · 1/2]');
+        d.key('e');
+        await evidencePrompt(d, 1);
+        d.type(shot);
+        await d.waitFor('Description (optional');
+        d.enter();
+        await evidenceRecorded(d, 1);
+        d.key('q');
+        const aborted = await d.waitFor(RESUME_HINT);
+        const sessionId = aborted.match(RESUME_HINT)?.[1] as string;
+        const [stored] = readdirSync(runEvidenceDir(ws.dir));
+        assert.ok(
+          readReport(ws.dir).includes(`](evidence/${stored})`),
+          'the aborted run already links the file',
+        );
+
+        tmux(['send-keys', '-t', d.main, 'clear', 'Enter']);
+        tmux(['clear-history', '-t', d.main]);
+        d.type(launch(ws.dir, `resume ${sessionId}`));
+        await d.waitFor('[Step 1 · 1/2]');
+        // The evidence survived: [e] is not pushed into the bar as missing.
+        await d.waitFor(/↵ done {2}· {2}s skip/);
+        d.key('x');
+        await d.waitFor(`1) screenshot (`);
+        await d.waitFor('Remove which?');
+        d.type('1');
+        await d.waitFor('Evidence removed');
+        assert.ok(
+          !existsSync(join(runEvidenceDir(ws.dir), stored)),
+          'the stored copy is deleted',
+        );
+        assert.ok(existsSync(shot), "the operator's own file is untouched");
+
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('This step requires evidence (screenshot)');
+        d.key('q');
+        await d.waitFor(RESUME_HINT); // screen was cleared: this run's hint
+        assert.ok(
+          !readReport(ws.dir).includes('**Evidence**'),
+          'removed evidence is not in the report',
+        );
       } finally {
         d.kill();
         ws.cleanup();

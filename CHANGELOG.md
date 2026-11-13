@@ -5,8 +5,39 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- **A URL is evidence too.** At `[e]`, paste the link to a chat message, a CI
+  build or a dashboard and it is recorded as `link` evidence; `report.md`
+  shows it as a clickable link. In the operation YAML, `type: link` with the
+  URL in `content` works in `evidence.types` and `evidence.results`, and every
+  manual format (Markdown, Confluence, ADF) renders it as a link. Typed or
+  pasted text is recorded as the new `text` type instead of being labelled
+  `command_output`.
+- **`Ctrl+V` at the evidence prompt takes the screenshot on your clipboard.**
+  The image is saved beside the report as a `screenshot`. It needs a helper
+  on the machine where SAMARITAN runs: built in on macOS, `wl-paste` or
+  `xclip` on Linux. On a host reached over SSH the clipboard is not
+  available; give a file path or a link instead.
+- **A run step says up front that it wants evidence**, and which kind:
+  `Evidence : required — screenshot, link  ([e] adds it)`.
+- **`validate` warns about `evidence.results` that do nothing**: a key that is
+  not one of the operation's environments, a `file` that does not exist, a
+  `link` without a URL, an image type given inline text.
+
 ### Changed
 
+- **`[e]` evidence is one prompt.** Give it a file path (drag a screenshot
+  in), a URL, or text; press Enter alone to capture the pane; `Esc` cancels.
+  The kind is worked out from what you give. The old `f` / `t` answers still
+  work. `evidence.types` is shown in the prompt as what the step asks for;
+  recording another kind still counts and prints a note.
+- **Files attached as evidence are stored beside the report**, in
+  `.samaritan-runs/<session-id>/evidence/`, not under `~/.samaritan/`. Runs
+  made before this keep their files where they are.
+- **Misspelled keys under `evidence` are a validation error.** `require:` or
+  `type:` used to pass and the evidence gate then never applied. If
+  `validate` now rejects a file, rename the key to `required` / `types`.
 - **`aggregate_step_rollbacks` keeps each step's own rollback entries in the
   order you wrote them.** Only the steps are reversed. Before, the whole entry
   list was reversed, so a step's `restore` → `verify restore` came out as
@@ -15,6 +46,20 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **A multi-line paste at the evidence prompt is kept whole.** Only the first
+  line was recorded; the second became the description and the rest were read
+  by the step bar, where a line that was a single letter triggered that
+  action (skip, abort, run). The same applies to `[n]` notes.
+- **A screenshot attached with `[e]` opens from `report.md`.** The report
+  pointed at a path under the home directory that Markdown viewers could not
+  resolve, and a file name with a space broke the link. The report now links
+  to the copy beside it; `run --report <dir>` and `report --output <file>`
+  link back to it with a relative path.
+- **`[e]` with nothing entered no longer records an empty item** that
+  satisfied `evidence.required`, and a path that does not exist is reported
+  instead of being stored as text.
+- **Typed answers are no longer shown twice** at the note, evidence and other
+  line prompts.
 - **A variable whose value references another variable now resolves in the
   run, not just in the manual.** A group variable set to an environment
   variable (`CACHE_HOST: cache.${NAMESPACE}.example.com`), or a `with:` value
