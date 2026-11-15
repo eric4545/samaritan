@@ -22,8 +22,8 @@
 - ✅ Comprehensive test suite (run `npm test` for the current count)
 
 ### Documentation
-- ✅ README.md with examples and workflows
-- ✅ USAGE.md for quick reference
+- ✅ Documentation site under `docs/` (VitePress), with a generated CLI and YAML reference
+- ✅ README.md landing page
 - ✅ CLI help system
 - ✅ Example operation files
 
@@ -122,6 +122,9 @@ in this roadmap:
 - [x] Failed verify `y=re-run` (sidecar): paste + guarded Enter + re-verify in one key
 - [x] Stray-`↵` guard: asks before completing a sidecar step with nothing pasted or run
 - [x] `[b]`/`[j]` pick a step by manual number (`2.7`) or name
+- [x] `[b]` re-run one earlier step and come back (later steps keep their status)
+- [x] Un-run `[p]` paste guard: the next `[p]` is refused and `↵` asks while a paste is still on the pane's input line
+- [x] `confirm:` gate: an out-of-band check the operator asserts (who, when, result), shown as CONFIRMED in `report.md`
 - [ ] Per-step pane target (`target:` or a window name) with `[p]` warn/refuse on mismatch with the attached pane
 - [ ] Audited "clear the pending input line" action (today a stale paste blocks `[p]` and must be cleared in the pane with Ctrl+U)
 - [ ] Optional auto-advance on verify PASS (today a PASS never completes a step; `↵` does)
@@ -133,7 +136,7 @@ modes. Sidecar mode displays each resolved command and verifies `step.expect`
 against captured tmux pane output without sending the command automatically — the
 operator can optionally `[p]` paste it into the attached pane (no Enter) and runs
 it themselves, or press `[y]` to have samaritan press Enter there (one guarded key
-per command — the pane must still hold the unrun paste). See CLAUDE.md Gotcha #3 for full details on supported actions
+per command — the pane must still hold the unrun paste). See `docs/running.md` for full details on supported actions
 (`[n]` note, `[e]` evidence, `[x]` remove evidence, `[v]` verify, `[t]` attach pane,
 `[p]` send to pane, `[b]` back to a previous step).
 
@@ -272,7 +275,7 @@ everything) with a `samaritan resume <id>` hint per resumable session.
 ## 🤝 Contributing
 
 Want to help build these features? Check out:
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
+- [docs/contributing.md](docs/contributing.md) - Contribution guidelines
 - [CLAUDE.md](CLAUDE.md) - Development setup and code style
 - [GitHub Issues](https://github.com/eric4545/samaritan/issues) - Pick an issue
 

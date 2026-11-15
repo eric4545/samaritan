@@ -7,6 +7,17 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **`confirm:` — a gate you check outside the terminal** (a dashboard, a
+  browser, another operator). `samaritan run` asks the question before the
+  step can be marked done, and records who confirmed, when, and the result
+  they typed (`result: required` refuses an empty one). `report.md` shows
+  `Confirmation (out of band): ✅ CONFIRMED by … at …` with the question and
+  the result, so a checked gate no longer looks like a step that was simply
+  passed. Works on steps, rollback steps and `variants`; every manual format
+  prints it as a checkbox line. Example: `examples/confirm-out-of-band.yaml`.
+- **`report.md` opens with a "Steps at a glance" table**: one row per step
+  with its outcome, how it was checked (verify, confirmation, approval), the
+  evidence count and the duration.
 - **A URL is evidence too.** At `[e]`, paste the link to a chat message, a CI
   build or a dashboard and it is recorded as `link` evidence; `report.md`
   shows it as a clickable link. In the operation YAML, `type: link` with the
@@ -35,6 +46,15 @@ All notable changes to this project are documented here. This project follows
 
 ### Changed
 
+- **A step rolled back with `[r]` says so in the report** (`↩ rolled back`
+  in the table and the step heading). It used to read as an unfinished step.
+- **The report title shows the operation file, not its absolute path** on the
+  operator's machine.
+- **The operator name falls back to `$LOGNAME`, then the OS account** when
+  `$USER` is unset; before, every action in such a shell was recorded as
+  `unknown`.
+- **The run banner shows the first paragraph of the description**, not all of
+  it, and a finished run prints "Operation completed successfully" once.
 - **The postmortem timeline is rendered in time order**, not YAML order, so
   an entry appended later lands where it happened. Bare clock times
   (`16:20`, `18:05-18:10Z`) mixed with full timestamps are placed on the

@@ -285,6 +285,32 @@ With no pane attached the line reads `press [e] and give a file, a URL or text (
 
 This is **on by default** — declaring `evidence.required: true` is enough, no flag needed. To disable enforcement (e.g. a CI rehearsal or dry-run walk-through), pass `--no-require-evidence` to `run` or `resume`. The gate applies to `manual`/sidecar step completion and to `approval` steps' `approve` path; it does **not** gate plain (non-sidecar) `type: automatic` steps. See `examples/evidence-required-step.yaml`.
 
+## Confirm gate (`confirm:`): a check made outside the pane
+
+Some gates are met where samaritan cannot look: a dashboard, a browser, another operator's terminal. A step with `confirm:` shows the question above its action bar:
+
+```
+[Step 2 · 2/3] MANUAL: Check the canary on the dashboard
+    ☑️  Confirm before done: Error rate below 1% on the web-server dashboard? (result required)
+```
+
+Pressing `↵` (done) asks it:
+
+| Answer | What happens |
+|---|---|
+| `y` | Asks for the result you saw (a value, a link, a line or a pasted block). With `result: required` an empty result is refused; otherwise `↵` skips it. The step is then marked done. |
+| `n` | The step stays open and the refusal is recorded. Check again, or `s` skip / `r` roll back. |
+
+The report shows a confirmed step apart from one that was simply completed:
+
+```markdown
+**Confirmation (out of band)**: ✅ CONFIRMED by alice at Thu, 01 Jan 2026 00:00:00 UTC (answered "no" 1× first)
+- Asked: Error rate below 1% on the web-server dashboard?
+- Result: 0.3 over 5 minutes
+```
+
+The gate is asked on the `manual`/sidecar step bar and on an operator-driven rollback entry that declares `confirm:`. It is not asked on `approval` steps (the approval is the assertion) or in a non-sidecar `automatic` run. See `examples/confirm-out-of-band.yaml`.
+
 ## Mock run (`--mock`): replay `expect` against captured evidence
 
 `samaritan run <op> --env <env> --mock` validates your verification rules

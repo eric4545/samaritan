@@ -1545,4 +1545,65 @@ describe('sidecar e2e (real tmux)', () => {
       }
     },
   );
+
+  it(
+    'confirm gate: n keeps the step open, y + result completes it, abort → resume keeps it',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-confirm.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor(
+          'Confirm before done: Error rate below 1% for web-server?',
+          { timeoutMs: 40_000 },
+        );
+        d.enter();
+        await d.waitFor('Confirmed? [y / n=not yet]');
+        d.key('n');
+        await d.waitFor('Not confirmed — not marked done');
+        assert.ok(!d.capture().includes('Step marked complete'));
+
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor(/Confirmed\? \[y \/ n=not yet\]:[\s\S]*Confirmed\?/);
+        d.key('y');
+        await d.waitFor('Result (required: what you saw)');
+        d.enter(); // an empty required result is asked for once more
+        await d.waitFor('A result is required here');
+        d.type('rate 0.3 over 5 minutes');
+        await d.waitFor('Step marked complete');
+
+        // Abort on step 2, resume: the confirmation is in the log, not asked again.
+        await d.waitFor('Close out');
+        d.key('q');
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 20_000 });
+        const id = RESUME_HINT.exec(aborted)?.[1] as string;
+        d.type('clear');
+        d.type(launch(ws.dir, `resume ${id}`));
+        await d.waitFor('Close the change.', { timeoutMs: 40_000 });
+        assert.ok(!d.capture().includes('Confirm before done'));
+        d.enter();
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 20_000,
+        });
+
+        const report = readReport(ws.dir);
+        assert.match(
+          report,
+          /\*\*Confirmation \(out of band\)\*\*: ✅ CONFIRMED by \S+ at .* \(answered "no" 1× first\)\n- Asked: Error rate below 1% for web-server\?\n- Result: rate 0\.3 over 5 minutes/,
+        );
+        assert.match(report, /- Confirmed out of band: Step 1$/m);
+        assert.match(
+          report,
+          /\| 1 \| Check the dashboard \| ✅ completed \| ☑️ confirmed \|/,
+        );
+        assert.match(report, /\| 2 \| Close out \| ✅ completed \| — \|/);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
 });

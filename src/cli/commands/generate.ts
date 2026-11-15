@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { stepRollbackAnchor, stepRollbackHeadingText } from '../../lib/anchor';
 import { renderExpectParts } from '../../lib/assertions';
 import { getBuiltinVariables } from '../../lib/builtin-variables';
+import { confirmLine } from '../../lib/confirm';
 import { evidenceLinkUrl } from '../../lib/evidence-input';
 import { createGenerationMetadata } from '../../lib/git-metadata';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
@@ -769,6 +770,7 @@ ${step.instruction}`
 ${step.timeout ? `**Timeout**: ${step.timeout}s` : ''}
 ${step.estimated_duration ? `**Estimated Duration**: ${step.estimated_duration}s` : ''}
 ${step.evidence?.required ? `**Evidence Required**: ${step.evidence.types?.join(', ') || 'Yes'}` : ''}
+${confirmLine(step.confirm) ? `**${confirmLine(step.confirm)}**` : ''}
 ${step.continue_on_error ? `**Continue on Error**: Yes` : ''}
 
 ${(() => {
@@ -1481,6 +1483,11 @@ ${filteredOperation.environments
           stepInfo += `\n(i) PIC: [~${escapeConfluenceMacros(step.pic)}]`;
         if (step.reviewer)
           stepInfo += `\n(/) Reviewer: [~${escapeConfluenceMacros(step.reviewer)}]`;
+        const confirmText = confirmLine(step.confirm, (t) =>
+          resolveStepName(t, step.variables),
+        );
+        if (confirmText)
+          stepInfo += `\n(?) ${escapeConfluenceMacros(confirmText)}`;
         if (step.timeline)
           stepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(step.timeline))}`;
         if (step.needs && step.needs.length > 0)
@@ -1814,6 +1821,13 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
           }
         }
 
+        const rollbackConfirm = confirmLine(rollbackStep.confirm, (t) =>
+          resolveVars ? substituteVariables(t, env.variables || {}, {}) : t,
+        );
+        if (rollbackConfirm) {
+          cellContent += `${cellContent ? '\n' : ''}* [ ] ${escapeConfluenceMacros(rollbackConfirm)}`;
+        }
+
         // Process rollback pic/reviewer sign-off
         if (rollbackStep.pic || rollbackStep.reviewer) {
           const sep = cellContent ? '\n' : '';
@@ -2008,6 +2022,15 @@ function renderInlineRollback(
       }
     }
 
+    const rbConfirm = confirmLine(rb?.confirm, (t) =>
+      resolveVars && (rb.options?.substitute_vars ?? true)
+        ? substituteVariables(t, env.variables || {}, stepVariables)
+        : t,
+    );
+    if (rbConfirm) {
+      cellContent += `${cellContent ? '\n' : ''}* [ ] ${escapeConfluenceMacros(rbConfirm)}`;
+    }
+
     if (rb?.pic || rb?.reviewer) {
       const sep = cellContent ? '\n' : '';
       cellContent += `${sep}*Sign-off:*`;
@@ -2164,6 +2187,11 @@ function addConfluenceSubStepRows(
       subStepInfo += `\n(i) PIC: [~${escapeConfluenceMacros(subStep.pic)}]`;
     if (subStep.reviewer)
       subStepInfo += `\n(/) Reviewer: [~${escapeConfluenceMacros(subStep.reviewer)}]`;
+    const subConfirmText = confirmLine(subStep.confirm, (t) =>
+      resolveSubStepName(t, subStep.variables),
+    );
+    if (subConfirmText)
+      subStepInfo += `\n(?) ${escapeConfluenceMacros(subConfirmText)}`;
     if (subStep.timeline)
       subStepInfo += `\n(time) Timeline: ${escapeConfluenceMacros(formatTimelineForDisplay(subStep.timeline))}`;
     if (subStep.needs && subStep.needs.length > 0)

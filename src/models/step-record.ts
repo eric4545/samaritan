@@ -45,6 +45,19 @@ export interface StepApproval {
   timestamp: string;
 }
 
+/**
+ * A `confirm:` gate the operator asserted was met outside the pane
+ * (`confirmed_out_of_band`): the question, who answered `y`, when, and the
+ * result they typed. `declined` counts earlier `n` answers.
+ */
+export interface StepConfirmation {
+  prompt: string;
+  by?: string;
+  at?: string;
+  result?: string;
+  declined?: number;
+}
+
 export interface StepEvidenceRef {
   id?: string;
   type: string;
@@ -76,6 +89,7 @@ export interface StepRecord {
   commands: StepCommandRecord[];
   verification?: StepVerification;
   approval?: StepApproval;
+  confirmation?: StepConfirmation;
   notes: string[];
   evidence: StepEvidenceRef[];
   failedReason?: string;
@@ -87,6 +101,8 @@ export interface RollbackCommandRecord {
   output?: string;
   /** Rollback entry name (e.g. `↩ Rollback for "Deploy"`). */
   name?: string;
+  /** `confirm:` gate asserted for this rollback entry (who, with what result). */
+  confirmation?: StepConfirmation;
   /** Shown to the operator (operator-driven) rather than sent by samaritan. */
   displayed?: boolean;
   /** An instruction-only entry (no command). */

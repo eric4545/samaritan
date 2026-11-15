@@ -154,6 +154,18 @@ you there. `[s]` skips the step (recorded as skipped, not completed). Disable wi
 `--no-require-evidence`. Does NOT gate plain (non-sidecar) `type: automatic`
 steps.
 
+## Confirm gate (`confirm:`)
+
+A step (or operator-driven rollback entry) with `confirm:` shows `☑️  Confirm
+before done: <prompt>` above the bar. `↵` then asks `Confirmed? [y / n=not
+yet]`: `y` asks for the result (`result: required` refuses an empty one, asking
+once more first), logs `user_input`/`confirmed_out_of_band` `{prompt, result}`
+and completes; `n` logs `confirm_declined` and stays on the bar. `report.md`
+renders `**Confirmation (out of band)**: ✅ CONFIRMED by <op> at <time>` +
+`Asked:` / `Result:`, a `Confirmed out of band: Step N` summary line, and
+`☑️ confirmed` in the "Steps at a glance" table. Not asked on `approval` steps
+or in non-sidecar `automatic` runs.
+
 **Forward gating (`needs`):** before a step whose `needs` aren't all completed (e.g. a dependency was skipped by `[j]` jump or `--from-step`), the run loop warns (`⚠️ This step needs: …`) and prompts `Start anyway? [y=proceed / Enter=go back]`. `y` proceeds (logging a `needs_override` audit event); Enter rewinds to the first unmet dependency. Skipped ≠ completed.
 
 ## Run artifacts

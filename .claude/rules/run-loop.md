@@ -265,6 +265,31 @@ The approval `for` is labelled `stepLoop:` so the `while` can
 disables). Does NOT gate plain `type: automatic` steps. Fixture
 `evidence-required.yaml`.
 
+## `confirm:` gate — out-of-band check asserted by the operator
+
+`askConfirm(step, ResolvedConfirm, context?)` (run.ts; config from
+`normalizeConfirm` in `src/lib/confirm.ts`, prompt `${VAR}`-resolved) is the
+LAST check before `↵` completes: the forward bar (after the evidence gate,
+`confirmDoneWithUnrunPaste`, `confirmDoneWithNothingRun`) and the operator
+rollback entry. `y` → result via `readMultiline` (a paste is plausible),
+`result: required` re-asks once then refuses → `user_input`/
+`confirmed_out_of_band` `{prompt, result?, context?}`; `n` →
+`confirm_declined`. `foldEvents` → `StepRecord.confirmation` /
+`RollbackCommandRecord.confirmation` (`foldConfirmation`: latest `y` wins,
+`declined` counts). Report: `renderConfirmation`, the `Confirmed out of band`
+summary line, the "Steps at a glance" `Checked` column. Not asked on
+`approval` steps, the non-sidecar tmux `automatic` branch or `--auto-approve`.
+Tests: `tests/cli/confirm.test.ts` (sequenced run → events + report), e2e
+"confirm gate".
+
+**Report overview + rolled back.** `renderStepOverview` prints one row per
+step (`stepOutcome`, `stepCheckSummary`). A step undone with `[r]` stays
+`pending` in the log; `rolledBack` (rollback records with context `rollback`
+and a run status) marks it `↩ rolled back` in the table and the heading. The
+report title is the redacted operation path (`reportTitlePath`), never the
+absolute one. `currentOperator()` (`src/lib/operator.ts`) replaces
+`$USER || 'unknown'`.
+
 ## `[e]` evidence — one prompt, kind from the input
 
 `captureEvidence` prints `evidencePromptLines()` and reads ONE answer with
