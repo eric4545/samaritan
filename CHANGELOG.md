@@ -7,6 +7,14 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **`[!]` runs a sidecar step in one key**: it pastes the command into the
+  attached pane and presses the same guarded Enter as `[p]` then `[y]`, waits
+  and verifies. `[p]` and `[y]` work as before, for looking at the command on
+  the pane's input line before it runs.
+- **`run.advance_on_pass: true`** in the operation completes a step when its
+  `expect` verify passes, without waiting for Enter. A step with no `expect`,
+  a failed verify, missing required evidence or a `confirm:` gate still waits.
+  Off by default.
 - **`confirm:` — a gate you check outside the terminal** (a dashboard, a
   browser, another operator). `samaritan run` asks the question before the
   step can be marked done, and records who confirmed, when, and the result
@@ -87,6 +95,8 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **A step skipped with `s` is reported as skipped.** `report.md` showed it
+  as an unfinished step and left it out of `Steps skipped`.
 - **A postmortem timestamp without a time zone renders the same on every
   machine.** `2026-01-01T14:00:00` was read as the local time of whichever
   machine rendered it. It is now read in the `--timezone` zone (default

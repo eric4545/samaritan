@@ -24,6 +24,11 @@ export interface StepActionContext {
   hasExpect: boolean;
   /** A tmux pane is attached for this step's session. */
   paneAttached: boolean;
+  /**
+   * `[!]` can paste and press the guarded Enter on this pane (sidecar, a
+   * command, a pane that supports both writes). Optional: absent = no.
+   */
+  canRun?: boolean;
   /** Evidence already captured on this step (`[x]` can remove it). */
   hasEvidence: boolean;
   /**
@@ -46,6 +51,10 @@ export function stepActionHints(ctx: StepActionContext): {
     cond ? [hint] : [];
   const primary: KeyHint[] = [
     ...when(ctx.sidecar && ctx.armed, { key: 'y', label: 'run it' }),
+    ...when(ctx.sidecar && !ctx.armed && !!ctx.canRun, {
+      key: '!',
+      label: 'paste + run',
+    }),
     { key: '↵', label: 'done' },
     ...when(ctx.sidecar && ctx.hasCommand, { key: 'p', label: 'paste' }),
     ...when(ctx.hasExpect, { key: 'v', label: 'verify' }),
@@ -83,6 +92,8 @@ export function stepActionHints(ctx: StepActionContext): {
 export function sidecarFlowLegend(ctx: StepActionContext): string | undefined {
   if (!ctx.sidecar || !ctx.hasCommand || !ctx.paneAttached) return undefined;
   const verify = ctx.hasExpect ? ' (verify follows)' : '';
+  if (ctx.canRun)
+    return `ℹ️  Flow: ! pastes the command into the pane and runs it${verify} → ↵ marks the step done. To look before it runs: p pastes only, then y runs it. ? lists more keys.`;
   return `ℹ️  Flow: p pastes the command into the pane → y runs it${verify} → ↵ marks the step done. ? lists more keys.`;
 }
 
@@ -109,8 +120,12 @@ export function runCommandHeader(opts: {
   /** `undefined` = no pane attached. */
   paneTarget?: string;
   script?: boolean;
+  /** `[!]` (paste + guarded Enter) works on this pane. */
+  canRun?: boolean;
 }): string {
   const what = opts.script ? 'Run' : 'Command';
+  if (opts.paneTarget && opts.canRun)
+    return `${what} — [!] pastes and runs it in ${opts.paneTarget} ([p] pastes only):`;
   if (opts.paneTarget)
     return `${what} — [p] pastes it into ${opts.paneTarget}:`;
   return `Run this ${opts.script ? '' : 'command '}in your terminal ([t] attaches a pane for [p]/[v]):`;
@@ -136,6 +151,10 @@ export function unavailableKeyMessage(
         if (!ctx.sidecar)
           return '[p] pastes into a tmux pane in sidecar mode only';
         return ctx.hasCommand ? undefined : 'this step has no command to paste';
+      case '!':
+        if (!ctx.sidecar)
+          return '[!] pastes and runs in a tmux pane in sidecar mode only';
+        return ctx.hasCommand ? undefined : 'this step has no command to run';
       case 'y':
         return ctx.sidecar
           ? undefined

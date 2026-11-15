@@ -156,6 +156,25 @@ NOT non-interactive execution: one operator key per command. When armed,
 `y run it` is the FIRST key in the bar. e2e: "[p] then [y]", "rollback [p]
 then [y]", "[y] on a slow command" (`e2e-slow-run.yaml`), "[y] refuses unless…".
 
+### `[!]` paste + run, and `run.advance_on_pass`
+
+`[!]` (forward bar only, `IMMEDIATE_ACTION_CHARS`) = `pasteStepCommand('run')`
+→ must arm → `runArmedStepPaste()` → verify: the SAME closures as `[p]`/`[y]`
+and the failed-verify re-run, nothing new written to the pane. Shown first in
+the bar when `canRun` (`paneCanRun`: sidecar + paste + paneState + sendEnter)
+and not armed; once armed, `y run it` leads as before. NEVER make `y` do this:
+`y` answers every y/n prompt (`confirmKey`), and one that lands on the bar
+would start a command (e2e "a y meant for a prompt"). `run.advance_on_pass`
+(operation YAML, default false; deliberately NOT a CLI flag): after a forward
+verify PASS (`verifyThenMaybeAdvance`, `verifyPassedStep`) the bar loop sets
+`advance` and the next pass acts as `↵` WITHOUT reading a key, so every
+completion gate (evidence, un-run paste, `confirm:`) still runs. e2e: "[!]
+pastes and runs in one key" (`e2e-advance.yaml`).
+
+**Operator `s` skip is logged.** The four `⏭  Skipped.` sites call
+`logSkip(i)`; without the `step_skip` event the report showed an operator
+skip as an unfinished step and no `Steps skipped` line.
+
 ### Un-run paste guard (#115)
 
 `[p]` never presses Enter, so an un-run paste stays on the pane's input line

@@ -772,7 +772,9 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor('Paste check', { timeoutMs: 40_000 });
         // With a pane attached the header points at [p], and the compact bar
         // shows the flow keys + `?` (copy/note/… live under it).
-        await d.waitFor(`Command — [p] pastes it into tmux pane ${work}:`);
+        await d.waitFor(
+          `Command — [!] pastes and runs it in tmux pane ${work} ([p] pastes only):`,
+        );
         await d.waitFor(/↵ done .*p paste .*v verify .*\? more/);
 
         d.key('p');
@@ -1112,8 +1114,8 @@ describe('sidecar e2e (real tmux)', () => {
         assert.ok(
           d
             .capture()
-            .includes('Flow: p pastes the command into the pane → y runs it'),
-          'the p → y → ↵ legend is spelled out once',
+            .includes('Flow: ! pastes the command into the pane and runs it'),
+          'the run flow legend is spelled out once',
         );
         d.key('p');
         await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
@@ -1600,6 +1602,89 @@ describe('sidecar e2e (real tmux)', () => {
           /\| 1 \| Check the dashboard \| ✅ completed \| ☑️ confirmed \|/,
         );
         assert.match(report, /\| 2 \| Close out \| ✅ completed \| — \|/);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    '[!] pastes and runs in one key; advance_on_pass completes on PASS, stops on FAIL and without expect; s is reported skipped',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-advance.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor(/! paste \+ run .*↵ done .*p paste/, {
+          timeoutMs: 40_000,
+        });
+        // One key: paste, guarded Enter, verify PASS, step done.
+        d.key('!');
+        await d.waitFor(/^ROLLOUT_DONEMARK$/m, { pane: work });
+        await d.waitFor('Completing the step (run.advance_on_pass)');
+        await d.waitFor('Check replicas');
+
+        // A failed verify never advances.
+        d.key('!');
+        await d.waitFor('❌ contains: REPLICAS_NINE', { timeoutMs: 20_000 });
+        await d.waitFor('Assertion failed.');
+        d.enter(); // back to the step
+        await d.waitFor('Back to the step');
+        assert.ok(!d.capture().includes('[Step 3'), 'still on step 2');
+        d.key('s');
+        await d.waitFor('Skipped.');
+
+        // No expect: [!] runs it, the operator still presses ↵.
+        await d.waitFor('[Step 3');
+        d.key('!');
+        await d.waitFor(/^PLAIN_MARK$/m, { pane: work });
+        await d.waitFor(/Finished\.[\s\S]*! paste \+ run/);
+        assert.ok(!d.capture().includes('Operation completed'));
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 20_000,
+        });
+
+        const report = readReport(ws.dir);
+        assert.match(report, /- Steps completed: 2\/3/);
+        assert.match(report, /- Steps skipped: 1/);
+        assert.match(
+          report,
+          /\| 1 \| Roll out web-server \| ✅ completed \| ✅ verify \|/,
+        );
+        assert.match(
+          report,
+          /\| 2 \| Check replicas \| ⏭ skipped \| ❌ verify \|/,
+        );
+        assert.match(report, /\| 3 \| No expect \| ✅ completed \| — \|/);
+        assert.match(report, /Enter sent from samaritan/);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'a y meant for a prompt never starts a command: [y] with nothing pasted sends nothing',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-paste.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('! paste + run', { timeoutMs: 40_000 });
+        d.key('y');
+        await sleep(1500);
+        assert.ok(
+          !d.capture(work).includes('PASTE'),
+          'nothing pasted or run in the work pane',
+        );
       } finally {
         d.kill();
         ws.cleanup();

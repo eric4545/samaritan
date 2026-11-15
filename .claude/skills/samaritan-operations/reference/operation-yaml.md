@@ -191,6 +191,18 @@ skips it. See "Evidence-required gate" in `reference/cli.md`. A run never writes
 `results`; what the operator records goes to the run's `report.md` (files to
 `evidence/` beside it).
 
+## Run settings (`run:`)
+
+```yaml
+run:
+  advance_on_pass: true   # default false
+```
+
+`advance_on_pass`: in a sidecar/manual run a passing `expect` verify completes
+the step without `↵` (evidence and `confirm:` gates still ask; no `expect` or
+a failed verify still waits). `auto_send` / `auto_exec` are older settings for
+the non-sidecar tmux mode.
+
 ## Confirm gate (`confirm`)
 
 A check made outside the pane (dashboard, browser, another operator):

@@ -172,6 +172,11 @@
           "type": "boolean",
           "default": false,
           "description": "Auto-press Enter after send"
+        },
+        "advance_on_pass": {
+          "type": "boolean",
+          "default": false,
+          "description": "Sidecar/manual run: when a step's `expect` verify passes, complete the step without waiting for Enter. A step with no `expect`, a failed verify, missing required evidence or a `confirm:` gate still waits for the operator."
         }
       },
       "additionalProperties": false

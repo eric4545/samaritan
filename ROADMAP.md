@@ -127,7 +127,8 @@ in this roadmap:
 - [x] `confirm:` gate: an out-of-band check the operator asserts (who, when, result), shown as CONFIRMED in `report.md`
 - [ ] Per-step pane target (`target:` or a window name) with `[p]` warn/refuse on mismatch with the attached pane
 - [ ] Audited "clear the pending input line" action (today a stale paste blocks `[p]` and must be cleared in the pane with Ctrl+U)
-- [ ] Optional auto-advance on verify PASS (today a PASS never completes a step; `↵` does)
+- [x] Optional auto-advance on verify PASS (`run.advance_on_pass: true` in the operation; off by default)
+- [x] `[!]` paste + run in one key (same guarded Enter as `[p]` then `[y]`)
 - [ ] Artifact provenance checks (record an S3 ETag/sha at upload, assert it is unchanged before use, show both in `report`)
 - [ ] Sidecar `expect.retry` that re-runs the command between attempts (today `retry` re-captures; in sidecar the operator re-runs with `y`)
 

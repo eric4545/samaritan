@@ -55,6 +55,8 @@ export interface ExpectConfig {
 export interface RunConfig {
   auto_send?: boolean;
   auto_exec?: boolean;
+  /** Sidecar: a verify PASS completes the step (other gates still ask). */
+  advance_on_pass?: boolean;
 }
 
 // ─── Supporting Types and Enums ───────────────────────────────────────────────
