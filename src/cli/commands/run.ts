@@ -598,10 +598,12 @@ class OperationRunner {
           console.log(
             `   Steps: ${finalState.totalSteps}  Skipped: ${finalState.skippedSteps}`,
           );
+        } else {
+          // Kept although an interactive run also prints the 🎉 line from
+          // the operation_completed event: a non-interactive (--auto-approve)
+          // run prints only this one, and scripts grep for it.
+          console.log('\n✅ Operation completed successfully!');
         }
-        // A real run already printed "🎉 Operation completed successfully!"
-        // from the operation_completed event: saying it twice read as two
-        // different outcomes.
       } else if (finalState.status === 'paused') {
         const waitingStep = finalState.steps.find(
           (s) => s.status === 'waiting',

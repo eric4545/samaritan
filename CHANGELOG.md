@@ -54,7 +54,7 @@ All notable changes to this project are documented here. This project follows
   `$USER` is unset; before, every action in such a shell was recorded as
   `unknown`.
 - **The run banner shows the first paragraph of the description**, not all of
-  it, and a finished run prints "Operation completed successfully" once.
+  it.
 - **The postmortem timeline is rendered in time order**, not YAML order, so
   an entry appended later lands where it happened. Bare clock times
   (`16:20`, `18:05-18:10Z`) mixed with full timestamps are placed on the

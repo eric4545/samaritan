@@ -276,6 +276,40 @@ describe('confirm: validate, manuals, run', () => {
   });
 });
 
+describe('run: completion line', () => {
+  it('a non-interactive run still ends with "✅ Operation completed successfully!"', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sam-done-'));
+    try {
+      const op = join(dir, 'op.yaml');
+      // Only automatic steps: a manual step pauses a non-interactive run.
+      writeFileSync(
+        op,
+        [
+          'name: Auto',
+          'version: 1.0.0',
+          'description: automatic only',
+          'environments:',
+          '  - name: staging',
+          '    description: Staging',
+          'steps:',
+          '  - name: Say hello',
+          '    type: automatic',
+          '    command: echo hello',
+          '',
+        ].join('\n'),
+      );
+      const result = spawnSync(
+        CLI,
+        [INDEX, 'run', op, '--env', 'staging', '--auto-approve'],
+        { encoding: 'utf8', timeout: 30_000, input: '' },
+      );
+      assert.match(result.stdout, /✅ Operation completed successfully!/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('confirm: fold + report', () => {
   const render = (events: SessionEvent[]): string =>
     renderReport(events, foldEvents(events));
