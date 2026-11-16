@@ -34,11 +34,15 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 
 | Scenario | What happens |
 |---|---|
-| `sessions:` defined in YAML | Samaritan bootstraps its own tmux session; prints `Attach with: tmux attach -t samaritan-<id>` |
+| `sessions:` defined in YAML | Samaritan bootstraps its own tmux session `samaritan-<id>` with one window per entry, named after it, and prints how to look at it (see below) |
 | `--attach <target>` flag | Samaritan attaches a pipe-pane capture to your existing pane without touching your session |
 | No sessions, no `--attach` | Prompt-only mode; `[v]` will indicate that you need `[t]` to attach a pane first |
 
 **Caveats:**
+- **Looking at spawned `sessions:`.** Outside tmux, samaritan prints `tmux attach -t samaritan-<id>`. Inside tmux that command is refused by tmux itself (`sessions should be nested with care`), so samaritan prints the two that work there:
+  - `tmux split-window -h "TMUX= tmux attach -t samaritan-<id>"` opens the session in a split beside samaritan.
+  - `tmux switch-client -t samaritan-<id>` moves your client to it; `prefix` + `L` comes back.
+- **Several sessions.** Each `sessions:` entry is its own window (`samaritan-<id>:web`, `samaritan-<id>:db`). A step's `session:` decides which pane its `[p]`, `[y]` and `[v]` use, and the paste message names that pane. Panes are found by their tmux id, so `base-index` / `pane-base-index` set to 1 in your `tmux.conf` does not matter, and a session name may hold characters such as `.` (the window is then named with `_`).
 - `--attach` mode uses a **single capture target** for all steps. It takes precedence over `sessions:`: the named sessions are **not** spawned, per-step `session:` routing is ignored, and every step's `[v]`/`[p]` uses the attached pane. Samaritan prints a one-line notice when the operation declares `sessions:`. Press `[t]` to point a step at a different pane (the new pane is used from then on). `resume` keeps the same precedence: it re-attaches the saved pane and does not spawn `sessions:`. To get one pane per named session, run without `--attach` and samaritan spawns them.
 - tmux allows **one** `pipe-pane` per pane, so attaching replaces any existing pipe on it. Run one samaritan per pane. If a second run attaches to the same pane anyway:
   - it warns at attach (`This pane was captured by samaritan session <id> (pid N)`)
@@ -82,7 +86,7 @@ Each step heading uses the **same number as the single-environment manual** (`ge
 ```
 
 - `Step 10.2` is the number in `generate manual --env <name>`: sub-steps are dotted (`10.1`, `10.2`, `10.2.1`). It is not the letter scheme (`10a`, `10b1`) that the multi-environment manual uses.
-- `34/46` is the position in the run's flat step list (parents and sub-steps all count). Use this number with `[b]` back / `[j]` jump and `--from-step`.
+- `34/46` is progress only: the 34th of the 46 steps this run visits (parents and sub-steps all count). It is never a step number. `[b]` back, `[j]` jump, `--from-step`, every message, `samaritan sessions` and `report.md` use `10.2`.
 - `remaining` counts the steps still to visit. Steps that `when:` excludes for this environment are not counted.
 
 
@@ -253,13 +257,13 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
   **After Enter, samaritan waits for the command and verifies it for you.** It shows `⏳ Running… verify follows when it finishes`. Once the pane is back at the same bare prompt it showed before the paste (digits such as clocks or exit codes may differ) and output has been quiet for 0.3s, it prints `✔ Finished.` and runs `[v]` against the step's `expect`. A step without `expect` just reports it finished. A slow, silent program in the foreground (e.g. `kubectl rollout status`) keeps it waiting. If the prompt can't be recognised (a `cd` changed it), 3s of quiet with the shell back in front counts as finished. **Any key stops waiting** and hands the action bar back; press `[v]` yourself when the command is done. The usual step flow is `[p]` → glance at the pane → `[y]` → `↵`.
 
   A refusal sends nothing and keeps `[y]` available (leave copy-mode, press `[y]` again). If the pane changed, press Enter there yourself, or `[p]` to paste again. `[y]` only ever applies to the paste made from the same step (or rollback entry). It isn't carried over to another step, or to the same step revisited with `[b]`. Logged as `user_input`/`enter_sent`, and the report marks the command `⏎ Enter sent from samaritan [y]`. There is no flag or setting for it.
-- **`[b]` back** — go back to an earlier, already-processed step to re-run it (e.g. an external dependency was fixed and you want to retry from there). Shows a numbered picker of the prior steps (type the listed number, the manual's step number such as `2.7`, or a unique part of the step name); the chosen step **and every step after it** are reset to pending and execution resumes from there. The append-only JSONL audit log keeps the full history of the earlier attempt, and the rewound step index is persisted so `resume` stays consistent. Not offered on the first step.
-  - **Re-run only one step.** When there are steps between the one you pick and the one you are on, `[b]` asks `Re-run only "<picked>", then come back to "<current>"? [y / n=rewind]`.
-    - `y` resets **only** the picked step. Its header shows `Next : back to step N`. Once it is done (or skipped), the run returns straight to where you were, and the steps in between keep their status: they are neither re-run nor marked skipped.
+- **`[b]` back** — go back to an earlier, already-processed step to re-run it (e.g. an external dependency was fixed and you want to retry from there). Shows the prior steps, one per row, under the same number as the heading and the manual (`2.7  deploy  (completed)`). Type that number, or the step name or a unique part of it. The number the multi-environment manual prints for the same step (`2g`) and text copied from a heading (`Step 2.7:`) work too. A plain `2` always means Step 2, never the second row. The chosen step **and every step after it** are reset to pending and execution resumes from there. The append-only JSONL audit log keeps the full history of the earlier attempt, and the rewound step index is persisted so `resume` stays consistent. Not offered on the first step.
+  - **Re-run only one step.** When there are steps between the one you pick and the one you are on, `[b]` asks `Re-run only Step <picked>, then come back to Step <current>? [y / n=rewind: …]`.
+    - `y` resets **only** the picked step. Its header shows `Next : back to Step <number>: <name>`. Once it is done (or skipped), the run returns straight to where you were, and the steps in between keep their status: they are neither re-run nor marked skipped.
     - `n` rewinds as described above.
     - Logged as `user_input` `rerun` / `rerun_return`. If you abort during the re-run, `resume` continues after the re-run step, not at the step you came from.
     - Prefer this over `[b]` followed by `[j]`: a `[j]` back over the rewound steps records them as **skipped** even though they ran.
-- **`[j]` jump** — jump **forward** to a later step (e.g. steps 3–5 are irrelevant this run and you want to go straight to step 6). Shows a numbered picker of the steps after the current one (type the listed number, the manual's step number such as `2.7`, or a unique part of the step name); the current step and every step up to (but not including) the target are recorded as **skipped** (⏭) in the run report, and execution resumes at the target. The append-only JSONL audit log keeps the full history. Not offered on the last step. To start a fresh run partway through instead, use `run --from-step <N>` (see below).
+- **`[j]` jump** — jump **forward** to a later step (e.g. steps 3–5 are irrelevant this run and you want to go straight to step 6). Shows the steps after the current one and takes the same answers as `[b]`; the current step and every step up to (but not including) the target are recorded as **skipped** (⏭) in the run report, and execution resumes at the target. The append-only JSONL audit log keeps the full history. Not offered on the last step. To start a fresh run partway through instead, use `run --from-step <step>` (see below).
 
 ## Evidence-required gate
 
@@ -343,7 +347,7 @@ samaritan sessions --all
 samaritan resume <session-id>
 
 # Or jump to a specific step
-samaritan resume <session-id> --from-step 4
+samaritan resume <session-id> --from-step 2.7      # the manual's step number, or a step name
 
 # Sidecar: capture from a different pane than the one the run used
 samaritan resume <session-id> --attach work:0.1

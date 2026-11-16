@@ -3,8 +3,11 @@ import { describe, it } from 'node:test';
 import {
   childStepLabel,
   describeStepPosition,
+  multiEnvStepLabel,
   type PositionedStep,
+  renderStepPickerRows,
   resolveStepPick,
+  stepRef,
 } from '../../src/lib/step-position';
 
 // Flat run order for: 1 prep, 2 deploy { 2.1 upload, 2.2 review { 2.2.1 } }, 3
@@ -68,15 +71,16 @@ describe('describeStepPosition', () => {
   });
 });
 
-describe('resolveStepPick — [b]/[j] by position, manual number or name', () => {
-  // Pickable: everything after "deploy" (flat positions 3..6).
+describe("resolveStepPick — one number: the manual's", () => {
+  // Pickable: everything after "deploy" (2.1, 2.2, 2.2.1, 3).
   const allowed = [2, 3, 4, 5];
 
-  it('keeps a plain number as the flat position (unchanged behaviour)', () => {
-    assert.deepStrictEqual(resolveStepPick('4', STEPS, allowed), { index: 3 });
+  it('a plain number is the manual step number, never the flat position', () => {
+    // "3" is Step 3 (the 6th row), not the 3rd row (2.1).
+    assert.deepStrictEqual(resolveStepPick('3', STEPS, allowed), { index: 5 });
   });
 
-  it('accepts a dotted manual number (2.2 is position 4, not 2)', () => {
+  it('accepts a dotted manual number', () => {
     assert.deepStrictEqual(resolveStepPick('2.2', STEPS, allowed), {
       index: 3,
     });
@@ -85,24 +89,70 @@ describe('resolveStepPick — [b]/[j] by position, manual number or name', () =>
     });
   });
 
-  it('accepts a unique, case-insensitive name fragment', () => {
-    assert.deepStrictEqual(resolveStepPick('Nested', STEPS, allowed), {
+  it('accepts the multi-env manual number of the same step (2b, 2b1)', () => {
+    assert.strictEqual(multiEnvStepLabel('2.2'), '2b');
+    assert.strictEqual(multiEnvStepLabel('2.2.1'), '2b1');
+    assert.strictEqual(multiEnvStepLabel('1.2.1.1.3'), '1b1a3');
+    assert.deepStrictEqual(resolveStepPick('2b', STEPS, allowed), { index: 3 });
+    assert.deepStrictEqual(resolveStepPick('2B1', STEPS, allowed), {
       index: 4,
     });
   });
 
+  it('accepts text copied from the heading or the manual', () => {
+    assert.deepStrictEqual(resolveStepPick('Step 2.1:', STEPS, allowed), {
+      index: 2,
+    });
+  });
+
+  it('accepts an exact name, else a unique case-insensitive fragment', () => {
+    assert.deepStrictEqual(resolveStepPick('Nested', STEPS, allowed), {
+      index: 4,
+    });
+    // "upload" is also inside "review-upload": the exact name wins.
+    assert.deepStrictEqual(resolveStepPick('upload', STEPS, allowed), {
+      index: 2,
+    });
+  });
+
   it('refuses an ambiguous name and lists the matches', () => {
-    const pick = resolveStepPick('upload', STEPS, allowed);
+    const pick = resolveStepPick('load', STEPS, allowed);
     assert.ok('error' in pick);
     assert.match(pick.error, /2\.1 upload/);
     assert.match(pick.error, /2\.2 review-upload/);
   });
 
-  it('refuses steps outside the allowed range and unknown input', () => {
-    assert.ok('error' in resolveStepPick('1', STEPS, allowed));
-    assert.ok('error' in resolveStepPick('2.1.9', STEPS, allowed));
+  it('says which step a number outside the list is, or that there is none', () => {
+    const outside = resolveStepPick('1', STEPS, allowed);
+    assert.ok('error' in outside);
+    assert.match(outside.error, /Step 1: prep is not one of the steps listed/);
+    const none = resolveStepPick('2.1.9', STEPS, allowed);
+    assert.ok('error' in none);
+    assert.match(none.error, /There is no Step 2\.1\.9/);
     assert.ok('error' in resolveStepPick('nope', STEPS, allowed));
-    // A label outside the range is refused even though it exists.
     assert.ok('error' in resolveStepPick('prep', STEPS, allowed));
+  });
+
+  it('never treats digits as a name fragment', () => {
+    const steps: PositionedStep[] = [
+      { label: '1', name: 'open port 14' },
+      { label: '2', name: 'close' },
+    ];
+    const pick = resolveStepPick('14', steps, [0, 1]);
+    assert.ok('error' in pick);
+    assert.match(pick.error, /There is no Step 14/);
+  });
+});
+
+describe('renderStepPickerRows / stepRef', () => {
+  it('lists one number per row: the manual number, aligned', () => {
+    assert.deepStrictEqual(
+      renderStepPickerRows(STEPS, [1, 4], (k) => (k === 1 ? 'completed' : '')),
+      ['      2      deploy  (completed)', '      2.2.1  nested-check'],
+    );
+  });
+
+  it('refers to a step by manual number and name', () => {
+    assert.strictEqual(stepRef(STEPS, 3), 'Step 2.2: review-upload');
   });
 });

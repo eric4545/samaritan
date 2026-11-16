@@ -1452,7 +1452,7 @@ describe('run command: --from-step starts at a later step', () => {
     );
     const combined = result.stdout + result.stderr;
     assert.ok(
-      combined.includes('Starting at step 2'),
+      combined.includes('Starting at Step 2: '),
       'must announce the jumped-to start step',
     );
     // The first per-step banner shown must be step 2 of 2, not step 1.
@@ -1471,6 +1471,28 @@ describe('run command: --from-step starts at a later step', () => {
     );
   });
 
+  it('takes the manual number of a sub-step, or a step name', () => {
+    // nested fixture: 1 { 1.1 { 1.1.1 … } … }. Flat position 2 is Step 1.1;
+    // `--from-step 2` must be Step 2, never the 2nd row of the flat list.
+    const fixture = 'examples/nested-deployment.yaml';
+    const start = (from: string): string => {
+      const r = runCli(
+        ['run', fixture, '--env', 'staging', '--from-step', from],
+        { input: 'q\n', timeout: 15_000 },
+      );
+      return r.stdout + r.stderr;
+    };
+    assert.ok(
+      start('2').includes('Starting at Step 2: Post-Deployment Verification'),
+    );
+    assert.ok(start('1.2.1.2').includes('[Step 1.2.1.2 · 14/36]'));
+    // The multi-env manual prints the same step as 1b1b.
+    assert.ok(start('1b1b').includes('[Step 1.2.1.2 · 14/36]'));
+    assert.ok(start('Load Seed Data').includes('[Step 1.2.1.2 · 14/36]'));
+    // The old flat position is refused, not silently reinterpreted.
+    assert.ok(start('14').includes('--from-step: There is no Step 14.'));
+  });
+
   it('exits non-zero for an out-of-range --from-step', () => {
     const fixture = fixturePath('sidecar');
     const result = runCli(
@@ -1484,8 +1506,8 @@ describe('run command: --from-step starts at a later step', () => {
     );
     const combined = result.stdout + result.stderr;
     assert.ok(
-      /--from-step must be between 1 and \d+/.test(combined),
-      'must print the valid range error',
+      combined.includes('--from-step: There is no Step 9.'),
+      'must say the step does not exist',
     );
   });
 });
@@ -1522,17 +1544,21 @@ describe('run command: [b] re-run one earlier step and come back (#117)', () => 
     );
     assert.ok(
       out.includes(
-        'Re-run only "Rerun alpha", then come back to "Rerun delta"?',
+        'Re-run only Step 1: Rerun alpha, then come back to Step 4: Rerun delta?',
       ),
       out.slice(-1500),
     );
-    assert.ok(out.includes('Re-running step 1 only. Step 4 comes next.'));
     assert.ok(
       out.includes(
-        'Next     : back to step 4: Rerun delta (re-running this step only)',
+        'Re-running Step 1: Rerun alpha only. Step 4: Rerun delta comes next.',
       ),
     );
-    assert.ok(out.includes('Back at step 4: "Rerun delta"'), out.slice(-1500));
+    assert.ok(
+      out.includes(
+        'Next     : back to Step 4: Rerun delta (re-running this step only)',
+      ),
+    );
+    assert.ok(out.includes('Back at Step 4: Rerun delta.'), out.slice(-1500));
     assert.ok(
       out.includes('Operation completed successfully'),
       out.slice(-800),
@@ -1548,10 +1574,12 @@ describe('run command: [b] re-run one earlier step and come back (#117)', () => 
       ['', '', '', 'b', '1', 'n', 'q'],
     );
     assert.ok(
-      out.includes('Going back to step 1 — re-running from there.'),
+      out.includes(
+        'Going back to Step 1: Rerun alpha — re-running from there.',
+      ),
       out.slice(-1500),
     );
-    assert.ok(!out.includes('Back at step'));
+    assert.ok(!out.includes('Back at Step'));
   });
 
   it('no prompt when going back to the immediately previous step', () => {
@@ -1559,8 +1587,92 @@ describe('run command: [b] re-run one earlier step and come back (#117)', () => 
       ['run', fixturePath('rerunStep'), '--env', 'default'],
       ['', 'b', '1', 'q'],
     );
-    assert.ok(out.includes('Going back to step 1'), out.slice(-1500));
+    assert.ok(
+      out.includes('Going back to Step 1: Rerun alpha'),
+      out.slice(-1500),
+    );
     assert.ok(!out.includes('Re-run only'));
+  });
+});
+
+describe("run command: one step number everywhere (the manual's)", () => {
+  const NESTED = 'examples/nested-deployment.yaml';
+  // One line per prompt, a second apart (readline drops batched lines).
+  function runLines(args: string[], lines: string[]): string {
+    const quote = (v: string) => `'${v.replace(/'/g, "'\\''")}'`;
+    const piped = lines
+      .map((l) => `printf ${quote(`${l}\\n`)}`)
+      .join('; sleep 1; ');
+    const cmd = `(sleep 1; ${piped}) | timeout 30 ${quote(CLI)} ${quote(INDEX)} ${args.map(quote).join(' ')}`;
+    const r = spawnSync('bash', ['-c', cmd], {
+      encoding: 'utf8',
+      timeout: 35_000,
+    });
+    return `${r.stdout ?? ''}${r.stderr ?? ''}`;
+  }
+
+  it('[b] lists one number per row and the run artifacts use the same number', () => {
+    // Start on Step 1.2.1.2 (the 14th step of the run): [b], cancel, quit.
+    const out = runLines(
+      [
+        'run',
+        NESTED,
+        '--env',
+        'staging',
+        '--no-require-evidence',
+        '--from-step',
+        '1.2.1.2',
+      ],
+      ['b', '', 'q'],
+    );
+    assert.ok(out.includes('Go back to which step?'), out.slice(-1500));
+    assert.ok(out.includes('      1.2.1.1.3  Create Indexes  (skipped)'), out);
+    assert.ok(out.includes('      1          Full Stack Deployment'), out);
+    // No flat position next to it (was `13) [1.2.1.1.3] Create Indexes`).
+    assert.ok(!/\d+\) \[[\d.]+\]/.test(out), out.slice(-1500));
+
+    // Rows 5-8: session listing, events and report carry the same number.
+    const sessionId = /📋 Session: ([0-9a-f-]{36})/.exec(out)?.[1];
+    assert.ok(sessionId, 'session id printed');
+    const listing = runCli(['sessions', '--all']).stdout;
+    const mine = listing.slice(listing.indexOf(sessionId as string));
+    assert.match(mine.split('\n\n')[0], /Step: 1\.2\.1\.2 /);
+
+    const report = /📄 Report: (\S+)/.exec(out)?.[1];
+    assert.ok(report, `no report path:\n${out.slice(-600)}`);
+    const md = readFileSync(report as string, 'utf8');
+    assert.ok(
+      md.includes('## Step 1.2.1.2: Load Seed Data'),
+      md.slice(0, 1500),
+    );
+    assert.ok(md.includes('## Step 1.2.1.1.3: Create Indexes ⏭ (skipped)'));
+    assert.ok(!md.includes('## Step 14:'), 'no flat position in the report');
+    const events = readFileSync(
+      (report as string).replace(/report\.md$/, 'events.jsonl'),
+      'utf8',
+    )
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
+    const start = events.find((e) => e.type === 'step_start');
+    assert.strictEqual(start.label, '1.2.1.2');
+    assert.strictEqual(start.step, 13);
+  });
+
+  it('[b] takes the manual number: 2 is Step 2, never the 2nd row', () => {
+    const out = runLines(
+      ['run', NESTED, '--env', 'staging', '--from-step', '1.2.1.2'],
+      ['b', '2'],
+    );
+    // The 2nd row of the flat list is Step 1.1. Step 2 is ahead of 1.2.1.2:
+    // it is named and refused, not silently taken as row 2.
+    assert.ok(
+      out.includes(
+        'Step 2: Post-Deployment Verification is not one of the steps listed.',
+      ),
+      out.slice(-1500),
+    );
+    assert.ok(!out.includes('Going back to'), out.slice(-800));
   });
 });
 
@@ -1802,12 +1914,12 @@ describe('run command: when-gated step filtering by environment', () => {
   // children are env-filtered.
   it('shows a content-bearing parent even when all its sub-steps are env-filtered', () => {
     const fixture = fixturePath('whenEnvFilter');
-    // Use --from-step 6 to jump to flat index 5 (Content Bearing Parent, label
+    // Use --from-step 5 to jump to Step 5 (Content Bearing Parent, flat index 5, label
     // "5") directly, avoiding the readline batch-stdin gotcha.  The parent is a
     // section header that auto-advances; the only prompt is for step 6 (label
     // "6") where we quit.
     const result = runCli(
-      ['run', fixture, '--env', 'stg', '--from-step', '6'],
+      ['run', fixture, '--env', 'stg', '--from-step', '5'],
       { input: 'q\n' },
     );
     const combined = result.stdout + result.stderr;
@@ -1822,7 +1934,7 @@ describe('run command: when-gated step filtering by environment', () => {
   });
 
   // Issue 2: authored step numbers must be stable across env-filtering so that
-  // --from-step N always refers to the Nth authored step (flat index N-1).
+  // --from-step N always refers to authored Step N (the manual's number).
   it('preserves authored step numbers for --from-step when env-filtered steps precede the target', () => {
     const fixture = fixturePath('whenEnvFilter');
     // "Dev Only Step" is at flat index 0 (label "1") and is filtered in stg.
@@ -1844,12 +1956,12 @@ describe('run command: when-gated step filtering by environment', () => {
   // filtered so the run loop falls through to the nearest-upstream fallback.
   it('filters env-gated rollback entries and falls through to no-rollback message in non-matching env', () => {
     const fixture = fixturePath('whenEnvFilter');
-    // Jump directly to "Step With Env Rollback" (flat index 7 = --from-step 8)
+    // Jump directly to "Step With Env Rollback" (Step 6, flat index 7)
     // so only one readline question is needed, avoiding the batch-stdin gotcha.
     // Its rollback has when: [dev] — in stg it must be filtered out so the
     // fallback "No rollback defined" message appears.
     const result = runCli(
-      ['run', fixture, '--env', 'stg', '--from-step', '8'],
+      ['run', fixture, '--env', 'stg', '--from-step', '6'],
       { input: 'r\n' },
     );
     const combined = result.stdout + result.stderr;

@@ -56,6 +56,11 @@ export interface StepEvidenceRef {
 
 export interface StepRecord {
   index: number;
+  /**
+   * The step's number in the manual (`1.2.1`), as the run shows it. Absent in
+   * logs written before it was recorded: renderers fall back to `index + 1`.
+   */
+  label?: string;
   id?: string;
   name: string;
   phase?: string;

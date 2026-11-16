@@ -297,6 +297,14 @@ export class SessionManager {
     }
   }
 
+  /** Record the manual's number of the current step, shown by `sessions`. */
+  setCurrentStepLabel(sessionId: string, label: string | undefined): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.current_step_label === label) return;
+    session.current_step_label = label;
+    saveSession(session);
+  }
+
   /**
    * Remember the tmux pane a sidecar run captures from (`--attach` / `[t]`),
    * so `resume` can re-attach to it instead of starting with no capture.

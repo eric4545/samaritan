@@ -403,6 +403,15 @@ export class TmuxSession implements CaptureBackend {
     this.tmuxName = tmuxName;
   }
 
+  /**
+   * The pane a session's commands go to: its registered pane id, else the
+   * session's active pane. Never a positional `:0.0`: with `base-index` or
+   * `pane-base-index` set to 1 (a common tmux.conf) that pane does not exist.
+   */
+  private paneFor(sessionName: string): string {
+    return this.paneMap.get(sessionName) ?? `${this.tmuxName}:`;
+  }
+
   getPipeFilePath(sessionName: string): string {
     // Sanitize both parts: the path is embedded in a shell command via pipe-pane
     return capturePipeFile(
@@ -411,7 +420,7 @@ export class TmuxSession implements CaptureBackend {
   }
 
   send(sessionName: string, command: string, sendEnter = true): void {
-    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    const pane = this.paneFor(sessionName);
     const args = sendEnter
       ? ['send-keys', '-t', pane, command, 'Enter']
       : ['send-keys', '-t', pane, command];
@@ -420,27 +429,24 @@ export class TmuxSession implements CaptureBackend {
 
   /** Paste a command into the pane without executing it (no Enter). */
   pasteCommand(sessionName: string, command: string): void {
-    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    const pane = this.paneFor(sessionName);
     pasteBufferTo(pane, command);
   }
 
   /** Capture the pane's rendered screen as clean text (no escape sequences). */
   captureScreen(sessionName: string): string | undefined {
-    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
-    return capturePaneScreen(pane);
+    return capturePaneScreen(this.paneFor(sessionName));
   }
 
   /** The pane's current cursor line (the prompt once a command finished). */
   promptLine(sessionName: string): string | undefined {
-    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    const pane = this.paneFor(sessionName);
     return capturePaneCursorLine(pane);
   }
 
   /** Pane state for the `[y]` Enter guard. */
   paneState(sessionName: string): PaneState | undefined {
-    return readPaneState(
-      this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`,
-    );
+    return readPaneState(this.paneFor(sessionName));
   }
 
   /** Press Enter in the given pane id (the guard has already checked it). */
@@ -469,9 +475,12 @@ export class TmuxSession implements CaptureBackend {
     }
   }
 
+  /** The pane's live name (`samaritan-<id>:web.0`), not its bare id. */
   describeTarget(sessionName: string): string {
     const pane = this.paneMap.get(sessionName);
-    return pane ? `tmux pane ${pane}` : `tmux session ${this.tmuxName}`;
+    return pane
+      ? `tmux pane ${paneNameOf(pane) ?? pane}`
+      : `tmux session ${this.tmuxName}`;
   }
 
   async waitForPrompt(
@@ -480,7 +489,7 @@ export class TmuxSession implements CaptureBackend {
     promptPattern?: string,
     idleThresholdMs = 0,
   ): Promise<'done' | 'timeout' | 'idle'> {
-    const pane = this.paneMap.get(sessionName) ?? `${this.tmuxName}:0.0`;
+    const pane = this.paneFor(sessionName);
     const deadline = Date.now() + timeoutMs;
     const re = new RegExp(promptPattern ?? '\\$\\s*$', 'm');
     const pollMs = 200;
@@ -853,6 +862,29 @@ export function sanitizeSessionName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+/**
+ * What a freshly opened pane ends with once its shell (or the ssh login) is
+ * ready: `$`, `#` (root), `%` (zsh), `>` or `❯`. Only for the bootstrap wait,
+ * where the pane holds nothing but a banner and a prompt; `$` alone made every
+ * other shell wait out the full timeout, per session.
+ */
+export const BOOTSTRAP_PROMPT_PATTERN = '[$#%>❯]\\s*$';
+
+/** Create a tmux object detached and return the id of its first pane (`%3`). */
+function createPane(args: string[]): string | undefined {
+  const r = spawnSync('tmux', [...args, '-P', '-F', '#{pane_id}']);
+  const id = r.status === 0 ? r.stdout?.toString('utf-8').trim() : '';
+  return id?.startsWith('%') ? id : undefined;
+}
+
+/**
+ * Spawn one tmux session with a window per `sessions:` entry. Each window is
+ * NAMED after its entry and every pane is addressed by the id tmux returns
+ * for it, never by position: `<name>:0.0` is not there when the operator's
+ * tmux.conf sets `base-index`/`pane-base-index` to 1 (capture and `[p]` then
+ * silently went nowhere). Panes are registered under the name as written in
+ * the YAML, which is what a step's `session:` holds.
+ */
 export async function bootstrapSessions(
   sessionId: string,
   sessions: Record<string, SessionConfig>,
@@ -861,30 +893,32 @@ export async function bootstrapSessions(
   const tmuxName = `samaritan-${sessionId}`;
   const tmuxSession = new TmuxSession(sessionId, tmuxName);
 
-  spawnSync('tmux', ['new-session', '-d', '-s', tmuxName]);
-
   const sessionNames = Object.keys(sessions);
   for (let i = 0; i < sessionNames.length; i++) {
-    const name = sanitizeSessionName(sessionNames[i]);
-    const config = sessions[sessionNames[i]];
-    // Each session gets its own window; the first pane in window i is :i.0
-    const paneTarget = `${tmuxName}:${i}.0`;
-
-    if (i > 0) {
-      spawnSync('tmux', ['new-window', '-t', tmuxName]);
+    const name = sessionNames[i];
+    const config = sessions[name];
+    const windowName = sanitizeSessionName(name);
+    const paneId = createPane(
+      i === 0
+        ? ['new-session', '-d', '-s', tmuxName, '-n', windowName]
+        : ['new-window', '-d', '-t', `${tmuxName}:`, '-n', windowName],
+    );
+    if (!paneId) {
+      tmuxSession.teardown();
+      throw new Error(`tmux could not open a pane for session "${name}"`);
     }
 
-    // Start pipe-pane capture; pipeFile uses sanitized name so no shell injection
+    // Start pipe-pane capture; the pipe file name is sanitized, so no shell injection
     const pipeFile = tmuxSession.getPipeFilePath(name);
     spawnSync('tmux', [
       'pipe-pane',
       '-t',
-      paneTarget,
+      paneId,
       '-o',
       `cat >> ${shellQuotePath(pipeFile)}`,
     ]);
 
-    tmuxSession.registerPane(name, paneTarget);
+    tmuxSession.registerPane(name, paneId);
 
     // SSH connect if host defined
     if (config.host) {
@@ -894,18 +928,39 @@ export async function bootstrapSessions(
       spawnSync('tmux', [
         'send-keys',
         '-t',
-        paneTarget,
+        paneId,
         `ssh ${userAtHost}`,
         'Enter',
       ]);
     }
 
     // Wait for prompt after connecting
-    const pattern = promptPattern ?? '\\$\\s*$';
-    await tmuxSession.waitForPrompt(name, 10_000, pattern);
+    await tmuxSession.waitForPrompt(
+      name,
+      10_000,
+      promptPattern ?? BOOTSTRAP_PROMPT_PATTERN,
+    );
   }
 
   return tmuxSession;
+}
+
+/**
+ * How to look at the panes of a spawned session. `tmux attach` refuses to run
+ * inside tmux ("sessions should be nested with care"), which is where a
+ * sidecar operator usually is: there the working commands are
+ * `switch-client` (this client moves to the session) and a nested attach in a
+ * split, which keeps samaritan visible beside it.
+ */
+export function attachHintLines(
+  tmuxName: string,
+  insideTmux: boolean,
+): string[] {
+  if (!insideTmux) return [`Attach with: tmux attach -t ${tmuxName}`];
+  return [
+    `Beside this pane: tmux split-window -h "TMUX= tmux attach -t ${tmuxName}"`,
+    `Or switch to it:  tmux switch-client -t ${tmuxName}   (prefix + L comes back)`,
+  ];
 }
 
 function sleep(ms: number): Promise<void> {

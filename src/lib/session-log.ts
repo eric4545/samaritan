@@ -37,6 +37,13 @@ export function readEvents(jsonlPath: string): SessionEvent[] {
   return events;
 }
 
+/** The manual's step number a `step_start`/`step_skip` event carries, if any. */
+function stepLabelOf(event: SessionEvent): string | undefined {
+  return typeof event.label === 'string' && event.label
+    ? event.label
+    : undefined;
+}
+
 /**
  * Fold a JSONL event stream into structured per-step records and rollback
  * records. Steps are keyed by index so a re-run step (e.g. after `resume`)
@@ -58,6 +65,7 @@ export function foldEvents(events: SessionEvent[]): {
         const index = event.step as number;
         currentStep = {
           index,
+          label: stepLabelOf(event),
           name: event.name as string,
           pic: event.pic as string | undefined,
           reviewer: event.reviewer as string | undefined,
@@ -255,6 +263,7 @@ export function foldEvents(events: SessionEvent[]): {
         if (!rec) {
           rec = {
             index,
+            label: stepLabelOf(event),
             name: event.name as string,
             status: 'skipped',
             started_at: event.ts,

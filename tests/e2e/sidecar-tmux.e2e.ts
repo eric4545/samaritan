@@ -418,7 +418,7 @@ describe('sidecar e2e (real tmux)', () => {
         // Resume → must re-enter the loop at step 1 (not re-run step 0 as done).
         d.type(launch(ws.dir, `resume ${sessionId}`));
         await d.waitFor('Resuming session', { timeoutMs: 20_000 });
-        const resumed = await d.waitFor('Resuming at step: 1', {
+        const resumed = await d.waitFor('Resuming at Step 1: Deploy App', {
           timeoutMs: 15_000,
         });
         assert.ok(
@@ -468,7 +468,7 @@ describe('sidecar e2e (real tmux)', () => {
         await d.waitFor(`Re-attached capture to tmux pane: ${workId}`, {
           timeoutMs: 30_000,
         });
-        await d.waitFor(/Resuming operation execution[\s\S]*\? more/, {
+        await d.waitFor(/Resuming at Step [\s\S]*\? more/, {
           timeoutMs: 15_000,
         });
         d.type('echo "deploy E2E_DEPLOY_OK"', work);
@@ -542,7 +542,7 @@ describe('sidecar e2e (real tmux)', () => {
           'resume must not spawn sessions: for an attached run',
         );
         assert.deepStrictEqual(spawned(), [], 'resume spawns nothing');
-        await d.waitFor(/Resuming operation execution[\s\S]*\? more/, {
+        await d.waitFor(/Resuming at Step [\s\S]*\? more/, {
           timeoutMs: 15_000,
         });
         d.type('echo "built v1 E2E_BUILD_OK"', work);

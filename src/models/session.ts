@@ -18,6 +18,7 @@ export interface OperationSession {
   group?: string; // Operation group this run was started for (`--group`) — re-applied on resume
   status: SessionStatus;
   current_step_index: number;
+  current_step_label?: string; // The manual's number of that step (`1.2.1`), for `sessions`
   started_at: Date;
   updated_at: Date;
   participants: string[];

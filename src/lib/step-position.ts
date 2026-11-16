@@ -1,3 +1,5 @@
+import { indexToLetters } from './letter-sequence';
+
 /**
  * Where the operator is in a run, expressed in the SAME numbering as the
  * single-environment manual (`generate manual --env <name>`): top-level steps
@@ -61,37 +63,100 @@ export function describeStepPosition(
 }
 
 /**
- * Resolve a `[b]`/`[j]` picker answer to a flat step index. Accepts the flat
- * position (`11`, what the picker numbers), the manual's dotted number
- * (`2.7`, what the operator has open), or a unique case-insensitive fragment
- * of the step name. `allowed` = the flat indexes the picker offers.
+ * The same step in the MULTI-environment manual's numbering (`generate
+ * manual` without `--env`): sub-step levels alternate letters and numbers,
+ * so `1.2.1` is printed there as `1b1`. Accepted by the pickers so an
+ * operator can type the number from whichever manual is open.
+ */
+export function multiEnvStepLabel(label: string): string {
+  return label
+    .split('.')
+    .map((part, depth) =>
+      depth % 2 === 1 ? indexToLetters(Number.parseInt(part, 10) - 1) : part,
+    )
+    .join('');
+}
+
+/** `Step 1.2: deploy` — how the run refers to a step, everywhere. */
+export function stepRef(steps: PositionedStep[], index: number): string {
+  const step = steps[index];
+  return step ? `Step ${step.label}: ${step.name}` : `Step ${index + 1}`;
+}
+
+/**
+ * Rows of a step picker (`[b]`, `[j]`, the completion-screen rollback). ONE
+ * number per row: the manual's. The flat position is not shown, because a
+ * second number per row is what made the list hard to pick from.
+ */
+export function renderStepPickerRows(
+  steps: PositionedStep[],
+  indexes: number[],
+  statusOf?: (index: number) => string | undefined,
+): string[] {
+  const listed = indexes.filter((k) => steps[k]);
+  const width = Math.max(0, ...listed.map((k) => steps[k].label.length));
+  return listed.map((k) => {
+    const status = statusOf?.(k);
+    return `      ${steps[k].label.padEnd(width)}  ${steps[k].name}${status ? `  (${status})` : ''}`;
+  });
+}
+
+/** Prompt under a step picker. */
+export const STEP_PICK_PROMPT =
+  '    Step (number as listed, e.g. 2.7, or part of the name) [Enter to cancel]: ';
+
+/**
+ * Resolve a step the operator named to a flat step index. `allowed` = the
+ * flat indexes on offer. In order:
+ *
+ * 1. the manual's number (`2`, `2.7`): the step LABEL, never the flat
+ *    position. `2` is Step 2 even when it is the 32nd step of the run.
+ * 2. the multi-env manual's number for the same step (`2g`, `1b1`).
+ * 3. the step name: an exact match, else a unique case-insensitive fragment.
+ *
+ * A leading `Step ` and a trailing `:` are dropped, so text copied from the
+ * manual or the run heading works.
  */
 export function resolveStepPick(
   answer: string,
   steps: PositionedStep[],
   allowed: number[],
 ): { index: number } | { error: string } {
-  const ans = answer.trim();
+  const ans = answer
+    .trim()
+    .replace(/^step\s+/i, '')
+    .replace(/:$/, '')
+    .trim();
   const offered = allowed.filter((k) => steps[k]);
   const describe = (k: number) => `${steps[k].label} ${steps[k].name}`;
-  if (/^\d+$/.test(ans)) {
-    const index = Number.parseInt(ans, 10) - 1;
-    return offered.includes(index)
-      ? { index }
-      : { error: `Step ${ans} is not one of the steps listed.` };
-  }
-  const byLabel = offered.find((k) => steps[k].label === ans);
-  if (byLabel !== undefined) return { index: byLabel };
-  if (/^\d+(\.\d+)+$/.test(ans))
-    return { error: `Step ${ans} is not one of the steps listed.` };
-  const needle = ans.toLowerCase();
-  const byName = offered.filter((k) =>
-    steps[k].name.toLowerCase().includes(needle),
-  );
-  if (byName.length === 1) return { index: byName[0] };
-  if (byName.length > 1)
+  const lower = ans.toLowerCase();
+  const numberOf = (k: number): boolean =>
+    steps[k].label === ans || multiEnvStepLabel(steps[k].label) === lower;
+
+  const byNumber = offered.find(numberOf);
+  if (byNumber !== undefined) return { index: byNumber };
+
+  const elsewhere = steps.findIndex((_, k) => numberOf(k));
+  if (elsewhere !== -1)
     return {
-      error: `"${ans}" matches ${byName.length} steps: ${byName.map(describe).join(', ')}. Be more specific.`,
+      error: `${stepRef(steps, elsewhere)} is not one of the steps listed.`,
+    };
+  // Digits and dots only is always a step number, never a name fragment:
+  // `14` must not silently pick the one step whose name holds "14".
+  if (/^\d+(\.\d+)*$/.test(ans))
+    return {
+      error: `There is no Step ${ans}. Steps are numbered as in the manual (1, 1.1, 1.2, …).`,
+    };
+
+  const byName = offered.filter((k) => steps[k].name.toLowerCase() === lower);
+  const matches =
+    byName.length > 0
+      ? byName
+      : offered.filter((k) => steps[k].name.toLowerCase().includes(lower));
+  if (matches.length === 1) return { index: matches[0] };
+  if (matches.length > 1)
+    return {
+      error: `"${ans}" matches ${matches.length} steps: ${matches.map(describe).join(', ')}. Be more specific.`,
     };
   return { error: `No listed step matches "${ans}".` };
 }

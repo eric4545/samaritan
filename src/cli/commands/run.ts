@@ -88,7 +88,11 @@ import { buildStepDepGraph, unmetNeeds } from '../../lib/step-deps';
 import {
   childStepLabel,
   describeStepPosition,
+  type PositionedStep,
+  renderStepPickerRows,
   resolveStepPick,
+  STEP_PICK_PROMPT,
+  stepRef,
 } from '../../lib/step-position';
 import {
   mergeStepVariables,
@@ -98,6 +102,7 @@ import {
   substituteVariables,
 } from '../../lib/step-resolution';
 import {
+  attachHintLines,
   bootstrapSessions,
   listTmuxPanes,
   TmuxPaneCapture,
@@ -185,7 +190,7 @@ interface RunOptions {
   verbose?: boolean;
   continueOnError?: boolean;
   report?: string;
-  fromStep?: number;
+  fromStep?: string | number;
   requireEvidence?: boolean;
   // Focus mode: `--pic [name]` — true when the flag is given without a value
   // (defaults to $USER), a string when a name is passed, undefined when absent.
@@ -198,7 +203,7 @@ interface ResumeOptions {
   verbose?: boolean;
   attach?: string;
   autoApprove?: boolean;
-  fromStep?: number;
+  fromStep?: string | number;
   requireEvidence?: boolean;
   pic?: string | boolean;
   skipOthers?: boolean;
@@ -230,6 +235,32 @@ export function resolveFocusPic(
   if (pic === undefined || pic === false) return undefined;
   if (pic === true) return process.env.USER || 'unknown';
   return pic || undefined;
+}
+
+/** The numbered view of the flat step list the pickers and messages use. */
+function toPositioned(flatSteps: FlatStep[]): PositionedStep[] {
+  return flatSteps.map((f) => ({ label: f.label, name: f.step.name }));
+}
+
+/**
+ * `--from-step`: the manual's step number (`2.7`) or a step name, resolved to
+ * the flat index. Exits with the picker's own message when it names no step.
+ */
+function resolveFromStep(
+  value: string | number,
+  flatSteps: FlatStep[],
+): number {
+  const steps = toPositioned(flatSteps);
+  const pick = resolveStepPick(
+    String(value),
+    steps,
+    steps.map((_, k) => k),
+  );
+  if ('error' in pick) {
+    console.error(`❌ --from-step: ${pick.error}`);
+    process.exit(1);
+  }
+  return pick.index;
 }
 
 /** True when a step has at least one displayable content field of its own. */
@@ -492,12 +523,13 @@ class OperationRunner {
               `   Sessions: ${Object.keys(operation.sessions).join(', ')}`,
             );
             if (executionMode === 'sidecar') {
-              console.log(
-                `   Attach with: tmux attach -t samaritan-${context.sessionId}\n`,
-              );
-            } else {
-              console.log('');
+              for (const line of attachHintLines(
+                `samaritan-${context.sessionId}`,
+                !!process.env.TMUX,
+              ))
+                console.log(`   ${line}`);
             }
+            console.log('');
           } catch (err: any) {
             console.warn(
               `⚠️  tmux bootstrap failed (${err.message}); falling back to prompt-only mode.\n`,
@@ -512,26 +544,19 @@ class OperationRunner {
         console.log('▶️  Starting interactive operation execution...\n');
         executor.startInteractive();
         if (options.fromStep !== undefined) {
-          const total = executor.getState().steps.length;
-          if (
-            !Number.isInteger(options.fromStep) ||
-            options.fromStep < 1 ||
-            options.fromStep > total
-          ) {
-            console.error(`❌ --from-step must be between 1 and ${total}`);
-            process.exit(1);
-          }
-          // Mark 1..N-1 as skipped and start the loop at step N. Persist the
-          // jumped index immediately so an abort/crash before completing the
-          // target step still resumes there (the loop's persistProgress only
-          // runs after a step is acted on).
-          executor.jumpToStep(options.fromStep - 1);
+          // The manual's step number (2.7) or a step name, never the flat
+          // position. Mark the steps before it as skipped and start the loop
+          // there. Persist the jumped index immediately so an abort/crash
+          // before completing the target step still resumes there (the
+          // loop's persistProgress only runs after a step is acted on).
+          const fromIndex = resolveFromStep(options.fromStep, flatSteps);
+          executor.jumpToStep(fromIndex);
           sessionManager.updateSessionFromExecutor(
             session.id,
             executor.getState(),
           );
           console.log(
-            `⏭  Starting at step ${options.fromStep} — earlier steps recorded as skipped.\n`,
+            `⏭  Starting at ${stepRef(toPositioned(flatSteps), fromIndex)} — earlier steps recorded as skipped.\n`,
           );
         }
         const logPath = await this.runInteractiveStepLoop(
@@ -679,7 +704,6 @@ class OperationRunner {
     console.log(`   File: ${session.operation_file}`);
     console.log(`   Environment: ${session.environment}`);
     if (session.group) console.log(`   Group: ${session.group}`);
-    console.log(`   Resuming at step: ${session.current_step_index + 1}`);
     console.log(`   Progress: ${session.completion_percentage || 0}%`);
     console.log(
       `   Status: ${SessionUtils.getSessionStatusEmoji(session.status)} ${session.status}`,
@@ -741,8 +765,16 @@ class OperationRunner {
       try {
         tmuxSession = await bootstrapSessions(session.id, operation.sessions);
         console.log(
-          `   Sessions: ${Object.keys(operation.sessions).join(', ')}\n`,
+          `   Sessions: ${Object.keys(operation.sessions).join(', ')}`,
         );
+        if (resumeMode === 'sidecar') {
+          for (const line of attachHintLines(
+            `samaritan-${session.id}`,
+            !!process.env.TMUX,
+          ))
+            console.log(`   ${line}`);
+        }
+        console.log('');
       } catch (err: any) {
         console.warn(
           `⚠️  tmux bootstrap failed (${err.message}); continuing without tmux.\n`,
@@ -769,11 +801,13 @@ class OperationRunner {
       }
     }
 
-    console.log('\n▶️  Resuming operation execution...\n');
     const startIndex =
       options.fromStep !== undefined
-        ? options.fromStep - 1
+        ? resolveFromStep(options.fromStep, flatSteps)
         : session.current_step_index;
+    console.log(
+      `\n▶️  Resuming at ${stepRef(toPositioned(flatSteps), startIndex)}\n`,
+    );
     executor.resumeFromIndex(startIndex);
 
     await this.runInteractiveStepLoop(
@@ -1198,6 +1232,10 @@ class OperationRunner {
         state.context.sessionId,
         executor.getState(),
       );
+      sessionManager.setCurrentStepLabel(
+        state.context.sessionId,
+        flatSteps[executor.getState().currentStepIndex]?.label,
+      );
       // Fold the durable event log into a structured per-step record on the
       // session JSON, so the persisted session carries step input/output/
       // verification/approval — not just metadata. Crash-safe: refreshed
@@ -1566,10 +1604,6 @@ class OperationRunner {
     };
 
     const DIVIDER = '─'.repeat(60);
-    // [b]/[j] take the listed number, the manual's step number (2.7) or a
-    // unique piece of the step name (resolveStepPick).
-    const STEP_PICK_PROMPT =
-      '    Step (listed number, manual number like 2.7, or name) [Enter to cancel]: ';
     const isQuit = (c: string) => c === 'q' || c === 'quit';
     const isSkip = (c: string) => c === 's' || c === 'skip';
     const isRollback = (c: string) => c === 'r' || c === 'rollback';
@@ -2656,10 +2690,12 @@ class OperationRunner {
 
     try {
       const steps = executor.getState().steps;
-      const pickableSteps = steps.map((s, k) => ({
-        label: flatSteps[k]?.label ?? String(k + 1),
-        name: s.step.name,
-      }));
+      // ONE step number in the run: the manual's (`flatSteps[k].label`).
+      // Every picker, message, event note and the report use it via `ref`.
+      const pickableSteps = toPositioned(flatSteps);
+      const ref = (k: number): string => stepRef(pickableSteps, k);
+      const labelOf = (k: number): string =>
+        pickableSteps[k]?.label ?? String(k + 1);
 
       // Record a step as skipped in the black box so the report/step_log shows
       // it (StepRecord.status 'skipped'). Used by [j] jump and run --from-step.
@@ -2667,6 +2703,7 @@ class OperationRunner {
         logger.emit({
           type: 'step_skip',
           step: k,
+          label: labelOf(k),
           name: flatSteps[k].step.name,
         });
       };
@@ -2709,10 +2746,10 @@ class OperationRunner {
               action: 'rerun_return',
               step: back,
               actor: state.context.operator,
-              notes: `back at step ${back + 1}`,
+              notes: `back at ${ref(back)}`,
             });
             console.log(
-              `\n    ↪  Back at step ${back + 1}: "${steps[back].step.name}". The steps in between keep their status.`,
+              `\n    ↪  Back at ${ref(back)}. The steps in between keep their status.`,
             );
             i = back - 1;
             continue;
@@ -2840,10 +2877,15 @@ class OperationRunner {
             )
           : undefined;
 
+        // `sessions` shows where the run is by the manual's number, also
+        // when it is aborted before any step completes.
+        sessionManager.setCurrentStepLabel(state.context.sessionId, labelOf(i));
+
         // Emit step_start for every step so the report can reconstruct the timeline
         logger.emit({
           type: 'step_start',
           step: i,
+          label: labelOf(i),
           name: step.name,
           pic: step.pic,
           reviewer: step.reviewer,
@@ -2854,7 +2896,7 @@ class OperationRunner {
         if (position.parent) console.log(`    Section  : ${position.parent}`);
         console.log(
           returnTo !== undefined && i === revisiting
-            ? `    Next     : back to step ${returnTo + 1}: ${steps[returnTo].step.name} (re-running this step only)`
+            ? `    Next     : back to ${ref(returnTo)} (re-running this step only)`
             : position.next
               ? `    Next     : ${position.next} (${position.remaining} remaining)`
               : '    Next     : — last step',
@@ -3283,7 +3325,7 @@ class OperationRunner {
           const earlierPaste = unrunPaste(lastPaste);
           if (earlierPaste && earlierPaste.step !== i) {
             console.log(
-              `\n    ⚠️  ${earlierPaste.backend.describeTarget(earlierPaste.sessionName)} still has the paste from "${steps[earlierPaste.step]?.step.name ?? `step ${earlierPaste.step + 1}`}" on its input line, not run: ${pastePreview(earlierPaste.command)}`,
+              `\n    ⚠️  ${earlierPaste.backend.describeTarget(earlierPaste.sessionName)} still has the paste from "${steps[earlierPaste.step]?.step.name ?? ref(earlierPaste.step)}" on its input line, not run: ${pastePreview(earlierPaste.command)}`,
             );
           }
           while (true) {
@@ -3455,33 +3497,30 @@ class OperationRunner {
               // from there. Single sub-prompt (number) keeps within the readline
               // batch-stdin constraint (Gotcha #3).
               console.log('\n    Go back to which step?');
-              for (let k = 0; k < i; k++) {
-                console.log(
-                  `      ${k + 1}) [${flatSteps[k].label}] ${steps[k].step.name} (${steps[k].status})`,
-                );
-              }
+              const behind = Array.from({ length: i }, (_, k) => k);
+              for (const row of renderStepPickerRows(
+                pickableSteps,
+                behind,
+                (k) => steps[k].status,
+              ))
+                console.log(row);
               const ans = (await question(STEP_PICK_PROMPT)).trim();
               if (!ans) {
                 console.log('    ↩  Cancelled.');
                 continue;
               }
-              const pick = resolveStepPick(
-                ans,
-                pickableSteps,
-                Array.from({ length: i }, (_, k) => k),
-              );
+              const pick = resolveStepPick(ans, pickableSteps, behind);
               if ('error' in pick) {
                 console.log(`    ⚠️  ${pick.error}`);
                 continue;
               }
               navTarget = pick.index;
-              const picked = navTarget + 1;
               // With steps in between, a rewind would reset all of them (and
               // a [j] back over them would record them skipped). Offer to
               // re-run only the picked step and come back here instead.
               if (navTarget < i - 1) {
                 navRerunOnly = await confirmKey(
-                  `    Re-run only "${steps[navTarget].step.name}", then come back to "${step.name}"? [y / n=rewind: steps ${picked}–${i + 1} run again]: `,
+                  `    Re-run only ${ref(navTarget)}, then come back to ${ref(i)}? [y / n=rewind: everything from Step ${labelOf(navTarget)} to Step ${labelOf(i)} runs again]: `,
                 );
               }
               break;
@@ -3496,24 +3535,22 @@ class OperationRunner {
               console.log(
                 '\n    Jump to which step? (steps in between are marked skipped)',
               );
-              for (let k = i + 1; k < steps.length; k++) {
-                console.log(
-                  `      ${k + 1}) [${flatSteps[k].label}] ${steps[k].step.name} (${steps[k].status})`,
-                );
-              }
+              const ahead = Array.from(
+                { length: steps.length - i - 1 },
+                (_, k) => i + 1 + k,
+              );
+              for (const row of renderStepPickerRows(
+                pickableSteps,
+                ahead,
+                (k) => steps[k].status,
+              ))
+                console.log(row);
               const ans = (await question(STEP_PICK_PROMPT)).trim();
               if (!ans) {
                 console.log('    ↩  Cancelled.');
                 continue;
               }
-              const pick = resolveStepPick(
-                ans,
-                pickableSteps,
-                Array.from(
-                  { length: steps.length - i - 1 },
-                  (_, k) => i + 1 + k,
-                ),
-              );
+              const pick = resolveStepPick(ans, pickableSteps, ahead);
               if ('error' in pick) {
                 console.log(`    ⚠️  ${pick.error}`);
                 continue;
@@ -3597,17 +3634,17 @@ class OperationRunner {
               step: i,
               actor: state.context.operator,
               notes: navIsJump
-                ? `jumped to step ${navTarget + 1}`
+                ? `jumped to ${ref(navTarget)}`
                 : navRerunOnly
-                  ? `re-running step ${navTarget + 1} only, then back to step ${(returnTo ?? i) + 1}`
-                  : `re-running from step ${navTarget + 1}`,
+                  ? `re-running ${ref(navTarget)} only, then back to ${ref(returnTo ?? i)}`
+                  : `re-running from ${ref(navTarget)}`,
             });
             console.log(
               navIsJump
-                ? `    ⏭  Jumping to step ${navTarget + 1} — steps in between marked skipped.`
+                ? `    ⏭  Jumping to ${ref(navTarget)} — steps in between marked skipped.`
                 : navRerunOnly
-                  ? `    ↩  Re-running step ${navTarget + 1} only. Step ${(returnTo ?? i) + 1} comes next.`
-                  : `    ↩  Going back to step ${navTarget + 1} — re-running from there.`,
+                  ? `    ↩  Re-running ${ref(navTarget)} only. ${ref(returnTo ?? i)} comes next.`
+                  : `    ↩  Going back to ${ref(navTarget)} — re-running from there.`,
             );
             i = navTarget - 1;
             continue;
@@ -3741,19 +3778,13 @@ class OperationRunner {
           }
           if (rollbackable.length && isRollback(choice)) {
             console.log('\n    Roll back which step?');
-            for (const idx of rollbackable) {
-              console.log(
-                `      ${idx + 1}) [${flatSteps[idx].label}] ${finalSteps[idx].step.name}`,
-              );
-            }
-            const ans = (
-              await question('    Step number [Enter to cancel]: ')
-            ).trim();
-            const picked = Number.parseInt(ans, 10) - 1;
-            if (ans && rollbackable.includes(picked)) {
-              await doRollback(finalSteps[picked].step, picked);
-            } else if (ans) {
-              console.log('    ⚠️  Invalid step.');
+            for (const row of renderStepPickerRows(pickableSteps, rollbackable))
+              console.log(row);
+            const ans = (await question(STEP_PICK_PROMPT)).trim();
+            if (ans) {
+              const pick = resolveStepPick(ans, pickableSteps, rollbackable);
+              if ('error' in pick) console.log(`    ⚠️  ${pick.error}`);
+              else await doRollback(finalSteps[pick.index].step, pick.index);
             }
             continue;
           }
@@ -4003,9 +4034,8 @@ const runCommand = new Command('run')
   .option('--continue-on-error', 'Continue execution even if steps fail')
   .option('--report <dir>', 'Write Markdown evidence report to directory')
   .option(
-    '--from-step <number>',
-    'Start at a specific step number; earlier steps are recorded as skipped',
-    parseInt,
+    '--from-step <step>',
+    'Start at this step: its number in the manual (e.g. 2.7) or its name; earlier steps are recorded as skipped',
   )
   .option(
     '--no-require-evidence',
@@ -4047,7 +4077,10 @@ const resumeCommand = new Command('resume')
   .argument('<session-id>', 'Session ID to resume')
   .option('-v, --verbose', 'Verbose output')
   .option('--auto-approve', 'Auto-approve remaining manual steps')
-  .option('--from-step <number>', 'Resume from specific step number', parseInt)
+  .option(
+    '--from-step <step>',
+    'Resume from this step: its number in the manual (e.g. 2.7) or its name',
+  )
   .option(
     '--attach <tmux-target>',
     'Sidecar: capture from this tmux pane (default: the pane the run was attached to)',

@@ -1,10 +1,20 @@
 import assert from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { existsSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 import {
+  attachHintLines,
+  BOOTSTRAP_PROMPT_PATTERN,
+  bootstrapSessions,
   buildPasteBufferArgs,
   capturePaneCursorLine,
   capturePaneScreen,
@@ -802,6 +812,114 @@ describe('TmuxPaneCapture — pinned to the pane id, not its position', () => {
       } finally {
         cap.teardown();
         spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
+      }
+    },
+  );
+});
+
+describe('attachHintLines — how to look at spawned sessions', () => {
+  it('outside tmux: plain attach', () => {
+    assert.deepStrictEqual(attachHintLines('samaritan-abc', false), [
+      'Attach with: tmux attach -t samaritan-abc',
+    ]);
+  });
+
+  it('inside tmux: never a bare `tmux attach` (it refuses to nest)', () => {
+    const lines = attachHintLines('samaritan-abc', true);
+    assert.ok(
+      lines.every((l) => !/: tmux attach /.test(l)),
+      lines.join('\n'),
+    );
+    assert.ok(
+      lines.some((l) =>
+        l.includes('split-window -h "TMUX= tmux attach -t samaritan-abc"'),
+      ),
+    );
+    assert.ok(lines.some((l) => l.includes('switch-client -t samaritan-abc')));
+  });
+});
+
+describe('BOOTSTRAP_PROMPT_PATTERN', () => {
+  it('matches the usual prompt endings, not only `$`', () => {
+    const re = new RegExp(BOOTSTRAP_PROMPT_PATTERN, 'm');
+    for (const prompt of [
+      'alice@web-server:~$ ',
+      'root@web-server:/# ',
+      'web-server% ',
+      '~/work ❯ ',
+      'PS1> ',
+    ])
+      assert.ok(re.test(prompt), prompt);
+    assert.ok(!re.test('Connecting to web-server...'));
+  });
+});
+
+describe('bootstrapSessions — real tmux', () => {
+  const hasTmux =
+    process.platform !== 'win32' &&
+    spawnSync('tmux', ['-V'], { encoding: 'utf8' }).status === 0;
+
+  // A private tmux server (own socket dir) so `base-index` can be set
+  // without touching the server other tests, or the developer, use.
+  it(
+    'finds its panes with base-index/pane-base-index 1 and a dotted session name',
+    { skip: !hasTmux, timeout: 60_000 },
+    async () => {
+      const socketDir = mkdtempSync(join(tmpdir(), 'sam-tmux-'));
+      const saved = { dir: process.env.TMUX_TMPDIR, tmux: process.env.TMUX };
+      process.env.TMUX_TMPDIR = socketDir;
+      delete process.env.TMUX;
+      const id = `boot-${process.pid}-${Date.now()}`;
+      let session: TmuxSession | undefined;
+      try {
+        spawnSync('tmux', ['new-session', '-d', '-s', 'keepalive']);
+        spawnSync('tmux', ['set', '-g', 'base-index', '1']);
+        spawnSync('tmux', ['set', '-gw', 'pane-base-index', '1']);
+
+        session = await bootstrapSessions(id, { web: {}, 'db.primary': {} });
+
+        // Registered under the name a step's `session:` holds, by pane id.
+        assert.ok(session.hasTarget('web'));
+        assert.ok(session.hasTarget('db.primary'), 'dotted name is found');
+        const panes = [...session.getPaneMap().values()];
+        assert.ok(
+          panes.every((pane) => /^%\d+$/.test(pane)),
+          panes.join(','),
+        );
+        // Both panes exist, are piped, and sit in windows named after them.
+        const listed = spawnSync(
+          'tmux',
+          [
+            'list-panes',
+            '-s',
+            '-t',
+            `samaritan-${id}`,
+            '-F',
+            '#{pane_id} #{pane_pipe} #{window_name}',
+          ],
+          { encoding: 'utf8' },
+        ).stdout.trim();
+        assert.deepStrictEqual(
+          listed.split('\n').sort(),
+          [`${panes[0]} 1 web`, `${panes[1]} 1 db_primary`].sort(),
+        );
+        assert.match(session.describeTarget('db.primary'), /:db_primary\.1$/);
+
+        // [p] reaches the second session's pane (it went nowhere before).
+        session.pasteCommand('db.primary', 'echo migrate-web-server');
+        let screen = '';
+        for (let n = 0; n < 20 && !screen.includes('migrate-web-server'); n++) {
+          await new Promise((r) => setTimeout(r, 100));
+          screen = session.captureScreen('db.primary') ?? '';
+        }
+        assert.ok(screen.includes('echo migrate-web-server'), screen);
+      } finally {
+        session?.teardown();
+        spawnSync('tmux', ['kill-server'], { stdio: 'ignore' });
+        if (saved.dir === undefined) delete process.env.TMUX_TMPDIR;
+        else process.env.TMUX_TMPDIR = saved.dir;
+        if (saved.tmux !== undefined) process.env.TMUX = saved.tmux;
+        rmSync(socketDir, { recursive: true, force: true });
       }
     },
   );

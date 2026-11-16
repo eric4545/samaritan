@@ -35,6 +35,21 @@ All notable changes to this project are documented here. This project follows
 
 ### Changed
 
+- **One step number everywhere in a run: the manual's.** The `[b]` back and
+  `[j]` jump pickers list each step once, under the number the heading and
+  `generate manual --env` show (`1.2.1  Deploy database  (completed)`), with
+  no second row number beside it. Messages, `samaritan sessions` and
+  `report.md` use the same number (`## Step 1.2.1: …`; reports of older runs
+  keep their position numbers). At the picker you can type that number, the
+  number the multi-environment manual prints for the same step (`1b1`),
+  `Step 1.2.1:` copied from a heading, or the step name or part of it.
+- **`--from-step` takes the manual's step number or a step name**, for `run`
+  and `resume`: `--from-step 2.7`, `--from-step "Deploy database"`.
+  **Behaviour change for runbooks with sub-steps:** a plain number is now the
+  step number, no longer the position in the flattened list, so
+  `--from-step 2` starts at Step 2. A number that is no step is refused with
+  a message. Runbooks without sub-steps are unaffected.
+
 - **The postmortem timeline is rendered in time order**, not YAML order, so
   an entry appended later lands where it happened. Bare clock times
   (`16:20`, `18:05-18:10Z`) mixed with full timestamps are placed on the
@@ -66,6 +81,20 @@ All notable changes to this project are documented here. This project follows
   put them back in their natural order.
 
 ### Fixed
+
+- **Spawned `sessions:` work with `base-index 1`.** With `base-index` or
+  `pane-base-index` set to 1 in `tmux.conf`, the panes SAMARITAN opened were
+  never found: nothing was captured and `[p]` reported a paste that did not
+  arrive. Panes are now addressed by their tmux id.
+- **A session name with a `.` (or other punctuation) finds its pane.** A step
+  with `session: db.primary` said `No tmux pane attached`.
+- **The attach hint works inside tmux.** `tmux attach -t samaritan-<id>` is
+  refused by tmux when you are already in tmux. There SAMARITAN now prints a
+  split that shows the session beside the run, and `switch-client`.
+- **Sessions start in about a second instead of 10 s each** when the shell
+  prompt does not end in `$` (root `#`, zsh `%`, `❯`).
+- Each spawned session's window is named after it, so pane messages read
+  `samaritan-<id>:web.0`.
 
 - **A postmortem timestamp without a time zone renders the same on every
   machine.** `2026-01-01T14:00:00` was read as the local time of whichever
