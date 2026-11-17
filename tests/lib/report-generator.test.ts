@@ -102,8 +102,8 @@ describe('renderReport — steps-completed count', () => {
     assert.ok(md.includes('Steps completed: 2/5'), `expected 2/5, got:\n${md}`);
     // …and the report says WHERE it stopped, both in the summary…
     assert.ok(
-      md.includes('- Aborted at step 3: C in progress'),
-      `expected an "Aborted at step 3" summary line, got:\n${md}`,
+      md.includes('- Aborted at Step 3: C in progress'),
+      `expected an "Aborted at Step 3" summary line, got:\n${md}`,
     );
     // …and on the in-progress step's heading.
     assert.ok(
@@ -120,6 +120,24 @@ describe('renderReport — steps-completed count', () => {
       !md.includes('## Step 1: A 🛑'),
       'completed steps must not carry the abort marker',
     );
+  });
+
+  it('numbers steps as the manual does; old logs fall back to the position', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml', total_steps: 3 }),
+      ev({ type: 'step_start', step: 0, label: '1', name: 'Deploy' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'step_start', step: 1, label: '1.1', name: 'Upload' }),
+      ev({ type: 'rollback_start', step: 1, triggered_by: 'operator' }),
+      ev({ type: 'rollback_complete', step: 1, status: 'completed' }),
+      ev({ type: 'step_start', step: 2, name: 'Old log step' }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+    ]);
+    assert.ok(md.includes('## Step 1.1: Upload'), md);
+    assert.ok(!md.includes('## Step 2: Upload'), md);
+    assert.ok(md.includes('### Rollback for Step 1.1'), md);
+    assert.ok(md.includes('## Step 3: Old log step'), md);
+    assert.ok(md.includes('- Aborted at Step 3: Old log step'), md);
   });
 
   it('does not flag any stop point for a cleanly completed run', () => {

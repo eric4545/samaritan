@@ -31,7 +31,7 @@ export const sessionsCommand = new Command('sessions')
         `   Operation: ${s.operation_id}  Env: ${s.environment}${s.group ? `  Group: ${s.group}` : ''}  Mode: ${s.mode ?? '-'}`,
       );
       console.log(
-        `   Status: ${s.status}  Step: ${s.current_step_index + 1}  Progress: ${s.completion_percentage ?? 0}%`,
+        `   Status: ${s.status}  Step: ${s.current_step_label ?? s.current_step_index + 1}  Progress: ${s.completion_percentage ?? 0}%`,
       );
       console.log(`   Updated: ${s.updated_at.toISOString()}`);
       if (RESUMABLE_STATUSES.has(s.status)) {

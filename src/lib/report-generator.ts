@@ -154,7 +154,7 @@ export function renderReport(
   }
   if (abortedStep) {
     lines.push(
-      `- Aborted at step ${abortedStep.index + 1}: ${abortedStep.name}`,
+      `- Aborted at Step ${stepNumber(abortedStep)}: ${abortedStep.name}`,
     );
   }
   lines.push(`- Duration: ${duration}`);
@@ -163,14 +163,14 @@ export function renderReport(
   );
   if (overridden.length > 0) {
     lines.push(
-      `- Verification overridden: ${overridden.map((s) => `Step ${s.index + 1}`).join(', ')}`,
+      `- Verification overridden: ${overridden.map((s) => `Step ${stepNumber(s)}`).join(', ')}`,
     );
   }
 
   const confirmed = steps.filter((s) => s.confirmation?.by);
   if (confirmed.length > 0) {
     lines.push(
-      `- Confirmed out of band: ${confirmed.map((s) => `Step ${s.index + 1}`).join(', ')}`,
+      `- Confirmed out of band: ${confirmed.map((s) => `Step ${stepNumber(s)}`).join(', ')}`,
     );
   }
 
@@ -219,7 +219,7 @@ export function renderReport(
       const decision = approval.approved ? '✅ approved' : '❌ rejected';
       const who = `${approval.approver} at ${formatTs(approval.timestamp)}`;
       lines.push(
-        `- **Step ${step.index + 1}: ${step.name}** — ${decision} by ${who}`,
+        `- **Step ${stepNumber(step)}: ${step.name}** — ${decision} by ${who}`,
       );
       if (approval.rationale)
         lines.push(`  - Rationale: ${approval.rationale}`);
@@ -234,7 +234,16 @@ export function renderReport(
   if (rollbacks.length === 0) {
     lines.push('_(none)_');
   } else {
-    for (const rb of rollbacks) lines.push(...renderRollback(rb, redact));
+    for (const rb of rollbacks)
+      lines.push(
+        ...renderRollback(
+          rb,
+          redact,
+          stepNumber(
+            steps.find((s) => s.index === rb.step) ?? { index: rb.step },
+          ),
+        ),
+      );
   }
 
   // Every rendered field is already cleaned where it carries terminal output;
@@ -300,7 +309,7 @@ function renderStepOverview(steps: StepRecord[], marks: StepMarks): string[] {
         ? formatDurationMs(step.duration_ms)
         : '—';
     lines.push(
-      `| ${step.index + 1} | ${escapeTableText(step.name)} | ${stepOutcome(step, marks)} | ${stepCheckSummary(step)} | ${step.evidence.length || '—'} | ${duration} |`,
+      `| ${stepNumber(step)} | ${escapeTableText(step.name)} | ${stepOutcome(step, marks)} | ${stepCheckSummary(step)} | ${step.evidence.length || '—'} | ${duration} |`,
     );
   }
   lines.push('');
@@ -328,18 +337,29 @@ const ROLLBACK_OUTCOMES: Record<string, string> = {
 };
 
 /**
+ * The number a step is shown under: the manual's (`1.2.1`, recorded on
+ * `step_start`), so the report reads like the run and the manual. Logs from
+ * before it was recorded only have the flat position.
+ */
+function stepNumber(step: { index: number; label?: string }): string {
+  return step.label ?? String(step.index + 1);
+}
+
+/**
  * Render one rollback: what was shown/sent, what the operator confirmed per
  * entry (ran / skipped / aborted, pasted, verified), and an honest status —
  * `completed` only when every entry was confirmed run (or, for a spawn-own
  * tmux run, sent). Entries never confirmed read `not run`.
  */
-function renderRollback(rb: RollbackRecord, redact: Redact): string[] {
+function renderRollback(
+  rb: RollbackRecord,
+  redact: Redact,
+  stepNum: string,
+): string[] {
   const lines: string[] = [];
   const title = ROLLBACK_TITLES[rb.context ?? ''];
   lines.push(
-    title
-      ? `### ${title} ${rb.step + 1})`
-      : `### Rollback for Step ${rb.step + 1}`,
+    title ? `### ${title} ${stepNum})` : `### Rollback for Step ${stepNum}`,
   );
   lines.push(`**Triggered by**: ${rb.triggeredBy}`);
   lines.push('');
@@ -400,7 +420,7 @@ function renderStep(
   marks: StepMarks,
 ): string[] {
   const lines: string[] = [];
-  const stepNum = step.index + 1;
+  const stepNum = stepNumber(step);
   const rolledBackSuffix = isRolledBack(step, marks) ? ' ↩ (rolled back)' : '';
   const firstCmd = step.commands[0];
   const skippedSuffix = step.status === 'skipped' ? ' ⏭ (skipped)' : '';

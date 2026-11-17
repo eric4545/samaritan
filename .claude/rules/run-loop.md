@@ -209,10 +209,27 @@ verify: y=re-run").
 
 ### `[b]`/`[j]` picker input
 
-`resolveStepPick(answer, pickableSteps, allowed)` (`src/lib/step-position.ts`):
-a plain integer is still the flat position; a dotted manual number (`2.7`)
-matches the step label; anything else is a unique case-insensitive name
-fragment (ambiguous → lists matches, refuses).
+ONE step number in the run: the manual's label (`flatSteps[k].label`). The
+flat position appears only as progress in the heading (`· 34/46`). A real run
+showed three numbers for one step (picker row `11) [1.2.1.1.1]`, `Going back
+to step 3`, report `## Step 14`), and `2` picked the 2nd ROW (Step 1.1), not
+Step 2. Now, all in `src/lib/step-position.ts` (pure, unit-tested):
+`renderStepPickerRows` prints `<label>  <name>  (<status>)`, no row number;
+`stepRef(steps, k)` = `Step 1.2: name` is what every message, `user_input`
+note and prompt uses (in run.ts: `ref(k)` / `labelOf(k)`; never print
+`k + 1`); `resolveStepPick(answer, pickableSteps, allowed)` strips a leading
+`Step ` / trailing `:` and matches, in order: the label (`2`, `2.7`), the
+multi-env manual's number for the same step (`multiEnvStepLabel`: `2.7` →
+`2g`, `1.2.1` → `1b1`), an exact name, a unique case-insensitive name
+fragment (ambiguous → lists matches, refuses). Digits and dots only is ALWAYS
+a number, never a name fragment; a number that exists but is not on offer is
+named and refused. The completion-screen rollback picker and `--from-step`
+(`resolveFromStep`, `run` and `resume`) go through the same resolver.
+`step_start` / `step_skip` carry `label` → `StepRecord.label` → `report.md`
+headings via `stepNumber()` (old logs fall back to `index + 1`);
+`session.current_step_label` (set at each step start and in
+`persistProgress`) is what `sessions` prints. Tests: `tests/cli/run.test.ts`
+"one step number everywhere".
 
 ## `variants.<env>` resolved once, in `flattenAndMarkForEnv`
 
@@ -238,8 +255,8 @@ resolves rollback `name` too. Tests: `tests/cli/groups.test.ts` "run / resume".
 `flattenAndMarkForEnv` labels steps with `childStepLabel` (`src/lib/step-position.ts`):
 dotted `10.2`, `10.2.1` — the numbering of `generate manual --env`, since a run
 always targets one env (NOT the multi-env `10b`/`10b1` letters).
-`describeStepPosition` renders `[Step 10.2 · 34/46]` (flat position = what
-`[b]`/`[j]`/`--from-step` take) plus `Section :` (parent) and
+`describeStepPosition` renders `[Step 10.2 · 34/46]` (`34/46` is progress
+only; nothing takes the flat position as input) plus `Section :` (parent) and
 `Next : … (N remaining)` (env-filtered steps excluded). Top-level detection for
 the `needs` dep graph is still `/^\d+$/` on the label.
 
@@ -261,8 +278,8 @@ re-run one earlier step` (`rerun-step.yaml`), executor `revisitStep`.
 marks every still-`pending` step from `currentStepIndex` up to `target` as
 `skipped` (emitting `step_skipped`). Both reuse the SAME `navTarget` +
 `i = target - 1; continue` mechanism; the loop branches on `navIsJump` to pick
-the method and log `action:'jump'` vs `'back'`. `run --from-step <N>` calls
-`jumpToStep(N-1)` after `startInteractive()` — distinct from `resume --from-step`
+the method and log `action:'jump'` vs `'back'`. `run --from-step <step>` calls
+`jumpToStep(resolveFromStep(...))` after `startInteractive()` — distinct from `resume --from-step`
 (uses `resumeFromIndex`, marks earlier steps `completed` not `skipped`).
 Append-only `events.jsonl` is never rewritten. A `step_skip` event (folded to
 `status:'skipped'`) is emitted so jumped-over steps render honestly. Both
@@ -456,6 +473,25 @@ missing pane resolved to another session's pane and `ensureCapture`
 re-attached our pipe to it (a CI flake whenever another test file held a
 tmux session). Use `list-panes -t` (`validateTmuxTarget`) or `paneFormat`,
 never a bare `display-message` result, to decide that a pane exists.
+
+## Spawned `sessions:` (`bootstrapSessions`) — pane ids, never `:0.0`
+
+Seen in a real tmux run, all fixed together: (1) panes were addressed as
+`<tmuxName>:<i>.0`; with `base-index` / `pane-base-index` 1 (a common
+tmux.conf) those do not exist, so no pipe opened and `[p]` printed "Pasted
+into …:0.0" while nothing arrived. `createPane` now reads the pane id from
+`new-session`/`new-window -P -F '#{pane_id}'` and `registerPane(name, '%N')`;
+`TmuxSession.paneFor` falls back to `<tmuxName>:` (the active pane), never a
+position. (2) Panes were registered under the SANITIZED name but looked up by
+the YAML name, so `session: db.primary` said "No tmux pane attached"; the map
+key is the YAML name, only the window name (`-n`) and pipe file are
+sanitized. (3) The prompt wait only knew `$`: a root `#`, zsh `%` or `❯`
+prompt waited the full 10 s PER session (`BOOTSTRAP_PROMPT_PATTERN`, for the
+bootstrap wait only; `waitForPrompt`'s default is unchanged because `>` at a
+line end is common in command output). (4) The hint `tmux attach -t …` is
+refused inside tmux; `attachHintLines(name, insideTmux)` prints the nested
+split / `switch-client` forms there (`run` and `resume`). The real-tmux unit
+test runs on a private server (`TMUX_TMPDIR`) so it can set `base-index`.
 
 ## One `pipe-pane` per pane — ownership + repair
 

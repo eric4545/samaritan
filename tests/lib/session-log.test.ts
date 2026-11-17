@@ -80,6 +80,19 @@ describe('foldEvents', () => {
     assert.strictEqual(steps[1].status, 'completed');
   });
 
+  it('carries the manual step number from step_start and step_skip', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'step_skip', step: 0, label: '1', name: 'Deploy' }),
+      ev({ type: 'step_start', step: 1, label: '1.1', name: 'Upload' }),
+      // A log written before the number was recorded.
+      ev({ type: 'step_start', step: 2, name: 'Verify' }),
+    ]);
+    assert.deepStrictEqual(
+      steps.map((s) => s.label),
+      ['1', '1.1', undefined],
+    );
+  });
+
   it('marks an already-started step skipped (mid-run jump)', () => {
     const { steps } = foldEvents([
       ev({ type: 'step_start', step: 0, name: 'Deploy' }),
