@@ -172,6 +172,11 @@
           "type": "boolean",
           "default": false,
           "description": "Auto-press Enter after send"
+        },
+        "advance_on_pass": {
+          "type": "boolean",
+          "default": false,
+          "description": "Sidecar/manual run: when a step's `expect` verify passes, complete the step without waiting for Enter. A step with no `expect`, a failed verify, missing required evidence or a `confirm:` gate still waits for the operator."
         }
       },
       "additionalProperties": false
@@ -387,6 +392,9 @@
                 "type": "string",
                 "description": "Reviewer/buddy who monitors and verifies the PIC's work"
               },
+              "confirm": {
+                "$ref": "#/definitions/confirm"
+              },
               "session": {
                 "type": "string",
                 "description": "Named tmux session to use for this step (execution engine)"
@@ -533,6 +541,7 @@
                     "continue_on_error": { "type": "boolean" },
                     "pic": { "type": "string" },
                     "reviewer": { "type": "string" },
+                    "confirm": { "$ref": "#/definitions/confirm" },
                     "ticket": {
                       "$ref": "#/properties/steps/items/oneOf/1/properties/ticket"
                     },
@@ -659,6 +668,30 @@
     }
   },
   "definitions": {
+    "confirm": {
+      "description": "A gate the operator satisfies outside the attached pane (a dashboard, a browser check, another operator's terminal). `run` asks the question before the step can be marked done and records who confirmed, when, and the result they typed; the report shows it as CONFIRMED. A plain string is the question with an optional result.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "required": ["prompt"],
+          "additionalProperties": false,
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The yes/no question the operator answers, e.g. \"Error rate below 1% on the dashboard?\""
+            },
+            "result": {
+              "type": "string",
+              "enum": ["optional", "required"],
+              "default": "optional",
+              "description": "`required`: the step cannot be confirmed without a typed or pasted result (what the operator saw)."
+            }
+          }
+        }
+      ]
+    },
     "foreach": {
       "description": "Loop/matrix support for repeatable steps",
       "oneOf": [
@@ -782,6 +815,9 @@
         "reviewer": {
           "type": "string",
           "description": "Reviewer/buddy who verifies this rollback step"
+        },
+        "confirm": {
+          "$ref": "#/definitions/confirm"
         },
         "continue_on_error": {
           "type": "boolean"

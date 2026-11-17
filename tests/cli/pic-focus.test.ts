@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { userInfo } from 'node:os';
 import { afterEach, describe, it } from 'node:test';
 import {
   resolveFocusPic,
@@ -46,8 +47,9 @@ describe('focus mode: resolveFocusPic', () => {
     assert.strictEqual(resolveFocusPic(true), 'carol');
   });
 
-  it("falls back to 'unknown' when the flag is bare and $USER is unset", () => {
+  it('falls back to the OS account when the flag is bare and $USER is unset', () => {
     delete process.env.USER;
-    assert.strictEqual(resolveFocusPic(true), 'unknown');
+    delete process.env.LOGNAME;
+    assert.strictEqual(resolveFocusPic(true), userInfo().username);
   });
 });

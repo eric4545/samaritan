@@ -92,13 +92,13 @@ Each step heading uses the **same number as the single-environment manual** (`ge
 
 | Step type / mode | Prompt | Keys |
 |---|---|---|
-| `automatic` in **sidecar** | `Command — [p] pastes it into <pane>:` (pane attached) or `Run this command in your terminal ([t] attaches a pane for [p]/[v]):` | Bar: `y`=run it (after `p`), `Enter`=done, `p`=paste, `v`=verify, `t`=attach (no pane yet), `s`=skip, `r`=rollback, `?`=more. Under `?`: `c`=copy, `n`=note, `e`=evidence, `x`=remove evidence, `t`=attach another pane, `b`=back, `j`=jump, `g`=global rollback, `q`/`abort`=quit |
+| `automatic` in **sidecar** | `Command — [!] pastes and runs it in <pane> ([p] pastes only):` (pane attached) or `Run this command in your terminal ([t] attaches a pane for [p]/[v]):` | Bar: `!`=paste + run, `y`=run it (after `p`), `Enter`=done, `p`=paste, `v`=verify, `t`=attach (no pane yet), `s`=skip, `r`=rollback, `?`=more. Under `?`: `c`=copy, `n`=note, `e`=evidence, `x`=remove evidence, `t`=attach another pane, `b`=back, `j`=jump, `g`=global rollback, `q`/`abort`=quit |
 | `automatic` (tmux-backed, non-sidecar) | `▶  Send to tmux?` | `Enter`=send, `s`=skip, `r`=rollback, `g`=global rollback, `q`=quit |
 | `automatic` (prompt-only, non-sidecar) | `▶  Execute?` | `Enter`=confirm, `s`=skip, `r`=rollback, `g`=global rollback, `q`=quit |
 | `manual` | `✋ Mark done` | Same compact bar: `Enter`/notes=confirm, `v`=verify, `p`/`y`/`t` (sidecar), `s`=skip, `r`=rollback, `?`=more (`n`=note, `e`=evidence, `b`=back, `j`=jump, `g`=global rollback, `q`/`abort`=quit) |
 | `approval` | `⚡ approve/reject` | `approve`, `reject`, `r`=rollback, `g`=global rollback, `skip` |
 
-**The step bar is compact.** It shows the keys of the usual flow (`[p]` → `[y]` → `↵`, `[v]`), plus `[s]`, `[r]` and `[?] more`. `[t]` is shown while no pane is attached, and `[e]` while a step's required evidence is missing. The first time the bar offers `[p]` with a pane attached, one line spells the flow out: `ℹ️  Flow: p pastes the command into the pane → y runs it (verify follows) → ↵ marks the step done. ? lists more keys.` `?` prints the rest once (copy, note, evidence, back, jump, global rollback, abort…). **Every key works whether it is shown or not**, so `n`, `e`, `b` and `j` need no `?` first.
+**The step bar is compact.** It shows the keys of the usual flow (`[!]` → `↵`, or `[p]` → `[y]` → `↵` to look before it runs, and `[v]`), plus `[s]`, `[r]` and `[?] more`. `[t]` is shown while no pane is attached, and `[e]` while a step's required evidence is missing. The first time the bar offers `[p]` with a pane attached, one line spells the flow out: `ℹ️  Flow: p pastes the command into the pane → y runs it (verify follows) → ↵ marks the step done. ? lists more keys.` `?` prints the rest once (copy, note, evidence, back, jump, global rollback, abort…). **Every key works whether it is shown or not**, so `n`, `e`, `b` and `j` need no `?` first.
 
 `g`=global rollback is only offered when the operation declares a top-level `rollback:` block. It runs the consolidated recovery (see [Group per-step rollbacks into the global rollback](./rollback.md#group-per-step-rollbacks-into-the-global-rollback-aggregate_step_rollbacks)) and then aborts.
 
@@ -243,6 +243,7 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
     - `↵` on that step asks `Mark done anyway? [y / n=go back]`. `y` is logged (`user_input`/`paste_not_run`) and shows as a ⚠️ note on the step in `report.md`.
     - Entering a later step warns when an earlier step's paste is still on the pane's input line.
     - Rollback `p` and `↵` follow the same rules.
+- **`[!]` paste + run** (sidecar only, with a pane attached) — one key for `[p]` then `[y]`: pastes the command and presses the same guarded Enter, then waits and verifies `expect`. The command is already shown in samaritan's pane, so you read it there first. It is its own key and not `y` on purpose: a `y` meant for a yes/no prompt that lands on the bar must never start a command. Use `[p]` when you want to see the command on the pane's input line before it runs. With `run.advance_on_pass: true` a PASS then completes the step, so a healthy step is one key.
 - **`[y]` run it (Enter in pane)** (sidecar only, shown right after a `[p]` paste) — samaritan presses Enter in the attached pane for you, so you don't have to switch panes. It sends Enter **only while the pane is exactly as the paste left it**. Right after `[p]`, samaritan waits for the paste to finish echoing, then checks the command is sitting at the cursor (otherwise `[y]` isn't offered). When you press `[y]` it re-reads the pane and refuses with `🛑 Enter NOT sent: <reason>` if any of these changed:
 
   | Check | Why |
@@ -288,6 +289,32 @@ With no pane attached the line reads `press [e] and give a file, a URL or text (
 `approval` steps get an `[e] evidence` key on their own bar too, so they're satisfied the same way (capture, then `approve`).
 
 This is **on by default** — declaring `evidence.required: true` is enough, no flag needed. To disable enforcement (e.g. a CI rehearsal or dry-run walk-through), pass `--no-require-evidence` to `run` or `resume`. The gate applies to `manual`/sidecar step completion and to `approval` steps' `approve` path; it does **not** gate plain (non-sidecar) `type: automatic` steps. See `examples/evidence-required-step.yaml`.
+
+## Confirm gate (`confirm:`): a check made outside the pane
+
+Some gates are met where samaritan cannot look: a dashboard, a browser, another operator's terminal. A step with `confirm:` shows the question above its action bar:
+
+```
+[Step 2 · 2/3] MANUAL: Check the canary on the dashboard
+    ☑️  Confirm before done: Error rate below 1% on the web-server dashboard? (result required)
+```
+
+Pressing `↵` (done) asks it:
+
+| Answer | What happens |
+|---|---|
+| `y` | Asks for the result you saw (a value, a link, a line or a pasted block). With `result: required` an empty result is refused; otherwise `↵` skips it. The step is then marked done. |
+| `n` | The step stays open and the refusal is recorded. Check again, or `s` skip / `r` roll back. |
+
+The report shows a confirmed step apart from one that was simply completed:
+
+```markdown
+**Confirmation (out of band)**: ✅ CONFIRMED by alice at Thu, 01 Jan 2026 00:00:00 UTC (answered "no" 1× first)
+- Asked: Error rate below 1% on the web-server dashboard?
+- Result: 0.3 over 5 minutes
+```
+
+The gate is asked on the `manual`/sidecar step bar and on an operator-driven rollback entry that declares `confirm:`. It is not asked on `approval` steps (the approval is the assertion) or in a non-sidecar `automatic` run. See `examples/confirm-out-of-band.yaml`.
 
 ## Mock run (`--mock`): replay `expect` against captured evidence
 
@@ -404,6 +431,22 @@ steps:
       expect:
         contains: "successfully rolled out"
 ```
+
+## Complete a step on a verify PASS (`run.advance_on_pass`)
+
+```yaml
+run:
+  advance_on_pass: true   # default false
+```
+
+In a sidecar or manual run, a passing `expect` verify (after `[!]`, `[y]` or `[v]`) completes the step without waiting for `↵`. It is set in the operation, not on the command line: the runbook author decides whether a PASS is enough.
+
+| The step still waits for you when | Why |
+|---|---|
+| it has no `expect` | nothing was checked |
+| the verify failed | you choose: re-run, override, roll back |
+| required evidence is missing | `[e]` first |
+| it has a `confirm:` gate | the question is asked before it completes |
 
 ## Run modes (`auto_send` / `auto_exec`)
 

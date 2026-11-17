@@ -6,6 +6,7 @@ import {
   stepRollbackHeadingText,
 } from '../lib/anchor';
 import { renderExpectParts } from '../lib/assertions';
+import { confirmLine } from '../lib/confirm';
 import { evidenceLinkUrl } from '../lib/evidence-input';
 import {
   type GenerationMetadata,
@@ -544,6 +545,15 @@ function renderRollbackCellMarkdown(
     }
   }
 
+  const rbConfirm = confirmLine(rb.confirm, (t) =>
+    resolveVariables && substituteVars
+      ? substituteVariables(t, env.variables || {}, stepVariables)
+      : t,
+  );
+  if (rbConfirm) {
+    cellContent += `${cellContent ? '<br>' : ''}- [ ] ☑️ ${rbConfirm}`;
+  }
+
   // Rollback sign-off checkboxes
   if (rb.pic || rb.reviewer) {
     const sep = cellContent ? '<br><br>' : '';
@@ -713,6 +723,12 @@ function generateStepRow(
   if (step.reviewer) {
     stepCell += `<br>👥 <em>Reviewer: ${step.reviewer}</em>`;
   }
+
+  // Out-of-band gate the operator confirms (shared cell: common + step vars)
+  const confirmText = confirmLine(step.confirm, (t) =>
+    resolveDisplayText(t, resolveVariables, commonVariables, step.variables),
+  );
+  if (confirmText) stepCell += `<br>☑️ <em>${confirmText}</em>`;
 
   // Add timeline
   if (step.timeline) {
@@ -1034,6 +1050,12 @@ function generateSubStepRow(
   if (step.reviewer) {
     stepCell += `<br>👥 <em>Reviewer: ${step.reviewer}</em>`;
   }
+
+  // Out-of-band gate the operator confirms (shared cell: common + step vars)
+  const confirmText = confirmLine(step.confirm, (t) =>
+    resolveDisplayText(t, resolveVariables, commonVariables, step.variables),
+  );
+  if (confirmText) stepCell += `<br>☑️ <em>${confirmText}</em>`;
 
   // Add timeline
   if (step.timeline) {
@@ -1958,6 +1980,12 @@ export function generateSingleEnvManual(
       }
     }
 
+    const confirmText = confirmLine(effectiveStep.confirm, resolveText);
+    if (confirmText) {
+      lines.push(`- [ ] ☑️ ${confirmText}`);
+      lines.push('');
+    }
+
     if (effectiveStep.evidence) {
       const evStatus = effectiveStep.evidence.required
         ? 'Required'
@@ -2100,6 +2128,14 @@ export function generateSingleEnvManual(
         for (const p of parts) lines.push(`- [ ] ${p}`);
         lines.push('');
       }
+    }
+
+    const rbConfirm = confirmLine(rb.confirm, (t) =>
+      resolve ? substituteVariables(t, envVars, stepVariables) : t,
+    );
+    if (rbConfirm) {
+      lines.push(`- [ ] ☑️ ${rbConfirm}`);
+      lines.push('');
     }
 
     if (rb.pic || rb.reviewer) {

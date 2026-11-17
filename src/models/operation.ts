@@ -55,6 +55,8 @@ export interface ExpectConfig {
 export interface RunConfig {
   auto_send?: boolean;
   auto_exec?: boolean;
+  /** Sidecar: a verify PASS completes the step (other gates still ask). */
+  advance_on_pass?: boolean;
 }
 
 // ─── Supporting Types and Enums ───────────────────────────────────────────────
@@ -160,7 +162,21 @@ export interface StepContent {
   pic?: string;
   reviewer?: string;
   expect?: ExpectConfig | ExpectConfig[] | string;
+  /**
+   * A gate satisfied outside the attached pane (dashboard, browser, another
+   * operator). The run asks it before the step can be marked done and records
+   * who confirmed, when, and the result they typed. See src/lib/confirm.ts.
+   */
+  confirm?: ConfirmSpec;
 }
+
+export interface ConfirmConfig {
+  prompt: string;
+  /** `required`: a typed/pasted result is needed to confirm. Default optional. */
+  result?: 'optional' | 'required';
+}
+
+export type ConfirmSpec = string | ConfirmConfig;
 
 // A rollback step IS a step — it reuses Step's field definitions instead of
 // re-declaring them. Every inherited field is optional (rollback steps don't

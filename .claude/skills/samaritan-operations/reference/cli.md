@@ -129,6 +129,7 @@ Per manual/sidecar step:
 - `[t]` attach pane — (sidecar) attach/swap a tmux capture backend mid-run. Picker lists `session:windowName.pane` for named windows (index form while tmux auto-renames), with the pane id; answer by number, name or target, `r` re-lists. The answer is checked against a fresh `list-panes`: a number picks the pane by id, a closed pane re-lists with a warning. The attached capture is pinned to the pane id for the whole run (closing another pane cannot redirect `[p]`)
 - `[p]` send to pane — (sidecar) paste the resolved command into the attached pane WITHOUT Enter (operator reviews + runs it), using **bracketed paste** (`paste-buffer -p`) so multi-line commands land as one atomic block instead of executing line-by-line; only when the step has a command (or a `script:`, whose `bash <path>` invocation is pasted) and a pane is attached. Re-run during verify = `[p]` then `[v]`. Before pasting, CRLF/CR becomes LF and trailing newlines are stripped (tmux LF→CR would otherwise turn a stray `\r` into a blank line that breaks `\` continuations). Multi-line commands paste with no confirmation prompt (bracketed paste lands them as one un-run block in bash ≥ 4.4 / zsh ≥ 5.1); shells without bracketed paste (sh/dash) would run each line as it arrives. While a paste is still un-run on the pane's input line (cursor line ends with it), `[p]` is refused until it is run or cleared (Ctrl+U), and `↵` on that step asks `Mark done anyway? [y / n=go back]` (`y` → `paste_not_run` event + ⚠️ report note); same for rollback `p`/`↵`
 - Step headings read `[Step 10.2 · 34/46]`: the single-env manual number (`generate manual --env`, dotted sub-steps) plus the progress position (`34/46`, progress only; `[b]`/`[j]`/`--from-step`, all messages, `sessions` and `report.md` use the manual number `10.2`), followed by `Section :` (the parent) and `Next : … (N remaining)` lines
+- `[!]` paste + run — (sidecar, pane attached, forward bar) `[p]` + `[y]` in one key: paste, the same guarded Enter, wait, verify. Its own key, never `y`, so a stray `y` from a y/n prompt cannot start a command. With `run.advance_on_pass: true` in the operation a verify PASS (from `[!]`, `[y]` or `[v]`) completes the step; a step with no `expect`, a failed verify, missing required evidence or a `confirm:` gate still waits.
 - `[y]` run it — (sidecar, only right after a `[p]` paste, forward or rollback) samaritan presses Enter in that pane (`send-keys -t <%pane_id> Enter`) ONLY while the pane is exactly as the paste left it: same live pane, not in copy/view mode, `synchronize-panes` off, input not disabled, same `pane_current_command`, and NO pane output / cursor / prompt-row change since the post-paste snapshot (so an edited or already-run command is never sent). Refusals print `🛑 Enter NOT sent: <reason>`, send nothing and keep `[y]` armed. After Enter it waits (`⏳ Running…`) until the pane is back at its pre-paste prompt (digits normalized) and quiet 0.3s — or 3s quiet with the shell in front when the prompt changed — then auto-runs `[v]` (step or rollback-entry `expect`); a different foreground program (silent `kubectl`) keeps it waiting; any key stops waiting. Not carried across steps. Logged `user_input`/`enter_sent`; report shows `⏎ Enter sent from samaritan [y]`. No flag/config
 - A **script-only step** (`script:` with no inline `command`) displays `Script: <path>`, the embedded script content, and a `bash <path>` runnable; `[c]` copy and `[p]` send-to-pane act on that `bash <path>` invocation
 - `[b]`/`[j]` pickers list one number per row, the manual's (`2.7  deploy  (completed)`), and accept that number, the multi-env manual's number for the same step (`2g`), `Step 2.7:` copied from a heading, the step name or a unique part of it (`resolveStepPick`). A plain integer is a step number, never a row position
@@ -154,6 +155,18 @@ nothing recorded just prints a one-line warning **on the same action bar**
 you there. `[s]` skips the step (recorded as skipped, not completed). Disable with
 `--no-require-evidence`. Does NOT gate plain (non-sidecar) `type: automatic`
 steps.
+
+## Confirm gate (`confirm:`)
+
+A step (or operator-driven rollback entry) with `confirm:` shows `☑️  Confirm
+before done: <prompt>` above the bar. `↵` then asks `Confirmed? [y / n=not
+yet]`: `y` asks for the result (`result: required` refuses an empty one, asking
+once more first), logs `user_input`/`confirmed_out_of_band` `{prompt, result}`
+and completes; `n` logs `confirm_declined` and stays on the bar. `report.md`
+renders `**Confirmation (out of band)**: ✅ CONFIRMED by <op> at <time>` +
+`Asked:` / `Result:`, a `Confirmed out of band: Step N` summary line, and
+`☑️ confirmed` in the "Steps at a glance" table. Not asked on `approval` steps
+or in non-sidecar `automatic` runs.
 
 **Forward gating (`needs`):** before a step whose `needs` aren't all completed (e.g. a dependency was skipped by `[j]` jump or `--from-step`), the run loop warns (`⚠️ This step needs: …`) and prompts `Start anyway? [y=proceed / Enter=go back]`. `y` proceeds (logging a `needs_override` audit event); Enter rewinds to the first unmet dependency. Skipped ≠ completed.
 

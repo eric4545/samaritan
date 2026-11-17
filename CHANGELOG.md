@@ -7,6 +7,25 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **`[!]` runs a sidecar step in one key**: it pastes the command into the
+  attached pane and presses the same guarded Enter as `[p]` then `[y]`, waits
+  and verifies. `[p]` and `[y]` work as before, for looking at the command on
+  the pane's input line before it runs.
+- **`run.advance_on_pass: true`** in the operation completes a step when its
+  `expect` verify passes, without waiting for Enter. A step with no `expect`,
+  a failed verify, missing required evidence or a `confirm:` gate still waits.
+  Off by default.
+- **`confirm:` — a gate you check outside the terminal** (a dashboard, a
+  browser, another operator). `samaritan run` asks the question before the
+  step can be marked done, and records who confirmed, when, and the result
+  they typed (`result: required` refuses an empty one). `report.md` shows
+  `Confirmation (out of band): ✅ CONFIRMED by … at …` with the question and
+  the result, so a checked gate no longer looks like a step that was simply
+  passed. Works on steps, rollback steps and `variants`; every manual format
+  prints it as a checkbox line. Example: `examples/confirm-out-of-band.yaml`.
+- **`report.md` opens with a "Steps at a glance" table**: one row per step
+  with its outcome, how it was checked (verify, confirmation, approval), the
+  evidence count and the duration.
 - **A URL is evidence too.** At `[e]`, paste the link to a chat message, a CI
   build or a dashboard and it is recorded as `link` evidence; `report.md`
   shows it as a clickable link. In the operation YAML, `type: link` with the
@@ -49,7 +68,15 @@ All notable changes to this project are documented here. This project follows
   step number, no longer the position in the flattened list, so
   `--from-step 2` starts at Step 2. A number that is no step is refused with
   a message. Runbooks without sub-steps are unaffected.
-
+- **A step rolled back with `[r]` says so in the report** (`↩ rolled back`
+  in the table and the step heading). It used to read as an unfinished step.
+- **The report title shows the operation file, not its absolute path** on the
+  operator's machine.
+- **The operator name falls back to `$LOGNAME`, then the OS account** when
+  `$USER` is unset; before, every action in such a shell was recorded as
+  `unknown`.
+- **The run banner shows the first paragraph of the description**, not all of
+  it.
 - **The postmortem timeline is rendered in time order**, not YAML order, so
   an entry appended later lands where it happened. Bare clock times
   (`16:20`, `18:05-18:10Z`) mixed with full timestamps are placed on the
@@ -95,7 +122,8 @@ All notable changes to this project are documented here. This project follows
   prompt does not end in `$` (root `#`, zsh `%`, `❯`).
 - Each spawned session's window is named after it, so pane messages read
   `samaritan-<id>:web.0`.
-
+- **A step skipped with `s` is reported as skipped.** `report.md` showed it
+  as an unfinished step and left it out of `Steps skipped`.
 - **A postmortem timestamp without a time zone renders the same on every
   machine.** `2026-01-01T14:00:00` was read as the local time of whichever
   machine rendered it. It is now read in the `--timezone` zone (default

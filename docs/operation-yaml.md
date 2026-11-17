@@ -258,6 +258,27 @@ samaritan report merge <alice-session-id> <bob-session-id> -o merged-report.md
 
 See `examples/multi-operator.yaml` for a complete runnable example.
 
+## Confirm gate (`confirm`)
+
+For a gate that is met outside the terminal (a dashboard, a browser check, another operator), add `confirm:` to the step. Manuals print it as a checkbox line; `samaritan run` asks it before the step can be marked done and records who confirmed, when, and the result they typed.
+
+```yaml
+steps:
+  - name: Check the canary on the dashboard
+    type: manual
+    instruction: Open ${DASHBOARD} and read the canary error rate.
+    confirm:
+      prompt: Error rate below 1% on the ${APP} dashboard?
+      result: required   # optional (default) | required
+
+  - name: Announce the release
+    type: manual
+    instruction: Post the release note in the team channel.
+    confirm: Release note posted in the team channel?   # short form
+```
+
+`${VAR}` in the prompt resolves like a step name. `confirm` is also accepted on rollback steps and inside `variants.<env>`. See [Running](./running.md#confirm-gate-confirm-a-check-made-outside-the-pane) for the run flow.
+
 ## Timeout & Session metadata
 
 `timeout` (seconds) and `session` (the tmux pane a step runs in) render in every

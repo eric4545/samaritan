@@ -1,13 +1,22 @@
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import { evidenceLang } from '../manuals/generator';
 import type {
   RollbackRecord,
   StepApproval,
+  StepConfirmation,
   StepEvidenceRef,
   StepRecord,
 } from '../models/step-record';
 import { cleanTerminalOutput, stripControlChars } from './assertions';
+import { escapeTableText } from './markdown-table';
 import { redactLocalPaths } from './path-redact';
 import { foldEvents, readEvents, type SessionEvent } from './session-log';
 
@@ -123,7 +132,10 @@ export function renderReport(
   // Build Markdown
   const lines: string[] = [];
 
-  lines.push(`# Evidence Report: ${opFile}`);
+  // The operation path as a reader elsewhere can use it: home → ~, the
+  // operation's own directory dropped. The absolute path named the operator's
+  // machine in the first line of every shared report.
+  lines.push(`# Evidence Report: ${reportTitlePath(opFile, redact)}`);
   lines.push(
     `Session: ${sessionId} | Date: ${startTs} | Status: ${statusIcon(effectiveStatus)} ${effectiveStatus}`,
   );
@@ -155,6 +167,13 @@ export function renderReport(
     );
   }
 
+  const confirmed = steps.filter((s) => s.confirmation?.by);
+  if (confirmed.length > 0) {
+    lines.push(
+      `- Confirmed out of band: ${confirmed.map((s) => `Step ${stepNumber(s)}`).join(', ')}`,
+    );
+  }
+
   const pics = [...new Set(steps.flatMap((s) => (s.pic ? [s.pic] : [])))];
   const reviewers = [
     ...new Set(steps.flatMap((s) => (s.reviewer ? [s.reviewer] : []))),
@@ -167,9 +186,23 @@ export function renderReport(
   if (operators.length) lines.push(`- Operators: ${operators.join(', ')}`);
 
   lines.push('');
+  // Steps the operator rolled back with `[r]` (their own rollback, confirmed
+  // run at least in part). Such a step is left `pending` in the log, which
+  // read as "not finished" with no hint that it was undone.
+  const rolledBack = new Set(
+    rollbacks
+      .filter(
+        (rb) =>
+          (!rb.context || rb.context === 'rollback') &&
+          ['completed', 'partial', 'success'].includes(rb.status ?? ''),
+      )
+      .map((rb) => rb.step),
+  );
+  const marks: StepMarks = { abortedIndex, rolledBack };
+  lines.push(...renderStepOverview(steps, marks));
 
   for (const step of steps) {
-    lines.push(...renderStep(step, redact, href, abortedIndex));
+    lines.push(...renderStep(step, redact, href, marks));
   }
 
   // Approval Trail — aggregates every step-level approve/reject decision so
@@ -218,6 +251,75 @@ export function renderReport(
   // NUL/SI/ESC left from names, notes, reasons or commands (Slack and `file`
   // treat a single NUL as binary).
   return stripControlChars(lines.join('\n'));
+}
+
+/** Run-level facts about a step that its own record does not carry. */
+interface StepMarks {
+  abortedIndex?: number;
+  rolledBack: ReadonlySet<number>;
+}
+
+const isRolledBack = (step: StepRecord, marks: StepMarks): boolean =>
+  step.status === 'pending' && marks.rolledBack.has(step.index);
+
+/** One-word outcome per step for the overview table. */
+function stepOutcome(step: StepRecord, marks: StepMarks): string {
+  if (isRolledBack(step, marks)) return '↩ rolled back';
+  if (step.index === marks.abortedIndex) return '🛑 aborted here';
+  if (step.status === 'completed') return '✅ completed';
+  if (step.status === 'skipped') return '⏭ skipped';
+  if (step.status === 'failed') return '❌ failed';
+  return '⏳ not finished';
+}
+
+/** How the step was checked: verify result, out-of-band confirmation, approval. */
+function stepCheckSummary(step: StepRecord): string {
+  const parts: string[] = [];
+  const v = step.verification;
+  if (v && (v.checks.length > 0 || v.override)) {
+    parts.push(
+      v.pass ? '✅ verify' : v.override ? '⚠️ overridden' : '❌ verify',
+    );
+  }
+  if (step.confirmation) {
+    parts.push(step.confirmation.by ? '☑️ confirmed' : '❌ not confirmed');
+  }
+  if (step.approval) {
+    parts.push(step.approval.approved ? '✅ approved' : '❌ rejected');
+  }
+  return parts.join(', ') || '—';
+}
+
+/**
+ * The run at a glance: one row per step, so a reader finds the skipped,
+ * failed or unchecked step without scrolling through every section. Rows link
+ * nowhere on purpose (heading slugs differ between Markdown renderers).
+ */
+function renderStepOverview(steps: StepRecord[], marks: StepMarks): string[] {
+  if (steps.length === 0) return [];
+  const lines = [
+    '## Steps at a glance',
+    '',
+    '| # | Step | Outcome | Checked | Evidence | Duration |',
+    '|---|---|---|---|---|---|',
+  ];
+  for (const step of steps) {
+    const duration =
+      typeof step.duration_ms === 'number'
+        ? formatDurationMs(step.duration_ms)
+        : '—';
+    lines.push(
+      `| ${stepNumber(step)} | ${escapeTableText(step.name)} | ${stepOutcome(step, marks)} | ${stepCheckSummary(step)} | ${step.evidence.length || '—'} | ${duration} |`,
+    );
+  }
+  lines.push('');
+  return lines;
+}
+
+function reportTitlePath(opFile: string, redact: Redact): string {
+  if (opFile === 'unknown' || !isAbsolute(opFile)) return opFile;
+  const redacted = redact(opFile);
+  return redacted && redacted !== opFile ? redacted : basename(opFile);
 }
 
 const ROLLBACK_TITLES: Record<string, string> = {
@@ -278,6 +380,9 @@ function renderRollback(
       lines.push(
         `- ${outcome}: ${label}${body}${notes.length ? ` (${notes.join(', ')})` : ''}`,
       );
+      if (cmd.confirmation) {
+        lines.push(...renderConfirmation(cmd.confirmation, redact, '  '));
+      }
       continue;
     }
     lines.push(
@@ -312,10 +417,11 @@ function renderStep(
   step: StepRecord,
   redact: Redact,
   href: Redact,
-  abortedIndex?: number,
+  marks: StepMarks,
 ): string[] {
   const lines: string[] = [];
   const stepNum = stepNumber(step);
+  const rolledBackSuffix = isRolledBack(step, marks) ? ' ↩ (rolled back)' : '';
   const firstCmd = step.commands[0];
   const skippedSuffix = step.status === 'skipped' ? ' ⏭ (skipped)' : '';
   const overriddenSuffix =
@@ -325,9 +431,11 @@ function renderStep(
   // The step that was in progress when the operator aborted — flag it so the
   // report makes the stop point obvious instead of looking like a clean step.
   const abortedSuffix =
-    step.index === abortedIndex ? ' 🛑 (aborted here — in progress)' : '';
+    step.index === marks.abortedIndex && !rolledBackSuffix
+      ? ' 🛑 (aborted here — in progress)'
+      : '';
   lines.push(
-    `## Step ${stepNum}: ${step.name}${skippedSuffix}${overriddenSuffix}${abortedSuffix}`,
+    `## Step ${stepNum}: ${step.name}${skippedSuffix}${overriddenSuffix}${rolledBackSuffix}${abortedSuffix}`,
   );
   lines.push('');
 
@@ -378,6 +486,10 @@ function renderStep(
   }
 
   if (step.approval) lines.push(...renderApproval(step.approval));
+
+  if (step.confirmation) {
+    lines.push(...renderConfirmation(step.confirmation, redact));
+  }
 
   if (step.notes.length) {
     lines.push('');
@@ -475,6 +587,42 @@ function renderCheck(
     lines.push('  ```');
     for (const line of cleanedActual.split('\n')) lines.push(`  ${line}`);
     lines.push('  ```');
+  }
+  return lines;
+}
+
+/**
+ * A `confirm:` gate: a check made outside the pane that the operator asserted.
+ * Reads `✅ CONFIRMED by … at …` with the result they typed — distinct from a
+ * plain completion and from `⚠️ OVERRIDDEN`. A gate only ever answered `n`
+ * reads `❌ NOT CONFIRMED`.
+ */
+function renderConfirmation(
+  confirmation: StepConfirmation,
+  redact: Redact,
+  indent = '',
+): string[] {
+  const lines = indent ? [] : [''];
+  const declined = confirmation.declined
+    ? ` (answered "no" ${confirmation.declined}× first)`
+    : '';
+  const state = confirmation.by
+    ? `✅ CONFIRMED by ${confirmation.by} at ${formatTs(confirmation.at ?? '')}${declined}`
+    : `❌ NOT CONFIRMED (answered "no" ${confirmation.declined ?? 0}×)`;
+  lines.push(`${indent}**Confirmation (out of band)**: ${state}`);
+  lines.push(`${indent}- Asked: ${redact(confirmation.prompt)}`);
+  if (confirmation.result) {
+    const result = redact(cleanTerminalOutput(confirmation.result)).trim();
+    if (result.includes('\n') || result.includes('`')) {
+      const fence = codeFence(result);
+      lines.push(`${indent}- Result:`, '');
+      for (const line of [fence, ...result.split('\n'), fence])
+        lines.push(`${indent}  ${line}`);
+    } else {
+      lines.push(`${indent}- Result: ${result}`);
+    }
+  } else if (confirmation.by) {
+    lines.push(`${indent}- Result: _(none recorded)_`);
   }
   return lines;
 }

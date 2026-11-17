@@ -1,0 +1,28 @@
+name: E2E Advance On Pass
+version: 1.0.0
+description: >-
+  Fixture for the [!] paste + run key with run.advance_on_pass. Each command
+  builds its marker at runtime, so the token appears only if it really ran.
+
+run:
+  advance_on_pass: true
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables: {}
+
+steps:
+  - name: Roll out web-server
+    type: automatic
+    command: printf '%s_%s\n' ROLLOUT DONEMARK
+    expect:
+      contains: ROLLOUT_DONEMARK
+  - name: Check replicas
+    type: automatic
+    command: printf '%s_%s\n' REPLICAS THREE
+    expect:
+      contains: REPLICAS_NINE
+  - name: No expect
+    type: automatic
+    command: printf '%s_%s\n' PLAIN MARK

@@ -1,0 +1,62 @@
+name: Confirm Out Of Band
+version: 1.0.0
+description: |
+  Demonstrates `confirm:` — a gate the operator satisfies OUTSIDE the attached
+  pane: a dashboard, a browser check, another operator's terminal.
+
+  Run interactively:
+    samaritan run confirm-out-of-band.yaml --env staging
+
+  A step with `confirm:` shows the question above its action bar:
+    ☑️  Confirm before done: Error rate below 1% on the web-server dashboard?
+
+  Pressing Enter (done) then asks it:
+    Confirmed? [y / n=not yet]:
+      y  -> asks for the result you saw (a value, a link, a line of text),
+            then marks the step done. The report shows
+            "Confirmation (out of band): ✅ CONFIRMED by <you> at <time>"
+            with the question and the result.
+      n  -> the step stays open; the refusal is recorded. Check again, or
+            [s] skip / [r] roll back.
+
+  `result: required` refuses to confirm without a typed or pasted result.
+  The short form `confirm: "Question?"` leaves the result optional.
+
+variables:
+  APP: web-server
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      DASHBOARD: https://example.com/dashboards/web-server-staging
+  - name: production
+    description: Production environment
+    variables:
+      DASHBOARD: https://example.com/dashboards/web-server
+
+steps:
+  - name: Deploy ${APP}
+    type: automatic
+    phase: flight
+    command: echo "rollout of ${APP} finished" | tr a-z A-Z
+    expect:
+      contains: FINISHED
+
+  - name: Check the canary on the dashboard
+    type: manual
+    phase: postflight
+    instruction: Open ${DASHBOARD} and read the canary error rate for the last 5 minutes.
+    confirm:
+      prompt: Error rate below 1% on the ${APP} dashboard?
+      result: required
+
+  - name: Announce the release
+    type: manual
+    phase: postflight
+    instruction: Post the release note in the team channel.
+    confirm: Release note posted in the team channel?
+    rollback:
+      - name: Announce the rollback
+        instruction: Post the rollback notice in the team channel.
+        confirm: Rollback notice posted?
