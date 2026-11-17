@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import type {
   RollbackCommandRecord,
   RollbackRecord,
+  StepConfirmation,
   StepRecord,
   VerificationCheck,
 } from '../models/step-record';
@@ -167,6 +168,9 @@ export function foldEvents(events: SessionEvent[]): {
           const last = currentRollback?.commands.at(-1);
           if (last && event.action === 'send_to_pane') last.pasted = true;
           if (last && event.action === 'enter_sent') last.enterSent = true;
+          if (last && isConfirmAction(event.action)) {
+            last.confirmation = foldConfirmation(last.confirmation, event);
+          }
         } else if (currentStep) {
           const action = event.action as string;
           if (action === 'enter_sent') {
@@ -183,6 +187,11 @@ export function foldEvents(events: SessionEvent[]): {
               at: event.ts,
               reason: (event.reason as string | undefined) || undefined,
             };
+          } else if (isConfirmAction(action)) {
+            currentStep.confirmation = foldConfirmation(
+              currentStep.confirmation,
+              event,
+            );
           } else if (action === 'note') {
             const notes = event.notes as string | undefined;
             if (notes) currentStep.notes.push(notes);
@@ -321,6 +330,31 @@ export function foldEvents(events: SessionEvent[]): {
 
   const steps = [...stepsByIndex.values()].sort((a, b) => a.index - b.index);
   return { steps, rollbacks };
+}
+
+const isConfirmAction = (action: unknown): boolean =>
+  action === 'confirmed_out_of_band' || action === 'confirm_declined';
+
+/**
+ * Fold a `confirm:` answer. `y` (`confirmed_out_of_band`) sets who/when/result
+ * — the latest wins, as for verification; `n` only counts, and clears nothing
+ * (a step re-confirmed after a re-run keeps its earlier refusals visible).
+ */
+function foldConfirmation(
+  previous: StepConfirmation | undefined,
+  event: SessionEvent,
+): StepConfirmation {
+  const prompt = (event.prompt as string | undefined) ?? previous?.prompt ?? '';
+  if (event.action === 'confirm_declined') {
+    return { ...previous, prompt, declined: (previous?.declined ?? 0) + 1 };
+  }
+  return {
+    prompt,
+    by: event.actor as string | undefined,
+    at: event.ts,
+    result: (event.result as string | undefined) || undefined,
+    declined: previous?.declined,
+  };
 }
 
 /** Convenience wrapper returning just the `StepRecord[]` from `foldEvents`. */

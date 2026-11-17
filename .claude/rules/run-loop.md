@@ -156,6 +156,25 @@ NOT non-interactive execution: one operator key per command. When armed,
 `y run it` is the FIRST key in the bar. e2e: "[p] then [y]", "rollback [p]
 then [y]", "[y] on a slow command" (`e2e-slow-run.yaml`), "[y] refuses unless…".
 
+### `[!]` paste + run, and `run.advance_on_pass`
+
+`[!]` (forward bar only, `IMMEDIATE_ACTION_CHARS`) = `pasteStepCommand('run')`
+→ must arm → `runArmedStepPaste()` → verify: the SAME closures as `[p]`/`[y]`
+and the failed-verify re-run, nothing new written to the pane. Shown first in
+the bar when `canRun` (`paneCanRun`: sidecar + paste + paneState + sendEnter)
+and not armed; once armed, `y run it` leads as before. NEVER make `y` do this:
+`y` answers every y/n prompt (`confirmKey`), and one that lands on the bar
+would start a command (e2e "a y meant for a prompt"). `run.advance_on_pass`
+(operation YAML, default false; deliberately NOT a CLI flag): after a forward
+verify PASS (`verifyThenMaybeAdvance`, `verifyPassedStep`) the bar loop sets
+`advance` and the next pass acts as `↵` WITHOUT reading a key, so every
+completion gate (evidence, un-run paste, `confirm:`) still runs. e2e: "[!]
+pastes and runs in one key" (`e2e-advance.yaml`).
+
+**Operator `s` skip is logged.** The four `⏭  Skipped.` sites call
+`logSkip(i)`; without the `step_skip` event the report showed an operator
+skip as an unfinished step and no `Steps skipped` line.
+
 ### Un-run paste guard (#115)
 
 `[p]` never presses Enter, so an un-run paste stays on the pane's input line
@@ -264,6 +283,31 @@ The approval `for` is labelled `stepLoop:` so the `while` can
 (`options.requireEvidence !== false`, ON by default; `--no-require-evidence`
 disables). Does NOT gate plain `type: automatic` steps. Fixture
 `evidence-required.yaml`.
+
+## `confirm:` gate — out-of-band check asserted by the operator
+
+`askConfirm(step, ResolvedConfirm, context?)` (run.ts; config from
+`normalizeConfirm` in `src/lib/confirm.ts`, prompt `${VAR}`-resolved) is the
+LAST check before `↵` completes: the forward bar (after the evidence gate,
+`confirmDoneWithUnrunPaste`, `confirmDoneWithNothingRun`) and the operator
+rollback entry. `y` → result via `readMultiline` (a paste is plausible),
+`result: required` re-asks once then refuses → `user_input`/
+`confirmed_out_of_band` `{prompt, result?, context?}`; `n` →
+`confirm_declined`. `foldEvents` → `StepRecord.confirmation` /
+`RollbackCommandRecord.confirmation` (`foldConfirmation`: latest `y` wins,
+`declined` counts). Report: `renderConfirmation`, the `Confirmed out of band`
+summary line, the "Steps at a glance" `Checked` column. Not asked on
+`approval` steps, the non-sidecar tmux `automatic` branch or `--auto-approve`.
+Tests: `tests/cli/confirm.test.ts` (sequenced run → events + report), e2e
+"confirm gate".
+
+**Report overview + rolled back.** `renderStepOverview` prints one row per
+step (`stepOutcome`, `stepCheckSummary`). A step undone with `[r]` stays
+`pending` in the log; `rolledBack` (rollback records with context `rollback`
+and a run status) marks it `↩ rolled back` in the table and the heading. The
+report title is the redacted operation path (`reportTitlePath`), never the
+absolute one. `currentOperator()` (`src/lib/operator.ts`) replaces
+`$USER || 'unknown'`.
 
 ## `[e]` evidence — one prompt, kind from the input
 

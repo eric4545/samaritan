@@ -1,0 +1,18 @@
+name: E2E Confirm Gate
+version: 1.0.0
+description: confirm gate driven in real tmux
+environments:
+  - name: staging
+    description: Staging
+    variables:
+      APP: web-server
+steps:
+  - name: Check the dashboard
+    type: manual
+    instruction: Open the ${APP} dashboard.
+    confirm:
+      prompt: Error rate below 1% for ${APP}?
+      result: required
+  - name: Close out
+    type: manual
+    instruction: Close the change.

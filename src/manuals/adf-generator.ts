@@ -22,6 +22,7 @@ import {
 } from '@atlaskit/adf-utils/builders';
 import { stepRollbackAnchor, stepRollbackHeadingText } from '../lib/anchor';
 import { renderExpectParts } from '../lib/assertions';
+import { confirmLine } from '../lib/confirm';
 import { evidenceLinkUrl } from '../lib/evidence-input';
 import type { GenerationMetadata } from '../lib/git-metadata';
 import {
@@ -171,6 +172,13 @@ function buildRollbackCellNodes(
       }
     }
   }
+
+  const rbConfirm = confirmLine(rb.confirm, (t) =>
+    resolveVariables && substituteVars
+      ? substituteVariables(t, env.variables || {}, stepVariables)
+      : t,
+  );
+  if (rbConfirm) cellContent.push(paragraph(text(`- [ ] ☑️ ${rbConfirm}`)));
 
   if (rb.pic || rb.reviewer) {
     cellContent.push(paragraph(strong(text('Sign-off:'))));
@@ -794,6 +802,12 @@ function createStepsTable(
       stepCellContent.push(paragraph(text(`👥 Reviewer: ${step.reviewer}`)));
     }
 
+    // Out-of-band gate the operator confirms (shared cell: common + step vars)
+    const confirmText = confirmLine(step.confirm, (t) =>
+      resolveDisplayText(t, resolveVariables, commonVariables, step.variables),
+    );
+    if (confirmText) stepCellContent.push(paragraph(text(`☑️ ${confirmText}`)));
+
     // Timeline
     if (step.timeline) {
       stepCellContent.push(
@@ -1091,6 +1105,18 @@ function addSubStepRows(
       subStepCellContent.push(
         paragraph(text(`👥 Reviewer: ${subStep.reviewer}`)),
       );
+    }
+
+    const subConfirmText = confirmLine(subStep.confirm, (t) =>
+      resolveDisplayText(
+        t,
+        resolveVariables,
+        commonVariables,
+        subStep.variables,
+      ),
+    );
+    if (subConfirmText) {
+      subStepCellContent.push(paragraph(text(`☑️ ${subConfirmText}`)));
     }
 
     // Sign-off checkboxes

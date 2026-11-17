@@ -1121,6 +1121,7 @@ async function parseStep(
     evidence: parseEvidence(stepData),
     session: stepData.session,
     expect: extractExpect(stepData),
+    confirm: stepData.confirm,
     capture: stepData.capture,
     continue_on_error: Boolean(stepData.continue_on_error),
     retry: stepData.retry,

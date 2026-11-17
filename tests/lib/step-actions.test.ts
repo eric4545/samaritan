@@ -113,6 +113,46 @@ describe('evidenceGateMessage', () => {
   });
 });
 
+describe('[!] paste + run', () => {
+  it('leads the bar when the pane can take paste + Enter, and gives way to y once armed', () => {
+    assert.deepStrictEqual(
+      keys(stepActionHints(ctx({ canRun: true })).primary).slice(0, 3),
+      ['!', '↵', 'p'],
+    );
+    assert.deepStrictEqual(
+      keys(stepActionHints(ctx({ canRun: true, armed: true })).primary).slice(
+        0,
+        2,
+      ),
+      ['y', '↵'],
+    );
+    assert.ok(!keys(stepActionHints(ctx()).primary).includes('!'));
+  });
+
+  it('the legend and the header name the one-key flow', () => {
+    assert.match(
+      sidecarFlowLegend(ctx({ canRun: true })) ?? '',
+      /! pastes the command into the pane and runs it \(verify follows\) → ↵ marks the step done\. To look before it runs: p pastes only, then y runs it/,
+    );
+    assert.strictEqual(
+      runCommandHeader({ paneTarget: 'tmux pane ux:0.0', canRun: true }),
+      'Command — [!] pastes and runs it in tmux pane ux:0.0 ([p] pastes only):',
+    );
+  });
+
+  it('says why it does nothing outside sidecar or without a command', () => {
+    assert.match(
+      unavailableKeyMessage('!', ctx({ sidecar: false })) ?? '',
+      /sidecar mode only/,
+    );
+    assert.match(
+      unavailableKeyMessage('!', ctx({ hasCommand: false })) ?? '',
+      /no command to run/,
+    );
+    assert.strictEqual(unavailableKeyMessage('!', ctx()), undefined);
+  });
+});
+
 describe('sidecarFlowLegend — the p → y → ↵ flow, spelled out', () => {
   it('spells the flow out for a sidecar step with a command and a pane', () => {
     const legend = sidecarFlowLegend(ctx());

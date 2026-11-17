@@ -39,9 +39,12 @@ sessions:
 # auto_send: true  → command text auto-loaded into terminal when step starts
 # auto_exec: true  → Enter sent automatically (fully hands-off)
 # Default: both false (most cautious — operator confirms each step)
+# advance_on_pass: true → in a sidecar run, a passing `expect` verify completes
+#                         the step without waiting for Enter (default false)
 run:
   auto_send: false
   auto_exec: false
+  advance_on_pass: false
 
 environments:
   - name: staging

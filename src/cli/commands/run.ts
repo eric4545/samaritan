@@ -26,6 +26,11 @@ import { getBuiltinVariables } from '../../lib/builtin-variables';
 import type { CaptureBackend, PaneOwner } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
 import { readClipboardImage } from '../../lib/clipboard-image';
+import {
+  confirmResultPrompt,
+  normalizeConfirm,
+  type ResolvedConfirm,
+} from '../../lib/confirm';
 import { createEventLogger } from '../../lib/event-logger';
 import {
   classifyEvidenceInput,
@@ -44,6 +49,7 @@ import { findShellVarRefs } from '../../lib/expect-lint';
 import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { type MockRunResult, runMockExpect } from '../../lib/mock-run';
 import { MultilineBuffer } from '../../lib/multiline-input';
+import { currentOperator } from '../../lib/operator';
 import {
   type ArmedEnter,
   armEnter,
@@ -228,7 +234,7 @@ export function resolveFocusPic(
   pic: string | boolean | undefined,
 ): string | undefined {
   if (pic === undefined || pic === false) return undefined;
-  if (pic === true) return process.env.USER || 'unknown';
+  if (pic === true) return currentOperator();
   return pic || undefined;
 }
 
@@ -397,7 +403,7 @@ class OperationRunner {
     // session (and thus the merged report's `executed_by`) to them; otherwise
     // fall back to the login. `--no-skip-others` keeps focus for attribution.
     const focusPic = resolveFocusPic(options.pic);
-    const operator = focusPic || process.env.USER || 'unknown';
+    const operator = focusPic || currentOperator();
 
     // Create session first so its ID can serve as the JSONL log identifier
     const session = sessionManager.createSession(
@@ -593,6 +599,9 @@ class OperationRunner {
             `   Steps: ${finalState.totalSteps}  Skipped: ${finalState.skippedSteps}`,
           );
         } else {
+          // Kept although an interactive run also prints the 🎉 line from
+          // the operation_completed event: a non-interactive (--auto-approve)
+          // run prints only this one, and scripts grep for it.
           console.log('\n✅ Operation completed successfully!');
         }
       } else if (finalState.status === 'paused') {
@@ -704,7 +713,7 @@ class OperationRunner {
       operationId: session.operation_id,
       environment: session.environment,
       variables: session.variables || {},
-      operator: session.operator || process.env.USER || 'unknown',
+      operator: session.operator || currentOperator(),
       sessionId: session.id,
       dryRun: false,
       autoMode: session.mode === 'automatic',
@@ -909,6 +918,7 @@ class OperationRunner {
       'g',
       'q',
       '?',
+      '!',
     ]);
 
     // When the last bare Enter was acted on, for the double-Enter debounce.
@@ -1158,6 +1168,56 @@ class OperationRunner {
       });
       return true;
     };
+
+    /**
+     * `confirm:` gate — a check the operator made OUTSIDE the pane (dashboard,
+     * browser, another operator). Asked before ↵ completes the step or the
+     * rollback entry. `y` records who confirmed, when and the typed result
+     * (`confirmed_out_of_band`); `n` records the refusal and returns to the
+     * bar. `false` = not confirmed, stay on the bar.
+     */
+    const askConfirm = async (
+      step: number,
+      confirm: ResolvedConfirm | undefined,
+      context?: string,
+    ): Promise<boolean> => {
+      if (!confirm) return true;
+      const base = {
+        type: 'user_input' as const,
+        step,
+        actor: state.context.operator,
+        prompt: confirm.prompt,
+        ...(context ? { context } : {}),
+      };
+      console.log(`\n    ☑️  Confirm: ${confirm.prompt}`);
+      if (!(await confirmKey('    Confirmed? [y / n=not yet]: '))) {
+        logger.emit({ ...base, action: 'confirm_declined' });
+        console.log(
+          '    ↩  Not confirmed — not marked done. Check again, or skip / roll back.',
+        );
+        return false;
+      }
+      let result = (await readMultiline(confirmResultPrompt(confirm)))?.trim();
+      if (confirm.result === 'required' && result === '') {
+        // An empty answer is usually a stray ↵: ask once more before
+        // sending the operator back through ↵ + y.
+        console.log('    ⚠️  A result is required here. Esc goes back.');
+        result = (await readMultiline(confirmResultPrompt(confirm)))?.trim();
+      }
+      if (confirm.result === 'required' && !result) {
+        console.log(
+          '    ⚠️  This step needs the result you saw (a value, a link, a line of text). Not marked done.',
+        );
+        return false;
+      }
+      logger.emit({
+        ...base,
+        action: 'confirmed_out_of_band',
+        ...(result ? { result } : {}),
+      });
+      console.log(`    ☑️  Confirmed by ${state.context.operator}.`);
+      return true;
+    };
     const sessionState = new SessionState();
 
     // Fixed run-start time for RUN_START_* / ELAPSED_TIME built-in variables.
@@ -1260,6 +1320,11 @@ class OperationRunner {
       sessionState.capture(key, String(value));
     }
 
+    // `run.advance_on_pass`: a verify PASS completes the step (the remaining
+    // gates — evidence, confirm — still ask). Off by default.
+    const advanceOnPass = operation.run?.advance_on_pass ?? false;
+    // The step whose latest [v] passed, for advance_on_pass.
+    let verifyPassedStep: number | undefined;
     const autoSend = operation.run?.auto_send ?? false;
     const autoExec = operation.run?.auto_exec ?? false;
 
@@ -1427,6 +1492,17 @@ class OperationRunner {
       return backend?.hasTarget(sessionName) && backend.pasteCommand
         ? backend.describeTarget(sessionName)
         : undefined;
+    };
+    /** The attached pane takes both writes `[!]` needs (paste + guarded Enter). */
+    const paneCanRun = (sessionName: string): boolean => {
+      const backend = captureRef.backend;
+      return (
+        mode === 'sidecar' &&
+        !!backend?.hasTarget(sessionName) &&
+        !!backend.pasteCommand &&
+        !!backend.paneState &&
+        !!backend.sendEnter
+      );
     };
     /**
      * [y] — press Enter in the pane for the armed paste, ONLY while the pane
@@ -1841,7 +1917,23 @@ class OperationRunner {
           }
           if (choice === 's' || choice === 'skip') outcome = 'skipped';
           else if (choice === 'a' || choice === 'abort') outcome = 'aborted';
-          else if (await confirmDoneWithUnrunPaste(stepIndex, context)) {
+          else if (
+            (await confirmDoneWithUnrunPaste(stepIndex, context)) &&
+            (await askConfirm(
+              stepIndex,
+              normalizeConfirm(rb.confirm, (text) =>
+                substituteVariables(
+                  text,
+                  {
+                    ...getBuiltinVariables({ startTime: runStartedAt }),
+                    ...vars,
+                  },
+                  { ...ownerVars, ...rb.variables },
+                ),
+              ),
+              context,
+            ))
+          ) {
             outcome = 'executed';
           }
         }
@@ -2530,8 +2622,11 @@ class OperationRunner {
 
         if (assertResult.pass) {
           captureVerifiedEvidence(stepIndex, output, captureScreen);
+          verifyPassedStep = stepIndex;
           console.log(
-            '    ✅ Verify passed. The step is not done yet: ↵ completes it ([v] re-checks).',
+            advanceOnPass
+              ? '    ✅ Verify passed.'
+              : '    ✅ Verify passed. The step is not done yet: ↵ completes it ([v] re-checks).',
           );
           return;
         }
@@ -2940,6 +3035,8 @@ class OperationRunner {
             }
             if (isSkip(choice)) {
               executor.skipStep(i);
+              // Logged, or the report shows an operator skip as an unfinished step.
+              logSkip(i);
               console.log('    ⏭  Skipped.');
               continue;
             }
@@ -3012,6 +3109,8 @@ class OperationRunner {
             }
             if (isSkip(choice)) {
               executor.skipStep(i);
+              // Logged, or the report shows an operator skip as an unfinished step.
+              logSkip(i);
               console.log('    ⏭  Skipped.');
               continue;
             }
@@ -3034,7 +3133,7 @@ class OperationRunner {
               // (or [p] pastes it when a pane is attached — say so up front).
               const sessionName = step.session ?? 'default';
               console.log(
-                `\n    ${runCommandHeader({ paneTarget: attachedPaneTarget(sessionName) })}`,
+                `\n    ${runCommandHeader({ paneTarget: attachedPaneTarget(sessionName), canRun: paneCanRun(sessionName) })}`,
               );
               console.log(renderCodeBlock(resolvedCommand));
               logger.emit({
@@ -3058,6 +3157,7 @@ class OperationRunner {
               console.log(
                 `\n    ${runCommandHeader({
                   paneTarget: attachedPaneTarget(step.session ?? 'default'),
+                  canRun: paneCanRun(step.session ?? 'default'),
                   script: true,
                 })}`,
               );
@@ -3140,7 +3240,11 @@ class OperationRunner {
           // commands paste without asking: bracketed paste lands them as one
           // un-run block. Only available once a pane is attached (spawn-own
           // session or [t]/--attach). True when something was pasted.
-          const pasteStepCommand = async (rerun = false): Promise<boolean> => {
+          const pasteStepCommand = async (
+            // 'run' / 'rerun': the guarded Enter follows at once, so the
+            // message does not ask the operator to press anything.
+            purpose: 'paste' | 'run' | 'rerun' = 'paste',
+          ): Promise<boolean> => {
             const backend = captureRef.backend;
             if (
               !runnableCommand ||
@@ -3182,11 +3286,11 @@ class OperationRunner {
               beforePaste,
             );
             const target = backend.describeTarget(sessionName);
-            if (rerun)
+            if (purpose !== 'paste')
               console.log(
                 armed
-                  ? `    ⌨️  Pasted again into ${target}.`
-                  : `    ⌨️  Pasted again into ${target} — press Enter there to run, then [v] to verify.`,
+                  ? `    ⌨️  Pasted${purpose === 'rerun' ? ' again' : ''} into ${target}.`
+                  : `    ⌨️  Pasted${purpose === 'rerun' ? ' again' : ''} into ${target}, but could not confirm it is on the input line — press Enter there to run, then [v] to verify.`,
               );
             else
               console.log(
@@ -3210,21 +3314,19 @@ class OperationRunner {
           // press the same guarded Enter — one key instead of Enter (back to the bar), [p],
           // [y]. Offered only when both writes are possible on this pane.
           const canRerun = (): boolean => {
-            const backend = captureRef.backend;
-            return (
-              mode === 'sidecar' &&
-              !!runnableCommand &&
-              !!backend?.hasTarget(sessionName) &&
-              !!backend.pasteCommand &&
-              !!backend.paneState &&
-              !!backend.sendEnter
-            );
+            return !!runnableCommand && paneCanRun(sessionName);
           };
           const rerunStepCommand = async (): Promise<boolean> => {
-            if (!(await pasteStepCommand(true))) return false;
+            if (!(await pasteStepCommand('rerun'))) return false;
             if (!isArmedAt(`step:${i}`)) return false;
             const end = await runArmedStepPaste();
             return end === 'prompt' || end === 'quiet';
+          };
+          // After a verify: with run.advance_on_pass a PASS completes the step.
+          const verifyThenMaybeAdvance = async (): Promise<boolean> => {
+            verifyPassedStep = undefined;
+            await verifyStep();
+            return advanceOnPass && verifyPassedStep === i;
           };
           const verifyStep = (): Promise<void> =>
             verifyManualOutput(
@@ -3286,9 +3388,22 @@ class OperationRunner {
               `\n    ⚠️  ${earlierPaste.backend.describeTarget(earlierPaste.sessionName)} still has the paste from "${steps[earlierPaste.step]?.step.name ?? `step ${earlierPaste.step + 1}`}" on its input line, not run: ${pastePreview(earlierPaste.command)}`,
             );
           }
+          const stepConfirm = normalizeConfirm(
+            step.confirm,
+            (text) => tryResolve(text, step.variables) ?? text,
+          );
+          // Set when run.advance_on_pass completes the step after a PASS: the
+          // next pass through the bar acts as ↵ without reading a key, so
+          // every completion gate below still applies.
+          let advance = false;
           while (true) {
             const evidenceForStep = stepEvidence(i);
-            if (step.expect) {
+            if (stepConfirm && !advance) {
+              console.log(
+                `\n    ☑️  Confirm before done: ${stepConfirm.prompt}${stepConfirm.result === 'required' ? ' (result required)' : ''}`,
+              );
+            }
+            if (step.expect && !advance) {
               console.log(
                 `\n    Expected: ${renderExpectDescription(resolvedExpect)}`,
               );
@@ -3301,6 +3416,7 @@ class OperationRunner {
               hasCommand: !!runnableCommand,
               hasExpect: !!step.expect,
               paneAttached: !!captureRef.backend?.hasTarget(sessionName),
+              canRun: canRerun(),
               hasEvidence: evidenceForStep.length > 0,
               evidenceMissing: needsEvidenceGate(i, step),
               canGoBack: i > 0,
@@ -3308,15 +3424,20 @@ class OperationRunner {
               hasGlobalRollback,
             };
             const hints = stepActionHints(barContext);
-            const legend = flowLegendShown
-              ? undefined
-              : sidecarFlowLegend(barContext);
+            const legend =
+              flowLegendShown || advance
+                ? undefined
+                : sidecarFlowLegend(barContext);
             if (legend) {
               flowLegendShown = true;
               console.log(`\n    ${legend}`);
             }
-            console.log(`\n${renderKeyHints(hints.primary)}`);
-            const input = await readActionKey();
+            if (!advance) console.log(`\n${renderKeyHints(hints.primary)}`);
+            const input = advance ? '' : await readActionKey();
+            if (advance) {
+              advance = false;
+              console.log('    ⏩ Completing the step (run.advance_on_pass).');
+            }
             const inputChoice = input.trim().toLowerCase();
             if (inputChoice === '?' || inputChoice === 'more') {
               console.log(renderKeyHints(hints.more));
@@ -3369,7 +3490,7 @@ class OperationRunner {
               step.expect &&
               (inputChoice === 'v' || inputChoice === 'verify')
             ) {
-              await verifyStep();
+              advance = await verifyThenMaybeAdvance();
               continue;
             }
             if (
@@ -3447,7 +3568,20 @@ class OperationRunner {
               // then wait for it to finish and auto-verify `expect`.
               const end = await runArmedStepPaste();
               if (step.expect && (end === 'prompt' || end === 'quiet'))
-                await verifyStep();
+                advance = await verifyThenMaybeAdvance();
+              continue;
+            }
+            if (mode === 'sidecar' && runnableCommand && inputChoice === '!') {
+              // [!] — paste + the same guarded Enter in one key (the command
+              // is already on screen above). Its own key, not `y`: a `y`
+              // meant for a y/n prompt must never start a command.
+              if (!isArmedAt(`step:${i}`)) {
+                if (!(await pasteStepCommand('run'))) continue;
+                if (!isArmedAt(`step:${i}`)) continue;
+              }
+              const end = await runArmedStepPaste();
+              if (step.expect && (end === 'prompt' || end === 'quiet'))
+                advance = await verifyThenMaybeAdvance();
               continue;
             }
             if (i > 0 && (inputChoice === 'b' || inputChoice === 'back')) {
@@ -3564,6 +3698,14 @@ class OperationRunner {
             if (pending === '' && !(await confirmDoneWithNothingRun())) {
               continue;
             }
+            if (
+              !isSkip(pending) &&
+              !isRollback(pending) &&
+              pending !== 'abort' &&
+              !(await askConfirm(i, stepConfirm))
+            ) {
+              continue;
+            }
             manualNotes = input;
             break;
           }
@@ -3625,6 +3767,8 @@ class OperationRunner {
           }
           if (isSkip(choice)) {
             executor.skipStep(i);
+            // Logged, or the report shows an operator skip as an unfinished step.
+            logSkip(i);
             console.log('    ⏭  Skipped.');
             continue;
           }
@@ -3691,6 +3835,8 @@ class OperationRunner {
               break;
             }
             executor.skipStep(i);
+            // Logged, or the report shows an operator skip as an unfinished step.
+            logSkip(i);
             console.log('    ⏭  Skipped.');
             break;
           }
@@ -3810,7 +3956,9 @@ class OperationRunner {
   ): void {
     console.log(`\n📋 Operation Summary:`);
     console.log(`   Name: ${operation.name} v${operation.version}`);
-    console.log(`   Description: ${operation.description}`);
+    console.log(
+      `   Description: ${summarizeDescription(operation.description)}`,
+    );
     console.log(
       `   Environment: ${environment.name} (${environment.description})`,
     );
@@ -3911,6 +4059,20 @@ async function pickTmuxPane(
         await question('    Tmux pane target (Enter to cancel): ')
       ).trim();
   }
+}
+
+/**
+ * The banner's one-line description: an operation's `description` is often a
+ * page of usage notes, which pushed the first step off the screen.
+ */
+export function summarizeDescription(description: string | undefined): string {
+  const lines = (description ?? '').split('\n').map((line) => line.trim());
+  const first = lines.findIndex((line) => line !== '');
+  if (first === -1) return '';
+  const end = lines.findIndex((line, idx) => idx > first && line === '');
+  const paragraph = lines.slice(first, end === -1 ? undefined : end).join(' ');
+  const more = end !== -1 && lines.slice(end).some((line) => line !== '');
+  return more ? `${paragraph} […]` : paragraph;
 }
 
 function attachSidecarPane(

@@ -1,4 +1,5 @@
 import type { Operation, Step } from '../models/operation';
+import { confirmManualText, normalizeConfirm } from './confirm';
 import { escapeTableText } from './markdown-table';
 import {
   mergeStepVariant,
@@ -72,6 +73,15 @@ const FIELD_DESCRIPTORS: FieldDescriptor[] = [
     field: `evidence.${field}`,
     getValue: (step: Step) => asComparableString(step.evidence?.[field]),
   })),
+  {
+    field: 'confirm',
+    getValue: (step: Step, envVariables: Record<string, any>) => {
+      const confirm = normalizeConfirm(step.confirm, (text) =>
+        substituteVariables(text, envVariables, step.variables),
+      );
+      return confirm && confirmManualText(confirm);
+    },
+  },
 ];
 
 function compareStep(
