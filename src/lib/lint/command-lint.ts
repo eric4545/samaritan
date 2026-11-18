@@ -62,7 +62,7 @@ const errexit: CommandRule = {
   defaultSeverity: 'error',
   inValidate: 'warning',
   description:
-    '`set -e` / `set -u` / `set -o errexit|nounset` / `trap … EXIT` in an inline command stay on in the operation shell for every later step.',
+    '`set -e` / `set -u` / `set -o errexit` / `set -o nounset` / `trap … EXIT` in an inline command stay on in the operation shell for every later step.',
   check(ctx) {
     const hits: RuleHit[] = [];
     for (const cmd of ctx.commands) {
@@ -245,7 +245,7 @@ const tmuxKill: CommandRule = {
   defaultSeverity: 'error',
   inValidate: 'warning',
   description:
-    "`tmux kill-server|kill-session|kill-window|kill-pane|detach-client`, their aliases (`killp`, `killw`, `detach`) and unique abbreviations can close the operator's own pane or session.",
+    "`tmux kill-server`, `kill-session`, `kill-window`, `kill-pane`, `detach-client`, their aliases (`killp`, `killw`, `detach`) and unique abbreviations can close the operator's own pane or session.",
   check(ctx) {
     return ctx.commands.flatMap((cmd) =>
       tmuxCommands(cmd)
@@ -269,7 +269,7 @@ const tmuxInput: CommandRule = {
   presetSeverity: 'error',
   inValidate: 'warning',
   description:
-    '`tmux send-keys|set-buffer|paste-buffer|load-buffer` (and aliases): typing into panes from a step bypasses the sidecar, which is the only input path the run records.',
+    '`tmux send-keys`, `set-buffer`, `paste-buffer`, `load-buffer` (and aliases): typing into panes from a step bypasses the sidecar, which is the only input path the run records.',
   check(ctx) {
     return ctx.commands.flatMap((cmd) =>
       tmuxCommands(cmd)

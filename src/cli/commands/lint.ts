@@ -157,27 +157,32 @@ export function formatJson(results: FileLintResult[]): string {
   );
 }
 
-const CELL_ESCAPES: Record<string, string> = {
-  '|': '\\|',
+const CELL_ENTITIES: Record<string, string> = {
+  '|': '&#124;',
   '<': '&lt;',
   '>': '&gt;',
 };
 
 /**
- * Text for one Markdown table cell. `|` always needs escaping (also inside
- * code spans). For a page rendered as HTML (`html`), `<` and `>` outside
- * code spans are written as entities: `in <env>` would otherwise open a tag
- * (VitePress fails the build on it).
+ * Text for one Markdown table cell. Outside code spans `|` is written as an
+ * entity (no backslash escaping, so nothing to double-escape), and for a page
+ * rendered as HTML (`html`) `<` and `>` too: `in <env>` would otherwise open
+ * a tag (VitePress fails the build on it). An entity is not decoded inside a
+ * code span, so a `|` there cannot be written at all: rule descriptions never
+ * contain one (tests/lib/lint-conformance.test.ts).
  */
 export function tableCell(text: string, html = false): string {
   return text
     .split(/(`[^`]*`)/)
-    .map((part) =>
-      part.replace(
-        part.startsWith('`') || !html ? /\|/g : /[|<>]/g,
-        (c) => CELL_ESCAPES[c],
-      ),
-    )
+    .map((part) => {
+      if (part.startsWith('`')) {
+        if (part.includes('|')) {
+          throw new Error(`a table cell cannot hold | in a code span: ${part}`);
+        }
+        return part;
+      }
+      return part.replace(html ? /[|<>]/g : /\|/g, (c) => CELL_ENTITIES[c]);
+    })
     .join('');
 }
 

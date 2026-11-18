@@ -199,12 +199,10 @@ describe('lint rules reference generator', () => {
     );
     assert.strictEqual(
       tableCell('runs in <env>; `exec <cmd>` and a|b', true),
-      'runs in &lt;env&gt;; `exec <cmd>` and a\\|b',
+      'runs in &lt;env&gt;; `exec <cmd>` and a&#124;b',
     );
-    assert.strictEqual(
-      tableCell('`set -o errexit|nounset`'),
-      '`set -o errexit\\|nounset`',
-    );
+    // A | inside a code span cannot be written (an entity shows literally).
+    assert.throws(() => tableCell('`set -o errexit|nounset`'), /code span/);
     // Terminal output (--list-rules) keeps < > as typed.
     assert.strictEqual(tableCell('in <env>'), 'in <env>');
     // No raw tag outside a code span anywhere on the generated page.

@@ -339,3 +339,13 @@ describe('opt-in rules (product decision: off by default, on through a preset)',
     assert.deepStrictEqual(BUILTIN_PRESETS['samaritan:recommended'], {});
   });
 });
+
+describe('rule descriptions render in a Markdown table', () => {
+  it('never hold | inside a code span (an entity would show literally there)', () => {
+    for (const rule of RULES) {
+      for (const code of rule.description.match(/`[^`]*`/g) ?? []) {
+        assert.ok(!code.includes('|'), `${rule.id}: ${code}`);
+      }
+    }
+  });
+});

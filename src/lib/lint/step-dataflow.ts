@@ -421,7 +421,7 @@ const waitAfterAsync: OperationRule = {
   presetSeverity: 'warning',
   inValidate: 'warning',
   description:
-    '`aws cloudformation create-|update-|delete-stack` followed by a `describe-stack…` with no `aws cloudformation wait stack-*-complete` in between: the read sees an in-progress stack.',
+    '`aws cloudformation create-stack` / `update-stack` / `delete-stack` followed by a `describe-stack…` with no `aws cloudformation wait stack-*-complete` in between: the read sees an in-progress stack.',
   check(ctx) {
     const all = forwardCommands(ctx);
     const hits: RuleHit[] = [];
