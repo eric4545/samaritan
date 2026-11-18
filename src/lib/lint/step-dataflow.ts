@@ -614,7 +614,7 @@ function writtenFiles(cmd: NormalizedCommand): string[] {
   return files.filter((f) => !f.startsWith('/dev/'));
 }
 
-const chmodCredentials: OperationRule = {
+const privateModeAfterWrite: OperationRule = {
   kind: 'operation',
   id: 'flow/chmod-600-credentials',
   tier: 3,
@@ -845,7 +845,7 @@ export const FLOW_RULES: OperationRule[] = [
   backupBeforeDelete,
   crontabMutation,
   restoreAfterSed,
-  chmodCredentials,
+  privateModeAfterWrite,
   checksumBeforeExec,
   cwdLost,
   awsLocalSession,

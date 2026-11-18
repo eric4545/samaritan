@@ -106,7 +106,7 @@ const errexit: CommandRule = {
   },
 };
 
-const passwordOnCmdline: CommandRule = {
+const argvValueExposure: CommandRule = {
   kind: 'command',
   id: 'shell/password-on-cmdline',
   tier: 1,
@@ -824,7 +824,7 @@ const unsupported: CommandRule = {
 export const COMMAND_RULES: CommandRule[] = [
   exitVerbs,
   errexit,
-  passwordOnCmdline,
+  argvValueExposure,
   envEcho,
   unguardedRmRf,
   tmuxKill,
