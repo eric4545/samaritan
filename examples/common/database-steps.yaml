@@ -25,7 +25,7 @@ steps:
           < ${BACKUP_FILE}
       else
         echo "Error: Backup file ${BACKUP_FILE} not found"
-        exit 1
+        false
       fi
     timeout: 1200
     evidence:

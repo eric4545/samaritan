@@ -36,7 +36,7 @@ steps:
     description: Send a deployment notification to the on-call engineer
     instruction: |
       Send a notification email to the on-call engineer:
-    command: aws sesv2 send-email --destination ToAddresses=${ONCALL_EMAIL} --region ${REGION}
+    command: aws sesv2 send-email --no-cli-pager --destination ToAddresses=${ONCALL_EMAIL} --region ${REGION}
     pic: ops-team@example.com
 
   - name: Verify Deployment Health

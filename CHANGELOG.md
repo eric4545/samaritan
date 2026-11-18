@@ -7,6 +7,23 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **`samaritan lint`: named rules for how an operation is written.** Each
+  step's command is parsed (`&&`, `|`, new lines, `$( )`, assignments,
+  redirects, `sudo`/`env`/`exec`) and checked by rules with a stable id, a
+  tier (how sure the rule is) and a severity: `exit` / `set -e` / `trap EXIT`
+  in the operator's shell, a password on the command line, `tmux kill-*`,
+  `git push` to a protected branch, `aws` without `--no-cli-pager`,
+  `${VAR:?}` on an operation variable (never substituted). Syntax the parser
+  cannot read (heredoc, backticks, …) is reported, never skipped. The checks
+  `validate` already ran have rule ids too. Exit `0`/`1`/`2`,
+  `--max-warnings`, `--format json`, `--list-rules`.
+- **Team lint policy in `samaritan.config.yaml`.** A `lint:` section sets a
+  severity per rule, bans commands (`banned: - pattern: 'git add -A'`),
+  requires flags (`required: - pattern: 'kubectl *'  flags: [--context]`) and
+  names the protected branches. The nearest file above the operation is
+  used. See `docs/linting.md` and `examples/lint/`.
+- **`validate` shows the command rules as warnings** (`lint [<rule id>]: …`).
+  They never fail `validate` or change its exit code.
 - **`[!]` runs a sidecar step in one key**: it pastes the command into the
   attached pane and presses the same guarded Enter as `[p]` then `[y]`, waits
   and verifies. `[p]` and `[y]` work as before, for looking at the command on

@@ -42,6 +42,7 @@ export default defineConfig({
       {
         text: 'Using SAMARITAN',
         items: [
+          { text: 'Linting', link: '/linting' },
           { text: 'Generating manuals', link: '/generating-manuals' },
           { text: 'Running an operation', link: '/running' },
           { text: 'Evidence & reports', link: '/evidence-and-reports' },
@@ -54,6 +55,7 @@ export default defineConfig({
         items: [
           { text: 'CLI', link: '/reference/cli' },
           { text: 'Operation YAML fields', link: '/reference/operation-yaml' },
+          { text: 'Lint rules', link: '/reference/lint-rules' },
         ],
       },
       {

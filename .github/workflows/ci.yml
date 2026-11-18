@@ -38,6 +38,7 @@ jobs:
         npm start -- --help
         npm start -- validate examples/deployment.yaml
         npm start -- generate manual examples/deployment.yaml -o /tmp/test-manual.md
+        npm start -- lint $(find examples -name '*.yaml' -not -path 'examples/postmortems/*' -not -path 'examples/common/*' -not -path 'examples/environments/*' -not -path 'examples/templates/*' -not -name 'samaritan.config.yaml')
 
     - name: Upload test results
       uses: actions/upload-artifact@v7

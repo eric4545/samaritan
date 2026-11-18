@@ -13,6 +13,13 @@ import {
   lintExpectMatches,
   lintExpectShellVars,
 } from '../../lib/expect-lint';
+import {
+  defaultLintConfig,
+  LintConfigError,
+  loadLintConfig,
+} from '../../lib/lint/config';
+import { lintOperation } from '../../lib/lint/engine';
+import { RULE_IDS } from '../../lib/lint/rules';
 import { formatRegexFinding, lintOperationRegex } from '../../lib/regex-lint';
 import {
   formatFinding,
@@ -20,6 +27,7 @@ import {
   lintOperationCommands,
 } from '../../lib/shell-lint';
 import { validateStepDeps } from '../../lib/step-deps';
+import { duplicateStepIds, formatDuplicateStepId } from '../../lib/step-walk';
 import { resolveVariableChains } from '../../lib/variable-resolver';
 import type { Operation, Step } from '../../models/operation';
 import { parseOperation } from '../../operations/parser';
@@ -98,6 +106,7 @@ class OperationValidator {
       this.validateVariables(operation, result, options);
       this.validateExpectRegex(operation, result, options);
       this.validateExpectShellVars(operation, result);
+      this.validateCommandLint(operation, filePath, result);
 
       if (options.strict) {
         this.strictValidation(operation, result, options);
@@ -276,17 +285,8 @@ class OperationValidator {
     // Step IDs must be unique: `needs`, `--from-step` and the session record
     // all address a step by its ID. One error per repeated ID, naming every
     // step that carries it.
-    const stepsById = new Map<string, number[]>();
-    operation.steps.forEach((step, i) => {
-      if (!step.id) return;
-      stepsById.set(step.id, [...(stepsById.get(step.id) ?? []), i + 1]);
-    });
-    for (const [id, positions] of stepsById) {
-      if (positions.length > 1) {
-        result.errors.push(
-          `Duplicate step ID: ${id} (steps ${positions.join(', ')})`,
-        );
-      }
+    for (const dup of duplicateStepIds(operation.steps)) {
+      result.errors.push(formatDuplicateStepId(dup));
     }
 
     // Dependency (`needs`) validation via the shared graph module:
@@ -536,6 +536,30 @@ class OperationValidator {
     // number that also matches 12/20: both pass without the real output.
     for (const finding of lintExpectMatches(operation)) {
       result.warnings.push(`expect-lint: ${formatExpectMatchFinding(finding)}`);
+    }
+  }
+
+  private validateCommandLint(
+    operation: Operation,
+    filePath: string,
+    result: ValidationResult,
+  ): void {
+    // Named command rules (`samaritan lint`) report here as warnings only:
+    // they never change `valid` or the exit code. Rules the team config turns
+    // `off` stay off; a broken config is reported and the defaults are used.
+    let config = defaultLintConfig();
+    try {
+      config = loadLintConfig(filePath, RULE_IDS);
+    } catch (error) {
+      if (!(error instanceof LintConfigError)) throw error;
+      result.warnings.push(`lint config ignored: ${error.message}`);
+    }
+    for (const finding of lintOperation(operation, {
+      operationFile: filePath,
+      config,
+      scope: 'validate',
+    })) {
+      result.warnings.push(`lint [${finding.ruleId}]: ${finding.message}`);
     }
   }
 

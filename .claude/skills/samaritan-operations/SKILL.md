@@ -19,6 +19,9 @@ samaritan operation --template deployment
 # Validate (add --lint for shellcheck, --strict to fail on warnings)
 samaritan validate path/to/op.yaml --lint
 
+# Lint with named rules + the team's samaritan.config.yaml (exit 1 on errors)
+samaritan lint path/to/op.yaml
+
 # Generate a Markdown manual (omit --env for the multi-env table format)
 samaritan generate manual path/to/op.yaml --env production --output manual.md
 
@@ -78,7 +81,8 @@ steps:
 
 SAMARITAN's roadmap matters. **Do not** assume execution features exist.
 Implemented: parsing, manual/Confluence generation, JSON-schema validation,
-shellcheck lint, interactive `run`/`resume`/`sessions`, `run --mock`, templates,
+shellcheck lint, procedure lint (`samaritan lint`: named command rules,
+team `lint:` config), interactive `run`/`resume`/`sessions`, `run --mock`, templates,
 `foreach`/matrix, evidence embedding, **built-in run-time variables**
 (`${CURRENT_DATE}`, `${RUN_START_TIME}`, `${ELAPSED_TIME}`, …), **postmortem /
 incident report (RCA) documents** (`generate postmortem`, `postmortem

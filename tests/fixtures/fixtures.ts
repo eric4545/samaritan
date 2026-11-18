@@ -227,6 +227,8 @@ export const FIXTURES = {
   // env, step, with:, template defaults, foreach): must resolve identically
   // in manuals and the run.
   variableChains: 'tests/fixtures/operations/features/variable-chains.yaml',
+  lintCommandRules:
+    'tests/fixtures/operations/features/lint-command-rules.yaml',
 } as const;
 
 /**

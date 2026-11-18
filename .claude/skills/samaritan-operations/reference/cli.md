@@ -37,7 +37,33 @@ directory or example ships with this repo today.
 
 ## Key flags
 
+### lint
+- `samaritan lint <file...>` — named rules over each step's inline `command`
+  (steps, sub-steps, rollbacks), plus the existing checks under rule ids
+  (`expect/*`, `deps/*`, `steps/duplicate-id`, `compat/discarded-verify`,
+  `evidence/results`, `shell/shellcheck` off by default). Exit `0` = no
+  error-severity findings (warnings allowed), `1` = errors or more warnings
+  than `--max-warnings <n>`, `2` = a file or its config could not be read.
+- `--format json` (stable: `files[].findings[] = {ruleId, severity, tier,
+  message}`), `--list-rules` (Markdown table of the registry).
+- Config: `lint:` in the nearest `samaritan.config.yaml` above the file, or the
+  global `--config <path>` when given: `rules` (`off|warning|error` per id),
+  `banned` (`{pattern, message}`), `required` (`{pattern, flags, message}`),
+  `protected_branches` (default main, master). Unknown keys / rule ids → exit 2.
+- Patterns are parsed like commands: same program, every option anywhere
+  (combined short flags expand, `--x=v` splits), assignments by name
+  (`AWS_PAGER=`), other words as an ordered prefix; `*` = one whole word.
+- Command rules: `shell/exit-verbs`, `shell/errexit`,
+  `shell/password-on-cmdline`, `tmux/kill-commands`, `git/protected-push`
+  (tier 3), `aws/no-pager`, `var/colon-unresolved`, `cmd/banned`,
+  `cmd/required-flag`, `analysis/unsupported` (heredoc, `<( )`, backticks,
+  `case`, functions — reported, never skipped). `script:` files are not
+  command-linted (child shell). No `line:col` or disable comments yet.
+
 ### validate
+- Also prints the command rules' findings as warnings
+  (`lint [<rule id>]: …`); they never fail validate or change its exit code,
+  even under `--strict`. A rule set `off` in the config stays off.
 - `--lint` — run shellcheck over `command`/`script` of every step, sub-step,
   step `rollback` and operation `rollback.steps` (warnings by default).
 - `--strict` — promote lint warnings and schema warnings to errors.

@@ -67,6 +67,15 @@ in this roadmap:
   seeds a postmortem's timeline, participants, incident window, and
   operation/run back-references from a captured run record (`operation → run →
   postmortem`); `samaritan postmortem init` writes a blank template
+- ✅ Procedure lint (`samaritan lint`): named rules with a tier and a
+  severity, team config in the `lint:` section of `samaritan.config.yaml`
+  (`rules`, `banned`, `required`, `protected_branches`), exit codes 0/1/2,
+  `--max-warnings`, `--format json`. Command rules also show as warnings in
+  `validate`. See `docs/linting.md`.
+  - 🚧 Next: rules across steps (forward variable references, unproduced
+    captures, mutate without verify), `expect` vs the command's output format,
+    `line:col` positions + `# samaritan-lint-disable` comments, local presets
+    (`extends:`)
 
 ---
 

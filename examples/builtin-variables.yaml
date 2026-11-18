@@ -33,7 +33,7 @@ steps:
   - name: Upload snapshot
     type: manual
     command: >-
-      aws s3 cp backups/db-${RUN_START_DATE}-${RUN_START_TIME}.sql.gz
+      aws s3 cp --no-cli-pager backups/db-${RUN_START_DATE}-${RUN_START_TIME}.sql.gz
       ${BACKUP_BUCKET}/db-${RUN_START_DATE}.sql.gz
 
   - name: Record recovery time

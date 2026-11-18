@@ -27,3 +27,26 @@ export function* walkOperationSteps(
 export function stepDisplayName(step: AnyStep): string {
   return step.name || '(rollback)';
 }
+
+/**
+ * Top-level step IDs used by more than one step, each with the 1-based
+ * positions of the steps that carry it.
+ */
+export function duplicateStepIds(
+  steps: Pick<Step, 'id'>[],
+): { id: string; positions: number[] }[] {
+  const byId = new Map<string, number[]>();
+  steps.forEach((step, i) => {
+    if (step.id) byId.set(step.id, [...(byId.get(step.id) ?? []), i + 1]);
+  });
+  return [...byId]
+    .filter(([, positions]) => positions.length > 1)
+    .map(([id, positions]) => ({ id, positions }));
+}
+
+export function formatDuplicateStepId(dup: {
+  id: string;
+  positions: number[];
+}): string {
+  return `Duplicate step ID: ${dup.id} (steps ${dup.positions.join(', ')})`;
+}

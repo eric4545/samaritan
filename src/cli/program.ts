@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { diffCommand } from './commands/diff';
 import { generateCommand } from './commands/generate';
+import { lintCommand } from './commands/lint';
 import { postmortemCommand } from './commands/postmortem';
 import { projectCommands } from './commands/project';
 import { qrhCommand } from './commands/qrh';
@@ -39,6 +40,7 @@ export function buildProgram(): Command {
 
   // Operation commands
   program.addCommand(validateCommand);
+  program.addCommand(lintCommand);
   program.addCommand(generateCommand);
   program.addCommand(runCommand);
   program.addCommand(resumeCommand);

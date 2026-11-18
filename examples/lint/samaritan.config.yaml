@@ -1,0 +1,31 @@
+# Team lint policy for the operations in this directory.
+# `samaritan lint` and `samaritan validate` read the nearest
+# samaritan.config.yaml above an operation file; only the `lint:` section is
+# used by them.
+#
+#   samaritan lint examples/lint/release.yaml
+#   samaritan lint --list-rules        # every rule, default severity and tier
+
+lint:
+  # Severity per rule id: off | warning | error. Unlisted rules keep their
+  # default. A team can change the severity, never the rule's tier.
+  rules:
+    git/protected-push: error      # tier 3 heuristic, raised to a hard stop here
+    analysis/unsupported: off      # this team accepts heredocs in commands
+
+  # Branches git/protected-push guards (default: main, master).
+  protected_branches: [main, release]
+
+  # Team bans: whole-token patterns over the parsed command (`*` = any one
+  # token). Flags match anywhere, also inside combined short flags (-Av).
+  banned:
+    - pattern: 'git add -A'
+      message: stage explicit paths
+    - pattern: 'kubectl delete namespace'
+      message: namespaces are removed by the platform pipeline, not by hand
+
+  # Flags every matching command must carry.
+  required:
+    - pattern: 'kubectl *'
+      flags: ['--context']
+      message: name the cluster explicitly; never rely on the current context
