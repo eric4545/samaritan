@@ -102,4 +102,29 @@ describe('lintOperationCommands (integration)', () => {
       );
     },
   );
+
+  it(
+    'lints step-level and operation-level rollback commands',
+    { skip: available ? false : 'shellcheck not installed' },
+    () => {
+      const operation = {
+        steps: [
+          {
+            name: 'Deploy',
+            type: 'automatic',
+            command: 'echo ok',
+            rollback: [{ name: 'Undo deploy', command: 'rm -rf $STEP_DIR' }],
+          },
+        ],
+        rollback: {
+          steps: [{ name: 'Global undo', command: 'rm -rf $GLOBAL_DIR' }],
+        },
+      } as unknown as Operation;
+
+      const flagged = lintOperationCommands(operation, 'examples/op.yaml')
+        .filter((f) => f.code === 2086)
+        .map((f) => f.stepName);
+      assert.deepStrictEqual(flagged, ['Undo deploy', 'Global undo']);
+    },
+  );
 });

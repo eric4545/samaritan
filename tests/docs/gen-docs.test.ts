@@ -191,3 +191,43 @@ describe('operation YAML reference generator', () => {
     }
   });
 });
+
+describe('lint rules reference generator', () => {
+  it('escapes text VitePress would read as HTML, keeps code spans literal', async () => {
+    const { formatRuleList, tableCell } = await import(
+      '../../src/cli/commands/lint'
+    );
+    assert.strictEqual(
+      tableCell('runs in <env>; `exec <cmd>` and a|b', true),
+      'runs in &lt;env&gt;; `exec <cmd>` and a&#124;b',
+    );
+    // A | inside a code span cannot be written (an entity shows literally).
+    assert.throws(() => tableCell('`set -o errexit|nounset`'), /code span/);
+    // Terminal output (--list-rules) keeps < > as typed.
+    assert.strictEqual(tableCell('in <env>'), 'in <env>');
+    // No raw tag outside a code span anywhere on the generated page.
+    for (const line of formatRuleList(undefined, true).split('\n')) {
+      const outsideCode = line.replace(/`[^`]*`/g, '');
+      assert.ok(!/<[A-Za-z]/.test(outsideCode), `raw HTML in: ${line}`);
+    }
+  });
+});
+
+describe('generated pages build as VitePress (Vue) templates', () => {
+  // A raw `<word` outside a code span or fence is compiled as an HTML tag;
+  // `--max-warnings <n>`'s description once failed the docs build that way.
+  const rawTags = (markdown: string): string[] => {
+    let fenced = false;
+    return markdown.split('\n').filter((line) => {
+      if (line.startsWith('```')) fenced = !fenced;
+      if (fenced || line.startsWith('<!--')) return false;
+      return /<[A-Za-z]/.test(line.replace(/`[^`]*`/g, ''));
+    });
+  };
+  it('the CLI reference has no raw tag outside code', () => {
+    assert.deepStrictEqual(rawTags(renderCliReference(buildProgram())), []);
+  });
+  it('the YAML reference has no raw tag outside code', () => {
+    assert.deepStrictEqual(rawTags(renderSchemaReference()), []);
+  });
+});

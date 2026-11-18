@@ -9,7 +9,7 @@ steps:
         echo "✅ API health check passed (HTTP $response)"
       else
         echo "❌ API health check failed (HTTP $response)"
-        exit 1
+        false
       fi
     timeout: 30
     evidence:
@@ -25,7 +25,7 @@ steps:
         echo "✅ Database connection check passed"
       else
         echo "❌ Database connection check failed"
-        exit 1
+        false
       fi
     timeout: 15
     evidence:
@@ -41,7 +41,7 @@ steps:
         echo "✅ Redis connection check passed"
       else
         echo "❌ Redis connection check failed"
-        exit 1
+        false
       fi
     timeout: 10
     evidence:

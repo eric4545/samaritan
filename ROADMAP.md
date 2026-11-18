@@ -67,6 +67,20 @@ in this roadmap:
   seeds a postmortem's timeline, participants, incident window, and
   operation/run back-references from a captured run record (`operation → run →
   postmortem`); `samaritan postmortem init` writes a blank template
+- ✅ Procedure lint (`samaritan lint`): named rules with a tier and a
+  severity over three families (the command itself, between steps, `expect`
+  vs the command) plus the existing validate checks under rule ids; team
+  config in the `lint:` section of `samaritan.config.yaml` (`extends` presets:
+  built-in `samaritan:recommended|strict|all` and local files, `rules`,
+  `banned`, `required`, …); `line:col` positions (also inside `uses:` files);
+  `# samaritan-lint-disable…` comments; exit codes 0/1/2, `--max-warnings`,
+  `--strict`, `--format json`. New rules show as warnings in `validate`.
+  `run --mock --fail-on-skipped` is the second CI gate. See `docs/linting.md`.
+  - ✅ Tool profiles: per-program knowledge as data (`src/lib/lint/tools/`),
+    extended by a team's `lint.tools`.
+  - 🚧 Next: remote presets (pinned refs, offline reproducibility),
+    `--fix` per rule. JavaScript rule plugins are deliberately not planned
+    (configs must not run code).
 
 ---
 

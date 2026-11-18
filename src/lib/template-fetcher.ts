@@ -98,6 +98,14 @@ export async function fetchRemoteTemplate(url: string): Promise<string> {
   return content;
 }
 
+/**
+ * Content already fetched for a remote `uses:` file in this process, so lint
+ * can report line:col inside it without fetching again (or at all).
+ */
+export function getCachedRemoteTemplate(url: string): string | undefined {
+  return remoteTemplateCache.get(url);
+}
+
 /** Exposed for testing — clears the in-memory cache */
 export function clearRemoteTemplateCache(): void {
   remoteTemplateCache.clear();

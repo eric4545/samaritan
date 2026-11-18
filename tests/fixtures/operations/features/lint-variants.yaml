@@ -1,0 +1,25 @@
+# variants.<env> are linted too: their command and their rollback list.
+name: lint-variants
+version: 1.0.0
+description: Variant commands and variant rollback entries are linted
+environments:
+  - name: staging
+    description: Staging
+  - name: production
+    description: Production
+steps:
+  - name: Restart web-server
+    type: manual
+    command: kubectl rollout restart deploy/web-server
+    expect:
+      contains: restarted
+    rollback:
+      - command: kubectl rollout undo deploy/web-server
+    variants:
+      production:
+        command: |
+          kubectl rollout restart deploy/web-server
+          exit 0
+        rollback:
+          - name: Undo in production
+            command: tmux killp

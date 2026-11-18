@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/eric4545/samaritan/schemas/lint-report.schema.json",
+  "title": "samaritan lint --format json",
+  "description": "Output of `samaritan lint --format json`. Keys are only ever added in a minor version; none is removed or renamed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["files", "errorCount", "warningCount"],
+  "properties": {
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "findings", "errorCount", "warningCount"],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "The operation file as given on the command line."
+          },
+          "config": {
+            "type": "string",
+            "description": "The samaritan.config.yaml used, when one was found or given."
+          },
+          "fatal": {
+            "type": "string",
+            "description": "Why the file could not be linted (exit 2)."
+          },
+          "notices": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "What did not run without failing the file (shellcheck not installed)."
+          },
+          "errorCount": { "type": "integer", "minimum": 0 },
+          "warningCount": { "type": "integer", "minimum": 0 },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ruleId", "severity", "tier", "message", "location"],
+              "properties": {
+                "ruleId": {
+                  "type": "string",
+                  "pattern": "^[a-z]+/[a-z0-9-]+$"
+                },
+                "severity": { "enum": ["error", "warning"] },
+                "tier": { "enum": [1, 2, 3] },
+                "message": { "type": "string" },
+                "location": {
+                  "oneOf": [
+                    { "type": "null" },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["file", "line", "column"],
+                      "properties": {
+                        "file": { "type": "string" },
+                        "line": { "type": "integer", "minimum": 1 },
+                        "column": { "type": "integer", "minimum": 1 }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "errorCount": { "type": "integer", "minimum": 0 },
+    "warningCount": { "type": "integer", "minimum": 0 }
+  }
+}

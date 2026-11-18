@@ -1,20 +1,10 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import type { Operation, RollbackStep, Step } from '../models/operation';
+import type { Operation } from '../models/operation';
 import { isEvidenceUrl } from './evidence-input';
-
-type AnyStep = Step | RollbackStep;
+import { walkOperationSteps } from './step-walk';
 
 const MEDIA_TYPES = new Set(['screenshot', 'photo', 'video']);
-
-/** Every step that can carry `evidence`: steps, sub-steps and rollbacks. */
-function* walkSteps(steps: AnyStep[] | undefined): Generator<AnyStep> {
-  for (const step of steps ?? []) {
-    yield step;
-    yield* walkSteps(step.sub_steps);
-    yield* walkSteps((step as Step).rollback);
-  }
-}
 
 /**
  * Warnings for `evidence.results` entries that silently do nothing or render
@@ -28,12 +18,7 @@ export function lintEvidenceResults(
 ): string[] {
   const envNames = operation.environments.map((e) => e.name);
   const warnings: string[] = [];
-  const all = [
-    ...walkSteps(operation.steps),
-    ...walkSteps(operation.rollback?.steps),
-  ];
-
-  for (const step of all) {
+  for (const step of walkOperationSteps(operation)) {
     const where = `Step "${step.name ?? 'rollback'}"`;
     for (const [env, items] of Object.entries(step.evidence?.results ?? {})) {
       if (!envNames.includes(env)) {

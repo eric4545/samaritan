@@ -7,6 +7,46 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Teach lint about your own tools (`lint.tools`).** What lint knows about
+  a program (how its options parse, which verbs change state, take a backup
+  or delete data, which options name a resource, its output format) is now a
+  tool profile. The built-in ones cover `aws`, `kubectl`, `git`, `helm`,
+  `psql`, `systemctl`, `terraform`, `docker`, `crontab`, `sed`, `curl` and
+  more; a team adds its in-house CLI, or extends a built-in profile, in
+  `samaritan.config.yaml` and shares it through presets. See
+  `docs/linting.md` and `examples/lint/presets/ops-team.yaml`.
+- **`samaritan lint`: named rules for how an operation is written.** Three
+  families, each rule with a stable id, a tier (how sure it is) and a
+  severity: the command itself (each step's command is parsed: `&&`, `|`,
+  new lines, `$( )`, assignments, redirects, `sudo`/`env`/`exec`), checks
+  between steps (a `${NAME}` used before the step that captures it, a
+  capture whose producer does not run in an environment, a `capture:` group
+  that does not exist, an undeclared `session:`, a state change with no check
+  or rollback), and `expect` against the command's output format. The checks
+  `validate` already ran have rule ids too. Syntax the parser cannot read
+  (heredoc, backticks, …) is reported, never skipped. Exit `0`/`1`/`2`,
+  `--max-warnings`, `--strict`, `--format json`, `--list-rules`.
+- **Lint findings have a position, and comments suppress them.** Each finding
+  carries `line:col`, also inside `uses:` files and for `foreach` copies.
+  `# samaritan-lint-disable-next-line <rule>` above a field,
+  `# samaritan-lint-disable <rule>` above a step (or the file), and
+  `# samaritan-lint-disable-line <rule>` at the end of a line; `-- reason`
+  is allowed.
+- **Team lint policy in `samaritan.config.yaml`.** A `lint:` section sets a
+  severity per rule, bans commands (`banned: - pattern: 'git add -A'`),
+  requires flags (`required: - pattern: 'kubectl *'  flags: [--context]`),
+  names protected branches, and `extends` presets: `samaritan:recommended`,
+  `samaritan:strict`, `samaritan:all`, or a local file. The nearest file
+  above the operation is used. See `docs/linting.md` and `examples/lint/`.
+- **`run --mock --fail-on-skipped`** fails a mock run that skipped a step or
+  evaluated nothing, so it can gate CI; `--min-evaluated <n>` fails below
+  `n` evaluated steps. An evidence `file` that cannot be read
+  now skips the step (the reason names the file) instead of replaying the
+  part that could be read.
+- **`validate` shows the new lint rules as warnings**
+  (`lint [<rule id>] (line:col): …`). They never fail `validate` or change
+  its exit code; a rule turned off, or a suppression comment, applies there
+  too.
 - **`[!]` runs a sidecar step in one key**: it pastes the command into the
   attached pane and presses the same guarded Enter as `[p]` then `[y]`, waits
   and verifies. `[p]` and `[y]` work as before, for looking at the command on
@@ -109,6 +149,35 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **`psql -c '<sql>'` is read correctly by lint.** The SQL was never seen,
+  so a `DROP`/`UPDATE` through psql did not count as a state change or a data
+  deletion.
+- **A lint rule that crashes no longer fails `validate`.** It made the file
+  invalid with `Parsing error: …`, although lint findings are warnings only
+  there. `validate` now warns `lint skipped: rule <id> failed: …`, and `lint`
+  reports the file as not linted (exit 2) naming the rule, instead of
+  `cannot parse`.
+- **`lint` says when `shell/shellcheck` could not run.** With the rule on and
+  shellcheck missing, it was skipped silently; the file now gets a notice.
+- **`validate --lint` no longer reports SAMARITAN placeholders as shell
+  problems.** `rm -rf ${DIR}` got SC2086 although SAMARITAN replaces
+  `${DIR}` before the shell sees it, and a variable set by an earlier step got
+  SC2154. Placeholders are masked for shellcheck (inline commands only) and
+  those codes are skipped there; `$VAR` shell variables are still checked.
+- **`variants.<env>` commands and rollback lists are linted.** shellcheck,
+  regex-lint and evidence checks skipped them.
+- **`validate` reports duplicate step IDs.** The check counted IDs after
+  putting them in a set, so it never fired: two steps with the same `id`
+  passed, or showed up only as a misleading "cannot depend on itself" error.
+  It now prints `Duplicate step ID: deploy (steps 1, 3)`.
+- **`validate --lint` checks rollback commands.** shellcheck skipped every
+  step-level `rollback` and the operation's `rollback.steps`. Rollback
+  commands now get the same warnings as forward ones, so `--lint` may report
+  new warnings on existing files; the exit code is unchanged unless
+  `--strict`.
+- **regex-lint checks `rollback.steps`.** An invalid `expect` regex in the
+  operation-level rollback passed validation and could never match at run
+  time. It is now an error, like on any other step.
 - **Spawned `sessions:` work with `base-index 1`.** With `base-index` or
   `pane-base-index` set to 1 in `tmux.conf`, the panes SAMARITAN opened were
   never found: nothing was captured and `[p]` reported a paste that did not

@@ -28,6 +28,15 @@ function cell(value: string): string {
   return value.replace(/\|/g, '&#124;').replace(/\n+/g, ' ').trim();
 }
 
+/**
+ * A prose cell (a description, never inside a code span): also encode `<` and
+ * `>`. VitePress compiles each page as a Vue template, so a description like
+ * "more than <n> warnings" opens an unclosed `<n>` tag and fails the build.
+ */
+function prose(value: string): string {
+  return cell(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /** Commander stores subcommands on `.commands`; `help` is generated, not authored. */
 function subcommands(cmd: Command): Command[] {
   return cmd.commands.filter((c) => c.name() !== 'help');
@@ -65,7 +74,7 @@ function renderOptions(cmd: Command): string[] {
       ? ` Choices: ${option.argChoices.map((c) => `\`${c}\``).join(', ')}.`
       : '';
     lines.push(
-      `| \`${cell(option.flags)}\` | ${cell(description + choices)} | ${renderDefault(option)} |`,
+      `| \`${cell(option.flags)}\` | ${prose(description + choices)} | ${renderDefault(option)} |`,
     );
   }
   return lines;
@@ -82,7 +91,7 @@ function renderArguments(cmd: Command): string[] {
   ];
   for (const arg of args) {
     lines.push(
-      `| \`${cell(arg.name())}\` | ${arg.required ? 'yes' : 'no'} | ${cell(arg.description || '')} |`,
+      `| \`${cell(arg.name())}\` | ${arg.required ? 'yes' : 'no'} | ${prose(arg.description || '')} |`,
     );
   }
   return lines;
@@ -147,7 +156,7 @@ export function renderCliReference(program: Command): string {
   );
   for (const cmd of top) {
     lines.push(
-      `| [\`${cmd.name()}\`](#${cmd.name()}) | ${cell(cmd.description() || '')} |`,
+      `| [\`${cmd.name()}\`](#${cmd.name()}) | ${prose(cmd.description() || '')} |`,
     );
   }
 

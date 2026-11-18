@@ -77,6 +77,25 @@ iterate its output unchanged. Fixtures: `global-rollback-substeps.yaml`,
 `aggregated-global-rollback.yaml` (the sub-step jump-link case reuses
 `nested-substep-with-rollback.yaml` with the flag set in-test).
 
+## Per-step provenance (`step-source.ts`) — keep it on every step you build
+
+`src/operations/step-source.ts`: the parser stamps every Step / RollbackStep
+with `{file, path}` (absolute file or URL, YAML path such as
+`['steps', 2, 'rollback', 0]`) as a NON-ENUMERABLE symbol property, so
+deep-equality, JSON, snapshots and session files never see it, and object
+spreads drop it. Set in `resolveStepReferences` (regular steps, path
+`[...basePath, i]`), `resolveRollbackReferences` (`stampRollbackSources`,
+sub-steps included; object-form `rollback:` has no index), and carried by
+`copyStepSource` in `expandForeachItem` and `expandRollbackForeach`.
+`expandUsesEntry` switches `importContext.sourceFile` to the `uses:` file and
+passes its steps path (`[]` for a bare list, `['steps']` for an operation
+file). `samaritan lint` turns it into `line:col` and matches
+`# samaritan-lint-disable…` comments (`src/lib/lint/source-index.ts`, eemeli
+`yaml` for positions; js-yaml stays the parser). If you add a code path that
+builds a step object (a new expansion), copy the source onto it or lint
+findings for it lose their position. Test:
+`tests/operations/step-source.test.ts` (every step of 10 examples resolves).
+
 ## Groups are a parse-time projection (keep generators group-unaware)
 
 Top-level `groups:` + step-level `groups: [name]` are a second axis next to

@@ -37,13 +37,85 @@ directory or example ships with this repo today.
 
 ## Key flags
 
+### lint
+- `samaritan lint <file...>` — named rules (registry `src/lib/lint/rules.ts`;
+  `--list-rules` prints it with default / `samaritan:strict` / `samaritan:all`
+  levels and tier). Families: the command itself (`shell/*`, `tmux/*`, `git/*`,
+  `aws/*`, `kubectl/delete-ns`, `curl/require-fail`, `ssh/one-shot`,
+  `var/colon-unresolved`, `cmd/*`, `analysis/unsupported`), between steps
+  (`flow/*`: forward-var, unproduced-capture (per env, "may not execute"),
+  capture-group-oob, session-undeclared, mutate-without-verify,
+  no-rollback-on-mutate, + opt-in ordering heuristics), expect vs command
+  (`expect/contains-vs-matches`, `json-shape`, `multiline-contains`), and the
+  existing validate checks under ids (`expect/*`, `deps/*`,
+  `steps/duplicate-id`, `vars/*`, `evidence/*`, `rollback/empty`, `style/*`,
+  `compat/discarded-verify`, `shell/shellcheck`).
+- Exit `0` = no error-severity findings, `1` = errors or more warnings than
+  `--max-warnings <n>`, `2` = a file or its config could not be read.
+  `--format json` (stable: `files[].findings[] = {ruleId, severity, tier,
+  message, location: {file, line, column} | null}`), `--strict` (applies the
+  `samaritan:strict` profile under the config).
+- Findings carry `line:col` (from per-step provenance the parser stamps:
+  `src/operations/step-source.ts`); steps from `uses:` files point into that
+  file, `foreach` copies at the authored entry.
+- Suppression comments: `# samaritan-lint-disable-next-line <rule…>` above
+  the field key, `# samaritan-lint-disable <rule…>` above a step (step +
+  sub-steps; top of file = whole file), `# samaritan-lint-disable-line <rule…>`
+  trailing. `-- reason` ignored; no rule = all; a `#` line inside a block
+  scalar is shell, not a directive; unknown rule → `lint/invalid-directive`.
+- Config: `lint:` in the nearest `samaritan.config.yaml` above the file, or the
+  global `--config <path>` when given: `extends` (`samaritan:recommended|strict|all`
+  or a local file, relative), `rules` (`off|warning|error`), `banned`
+  (`{pattern, message}`), `required` (`{pattern, flags, message}`),
+  `protected_branches`, `identities`, `known_binaries`, `aws_sessions`,
+  `aws_create_allowlist`. Unknown keys / rule ids / presets, extends cycles →
+  exit 2.
+- Patterns are parsed like commands: same program, every option anywhere
+  (combined short flags expand, `--x=v` splits), assignments by name
+  (`AWS_PAGER=`), other words as an ordered prefix; `*` = one whole word.
+- Walks steps, sub-steps, `variants.<env>` (command + rollback list, named
+  `<step> [variants.<env>]`), step `rollback`, `rollback.steps`.
+- Tier-3 ordering rules match identifiers where written: a backup counts for
+  the resource it names, a `wait` for its stack, an sts check in the same
+  session.
+- `--format json` follows `src/schemas/lint-report.schema.json`.
+- A crashing rule: `lint` → file `fatal: rule <id> failed: …` (exit 2);
+  `validate` → warning `lint skipped: …`, never an error. `shell/shellcheck`
+  on without shellcheck installed → `notice` (JSON `notices`), exit unchanged.
+- Opt-in by design (default `off`, level from `samaritan:all` or a team
+  preset): team-policy rules (`git/explicit-staging`, `git/no-verify`,
+  `tmux/input-injection`, `aws/region-required`, `shell/env-echo`,
+  `ssh/one-shot`, `curl/require-fail`, …) and the tier-3 ordering
+  heuristics (`flow/sts-before-mutate`, `flow/backup-before-delete`, …).
+  `samaritan:recommended` = the defaults. The list is locked in
+  `tests/lib/lint-conformance.test.ts`.
+- Tool profiles (`src/lib/lint/tools/`): per-program data (option spec,
+  `mutating` / `backup` / `deletes_data` verbs, `resource_options`,
+  `output_options`). Teams add/extend with `lint.tools` (`binaries`,
+  `value_options`, `verb_depth`, …); verbs: words vs operands, `*` in a word,
+  `a|b`, lone `*` = a word, `''` = any; or `{verb, option, matches,
+  any_operand, redirect}`. Same-program profiles merge (lists add). No JS
+  plugins (configs never run code).
+- `script:` files are not command-linted (child shell; shellcheck covers them).
+  shellcheck (`validate --lint`, `shell/shellcheck`) sees SAMARITAN `${NAME}`
+  masked as `_` and skips SC1091/SC2050/SC2194/SC2154/SC2157/SC2043 on
+  inline commands.
+
 ### validate
-- `--lint` — run shellcheck over `command`/`script` (warnings by default).
+- Also prints the lint rules it did not already have as warnings
+  (`lint [<rule id>] (line:col): …`); they never fail validate or change its
+  exit code, even under `--strict`. A rule set `off` in the config, and a
+  suppression comment, apply here too.
+- `--lint` — run shellcheck over `command`/`script` of every step, sub-step,
+  step `rollback` and operation `rollback.steps` (warnings by default).
 - `--strict` — promote lint warnings and schema warnings to errors.
 - Always runs a built-in regex-lint over `expect` regex fields (`matches`,
-  `all_lines_match`, `any_line_matches`, `no_line_matches`, `retry.while`):
+  `all_lines_match`, `any_line_matches`, `no_line_matches`, `retry.while`) on
+  every step, sub-step and rollback step (step-level and `rollback.steps`):
   uncompilable patterns are errors; ReDoS-prone ones (e.g. `(a+)+`) are warnings
   (errors under `--strict`). No flag needed — regex compilation is built-in.
+- Duplicate top-level step `id`s are an error, one line per repeated ID:
+  `Duplicate step ID: deploy (steps 1, 3)`.
 
 ### groups (`--group`)
 - An operation that declares `groups:` needs `-g, --group <name>` on
@@ -90,7 +162,10 @@ directory or example ships with this repo today.
   `step.expect`.
 - Other modes: `manual`, `automatic` (tmux-backed send/verify), `hybrid`.
 - `--mock` — replay each step's `expect` against `evidence.results[<env>]` output;
-  prints PASS/FAIL/SKIP, exits non-zero on failure. No tmux/execution.
+  prints PASS/FAIL/SKIP, exits non-zero on failure. No tmux/execution. An
+  unreadable evidence `file` skips the step (reason names the file).
+  `--fail-on-skipped` (CI gate) also exits 1 when any step was skipped or
+  nothing was evaluated; `--min-evaluated <n>` exits 1 below `n` evaluated.
 - Spawned `sessions:` (no `--attach`): one tmux session `samaritan-<id>`, one window per entry named after it; a step's `session:` picks the pane for `[p]`/`[y]`/`[v]`. Panes are addressed by tmux pane id (works with `base-index 1`). The view hint is `tmux attach -t …` outside tmux and, inside tmux, `tmux split-window -h "TMUX= tmux attach -t …"` or `tmux switch-client -t …` (`attachHintLines`)
 - `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning. It wins over `sessions:`: named sessions are not spawned and every step (whatever its `session:`) captures from / pastes into this one pane; `[t]` switches the pane mid-run; `resume` re-attaches it the same way. One samaritan run per pane: tmux allows one `pipe-pane`, so a second run on the same pane takes it over (warned); the first run detects that at its next step/`[v]`, re-attaches, and verifies from the pane scrollback (from the `[p]` paste line when there was one).
 - `--from-step <step>` — start at that step: its number in the manual (`2.7`; also the multi-env manual's `2g`) or its name, NOT the flat position (`--from-step 2` is Step 2 even when it is the 32nd step); earlier steps are recorded as **skipped**

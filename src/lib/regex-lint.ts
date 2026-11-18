@@ -1,9 +1,5 @@
-import type {
-  ExpectConfig,
-  Operation,
-  RollbackStep,
-  Step,
-} from '../models/operation';
+import type { ExpectConfig, Operation } from '../models/operation';
+import { stepDisplayName, walkOperationSteps } from './step-walk';
 
 /**
  * `ExpectConfig` fields whose value is interpreted as a regular expression at
@@ -138,24 +134,17 @@ function lintExpect(
 }
 
 /**
- * Walk every step (sub-steps recursively, plus rollback steps) of an operation
+ * Walk every step (sub-steps recursively, plus step-level and operation-level
+ * rollback steps) of an operation
  * and lint all regex-bearing `expect` fields. `expect` lives on the shared
  * `StepContent` base, so rollback steps carry it too.
  */
 export function lintOperationRegex(operation: Operation): RegexLintFinding[] {
   const findings: RegexLintFinding[] = [];
 
-  const visit = (steps: (Step | RollbackStep)[] | undefined): void => {
-    if (!steps) return;
-    for (const step of steps) {
-      const name = 'name' in step && step.name ? step.name : '(rollback)';
-      findings.push(...lintExpect(step.expect, name));
-      if ('sub_steps' in step) visit(step.sub_steps);
-      if ('rollback' in step) visit(step.rollback);
-    }
-  };
-
-  visit(operation.steps);
+  for (const step of walkOperationSteps(operation)) {
+    findings.push(...lintExpect(step.expect, stepDisplayName(step)));
+  }
   return findings;
 }
 

@@ -1,0 +1,35 @@
+# A shareable team preset: the opt-in rules this team wants, at its levels.
+# Pull it in from a samaritan.config.yaml with
+#   lint:
+#     extends: [./presets/ops-team.yaml]
+# Paths are relative to the file that names them. Rules set here can still be
+# changed by the config that extends it (its own `rules:` win).
+lint:
+  extends: [samaritan:recommended]
+  rules:
+    git/explicit-staging: error        # `git add -A` / `.` / `dir/`
+    git/no-verify: error               # skipping the repository hooks
+    tmux/input-injection: error        # sidecar is the only input path
+    shell/env-echo: warning            # secrets printed into evidence
+    shell/unguarded-rm-rf: warning
+    shell/crontab-mutation: warning
+    curl/require-fail: warning
+    ssh/one-shot: warning
+    flow/backup-before-delete: warning
+    flow/checksum-before-exec: warning
+    flow/chmod-600-credentials: warning
+    flow/restore-after-sed: warning
+    flow/wait-after-async: warning
+
+  # Teach lint about the team's in-house CLI: the same kind of profile the
+  # built-in tools have (aws, kubectl, git, …). Its verbs drive the
+  # state-change, backup and resource rules; its options parse like any other
+  # program's; and `web-ctl` is a known program for cmd/unknown-binary.
+  tools:
+    - binaries: [web-ctl]
+      value_options: [--cluster]
+      verb_depth: 2                   # `web-ctl app purge` in messages
+      mutating: ['deploy|rollback|scale']
+      backup: ['snapshot create']
+      deletes_data: ['app purge']
+      resource_options: [--app]       # `--app web-server` names the resource

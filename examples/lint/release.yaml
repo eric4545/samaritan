@@ -1,0 +1,62 @@
+# A release operation that is clean under ./samaritan.config.yaml.
+# Try breaking it: drop `--context` from a kubectl command, push to
+# HEAD:release, or add `set -e` to a command, then run
+#   samaritan lint examples/lint/release.yaml
+name: Release Web Server
+version: 1.0.0
+description: Tag and roll out a web-server release, checked by the team lint policy
+author: ops@example.com
+category: deployment
+
+environments:
+  - name: staging
+    description: Staging cluster
+    variables:
+      CLUSTER: web-staging
+      VERSION: 1.4.0
+  - name: production
+    description: Production cluster
+    variables:
+      CLUSTER: web-production
+      VERSION: 1.4.0
+
+steps:
+  - name: Snapshot the web-server app config
+    type: manual
+    command: web-ctl --cluster ${CLUSTER} snapshot create --app web-server
+
+  - name: Tag the release
+    type: manual
+    instruction: Tag the release commit and push the tag, not a branch.
+    command: |
+      git tag -a v${VERSION} -m "web-server ${VERSION}"
+      git push origin refs/tags/v${VERSION}
+
+  - name: Fast-forward the release branch
+    type: manual
+    instruction: Only after the release manager approved the tag.
+    # Pushing to `release` is this team's approved path; the reason after
+    # `--` is for reviewers and is ignored by lint.
+    # samaritan-lint-disable-next-line git/protected-push -- approved release path
+    command: git push origin v${VERSION}^{commit}:refs/heads/release
+    confirm: The release manager approved the push
+
+  - name: Roll out
+    type: manual
+    command: kubectl --context ${CLUSTER} set image deployment/web-server web=example/web-server:${VERSION}
+    expect:
+      contains: image updated
+
+  - name: Wait for rollout
+    type: manual
+    command: kubectl --context ${CLUSTER} rollout status deployment/web-server --timeout=300s
+    expect:
+      contains: successfully rolled out
+    rollback:
+      - name: Undo rollout
+        command: kubectl --context ${CLUSTER} rollout undo deployment/web-server
+
+rollback:
+  steps:
+    - name: Roll back to the previous image
+      command: kubectl --context ${CLUSTER} rollout undo deployment/web-server

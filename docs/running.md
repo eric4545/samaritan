@@ -330,11 +330,28 @@ samaritan run examples/mock-run-expect.yaml --env staging --mock
 ```
 
 - Steps with `expect` but no replayable evidence for the environment are
-  **skipped** (reported, not failed).
+  **skipped** (reported, not failed). So is a step whose evidence `file`
+  cannot be read: the skip line names the file, and the step is not checked
+  against the part that could be read.
 - `${VAR}` references in `expect` are resolved against the environment's
   variables, exactly as a real run would.
 - Exits **non-zero** if any assertion fails — so CI can catch the day your
   `expect` rules drift from the output you actually capture.
+- `--fail-on-skipped` also exits non-zero when any step was skipped or when
+  no `expect` was evaluated at all. Without it, a file with no replayable
+  evidence passes having checked nothing. Use it as the CI gate, on the
+  files that carry evidence for every `expect`:
+
+  ```bash
+  samaritan run examples/mock-run-expect.yaml --env staging --mock --fail-on-skipped
+  ```
+
+  `--min-evaluated <n>` fails the run when fewer than `n` steps had their
+  `expect` evaluated, for files where some skips are expected.
+
+  A passing mock run means the recorded outputs still satisfy the `expect`
+  rules. It does not run the commands. Pair it with `samaritan lint` (see
+  [Linting](/linting)).
 
 This reuses `evidence.results` read-only; it doesn't change what evidence is
 for. See [examples/mock-run-expect.yaml](https://github.com/eric4545/samaritan/blob/main/examples/mock-run-expect.yaml).
@@ -533,7 +550,8 @@ verify:
 > flags** — case-sensitive, no multiline, and an **unanchored partial match**
 > (`Running` matches anywhere; anchor with `^...$` for a full-string/full-line
 > match). `samaritan validate` runs a built-in **regex-lint** pass over these
-> fields (and `expect.retry.while`): an uncompilable pattern is a hard **error**,
+> fields (and `expect.retry.while`) on every step, sub-step and rollback step,
+> including `rollback.steps`: an uncompilable pattern is a hard **error**,
 > and an obviously catastrophic (ReDoS-prone) pattern such as `(a+)+` is a
 > **warning** (promoted to an error under `--strict`).
 

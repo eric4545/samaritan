@@ -1,0 +1,10 @@
+# Steps pulled in with `uses:` by lint-suppression.yaml.
+- name: From the uses file
+  type: manual
+  command: |
+    echo from the uses file
+    exit 3
+- name: Suppressed in the uses file
+  type: manual
+  # samaritan-lint-disable-next-line shell/exit-verbs
+  command: exit 4
