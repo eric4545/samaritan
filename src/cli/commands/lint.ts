@@ -9,10 +9,12 @@ import {
   countBySeverity,
   formatLocation,
   type LintFinding,
+  LintRuleError,
   lintOperation,
   ruleSetting,
 } from '../../lib/lint/engine';
 import { BUILTIN_PRESETS, LINT_REGISTRY, RULES } from '../../lib/lint/rules';
+import { isShellcheckAvailable } from '../../lib/shell-lint';
 import { parseOperation } from '../../operations/parser';
 
 /** Exit codes: 0 clean (warnings allowed), 1 lint errors, 2 could not lint. */
@@ -24,8 +26,10 @@ export interface FileLintResult {
   findings: LintFinding[];
   errorCount: number;
   warningCount: number;
-  /** Set when the file could not be linted (missing, unparseable, bad config). */
+  /** Set when the file could not be linted (missing, unparseable, bad config, a rule crashed). */
   fatal?: string;
+  /** Things that did not run but do not fail the file (shellcheck missing). */
+  notices?: string[];
 }
 
 export async function lintFile(
@@ -46,8 +50,30 @@ export async function lintFile(
     throw error;
   }
 
+  let operation: Awaited<ReturnType<typeof parseOperation>>;
   try {
-    const operation = await parseOperation(file);
+    operation = await parseOperation(file);
+  } catch (error) {
+    return {
+      ...empty,
+      config: config.source,
+      fatal: `cannot parse: ${String((error as Error).message).split('\n')[0]}`,
+    };
+  }
+
+  const notices: string[] = [];
+  const shellcheck = RULES.find((r) => r.id === 'shell/shellcheck');
+  if (
+    shellcheck &&
+    ruleSetting(shellcheck, config) !== 'off' &&
+    !isShellcheckAvailable()
+  ) {
+    notices.push(
+      'shell/shellcheck is on but shellcheck is not on PATH; it was skipped',
+    );
+  }
+
+  try {
     const findings = lintOperation(operation, { operationFile: file, config });
     const { errors, warnings } = countBySeverity(findings);
     return {
@@ -56,13 +82,11 @@ export async function lintFile(
       findings,
       errorCount: errors,
       warningCount: warnings,
+      ...(notices.length > 0 ? { notices } : {}),
     };
   } catch (error) {
-    return {
-      ...empty,
-      config: config.source,
-      fatal: `cannot parse: ${String((error as Error).message).split('\n')[0]}`,
-    };
+    if (!(error instanceof LintRuleError)) throw error;
+    return { ...empty, config: config.source, fatal: error.message };
   }
 }
 
@@ -86,9 +110,10 @@ export function formatText(
 ): string {
   const out: string[] = [];
   for (const r of results) {
-    if (!r.fatal && r.findings.length === 0) continue;
+    if (!r.fatal && r.findings.length === 0 && !r.notices) continue;
     out.push(r.file);
     if (r.fatal) out.push(`  fatal    ${r.fatal}`);
+    for (const notice of r.notices ?? []) out.push(`  notice   ${notice}`);
     const where = r.findings.map((f) => formatLocation(f.location, r.file));
     const width = Math.max(0, ...r.findings.map((f) => f.ruleId.length));
     const whereWidth = Math.max(0, ...where.map((w) => w.length));

@@ -26,6 +26,11 @@
             "type": "string",
             "description": "Why the file could not be linted (exit 2)."
           },
+          "notices": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "What did not run without failing the file (shellcheck not installed)."
+          },
           "errorCount": { "type": "integer", "minimum": 0 },
           "warningCount": { "type": "integer", "minimum": 0 },
           "findings": {

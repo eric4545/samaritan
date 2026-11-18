@@ -33,7 +33,10 @@ from `foreach` / `matrix` points at the entry you wrote.
 | --- | --- |
 | `0` | No error-severity findings. Warnings may be present. |
 | `1` | At least one error-severity finding, or more warnings than `--max-warnings`. |
-| `2` | A file could not be linted: not found, does not parse, or its lint config is invalid. The other files are still linted and reported. |
+| `2` | A file could not be linted: not found, does not parse, its lint config is invalid, or a rule crashed on it (`rule <id> failed: …`). The other files are still linted and reported. Bad usage (`--format xml`, `--max-warnings -1`, no file) also exits `2`. |
+
+When `shell/shellcheck` is on but shellcheck is not installed, the file gets a
+`notice` and the rule is skipped; the exit code does not change.
 
 `--format json` follows
 [`src/schemas/lint-report.schema.json`](https://github.com/eric4545/samaritan/blob/main/src/schemas/lint-report.schema.json):
@@ -168,7 +171,8 @@ constant) and SC1091. `script:` files are checked as they are.
 the findings as warnings, prefixed `lint [<rule id>] (line:col):`. They never
 fail `validate` and never change its exit code, even under `--strict`. Rules
 your config turns `off` stay off there too. A broken `lint:` section is
-reported as `lint config ignored: …` and the defaults are used.
+reported as `lint config ignored: …` and the defaults are used. A rule that crashes is reported as
+`lint skipped: rule <id> failed: …`, a warning, never an error.
 
 ## Team config: `samaritan.config.yaml`
 

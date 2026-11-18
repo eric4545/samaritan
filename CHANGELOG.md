@@ -141,6 +141,13 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **A lint rule that crashes no longer fails `validate`.** It made the file
+  invalid with `Parsing error: …`, although lint findings are warnings only
+  there. `validate` now warns `lint skipped: rule <id> failed: …`, and `lint`
+  reports the file as not linted (exit 2) naming the rule, instead of
+  `cannot parse`.
+- **`lint` says when `shell/shellcheck` could not run.** With the rule on and
+  shellcheck missing, it was skipped silently; the file now gets a notice.
 - **`validate --lint` no longer reports SAMARITAN placeholders as shell
   problems.** `rm -rf ${DIR}` got SC2086 although SAMARITAN replaces
   `${DIR}` before the shell sees it, and a variable set by an earlier step got

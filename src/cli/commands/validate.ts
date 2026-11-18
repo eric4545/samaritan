@@ -18,7 +18,7 @@ import {
   LintConfigError,
   loadLintConfig,
 } from '../../lib/lint/config';
-import { lintOperation } from '../../lib/lint/engine';
+import { LintRuleError, lintOperation } from '../../lib/lint/engine';
 import { LINT_REGISTRY } from '../../lib/lint/rules';
 import { formatRegexFinding, lintOperationRegex } from '../../lib/regex-lint';
 import {
@@ -554,11 +554,20 @@ export class OperationValidator {
       if (!(error instanceof LintConfigError)) throw error;
       result.warnings.push(`lint config ignored: ${error.message}`);
     }
-    for (const finding of lintOperation(operation, {
-      operationFile: filePath,
-      config,
-      scope: 'validate',
-    })) {
+    let findings: ReturnType<typeof lintOperation>;
+    try {
+      findings = lintOperation(operation, {
+        operationFile: filePath,
+        config,
+        scope: 'validate',
+      });
+    } catch (error) {
+      // A crashing lint rule must never fail validate: say so and go on.
+      if (!(error instanceof LintRuleError)) throw error;
+      result.warnings.push(`lint skipped: ${error.message}`);
+      return;
+    }
+    for (const finding of findings) {
       const at =
         finding.location && finding.location.file === filePath
           ? ` (${finding.location.line}:${finding.location.column})`

@@ -45,6 +45,21 @@ export interface LintOptions {
   scope?: 'all' | 'validate';
 }
 
+/**
+ * A rule crashed. The results are incomplete, so callers must say so: `lint`
+ * exits 2 for the file, `validate` prints a warning (never an error).
+ */
+export class LintRuleError extends Error {
+  constructor(
+    readonly ruleId: string,
+    cause: unknown,
+  ) {
+    super(
+      `rule ${ruleId} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
+}
+
 export function ruleSetting(rule: Rule, config: LintConfig): RuleSetting {
   return config.rules[rule.id] ?? rule.defaultSeverity;
 }
@@ -224,14 +239,18 @@ export function lintOperation(
     declaredVariables: declared,
   };
   for (const rule of enabled) {
-    if (rule.kind === 'command') {
-      for (const info of all) {
-        if (!info.text) continue;
-        const ctx: CommandRuleContext = { ...info, config: options.config };
-        for (const hit of rule.check(ctx)) hits.push({ rule, hit });
+    try {
+      if (rule.kind === 'command') {
+        for (const info of all) {
+          if (!info.text) continue;
+          const ctx: CommandRuleContext = { ...info, config: options.config };
+          for (const hit of rule.check(ctx)) hits.push({ rule, hit });
+        }
+      } else {
+        for (const hit of rule.check(opCtx)) hits.push({ rule, hit });
       }
-    } else {
-      for (const hit of rule.check(opCtx)) hits.push({ rule, hit });
+    } catch (error) {
+      throw new LintRuleError(rule.id, error);
     }
   }
 

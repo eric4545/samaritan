@@ -244,6 +244,10 @@ describe('rule conformance: every registered rule has a sample that fires', () =
           findings.some((f) => f.ruleId === ruleId),
           `${ruleId} did not fire; got ${findings.map((f) => f.ruleId).join(', ')}`,
         );
+        // ...at the severity the config gives it.
+        for (const f of findings.filter((x) => x.ruleId === ruleId)) {
+          assert.strictEqual(f.severity, ALL.rules[ruleId], ruleId);
+        }
       },
     );
   }

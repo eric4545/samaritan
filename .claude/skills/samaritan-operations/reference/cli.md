@@ -79,6 +79,9 @@ directory or example ships with this repo today.
   the resource it names, a `wait` for its stack, an sts check in the same
   session.
 - `--format json` follows `src/schemas/lint-report.schema.json`.
+- A crashing rule: `lint` → file `fatal: rule <id> failed: …` (exit 2);
+  `validate` → warning `lint skipped: …`, never an error. `shell/shellcheck`
+  on without shellcheck installed → `notice` (JSON `notices`), exit unchanged.
 - Opt-in by design (default `off`, level from `samaritan:all` or a team
   preset): team-policy rules (`git/explicit-staging`, `git/no-verify`,
   `tmux/input-injection`, `aws/region-required`, `shell/env-echo`,
