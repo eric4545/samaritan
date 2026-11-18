@@ -7,11 +7,12 @@ import {
 } from '../../lib/lint/config';
 import {
   countBySeverity,
+  formatLocation,
   type LintFinding,
   lintOperation,
   ruleSetting,
 } from '../../lib/lint/engine';
-import { RULE_IDS, RULES } from '../../lib/lint/rules';
+import { BUILTIN_PRESETS, LINT_REGISTRY, RULES } from '../../lib/lint/rules';
 import { parseOperation } from '../../operations/parser';
 
 /** Exit codes: 0 clean (warnings allowed), 1 lint errors, 2 could not lint. */
@@ -30,13 +31,14 @@ export interface FileLintResult {
 export async function lintFile(
   file: string,
   explicitConfig?: string,
+  profiles: string[] = [],
 ): Promise<FileLintResult> {
   const empty = { file, findings: [], errorCount: 0, warningCount: 0 };
   if (!existsSync(file)) return { ...empty, fatal: `file not found: ${file}` };
 
   let config: LintConfig;
   try {
-    config = loadLintConfig(file, RULE_IDS, explicitConfig);
+    config = loadLintConfig(file, LINT_REGISTRY, explicitConfig, profiles);
   } catch (error) {
     if (error instanceof LintConfigError) {
       return { ...empty, fatal: `lint config: ${error.message}` };
@@ -87,12 +89,14 @@ export function formatText(
     if (!r.fatal && r.findings.length === 0) continue;
     out.push(r.file);
     if (r.fatal) out.push(`  fatal    ${r.fatal}`);
+    const where = r.findings.map((f) => formatLocation(f.location, r.file));
     const width = Math.max(0, ...r.findings.map((f) => f.ruleId.length));
-    for (const f of r.findings) {
+    const whereWidth = Math.max(0, ...where.map((w) => w.length));
+    r.findings.forEach((f, k) => {
       out.push(
-        `  ${f.severity.padEnd(7)}  ${f.ruleId.padEnd(width)}  ${f.message}`,
+        `  ${where[k].padEnd(whereWidth)}  ${f.severity.padEnd(7)}  ${f.ruleId.padEnd(width)}  ${f.message}`,
       );
-    }
+    });
     out.push('');
   }
   const errors = results.reduce((n, r) => n + r.errorCount, 0);
@@ -127,13 +131,15 @@ export function formatJson(results: FileLintResult[]): string {
 /** The registry as a Markdown table, with the effective severity. */
 export function formatRuleList(config?: LintConfig): string {
   const lines = [
-    '| Rule | Default | Tier | What it flags |',
-    '| --- | --- | --- | --- |',
+    '| Rule | Default | `samaritan:strict` | `samaritan:all` | Tier | What it flags |',
+    '| --- | --- | --- | --- | --- | --- |',
   ];
   for (const rule of RULES) {
     const setting = config ? ruleSetting(rule, config) : rule.defaultSeverity;
+    const strict = BUILTIN_PRESETS['samaritan:strict'][rule.id] ?? setting;
+    const all = BUILTIN_PRESETS['samaritan:all'][rule.id] ?? setting;
     lines.push(
-      `| \`${rule.id}\` | ${setting} | ${rule.tier} | ${rule.description.replace(/\|/g, '\\|')} |`,
+      `| \`${rule.id}\` | ${setting} | ${strict} | ${all} | ${rule.tier} | ${rule.description.replace(/\|/g, '\\|')} |`,
     );
   }
   return lines.join('\n');
@@ -143,6 +149,7 @@ interface LintCliOptions {
   format: string;
   maxWarnings?: string;
   listRules?: boolean;
+  strict?: boolean;
 }
 
 const lintCommand = new Command('lint')
@@ -154,6 +161,10 @@ const lintCommand = new Command('lint')
   .option(
     '--max-warnings <n>',
     'Fail (exit 1) when there are more than <n> warnings',
+  )
+  .option(
+    '--strict',
+    'Apply the samaritan:strict profile (before the config file, which can still override it)',
   )
   .option('--list-rules', 'Print every rule with its default severity and tier')
   .action(async (files: string[], options: LintCliOptions, cmd: Command) => {
@@ -188,7 +199,13 @@ const lintCommand = new Command('lint')
 
     const results: FileLintResult[] = [];
     for (const file of files) {
-      results.push(await lintFile(file, explicitConfig));
+      results.push(
+        await lintFile(
+          file,
+          explicitConfig,
+          options.strict ? ['samaritan:strict'] : [],
+        ),
+      );
     }
     console.log(
       options.format === 'json'

@@ -229,6 +229,7 @@ export const FIXTURES = {
   variableChains: 'tests/fixtures/operations/features/variable-chains.yaml',
   lintCommandRules:
     'tests/fixtures/operations/features/lint-command-rules.yaml',
+  lintSuppression: 'tests/fixtures/operations/features/lint-suppression.yaml',
 } as const;
 
 /**

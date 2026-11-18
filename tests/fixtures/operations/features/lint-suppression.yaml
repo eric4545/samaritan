@@ -1,0 +1,54 @@
+# Positions and `# samaritan-lint-disable…` comments (samaritan lint).
+# Every step runs `exit`, which shell/exit-verbs reports unless a comment
+# above or beside it suppresses it.
+name: lint-suppression
+version: 1.0.0
+description: Suppression comments and line:col positions
+environments:
+  - name: staging
+    description: Staging
+steps:
+  # samaritan-lint-disable shell/exit-verbs
+  - name: First step, disabled from the comment above the first item
+    type: manual
+    command: exit 1
+  - name: Multi-line, reported on its own line
+    type: manual
+    command: |
+      echo start
+      exit 1
+  - name: Next-line comment above the key
+    type: manual
+    # samaritan-lint-disable-next-line shell/exit-verbs
+    command: exit 1
+  # samaritan-lint-disable shell/exit-verbs
+  - name: Whole step disabled, sub-steps included
+    type: manual
+    command: exit 1
+    sub_steps:
+      - name: Child of the disabled step
+        type: manual
+        command: exit 2
+  - name: Same-line comment
+    type: manual
+    command: exit 1 # samaritan-lint-disable-line shell/exit-verbs
+  - name: A comment inside a block scalar is shell, not a directive
+    type: manual
+    command: |
+      # samaritan-lint-disable-next-line shell/exit-verbs
+      exit 1
+  - name: Another rule's directive does not apply
+    type: manual
+    # samaritan-lint-disable-next-line aws/no-pager
+    command: exit 1
+  - name: Unknown rule in a directive
+    type: manual
+    # samaritan-lint-disable-next-line no/such-rule
+    command: echo ok
+  - uses: ./lint-suppression-steps.yaml
+  - name: Looped
+    type: manual
+    foreach:
+      var: CODE
+      values: ["3", "4"]
+    command: exit ${CODE}

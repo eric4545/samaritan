@@ -2,23 +2,29 @@
 
 `samaritan validate` answers **"can this operation run?"**: the schema, the
 variables, the step references. `samaritan lint` answers **"should it be
-written this way?"**. It checks each step's command against named rules, with a
-severity your team can change per rule.
+written this way?"**. It checks each operation against named rules, each with
+a severity your team can change and a tier that says how sure the rule is.
 
 ```bash
 samaritan lint ops/release.yaml               # one file
 samaritan lint ops/*.yaml --max-warnings 0    # CI: fail on any finding
+samaritan lint ops/release.yaml --strict      # the strict profile
 samaritan lint ops/release.yaml --format json # for tooling
-samaritan lint --list-rules                   # every rule, default severity, tier
+samaritan lint --list-rules                   # every rule, its levels and tier
 ```
 
 ```text
 ops/release.yaml
-  error    shell/exit-verbs    step "Clean up" (line 2): `exit` ends the operation shell; fail with a non-zero command (`false`) or move the logic into a `script:`
-  warning  git/protected-push  step "Push release": `git push` targets protected branch 'main'
+  19:7                  error    shell/exit-verbs    step "Clean up" (line 2): `exit` ends the operation shell; fail with a non-zero command (`false`) or move the logic into a `script:`
+  43:14                 warning  git/protected-push  step "Push release": `git push` targets protected branch 'main'
+  common/steps.yaml:6:5 error    aws/no-pager        step "Describe": `aws cloudformation describe-stacks` without `--no-cli-pager` opens a pager in the pane and waits for `q`
 
-✖ 2 problems (1 error, 1 warning)
+✖ 3 problems (2 errors, 1 warning)
 ```
+
+Each finding has a position: `line:column` in the operation file, or
+`file:line:column` when the step comes from a `uses:` file. A step expanded
+from `foreach` / `matrix` points at the entry you wrote.
 
 ## Exit codes
 
@@ -28,26 +34,25 @@ ops/release.yaml
 | `1` | At least one error-severity finding, or more warnings than `--max-warnings`. |
 | `2` | A file could not be linted: not found, does not parse, or its lint config is invalid. The other files are still linted and reported. |
 
-## What `validate` shows
-
-`validate` runs the same **command** rules and prints their findings as
-warnings, prefixed `lint [<rule id>]:`. They never fail `validate` and never
-change its exit code, even under `--strict`. Rules your config turns `off`
-stay off there too. A broken `lint:` section is reported as
-`lint config ignored: …` and the defaults are used.
-
-The other rules `samaritan lint` lists (`expect/*`, `deps/*`,
-`steps/duplicate-id`, …) are the checks `validate` already ran before
-`lint` existed. `lint` gives them a rule id and a severity; `validate`
-reports them exactly as before.
-
 ## What the rules look at
 
-Each rule reads the step's inline `command:` (forward steps, sub-steps, a
-step's `rollback`, and the operation's `rollback.steps`). A `script:` file runs
-in a child shell, so `exit` or `set -e` there is normal error handling: scripts
-go to shellcheck (`validate --lint`, or the `shell/shellcheck` rule), not to
-the command rules.
+There are three families of rules, plus the checks `validate` already did, now
+under rule ids. The full list, generated from the code, is on
+[Lint rules](/reference/lint-rules).
+
+| Family | Looks at | Examples |
+| --- | --- | --- |
+| The command itself | One step's `command`, parsed | `shell/exit-verbs`, `shell/errexit`, `tmux/kill-commands`, `git/protected-push`, `aws/no-pager`, `cmd/banned` |
+| Between steps | The steps in run order, per environment | `flow/forward-var`, `flow/unproduced-capture`, `flow/session-undeclared`, `flow/mutate-without-verify` |
+| `expect` vs the command | The check against the output the command declares | `expect/json-shape`, `expect/contains-vs-matches`, `expect/multiline-contains` |
+| Existing checks | What `validate` reported before `lint` existed | `expect/invalid-regex`, `deps/cycle`, `steps/duplicate-id`, `vars/undefined` |
+
+Rules read the steps, sub-steps, each step's `rollback` and the operation's
+`rollback.steps`. A `script:` file runs in a child shell, so `exit` or
+`set -e` there is normal error handling: scripts go to shellcheck
+(`validate --lint`, or the `shell/shellcheck` rule), not to the command rules.
+
+### How a command is read
 
 The command is parsed, not searched as text:
 
@@ -57,31 +62,90 @@ The command is parsed, not searched as text:
 - Leading `NAME=value` assignments, redirects (`2>&1`), and wrappers (`sudo`,
   `env`, `exec`, `timeout`, …) are separated from the command they apply to.
 - `--flag=value` is split, and for tools that allow it `-Av` means `-A -v`.
+  Global options are skipped with their values (`git -C dir push`).
 - Nothing is expanded: `$VAR`, `${VAR}` and `${VAR:?msg}` stay literal, so
   the result is the same on every machine and in every directory.
 
 Syntax the parser cannot analyse is reported as `analysis/unsupported`
 (heredoc, process substitution `<( )`, backticks, `case`, function
 definitions), never skipped silently. Lines after a heredoc's `<<` are not
-checked.
+checked. `echo git push origin HEAD:main` is an `echo`, not a push.
 
-`echo git push origin HEAD:main` is an `echo`, not a push: only the command a
-line actually runs is matched.
+### Between steps
+
+These rules walk the steps in the order a run takes them (a parent before its
+sub-steps) and, where it matters, once per environment, using `when:`:
+
+- `flow/forward-var`: a `${NAME}` used before the step whose `capture:` sets it.
+- `flow/unproduced-capture`: `expect.equals_captured` naming a capture no step
+  makes, or a capture whose only producer does not run in an environment where
+  the reader does (reported as "may not execute in 'production'").
+- `flow/capture-group-oob`: a `capture:` that can never set its variable
+  (`group: 2` on a pattern with one group, a pattern that does not compile).
+- `flow/session-undeclared`: a `session:` (after `${VAR}` resolution per
+  environment) that is not under `sessions:`.
+- `flow/mutate-without-verify` and `flow/no-rollback-on-mutate` (tier 3): a
+  step that changes state (`kubectl apply`, `aws … create-`, `git push`,
+  `systemctl restart`, …) with no check on it or the next step, or with no
+  rollback anywhere.
 
 ## Tiers: how sure a rule is
 
-Each rule has a tier. Config can change a rule's severity, never its tier.
+Config can change a rule's severity, never its tier.
 
 | Tier | Claim | Examples |
 | --- | --- | --- |
-| 1 | The shape is in the command, exactly. Whether that is a defect may be team policy. | `shell/exit-verbs`, `shell/errexit`, `tmux/kill-commands`, `cmd/banned` |
-| 2 | A reliable signal from an analysis with known gaps. | `var/colon-unresolved`, `analysis/unsupported`, `expect/token-from-command` |
-| 3 | A heuristic: the pattern is present. A review tripwire, not a verdict. | `git/protected-push` |
+| 1 | The shape is in the procedure, exactly. Whether that is a defect may be team policy. | `shell/exit-verbs`, `flow/capture-group-oob`, `cmd/banned` |
+| 2 | A reliable signal from an analysis with known gaps. | `var/colon-unresolved`, `analysis/unsupported`, `vars/undefined` |
+| 3 | A heuristic: the pattern is present. A review tripwire, not a verdict. | `git/protected-push`, `flow/mutate-without-verify`, `expect/json-shape` |
 
 A clean `lint` means no finding from the enabled rules. It does not mean the
 operation cannot fail.
 
-The full list, generated from the code, is on [Lint rules](/reference/lint-rules).
+## Suppressing a finding
+
+Put a comment above the field (or the step) in the YAML:
+
+```yaml
+steps:
+  - name: Fast-forward the release branch
+    type: manual
+    # samaritan-lint-disable-next-line git/protected-push -- approved release path
+    command: git push origin v1.4.0:refs/heads/release
+
+  # samaritan-lint-disable shell/exit-verbs
+  - name: Legacy cleanup            # the whole step, its sub-steps included
+    type: manual
+    command: exit 0
+
+  - name: One line
+    type: manual
+    command: aws s3 ls # samaritan-lint-disable-line aws/no-pager
+```
+
+| Comment | Applies to |
+| --- | --- |
+| `# samaritan-lint-disable-next-line <rule> …` | The next line: put it above the field's key (`command:`, `expect:`, …). |
+| `# samaritan-lint-disable <rule> …` | The YAML block below it: above a step's `-`, that step with its sub-steps and rollback. At the top of the file, the whole file. |
+| `# samaritan-lint-disable-line <rule> …` | Its own line (a comment at the end of the line). |
+
+- Several rules: separate them with spaces or commas. No rule: every rule.
+- Text after `--` is a reason for reviewers and is ignored.
+- A `#` line inside a `command: |` block is shell, not a directive: put the
+  comment above `command:`.
+- A comment in a `uses:` file applies to findings in that file.
+- A directive naming a rule that does not exist is reported as
+  `lint/invalid-directive`.
+
+`validate` honours the same comments.
+
+## What `validate` shows
+
+`validate` runs every enabled rule that it did not already have, and prints
+the findings as warnings, prefixed `lint [<rule id>] (line:col):`. They never
+fail `validate` and never change its exit code, even under `--strict`. Rules
+your config turns `off` stay off there too. A broken `lint:` section is
+reported as `lint config ignored: …` and the defaults are used.
 
 ## Team config: `samaritan.config.yaml`
 
@@ -91,11 +155,13 @@ instead. Only the `lint:` section matters here:
 
 ```yaml
 lint:
+  extends: [samaritan:recommended, ./presets/ops-team.yaml]
+
   rules:                         # off | warning | error, per rule id
     git/protected-push: error
     analysis/unsupported: off
 
-  protected_branches: [main, release]   # for git/protected-push (default: main, master)
+  protected_branches: [main, release]   # git/protected-push (default: main, master)
 
   banned:                        # → cmd/banned
     - pattern: 'git add -A'
@@ -107,11 +173,38 @@ lint:
     - pattern: 'kubectl *'
       flags: ['--context']
       message: name the cluster explicitly
+
+  identities: [alice, bob]       # style/hardcoded-identity
+  known_binaries: [web-ctl]      # cmd/unknown-binary
+  aws_sessions: [ops]            # flow/aws-local-session
+  aws_create_allowlist: [create-topic]   # aws/cli-create-managed
 ```
 
-An unknown key, an unknown rule id, a severity other than `off` / `warning` /
-`error`, or a pattern that is not a single command is a config error (`lint`
-exits `2`).
+An unknown key, an unknown rule id or preset, a severity other than `off` /
+`warning` / `error`, an `extends` cycle, or a pattern that is not a single
+command is a config error (`lint` exits `2`).
+
+### Presets and `extends`
+
+`extends` applies presets in order, then the file's own keys. A preset is:
+
+| Preset | What it sets |
+| --- | --- |
+| `samaritan:recommended` | The defaults: what you get without `extends`. |
+| `samaritan:strict` | What `validate --strict` tightens, as severities (`deps/unknown-ref` → error, `style/hardcoded-env` on, …). `samaritan lint --strict` applies it before your config. |
+| `samaritan:all` | Every rule on, the opt-in ones included, at their preset level. |
+| `./path/to/preset.yaml` | A local file, relative to the file naming it: a `lint:` section (or the section itself), which may `extends` further. |
+
+`rules` merge (later wins), `banned` and `required` add up, and the other lists
+(`protected_branches`, `identities`, …) are replaced by the later one. Remote
+presets are not supported.
+
+Some rules are off until a preset or your config turns them on: team policy
+(`git/explicit-staging`, `git/no-verify`, `tmux/input-injection`,
+`aws/region-required`) and ordering heuristics (`flow/sts-before-mutate`,
+`flow/backup-before-delete`, `flow/checksum-before-exec`, …). `--list-rules`
+shows each rule's level by default, under `samaritan:strict` and under
+`samaritan:all`.
 
 ### How a pattern matches
 
@@ -134,20 +227,23 @@ It reads the destination of each refspec: `HEAD:main`, `+HEAD:main`,
 `HEAD:refs/heads/main`, `:main` (delete) and `--delete origin main` all target
 `main`. `--all` and `--mirror` push every branch, so they always fire. With a
 single word after `push` that word is the remote (`git push main` pushes to a
-remote named `main`). Global options are skipped with their values
-(`git -C main push origin feature` does not fire). It also looks one level
-inside `bash -c '…'`, `ssh host '…'` and `eval`.
+remote named `main`). It also looks one level inside `bash -c '…'`,
+`ssh host '…'` and `eval`.
 
 It does not resolve variables: `git push origin HEAD:${TARGET}` is not
 flagged.
 
-## Not implemented yet
+## Lint and mock runs in CI
 
-- `line:col` positions in findings, and `# samaritan-lint-disable` comments.
-  Until then, turn a rule `off` in the config.
-- Rules across steps (a variable used before the step that captures it, a
-  mutating step without verification) and rules comparing `expect` with the
-  command's output format.
-- Shared presets (`extends:`).
+Two offline gates, each proving something different:
 
-See the [ROADMAP](https://github.com/eric4545/samaritan/blob/main/ROADMAP.md).
+```bash
+samaritan lint ops/*.yaml
+samaritan run ops/release.yaml --env staging --mock --fail-on-skipped
+```
+
+`lint` checks how the procedure is written. A mock run replays each
+`expect` against recorded evidence; `--fail-on-skipped` makes a run that
+skipped a step, or checked nothing, fail. Passing both means no violation
+within those checks and those recordings, not that the operation cannot fail.
+See [Running an operation](/running#mock-run-mock-replay-expect-against-captured-evidence).

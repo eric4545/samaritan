@@ -78,3 +78,42 @@ describe('run --mock', () => {
     assert.notStrictEqual(result.status, 0);
   });
 });
+
+describe('run --mock --fail-on-skipped', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mock-cli-skip-'));
+  after(() => rmSync(dir, { recursive: true, force: true }));
+  const SKIPPING_OP = FAILING_OP.replace(
+    / {4}evidence:[\s\S]*$/,
+    '    evidence:\n      required: false\n',
+  );
+
+  it('passes for the bundled example: every expect is evaluated', () => {
+    const result = runCli([
+      'run',
+      'examples/mock-run-expect.yaml',
+      '--env',
+      'staging',
+      '--mock',
+      '--fail-on-skipped',
+    ]);
+    assert.strictEqual(result.status, 0, result.stdout + result.stderr);
+  });
+
+  it('exits 0 without the flag but 1 with it when nothing was evaluated', () => {
+    const file = join(dir, 'skip.yaml');
+    writeFileSync(file, SKIPPING_OP);
+    const plain = runCli(['run', file, '--env', 'staging', '--mock']);
+    assert.strictEqual(plain.status, 0, plain.stdout + plain.stderr);
+    assert.match(plain.stdout, /0 passed, 0 failed, 1 skipped/);
+    const gated = runCli([
+      'run',
+      file,
+      '--env',
+      'staging',
+      '--mock',
+      '--fail-on-skipped',
+    ]);
+    assert.strictEqual(gated.status, 1);
+    assert.match(gated.stdout, /--fail-on-skipped: no expect was evaluated/);
+  });
+});

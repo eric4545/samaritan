@@ -95,9 +95,12 @@ manual / automatic / hybrid), session persistence + `resume`/`sessions`,
 command, pane-state checked — `src/lib/pane-enter-guard.ts`), auto-capture on verify, retryable verification (`expect.retry`),
 multi-operator `--pic` focus + `report merge`, rollback (step + operation-level,
 full parity), postmortem / incident-report (RCA) documents, procedure lint
-(`samaritan lint`: rule registry `src/lib/lint/rules.ts`, own shell lexer
-`src/lib/lint/shell-lexer.ts`, `lint:` config in `samaritan.config.yaml`;
-command rules also feed `validate` as warnings only).
+(`samaritan lint`: rule registry `src/lib/lint/rules.ts` over command /
+flow / expect families, own shell lexer `src/lib/lint/shell-lexer.ts`,
+`lint:` config + `extends` presets in `samaritan.config.yaml`, `line:col`
+from per-step provenance `src/operations/step-source.ts`, suppression
+comments; new rules feed `validate` as warnings only), `run --mock
+--fail-on-skipped` (CI gate).
 CLI: `validate`, `lint`, `generate manual|docs|postmortem|schedule`, `postmortem`,
 `report`, `schema`, `diff`, `init`, `operation`, `run`, `resume`, `sessions`, `qrh`.
 Confluence/ADF are **formats** (`generate manual -f confluence|adf`), not a

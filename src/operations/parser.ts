@@ -30,6 +30,7 @@ import {
   validateOperationSchemaStrict,
 } from '../validation/schema-validator';
 import { EnvironmentLoader } from './environment-loader';
+import { copyStepSource, setStepSource } from './step-source';
 
 interface ImportContext {
   templateFiles: Set<string>; // Prevent circular uses: imports
@@ -37,6 +38,7 @@ interface ImportContext {
   commonVariables: Record<string, any>; // Globals available for foreach/matrix value resolution
   groupNames: string[]; // Names declared in the top-level `groups:`
   group?: string; // Selected group: entries for other groups are dropped
+  sourceFile: string; // File whose steps are being resolved (see step-source.ts)
 }
 
 export interface ParseOptions {
@@ -417,7 +419,7 @@ function expandForeachItem<
       ),
     );
     const resolved = substituteVariables(injected, literalCombo) as T;
-    return {
+    const expanded = {
       ...resolved,
       id: item.id ? `${item.id}-${j}` : undefined,
       name: item.name ? `${item.name} (${varSuffix})` : varSuffix,
@@ -426,6 +428,8 @@ function expandForeachItem<
       // resolves to every expanded instance (Step-only structural field).
       foreachSource: { name: item.name, id: item.id },
     };
+    copyStepSource(item, expanded);
+    return expanded;
   });
 }
 
@@ -439,7 +443,11 @@ function expandForeachItem<
 async function parseTemplateContent(
   yamlContent: string,
   sourcePath: string,
-): Promise<{ steps: any[]; defaultVars: Record<string, any> }> {
+): Promise<{
+  steps: any[];
+  defaultVars: Record<string, any>;
+  stepsPath: string[];
+}> {
   let templateData: unknown;
   try {
     templateData = yaml.load(yamlContent);
@@ -451,7 +459,7 @@ async function parseTemplateContent(
 
   // Bare array format — no defaults available
   if (Array.isArray(templateData)) {
-    return { steps: templateData, defaultVars: {} };
+    return { steps: templateData, defaultVars: {}, stepsPath: [] };
   }
 
   // Operation format — extract steps and common_variables
@@ -464,6 +472,7 @@ async function parseTemplateContent(
       return {
         steps: templateObj.steps,
         defaultVars,
+        stepsPath: ['steps'],
       };
     }
   }
@@ -486,7 +495,11 @@ async function parseTemplateContent(
 async function loadTemplateSteps(
   templatePath: string,
   baseDirectory: string,
-): Promise<{ steps: any[]; defaultVars: Record<string, any> }> {
+): Promise<{
+  steps: any[];
+  defaultVars: Record<string, any>;
+  stepsPath: string[];
+}> {
   let templateContents: string;
   let resolvedKey: string; // stable key for circular detection
 
@@ -684,6 +697,7 @@ async function expandUsesEntry<T>(
   resolveNested: (
     substitutedSteps: any[],
     importContext: ImportContext,
+    basePath: (string | number)[],
   ) => Promise<T[]>,
 ): Promise<T[]> {
   try {
@@ -714,15 +728,18 @@ async function expandUsesEntry<T>(
     // inside the file resolve relative to its own location.
     // Remote files keep the parent baseDirectory.
     const prevBaseDir = importContext.baseDirectory;
+    const prevSourceFile = importContext.sourceFile;
     if (!isRemoteTemplate(templatePath)) {
       importContext.baseDirectory = resolve(resolvedKey, '..');
     }
     try {
       // Load template steps + default variable values
-      const { steps: templateSteps, defaultVars } = await loadTemplateSteps(
-        templatePath,
-        prevBaseDir,
-      );
+      const {
+        steps: templateSteps,
+        defaultVars,
+        stepsPath,
+      } = await loadTemplateSteps(templatePath, prevBaseDir);
+      importContext.sourceFile = resolvedKey;
 
       // Composition: template defaults are the base; with: overrides them.
       // Values may reference each other (`PORT: ${PORT_BASE}1`, a with: value
@@ -764,9 +781,10 @@ async function expandUsesEntry<T>(
       // pipeline — circular-detection guard above prevents infinite loops.
       // importContext.baseDirectory is now the file's own directory so any
       // relative paths inside it resolve correctly.
-      return await resolveNested(substitutedSteps, importContext);
+      return await resolveNested(substitutedSteps, importContext, stepsPath);
     } finally {
       importContext.baseDirectory = prevBaseDir;
+      importContext.sourceFile = prevSourceFile;
       importContext.templateFiles.delete(resolvedKey);
     }
   } catch (error) {
@@ -788,6 +806,7 @@ async function expandUsesEntry<T>(
 async function resolveStepReferences(
   steps: any[],
   importContext: ImportContext,
+  basePath: (string | number)[] = ['steps'],
 ): Promise<Step[]> {
   const resolvedSteps: Step[] = [];
 
@@ -828,7 +847,8 @@ async function resolveStepReferences(
         stepData,
         `steps[${i}]`,
         importContext,
-        (substitutedSteps, ctx) => resolveStepReferences(substitutedSteps, ctx),
+        (substitutedSteps, ctx, path) =>
+          resolveStepReferences(substitutedSteps, ctx, path),
       );
 
       // Tag every expanded step with one group id for this `uses:` block so
@@ -849,7 +869,14 @@ async function resolveStepReferences(
     } else {
       // This is a regular step definition
       try {
-        const step = await parseStep(stepData, i, importContext);
+        const step = await parseStep(stepData, i, importContext, [
+          ...basePath,
+          i,
+        ]);
+        setStepSource(step, {
+          file: importContext.sourceFile,
+          path: [...basePath, i],
+        });
 
         // Set default phase if not specified
         if (!step.phase) {
@@ -922,6 +949,20 @@ function normalizeRollbackStep(r: any): RollbackStep {
   };
 }
 
+/** Stamp a normalized rollback step and its sub-steps with their YAML paths. */
+function stampRollbackSources(
+  step: RollbackStep,
+  source: { file: string; path: (string | number)[] },
+): void {
+  setStepSource(step, source);
+  step.sub_steps?.forEach((sub, k) => {
+    stampRollbackSources(sub, {
+      file: source.file,
+      path: [...source.path, 'sub_steps', k],
+    });
+  });
+}
+
 // Expand `foreach`/`matrix` on a list of already-normalized rollback steps,
 // recursing into `sub_steps` — the SAME expansion a normal step gets, via the
 // shared `expandForeachItem`. Runs after normalization so every rollback step
@@ -939,6 +980,7 @@ function expandRollbackForeach(
           sub_steps: expandRollbackForeach(step.sub_steps, contextVars),
         }
       : step;
+    copyStepSource(step, withExpandedSubs);
     expanded.push(
       ...expandForeachItem(
         withExpandedSubs,
@@ -969,6 +1011,9 @@ async function resolveRollbackReferences(
   rollbackData: any[],
   importContext: ImportContext,
   contextVars: Record<string, any>,
+  basePath: (string | number)[] = ['rollback', 'steps'],
+  /** The YAML held one rollback object, not a list: no index in its path. */
+  single = false,
 ): Promise<RollbackStep[]> {
   const resolved: RollbackStep[] = [];
   for (let i = 0; i < rollbackData.length; i++) {
@@ -1002,14 +1047,17 @@ async function resolveRollbackReferences(
         entry,
         `rollback.steps[${i}]`,
         importContext,
-        (substitutedSteps, ctx) =>
-          resolveRollbackReferences(substitutedSteps, ctx, contextVars),
+        (substitutedSteps, ctx, path) =>
+          resolveRollbackReferences(substitutedSteps, ctx, contextVars, path),
       );
       resolved.push(...imported);
     } else {
-      resolved.push(
-        ...expandRollbackForeach([normalizeRollbackStep(entry)], contextVars),
-      );
+      const normalized = normalizeRollbackStep(entry);
+      stampRollbackSources(normalized, {
+        file: importContext.sourceFile,
+        path: single ? basePath : [...basePath, i],
+      });
+      resolved.push(...expandRollbackForeach([normalized], contextVars));
     }
   }
   return resolved;
@@ -1038,6 +1086,7 @@ async function parseStep(
   stepData: any,
   _stepIndex: number,
   importContext?: ImportContext,
+  path: (string | number)[] = [],
 ): Promise<Step> {
   assertNoDeprecatedEvidenceFields(stepData, stepData?.name);
   if (Array.isArray(stepData?.rollback)) {
@@ -1053,7 +1102,11 @@ async function parseStep(
   if (stepData.sub_steps && Array.isArray(stepData.sub_steps)) {
     // If we have an import context, use resolveStepReferences to handle use:/template: directives
     if (importContext) {
-      subSteps = await resolveStepReferences(stepData.sub_steps, importContext);
+      subSteps = await resolveStepReferences(
+        stepData.sub_steps,
+        importContext,
+        [...path, 'sub_steps'],
+      );
     } else {
       // Fallback for cases without import context (shouldn't happen in normal flow)
       subSteps = await Promise.all(
@@ -1095,6 +1148,8 @@ async function parseStep(
           rollbackArray,
           importContext,
           contextVars,
+          [...path, 'rollback'],
+          !Array.isArray(stepData.rollback),
         )
       : expandRollbackForeach(
           rollbackArray.map(normalizeRollbackStep),
@@ -1483,6 +1538,7 @@ export async function parseOperation(
     commonVariables,
     groupNames,
     group: selectedGroup?.name,
+    sourceFile: resolve(filePath),
   };
 
   const steps: Step[] = [];

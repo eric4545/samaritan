@@ -19,6 +19,8 @@ export interface CommandOption {
 export interface NormalizedCommand {
   /** Basename of the program run, after wrappers (`sudo`, `env`, …). */
   executable: string;
+  /** The program as written (`./deploy.sh`, `/usr/bin/git`). */
+  program: string;
   /** Wrappers in front of it, e.g. `['sudo']`, `['exec']`. */
   wrappers: string[];
   assignments: Assignment[];
@@ -28,6 +30,8 @@ export interface NormalizedCommand {
   redirects: Redirect[];
   context: CommandContext;
   line: number;
+  /** Operator before this command (`&&`, `||`, `|`, `;`, …; '' at the start). */
+  prefix: string;
 }
 
 interface BinarySpec {
@@ -160,6 +164,54 @@ const SPECS: Record<string, BinarySpec> = {
     combineShort: true,
   },
   rm: { combineShort: true },
+  curl: {
+    combineShort: true,
+    valueOptions: [
+      '-o',
+      '-X',
+      '-H',
+      '-d',
+      '-u',
+      '-A',
+      '-e',
+      '-w',
+      '-m',
+      '-T',
+      '-F',
+      '-b',
+      '-c',
+      '-x',
+      '-K',
+      '-E',
+      '-r',
+      '-C',
+      '-y',
+      '-Y',
+      '-z',
+      '--output',
+      '--request',
+      '--header',
+      '--data',
+      '--data-raw',
+      '--data-binary',
+      '--user',
+      '--user-agent',
+      '--write-out',
+      '--max-time',
+      '--connect-timeout',
+      '--retry',
+      '--upload-file',
+      '--form',
+      '--cookie',
+      '--proxy',
+      '--cacert',
+      '--cert',
+      '--key',
+    ],
+  },
+  wget: { valueOptions: ['-O', '-o', '-P', '--output-document'] },
+  sed: { valueOptions: ['-e', '-f'], attachedValueOnly: ['-i'] },
+  chmod: {},
 };
 SPECS.mariadb = SPECS.mysql;
 SPECS.mysqldump = SPECS.mysql;
@@ -319,6 +371,7 @@ export function normalizeCommand(cmd: SimpleCommand): NormalizedCommand {
   );
   return {
     executable,
+    program: argv[0] ?? '',
     wrappers,
     assignments: [...cmd.assignments, ...assignments],
     options,
@@ -326,6 +379,7 @@ export function normalizeCommand(cmd: SimpleCommand): NormalizedCommand {
     redirects: cmd.redirects,
     context: cmd.context,
     line: cmd.line,
+    prefix: cmd.prefix,
   };
 }
 

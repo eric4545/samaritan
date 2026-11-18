@@ -77,7 +77,8 @@ describe('samaritan lint: exit-code contract', () => {
   });
 
   it('warnings alone exit 0, unless --max-warnings is exceeded', () => {
-    const file = operation('git push origin HEAD:main');
+    // One warning only (analysis/unsupported), and no state change.
+    const file = operation('echo `date`');
     assert.strictEqual(runCli(['lint', file]).status, 0);
     assert.strictEqual(runCli(['lint', file, '--max-warnings', '1']).status, 0);
     const r = runCli(['lint', file, '--max-warnings', '0']);
@@ -156,6 +157,12 @@ describe('samaritan lint: config, format, rules', () => {
       'severity',
       'tier',
       'message',
+      'location',
+    ]);
+    assert.deepStrictEqual(Object.keys(file.findings[0].location), [
+      'file',
+      'line',
+      'column',
     ]);
   });
 
@@ -177,6 +184,44 @@ describe('samaritan lint: config, format, rules', () => {
     assert.strictEqual(r.status, 0);
     for (const rule of RULES)
       assert.ok(r.stdout.includes(`\`${rule.id}\``), rule.id);
+  });
+});
+
+describe('samaritan lint --strict and locations', () => {
+  it('--strict turns a needs on an unknown step into an error', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-lint-cli-'));
+    const file = join(dir, 'op.yaml');
+    writeFileSync(
+      file,
+      `name: strict
+version: 1.0.0
+description: mock
+environments:
+  - name: staging
+    description: Staging
+steps:
+  - name: Step
+    type: manual
+    instruction: check
+    needs: [nope]
+`,
+    );
+    assert.strictEqual(runCli(['lint', file]).status, 0);
+    const r = runCli(['lint', file, '--strict']);
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout, /error +deps\/unknown-ref/);
+  });
+
+  it('prints line:col and the uses: file for findings there', () => {
+    const r = runCli([
+      'lint',
+      'tests/fixtures/operations/features/lint-suppression.yaml',
+    ]);
+    assert.match(r.stdout, /^ {2}19:7 +error +shell\/exit-verbs/m);
+    assert.match(
+      r.stdout,
+      /lint-suppression-steps\.yaml:6:5 +error +shell\/exit-verbs/,
+    );
   });
 });
 

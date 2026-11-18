@@ -301,3 +301,53 @@ describe('runMockExpect: when-gate environment filtering', () => {
     );
   });
 });
+
+describe('runMockExpect: unreadable evidence and the evaluated count', () => {
+  it('skips a step whose evidence file cannot be read, naming the file', () => {
+    const op = makeOperation([
+      {
+        name: 'Missing file',
+        type: 'automatic',
+        expect: { contains: 'ok' },
+        evidence: {
+          results: {
+            staging: [
+              { type: 'command_output', content: 'ok' },
+              { type: 'log', file: './missing.log' },
+            ],
+          },
+        },
+      } as Step,
+    ]);
+    const result = runMockExpect(op, 'staging', tmpdir());
+    assert.strictEqual(result.results[0].status, 'skipped');
+    assert.match(
+      result.results[0].reason ?? '',
+      /not readable: \.\/missing\.log/,
+    );
+    assert.strictEqual(result.evaluated, 0);
+  });
+
+  it('counts evaluated steps (passed + failed)', () => {
+    const op = makeOperation([
+      {
+        name: 'Checked',
+        type: 'automatic',
+        expect: { contains: 'ok' },
+        evidence: {
+          results: { staging: [{ type: 'command_output', content: 'ok' }] },
+        },
+      } as Step,
+      {
+        name: 'No evidence',
+        type: 'automatic',
+        expect: { contains: 'ok' },
+      } as Step,
+    ]);
+    const result = runMockExpect(op, 'staging', tmpdir());
+    assert.deepStrictEqual(
+      [result.passed, result.failed, result.skipped, result.evaluated],
+      [1, 0, 1, 1],
+    );
+  });
+});

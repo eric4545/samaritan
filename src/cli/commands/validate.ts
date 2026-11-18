@@ -19,7 +19,7 @@ import {
   loadLintConfig,
 } from '../../lib/lint/config';
 import { lintOperation } from '../../lib/lint/engine';
-import { RULE_IDS } from '../../lib/lint/rules';
+import { LINT_REGISTRY } from '../../lib/lint/rules';
 import { formatRegexFinding, lintOperationRegex } from '../../lib/regex-lint';
 import {
   formatFinding,
@@ -54,7 +54,7 @@ interface ValidationOptions {
   quiet?: boolean;
 }
 
-class OperationValidator {
+export class OperationValidator {
   async validateFile(
     filePath: string,
     options: ValidationOptions = {},
@@ -549,7 +549,7 @@ class OperationValidator {
     // `off` stay off; a broken config is reported and the defaults are used.
     let config = defaultLintConfig();
     try {
-      config = loadLintConfig(filePath, RULE_IDS);
+      config = loadLintConfig(filePath, LINT_REGISTRY);
     } catch (error) {
       if (!(error instanceof LintConfigError)) throw error;
       result.warnings.push(`lint config ignored: ${error.message}`);
@@ -559,7 +559,11 @@ class OperationValidator {
       config,
       scope: 'validate',
     })) {
-      result.warnings.push(`lint [${finding.ruleId}]: ${finding.message}`);
+      const at =
+        finding.location && finding.location.file === filePath
+          ? ` (${finding.location.line}:${finding.location.column})`
+          : '';
+      result.warnings.push(`lint [${finding.ruleId}]${at}: ${finding.message}`);
     }
   }
 

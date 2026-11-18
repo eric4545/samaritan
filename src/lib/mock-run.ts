@@ -31,6 +31,8 @@ export interface MockRunResult {
   passed: number;
   failed: number;
   skipped: number;
+  /** Steps whose expect was actually checked (passed + failed). */
+  evaluated: number;
 }
 
 /**
@@ -45,10 +47,24 @@ export function sampleOutputForEnv(
   environmentName: string,
   operationDir: string,
 ): string | undefined {
+  return readSample(step, environmentName, operationDir).output;
+}
+
+/**
+ * The replayable output plus the evidence files that could not be read. An
+ * unreadable file makes the sample incomplete, so the mock run reports the
+ * step as skipped (naming the file) instead of checking a partial output.
+ */
+export function readSample(
+  step: Step,
+  environmentName: string,
+  operationDir: string,
+): { output?: string; unreadable: string[] } {
   const results = step.evidence?.results?.[environmentName];
-  if (!results || results.length === 0) return undefined;
+  if (!results || results.length === 0) return { unreadable: [] };
 
   const parts: string[] = [];
+  const unreadable: string[] = [];
   for (const r of results) {
     if (r.type !== 'command_output' && r.type !== 'log') continue;
     if (typeof r.content === 'string') {
@@ -57,11 +73,14 @@ export function sampleOutputForEnv(
       try {
         parts.push(readFileSync(resolve(operationDir, r.file), 'utf-8'));
       } catch {
-        // Unreadable evidence file — skip it; other parts may still apply.
+        unreadable.push(r.file);
       }
     }
   }
-  return parts.length > 0 ? parts.join('\n') : undefined;
+  return {
+    output: parts.length > 0 ? parts.join('\n') : undefined,
+    unreadable,
+  };
 }
 
 /**
@@ -94,8 +113,19 @@ export function runMockExpect(
     for (const step of steps) {
       if (!shouldRenderStepForEnvironment(step, environmentName)) continue;
       if (step.expect !== undefined) {
-        const sample = sampleOutputForEnv(step, environmentName, operationDir);
-        if (sample === undefined) {
+        const { output: sample, unreadable } = readSample(
+          step,
+          environmentName,
+          operationDir,
+        );
+        if (unreadable.length > 0) {
+          results.push({
+            stepName: step.name,
+            status: 'skipped',
+            reason: `evidence file not readable: ${unreadable.join(', ')}`,
+            expect: step.expect,
+          });
+        } else if (sample === undefined) {
           results.push({
             stepName: step.name,
             status: 'skipped',
@@ -131,5 +161,6 @@ export function runMockExpect(
     passed: results.filter((r) => r.status === 'pass').length,
     failed: results.filter((r) => r.status === 'fail').length,
     skipped: results.filter((r) => r.status === 'skipped').length,
+    evaluated: results.filter((r) => r.status !== 'skipped').length,
   };
 }

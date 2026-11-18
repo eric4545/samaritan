@@ -38,32 +38,48 @@ directory or example ships with this repo today.
 ## Key flags
 
 ### lint
-- `samaritan lint <file...>` — named rules over each step's inline `command`
-  (steps, sub-steps, rollbacks), plus the existing checks under rule ids
-  (`expect/*`, `deps/*`, `steps/duplicate-id`, `compat/discarded-verify`,
-  `evidence/results`, `shell/shellcheck` off by default). Exit `0` = no
-  error-severity findings (warnings allowed), `1` = errors or more warnings
-  than `--max-warnings <n>`, `2` = a file or its config could not be read.
-- `--format json` (stable: `files[].findings[] = {ruleId, severity, tier,
-  message}`), `--list-rules` (Markdown table of the registry).
+- `samaritan lint <file...>` — named rules (registry `src/lib/lint/rules.ts`;
+  `--list-rules` prints it with default / `samaritan:strict` / `samaritan:all`
+  levels and tier). Families: the command itself (`shell/*`, `tmux/*`, `git/*`,
+  `aws/*`, `kubectl/delete-ns`, `curl/require-fail`, `ssh/one-shot`,
+  `var/colon-unresolved`, `cmd/*`, `analysis/unsupported`), between steps
+  (`flow/*`: forward-var, unproduced-capture (per env, "may not execute"),
+  capture-group-oob, session-undeclared, mutate-without-verify,
+  no-rollback-on-mutate, + opt-in ordering heuristics), expect vs command
+  (`expect/contains-vs-matches`, `json-shape`, `multiline-contains`), and the
+  existing validate checks under ids (`expect/*`, `deps/*`,
+  `steps/duplicate-id`, `vars/*`, `evidence/*`, `rollback/empty`, `style/*`,
+  `compat/discarded-verify`, `shell/shellcheck`).
+- Exit `0` = no error-severity findings, `1` = errors or more warnings than
+  `--max-warnings <n>`, `2` = a file or its config could not be read.
+  `--format json` (stable: `files[].findings[] = {ruleId, severity, tier,
+  message, location: {file, line, column} | null}`), `--strict` (applies the
+  `samaritan:strict` profile under the config).
+- Findings carry `line:col` (from per-step provenance the parser stamps:
+  `src/operations/step-source.ts`); steps from `uses:` files point into that
+  file, `foreach` copies at the authored entry.
+- Suppression comments: `# samaritan-lint-disable-next-line <rule…>` above
+  the field key, `# samaritan-lint-disable <rule…>` above a step (step +
+  sub-steps; top of file = whole file), `# samaritan-lint-disable-line <rule…>`
+  trailing. `-- reason` ignored; no rule = all; a `#` line inside a block
+  scalar is shell, not a directive; unknown rule → `lint/invalid-directive`.
 - Config: `lint:` in the nearest `samaritan.config.yaml` above the file, or the
-  global `--config <path>` when given: `rules` (`off|warning|error` per id),
-  `banned` (`{pattern, message}`), `required` (`{pattern, flags, message}`),
-  `protected_branches` (default main, master). Unknown keys / rule ids → exit 2.
+  global `--config <path>` when given: `extends` (`samaritan:recommended|strict|all`
+  or a local file, relative), `rules` (`off|warning|error`), `banned`
+  (`{pattern, message}`), `required` (`{pattern, flags, message}`),
+  `protected_branches`, `identities`, `known_binaries`, `aws_sessions`,
+  `aws_create_allowlist`. Unknown keys / rule ids / presets, extends cycles →
+  exit 2.
 - Patterns are parsed like commands: same program, every option anywhere
   (combined short flags expand, `--x=v` splits), assignments by name
   (`AWS_PAGER=`), other words as an ordered prefix; `*` = one whole word.
-- Command rules: `shell/exit-verbs`, `shell/errexit`,
-  `shell/password-on-cmdline`, `tmux/kill-commands`, `git/protected-push`
-  (tier 3), `aws/no-pager`, `var/colon-unresolved`, `cmd/banned`,
-  `cmd/required-flag`, `analysis/unsupported` (heredoc, `<( )`, backticks,
-  `case`, functions — reported, never skipped). `script:` files are not
-  command-linted (child shell). No `line:col` or disable comments yet.
+- `script:` files are not command-linted (child shell; shellcheck covers them).
 
 ### validate
-- Also prints the command rules' findings as warnings
-  (`lint [<rule id>]: …`); they never fail validate or change its exit code,
-  even under `--strict`. A rule set `off` in the config stays off.
+- Also prints the lint rules it did not already have as warnings
+  (`lint [<rule id>] (line:col): …`); they never fail validate or change its
+  exit code, even under `--strict`. A rule set `off` in the config, and a
+  suppression comment, apply here too.
 - `--lint` — run shellcheck over `command`/`script` of every step, sub-step,
   step `rollback` and operation `rollback.steps` (warnings by default).
 - `--strict` — promote lint warnings and schema warnings to errors.
@@ -120,7 +136,10 @@ directory or example ships with this repo today.
   `step.expect`.
 - Other modes: `manual`, `automatic` (tmux-backed send/verify), `hybrid`.
 - `--mock` — replay each step's `expect` against `evidence.results[<env>]` output;
-  prints PASS/FAIL/SKIP, exits non-zero on failure. No tmux/execution.
+  prints PASS/FAIL/SKIP, exits non-zero on failure. No tmux/execution. An
+  unreadable evidence `file` skips the step (reason names the file).
+  `--fail-on-skipped` (CI gate) also exits 1 when any step was skipped or
+  nothing was evaluated.
 - Spawned `sessions:` (no `--attach`): one tmux session `samaritan-<id>`, one window per entry named after it; a step's `session:` picks the pane for `[p]`/`[y]`/`[v]`. Panes are addressed by tmux pane id (works with `base-index 1`). The view hint is `tmux attach -t …` outside tmux and, inside tmux, `tmux split-window -h "TMUX= tmux attach -t …"` or `tmux switch-client -t …` (`attachHintLines`)
 - `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning. It wins over `sessions:`: named sessions are not spawned and every step (whatever its `session:`) captures from / pastes into this one pane; `[t]` switches the pane mid-run; `resume` re-attaches it the same way. One samaritan run per pane: tmux allows one `pipe-pane`, so a second run on the same pane takes it over (warned); the first run detects that at its next step/`[v]`, re-attaches, and verifies from the pane scrollback (from the `[p]` paste line when there was one).
 - `--from-step <step>` — start at that step: its number in the manual (`2.7`; also the multi-env manual's `2g`) or its name, NOT the flat position (`--from-step 2` is Step 2 even when it is the 32nd step); earlier steps are recorded as **skipped**

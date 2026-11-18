@@ -1,0 +1,154 @@
+{
+  "examples/builtin-variables.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/complex-deployment.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/confirm-out-of-band.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment-with-anchors.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment-with-array-expect.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment-with-env-ref.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment-with-groups.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment-with-imports.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment-with-needs.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment-with-overview.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment-with-run.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment-with-scripts.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment-with-templates.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/deployment.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/evidence-required-step.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/expect-retry.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/foreach-variable-values.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/global-rollback-aggregated.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/lint/release.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/mock-run-expect.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/multi-env-deployment.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/multi-operator.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/multi-region-deployment.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/nested-deployment.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/progressive-rollout.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/reusable-steps-guide.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/reuse-envs-a.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/reuse-envs-b.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/rollback-with-foreach.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/rollback-with-substeps.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/rollback-with-uses.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/scoped-preflight.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/sessions-with-vars.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/sidecar-deployment.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/sidecar-long-running.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/sidecar-poll-status.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/top-level-variables.yaml": {
+    "valid": true,
+    "errors": 0
+  },
+  "examples/uses-with-shell-guards.yaml": {
+    "valid": true,
+    "errors": 0
+  }
+}

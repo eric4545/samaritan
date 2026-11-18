@@ -190,6 +190,7 @@ interface RunOptions {
   autoApprove?: boolean;
   dryRun?: boolean;
   mock?: boolean;
+  failOnSkipped?: boolean;
   mode?: ExecutionMode;
   attach?: string;
   variables?: string[];
@@ -364,6 +365,19 @@ class OperationRunner {
     this.printMockReport(result);
 
     if (result.failed > 0) {
+      process.exit(1);
+    }
+    // A mock run that checked nothing proves nothing: with --fail-on-skipped
+    // (the CI gate) a skipped step or an empty run fails.
+    if (
+      options.failOnSkipped &&
+      (result.skipped > 0 || result.evaluated === 0)
+    ) {
+      console.log(
+        result.evaluated === 0
+          ? '❌ --fail-on-skipped: no expect was evaluated'
+          : `❌ --fail-on-skipped: ${result.skipped} step(s) skipped`,
+      );
       process.exit(1);
     }
   }
@@ -4177,6 +4191,10 @@ const runCommand = new Command('run')
   .option(
     '--mock',
     'Replay each step expect against its evidence.results output (no tmux); non-zero exit on failure',
+  )
+  .option(
+    '--fail-on-skipped',
+    'With --mock: exit 1 when a step with an expect was skipped (no or unreadable evidence) or nothing was evaluated',
   )
   .option(
     '-m, --mode <mode>',

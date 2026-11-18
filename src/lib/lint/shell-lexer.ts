@@ -37,6 +37,8 @@ export interface SimpleCommand {
   context: CommandContext;
   /** 1-based line of the command's first word within the command text. */
   line: number;
+  /** Operator before this command: `&&`, `||`, `|`, `;`, `&`, newline, `(`, or '' at the start. */
+  prefix: string;
 }
 
 export interface ParsedShell {
@@ -354,6 +356,14 @@ export function parseShell(
   let words: { value: string; line: number }[] = [];
   let redirects: Redirect[] = [];
   let pendingRedir: string | undefined;
+  let lastOp = '';
+  /** Close the current command, then remember the operator that ended it. */
+  const closeWith = (op: string) => {
+    const hadContent = words.length > 0 || redirects.length > 0;
+    close();
+    // `a &&⏎ b`: a newline right after && / || / | keeps the chain.
+    if (hadContent || !['&&', '||', '|'].includes(lastOp)) lastOp = op;
+  };
 
   const close = () => {
     const current = contexts[contexts.length - 1];
@@ -381,7 +391,14 @@ export function parseShell(
         });
         argv = argv.slice(1);
       }
-      commands.push({ argv, assignments, redirects, context: current, line });
+      commands.push({
+        argv,
+        assignments,
+        redirects,
+        context: current,
+        line,
+        prefix: lastOp,
+      });
     }
     words = [];
     redirects = [];
@@ -414,16 +431,16 @@ export function parseShell(
         t++;
         continue;
       }
-      close();
+      closeWith('(');
       contexts.push('subshell');
       continue;
     }
     if (token.value === ')') {
-      close();
+      closeWith(')');
       if (contexts.length > 1) contexts.pop();
       continue;
     }
-    close();
+    closeWith(token.value);
   }
   if (pendingRedir !== undefined) {
     redirects.push({ op: pendingRedir, target: '' });

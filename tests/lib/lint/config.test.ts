@@ -8,7 +8,7 @@ import {
   LintConfigError,
   loadLintConfig,
 } from '../../../src/lib/lint/config';
-import { RULE_IDS } from '../../../src/lib/lint/rules';
+import { LINT_REGISTRY as RULE_IDS } from '../../../src/lib/lint/rules';
 
 function tree(config?: string): { root: string; op: string } {
   const root = mkdtempSync(join(tmpdir(), 'samaritan-lint-config-'));
@@ -71,7 +71,12 @@ describe('lint config', () => {
       'lint:\n  rules:\n    shell/exit-verbs: warn\n',
       /lint\.rules\.shell\/exit-verbs/,
     ],
-    ['lint:\n  extends: [team]\n', /additional properties 'extends'/],
+    ['lint:\n  presets: [team]\n', /additional properties 'presets'/],
+    ['lint:\n  extends: [samaritan:nope]\n', /unknown preset 'samaritan:nope'/],
+    [
+      'lint:\n  extends: [./missing.yaml]\n',
+      /file not found: \.\/missing\.yaml/,
+    ],
     ['lint:\n  banned:\n    - pattern: "a && b"\n', /one simple command/],
     [
       'lint:\n  required:\n    - pattern: aws\n      flags: [region]\n',
@@ -101,5 +106,79 @@ describe('lint config', () => {
       () => loadLintConfig(op, RULE_IDS, join(root, 'missing.yaml')),
       LintConfigError,
     );
+  });
+});
+
+describe('lint config: extends and profiles', () => {
+  it('applies built-in presets, then the file’s own rules', () => {
+    const { op } = tree(`lint:
+  extends: [samaritan:all]
+  rules:
+    git/no-verify: warning
+`);
+    const config = loadLintConfig(op, RULE_IDS);
+    assert.strictEqual(config.rules['cmd/unknown-binary'], 'warning');
+    assert.strictEqual(config.rules['git/explicit-staging'], 'error');
+    assert.strictEqual(config.rules['git/no-verify'], 'warning');
+  });
+
+  it('reads a local preset relative to the config, merging lists', () => {
+    const { root, op } = tree(`lint:
+  extends: [./presets/team.yaml]
+  banned:
+    - pattern: 'git add -A'
+  protected_branches: [release]
+`);
+    mkdirSync(join(root, 'presets'));
+    writeFileSync(
+      join(root, 'presets', 'team.yaml'),
+      `lint:
+  rules:
+    aws/region-required: error
+  banned:
+    - pattern: 'tmux send-keys *'
+  protected_branches: [main]
+`,
+    );
+    const config = loadLintConfig(op, RULE_IDS);
+    assert.strictEqual(config.rules['aws/region-required'], 'error');
+    assert.deepStrictEqual(
+      config.banned.map((b) => b.pattern),
+      ['tmux send-keys *', 'git add -A'],
+    );
+    assert.deepStrictEqual(config.protected_branches, ['release']);
+  });
+
+  it('accepts a preset file that is a bare lint section', () => {
+    const { root, op } = tree('lint:\n  extends: [./bare.yaml]\n');
+    writeFileSync(join(root, 'bare.yaml'), 'rules:\n  ssh/one-shot: error\n');
+    assert.strictEqual(
+      loadLintConfig(op, RULE_IDS).rules['ssh/one-shot'],
+      'error',
+    );
+  });
+
+  it('rejects an extends cycle', () => {
+    const { root, op } = tree('lint:\n  extends: [./a.yaml]\n');
+    writeFileSync(join(root, 'a.yaml'), 'lint:\n  extends: [./b.yaml]\n');
+    writeFileSync(join(root, 'b.yaml'), 'lint:\n  extends: [./a.yaml]\n');
+    assert.throws(
+      () => loadLintConfig(op, RULE_IDS),
+      (e: unknown) =>
+        e instanceof LintConfigError && /cycle through/.test(e.message),
+    );
+  });
+
+  it('applies a profile (lint --strict) under the file, with or without one', () => {
+    const none = loadLintConfig(tree().op, RULE_IDS, undefined, [
+      'samaritan:strict',
+    ]);
+    assert.strictEqual(none.rules['deps/unknown-ref'], 'error');
+    assert.strictEqual(none.rules['style/hardcoded-env'], 'warning');
+    const { op } = tree('lint:\n  rules:\n    deps/unknown-ref: warning\n');
+    const config = loadLintConfig(op, RULE_IDS, undefined, [
+      'samaritan:strict',
+    ]);
+    assert.strictEqual(config.rules['deps/unknown-ref'], 'warning');
   });
 });

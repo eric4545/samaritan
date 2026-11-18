@@ -1,25 +1,46 @@
+import { dirname, join, relative, resolve } from 'node:path';
 import type { Operation, Step } from '../../models/operation';
+import { getStepSource } from '../../operations/step-source';
 import { BUILTIN_VARIABLE_NAMES } from '../builtin-variables';
-import { stepDisplayName, walkOperationSteps } from '../step-walk';
+import { stepDisplayName } from '../step-walk';
 import { parseCommands } from './command-model';
 import type { LintConfig, RuleSetting } from './config';
-import { type CommandRule, RULES, type Rule, type Tier } from './rules';
+import type {
+  AnyStep,
+  CommandRuleContext,
+  OperationRuleContext,
+  Rule,
+  RuleHit,
+  Severity,
+  StepInfo,
+  Tier,
+} from './rule-types';
+import { INVALID_DIRECTIVE_RULE, RULE_IDS, RULES } from './rules';
+import { SourceIndex, type SourceLocation, suppresses } from './source-index';
 
-export type Severity = 'error' | 'warning';
+export type { Severity };
+
+export interface LintLocation {
+  /** The operation file as given, or another file (a `uses:` file) relative to it. */
+  file: string;
+  line: number;
+  column: number;
+}
 
 export interface LintFinding {
   ruleId: string;
   severity: Severity;
   tier: Tier;
   message: string;
+  location: LintLocation | null;
 }
 
 export interface LintOptions {
   operationFile: string;
   config: LintConfig;
   /**
-   * Which rules run: `all` for `samaritan lint`; `validate` for only the
-   * command rules `validate` does not already report another way.
+   * `all` for `samaritan lint`; `validate` for the rules `validate` prints as
+   * warnings (the ones it does not already report another way).
    */
   scope?: 'all' | 'validate';
 }
@@ -28,25 +49,91 @@ export function ruleSetting(rule: Rule, config: LintConfig): RuleSetting {
   return config.rules[rule.id] ?? rule.defaultSeverity;
 }
 
+const LEGACY_BUILTINS = ['DATE', 'TIME', 'USER', 'environment'];
+
 /** Names SAMARITAN substitutes as `${NAME}` anywhere in the operation. */
 function operationVariableNames(operation: Operation): Set<string> {
-  const names = new Set<string>(BUILTIN_VARIABLE_NAMES);
-  for (const vars of Object.values(operation.variables ?? {})) {
+  const names = new Set<string>([
+    ...BUILTIN_VARIABLE_NAMES,
+    ...LEGACY_BUILTINS,
+  ]);
+  const add = (vars: Record<string, unknown> | undefined) => {
     for (const name of Object.keys(vars ?? {})) names.add(name);
-  }
-  for (const name of Object.keys(operation.common_variables ?? {})) {
-    names.add(name);
-  }
-  for (const env of operation.environments ?? []) {
-    for (const name of Object.keys(env.variables ?? {})) names.add(name);
-  }
+  };
+  for (const vars of Object.values(operation.variables ?? {})) add(vars);
+  add(operation.common_variables);
+  for (const env of operation.environments ?? []) add(env.variables);
+  for (const group of operation.groups ?? []) add(group.variables);
   return names;
 }
 
+/** Forward steps in run order, then every rollback, with parsed commands. */
+function buildStepInfos(operation: Operation): {
+  forward: StepInfo[];
+  all: StepInfo[];
+  declared: Set<string>;
+} {
+  const declared = operationVariableNames(operation);
+  const forward: StepInfo[] = [];
+  const rollbacks: StepInfo[] = [];
+
+  const make = (
+    step: AnyStep,
+    ancestors: AnyStep[],
+    rollback: boolean,
+    order: number,
+    owner?: Step,
+  ): StepInfo => {
+    const text = step.command ?? '';
+    const parsed = text
+      ? parseCommands(text)
+      : { commands: [], unsupported: [] as string[] };
+    const scoped = new Set(declared);
+    for (const s of [...ancestors, ...(owner ? [owner] : []), step]) {
+      for (const name of Object.keys((s as Step).variables ?? {})) {
+        scoped.add(name);
+      }
+    }
+    return {
+      step,
+      stepName: stepDisplayName(step),
+      text,
+      commands: parsed.commands,
+      unsupported: parsed.unsupported,
+      declaredVariables: scoped,
+      rollback,
+      order,
+      owner,
+      ancestors,
+    };
+  };
+
+  const visitRollback = (
+    steps: AnyStep[] | undefined,
+    ancestors: AnyStep[],
+    owner?: Step,
+  ) => {
+    for (const step of steps ?? []) {
+      rollbacks.push(make(step, ancestors, true, -1, owner));
+      visitRollback(step.sub_steps, [...ancestors, step], owner);
+    }
+  };
+  const visit = (steps: Step[] | undefined, ancestors: Step[]) => {
+    for (const step of steps ?? []) {
+      forward.push(make(step, ancestors, false, forward.length));
+      visit(step.sub_steps, [...ancestors, step]);
+      visitRollback(step.rollback, [], step);
+    }
+  };
+  visit(operation.steps, []);
+  visitRollback(operation.rollback?.steps, []);
+  return { forward, all: [...forward, ...rollbacks], declared };
+}
+
 /**
- * Run the enabled rules over an operation. Pure apart from reading the
- * operation file for `compat/discarded-verify` and evidence paths: no host
- * environment, no working directory.
+ * Run the enabled rules over an operation, locate each finding in its source
+ * file, and drop the ones a `# samaritan-lint-disable…` comment covers.
+ * Deterministic: no host environment, no working directory, no network.
  */
 export function lintOperation(
   operation: Operation,
@@ -58,54 +145,127 @@ export function lintOperation(
       ruleSetting(rule, options.config) !== 'off' &&
       (scope === 'all' || rule.inValidate === 'warning'),
   );
-  const findings: LintFinding[] = [];
-  const push = (rule: Rule, message: string) => {
-    const severity = ruleSetting(rule, options.config) as Severity;
-    const duplicate = findings.some(
-      (f) => f.ruleId === rule.id && f.message === message,
-    );
-    if (!duplicate) {
-      findings.push({ ruleId: rule.id, severity, tier: rule.tier, message });
+  const { forward, all, declared } = buildStepInfos(operation);
+  const environments = (operation.environments ?? []).map((e) => e.name);
+  const opFile = resolve(options.operationFile);
+  const index = new SourceIndex();
+
+  const hits: { rule: Rule; hit: RuleHit }[] = [];
+  const opCtx: OperationRuleContext = {
+    operation,
+    operationFile: options.operationFile,
+    config: options.config,
+    forward,
+    all,
+    environments,
+    declaredVariables: declared,
+  };
+  for (const rule of enabled) {
+    if (rule.kind === 'command') {
+      for (const info of all) {
+        if (!info.text) continue;
+        const ctx: CommandRuleContext = { ...info, config: options.config };
+        for (const hit of rule.check(ctx)) hits.push({ rule, hit });
+      }
+    } else {
+      for (const hit of rule.check(opCtx)) hits.push({ rule, hit });
     }
+  }
+
+  const displayFile = (file: string): string => {
+    if (file === opFile) return options.operationFile;
+    if (/^https?:\/\//.test(file)) return file;
+    return join(
+      dirname(options.operationFile),
+      relative(dirname(opFile), file),
+    );
   };
 
-  const commandRules = enabled.filter(
-    (r): r is CommandRule => r.kind === 'command',
-  );
-  if (commandRules.length > 0) {
-    const globalVars = operationVariableNames(operation);
-    for (const step of walkOperationSteps(operation)) {
-      if (!step.command) continue;
-      const { commands, unsupported } = parseCommands(step.command);
-      const declaredVariables = new Set([
-        ...globalVars,
-        ...Object.keys((step as Step).variables ?? {}),
-      ]);
-      const ctx = {
-        stepName: stepDisplayName(step),
-        text: step.command,
-        commands,
-        unsupported,
-        config: options.config,
-        declaredVariables,
-      };
-      for (const rule of commandRules) {
-        for (const hit of rule.check(ctx)) push(rule, hit.message);
+  const locate = (hit: RuleHit): SourceLocation | undefined => {
+    const source = hit.step ? getStepSource(hit.step) : undefined;
+    if (source) {
+      return index.locate(source.file, source.path, hit.field, hit.commandLine);
+    }
+    if (hit.path) return index.locate(opFile, hit.path);
+    return undefined;
+  };
+
+  const findings: (LintFinding & { order: number })[] = [];
+  const seen = new Set<string>();
+  hits.forEach(({ rule, hit }, order) => {
+    const where = locate(hit);
+    if (
+      where &&
+      index.directives(where.file).some((d) => suppresses(d, rule.id, where))
+    ) {
+      return;
+    }
+    const key = `${rule.id}\u0000${hit.message}\u0000${where?.file}:${where?.line}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    findings.push({
+      ruleId: rule.id,
+      severity: ruleSetting(rule, options.config) as Severity,
+      tier: rule.tier,
+      message: hit.message,
+      location: where
+        ? {
+            file: displayFile(where.file),
+            line: where.line,
+            column: where.column,
+          }
+        : null,
+      order,
+    });
+  });
+
+  // Directives naming rules that do not exist.
+  if (
+    (scope === 'all' || INVALID_DIRECTIVE_RULE.inValidate === 'warning') &&
+    ruleSetting(INVALID_DIRECTIVE_RULE, options.config) !== 'off'
+  ) {
+    const files = new Set([opFile]);
+    for (const info of all) {
+      const source = getStepSource(info.step);
+      if (source) files.add(source.file);
+    }
+    for (const file of files) {
+      for (const d of index.directives(file)) {
+        const unknown = d.rules.filter((id) => !RULE_IDS.has(id));
+        if (unknown.length === 0) continue;
+        findings.push({
+          ruleId: INVALID_DIRECTIVE_RULE.id,
+          severity: ruleSetting(
+            INVALID_DIRECTIVE_RULE,
+            options.config,
+          ) as Severity,
+          tier: INVALID_DIRECTIVE_RULE.tier,
+          message: `\`samaritan-lint-${d.kind}\` names unknown rule${unknown.length > 1 ? 's' : ''} ${unknown.map((u) => `'${u}'`).join(', ')}`,
+          location: {
+            file: displayFile(file),
+            line: d.line,
+            column: d.column,
+          },
+          order: hits.length,
+        });
       }
     }
   }
 
-  for (const rule of enabled) {
-    if (rule.kind !== 'operation') continue;
-    for (const hit of rule.check(operation, {
-      operationFile: options.operationFile,
-      config: options.config,
-    })) {
-      push(rule, hit.message);
-    }
-  }
-
-  return findings;
+  findings.sort((a, b) => {
+    const fa = a.location?.file ?? '￿';
+    const fb = b.location?.file ?? '￿';
+    const ownA = fa === options.operationFile ? 0 : 1;
+    const ownB = fb === options.operationFile ? 0 : 1;
+    return (
+      ownA - ownB ||
+      fa.localeCompare(fb) ||
+      (a.location?.line ?? 0) - (b.location?.line ?? 0) ||
+      (a.location?.column ?? 0) - (b.location?.column ?? 0) ||
+      a.order - b.order
+    );
+  });
+  return findings.map(({ order: _order, ...f }) => f);
 }
 
 export function countBySeverity(findings: LintFinding[]): {
@@ -116,4 +276,14 @@ export function countBySeverity(findings: LintFinding[]): {
     errors: findings.filter((f) => f.severity === 'error').length,
     warnings: findings.filter((f) => f.severity === 'warning').length,
   };
+}
+
+/** `12:7` for the operation file, `common/x.yaml:12:7` for another. */
+export function formatLocation(
+  location: LintLocation | null,
+  operationFile: string,
+): string {
+  if (!location) return '-';
+  const lc = `${location.line}:${location.column}`;
+  return location.file === operationFile ? lc : `${location.file}:${lc}`;
 }

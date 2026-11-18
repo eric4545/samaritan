@@ -5,10 +5,19 @@
 #
 #   samaritan lint examples/lint/release.yaml
 #   samaritan lint --list-rules        # every rule, default severity and tier
+#
+# Suppress one finding in an operation with a comment above the field:
+#   # samaritan-lint-disable-next-line git/protected-push
+#   command: git push origin HEAD:release
 
 lint:
+  # Presets apply first, in order: built-in (samaritan:recommended | strict |
+  # all) or a local file. This file's own keys apply last.
+  extends: [./presets/ops-team.yaml]
+
   # Severity per rule id: off | warning | error. Unlisted rules keep their
-  # default. A team can change the severity, never the rule's tier.
+  # default (or the preset's). A team can change the severity, never the
+  # rule's tier.
   rules:
     git/protected-push: error      # tier 3 heuristic, raised to a hard stop here
     analysis/unsupported: off      # this team accepts heredocs in commands

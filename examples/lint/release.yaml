@@ -28,6 +28,15 @@ steps:
       git tag -a v${VERSION} -m "web-server ${VERSION}"
       git push origin refs/tags/v${VERSION}
 
+  - name: Fast-forward the release branch
+    type: manual
+    instruction: Only after the release manager approved the tag.
+    # Pushing to `release` is this team's approved path; the reason after
+    # `--` is for reviewers and is ignored by lint.
+    # samaritan-lint-disable-next-line git/protected-push -- approved release path
+    command: git push origin v${VERSION}^{commit}:refs/heads/release
+    confirm: The release manager approved the push
+
   - name: Roll out
     type: manual
     command: kubectl --context ${CLUSTER} set image deployment/web-server web=example/web-server:${VERSION}

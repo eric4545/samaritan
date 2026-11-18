@@ -68,14 +68,16 @@ in this roadmap:
   operation/run back-references from a captured run record (`operation → run →
   postmortem`); `samaritan postmortem init` writes a blank template
 - ✅ Procedure lint (`samaritan lint`): named rules with a tier and a
-  severity, team config in the `lint:` section of `samaritan.config.yaml`
-  (`rules`, `banned`, `required`, `protected_branches`), exit codes 0/1/2,
-  `--max-warnings`, `--format json`. Command rules also show as warnings in
-  `validate`. See `docs/linting.md`.
-  - 🚧 Next: rules across steps (forward variable references, unproduced
-    captures, mutate without verify), `expect` vs the command's output format,
-    `line:col` positions + `# samaritan-lint-disable` comments, local presets
-    (`extends:`)
+  severity over three families (the command itself, between steps, `expect`
+  vs the command) plus the existing validate checks under rule ids; team
+  config in the `lint:` section of `samaritan.config.yaml` (`extends` presets:
+  built-in `samaritan:recommended|strict|all` and local files, `rules`,
+  `banned`, `required`, …); `line:col` positions (also inside `uses:` files);
+  `# samaritan-lint-disable…` comments; exit codes 0/1/2, `--max-warnings`,
+  `--strict`, `--format json`. New rules show as warnings in `validate`.
+  `run --mock --fail-on-skipped` is the second CI gate. See `docs/linting.md`.
+  - 🚧 Next: remote presets (pinned refs, offline reproducibility),
+    `--fix` per rule
 
 ---
 
