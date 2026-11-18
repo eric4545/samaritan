@@ -80,3 +80,12 @@ Do **not** paper over an infrastructure failure with `continue-on-error`. The Pa
 deploy failing with `404 ... Ensure GitHub Pages has been enabled` means the repository
 setting is missing (**Settings → Pages → Source: GitHub Actions**) — a real
 misconfiguration that must stay visible until someone fixes it.
+
+## Security audit gates production dependencies only
+
+The `security` job runs `npm audit --omit=dev` and `audit-ci --skip-dev`: it
+gates what `npm install samaritan` installs. devDependencies (the docs site's
+vitepress → vite → picomatch chain, test tooling) are not shipped, and an
+advisory there with no fixed release once blocked every merge, `main`
+included. Don't drop `--omit=dev` / `--skip-dev` to "be stricter"; bump or
+replace a vulnerable devDependency in its own PR instead.
