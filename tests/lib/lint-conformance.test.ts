@@ -3,15 +3,12 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import {
-  defaultLintConfig,
-  type LintConfig,
-} from '../../../src/lib/lint/config';
-import { lintOperation } from '../../../src/lib/lint/engine';
-import { BUILTIN_PRESETS, RULES } from '../../../src/lib/lint/rules';
-import { isShellcheckAvailable } from '../../../src/lib/shell-lint';
-import type { Operation } from '../../../src/models/operation';
-import { parseOperation } from '../../../src/operations/parser';
+import { defaultLintConfig, type LintConfig } from '../../src/lib/lint/config';
+import { lintOperation } from '../../src/lib/lint/engine';
+import { BUILTIN_PRESETS, RULES } from '../../src/lib/lint/rules';
+import { isShellcheckAvailable } from '../../src/lib/shell-lint';
+import type { Operation } from '../../src/models/operation';
+import { parseOperation } from '../../src/operations/parser';
 
 /** Every rule on, at its samaritan:all level. */
 const ALL: LintConfig = {

@@ -7,8 +7,8 @@ import {
   findConfigFile,
   LintConfigError,
   loadLintConfig,
-} from '../../../src/lib/lint/config';
-import { LINT_REGISTRY as RULE_IDS } from '../../../src/lib/lint/rules';
+} from '../../src/lib/lint/config';
+import { LINT_REGISTRY as RULE_IDS } from '../../src/lib/lint/rules';
 
 function tree(config?: string): { root: string; op: string } {
   const root = mkdtempSync(join(tmpdir(), 'samaritan-lint-config-'));

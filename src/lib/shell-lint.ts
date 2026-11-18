@@ -61,11 +61,40 @@ export function parseShellcheckJson(
   }));
 }
 
-function runShellcheck(script: string): string {
+/**
+ * shellcheck codes never reported for step commands (actionlint's list for
+ * masked placeholders). SC2050/SC2194/SC2157/SC2043: a masked `${VAR}` reads
+ * as a constant. SC2154: a step's command runs in the operation's persistent
+ * shell, so a variable set by an earlier step looks unassigned. SC1091:
+ * `source`d files are not on the linting machine.
+ */
+export const SHELLCHECK_EXCLUDED = [
+  'SC1091',
+  'SC2050',
+  'SC2194',
+  'SC2154',
+  'SC2157',
+  'SC2043',
+];
+
+/**
+ * Replace SAMARITAN `${NAME}` placeholders with underscores of the same
+ * length (columns stay put). SAMARITAN substitutes them before the command
+ * reaches the shell, so shellcheck must not see them as shell variables
+ * (`rm -rf ${DIR}` is not SC2086). Shell expansions such as `${X:?}`, `$X`
+ * and `${X%.txt}` are not placeholders and are kept.
+ */
+export function maskTemplateVars(command: string): string {
+  return command.replace(/\$\{\w+\}/g, (m) => '_'.repeat(m.length));
+}
+
+function runShellcheck(script: string, exclude: string[] = []): string {
   // `-s bash` so shell fragments without a shebang are still analyzed; `-`
   // reads the script from stdin. shellcheck exits non-zero when it finds
   // issues, but still writes the JSON report to stdout.
-  const res = spawnSync('shellcheck', ['-f', 'json', '-s', 'bash', '-'], {
+  const args = ['-f', 'json', '-s', 'bash'];
+  if (exclude.length > 0) args.push('-e', exclude.join(','));
+  const res = spawnSync('shellcheck', [...args, '-'], {
     input: script,
     encoding: 'utf8',
   });
@@ -81,7 +110,12 @@ export function lintScript(
   source: 'command' | 'script',
 ): ShellLintFinding[] {
   if (!script.trim()) return [];
-  return parseShellcheckJson(runShellcheck(script), stepName, source);
+  // Inline commands go through SAMARITAN substitution first: mask its
+  // placeholders and drop the codes they (and the shared shell) trigger.
+  // Script files run as they are.
+  const text = source === 'command' ? maskTemplateVars(script) : script;
+  const exclude = source === 'command' ? SHELLCHECK_EXCLUDED : [];
+  return parseShellcheckJson(runShellcheck(text, exclude), stepName, source);
 }
 
 /**

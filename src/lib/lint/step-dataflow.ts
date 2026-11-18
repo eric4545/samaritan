@@ -1,5 +1,4 @@
 import type { CaptureRule, Step } from '../../models/operation';
-import { shouldRenderStepForEnvironment } from '../step-resolution';
 import {
   awsOperation,
   baseName,
@@ -7,6 +6,8 @@ import {
   isBackup,
   isDataDeletion,
   isMutating,
+  mentionsAny,
+  resourceIds,
 } from './classify';
 import { hasOption, type NormalizedCommand } from './command-model';
 import {
@@ -14,23 +15,17 @@ import {
   commandHit,
   expectChecks,
   expectStrings,
+  fieldIn,
   type OperationRule,
   type OperationRuleContext,
   type RuleHit,
+  runsIn,
   type StepInfo,
   stepAt,
   templateRefs,
 } from './rule-types';
 
 // ── helpers ─────────────────────────────────────────────────────────────────
-
-/** Does this step (with its ancestors / owner) render in `env`? */
-function runsIn(info: StepInfo, env: string): boolean {
-  const chain = [...info.ancestors, ...(info.owner ? [info.owner] : [])];
-  return [...chain, info.step].every((s) =>
-    shouldRenderStepForEnvironment(s as Step, env),
-  );
-}
 
 /** Capture name → forward steps that capture it. */
 function producers(ctx: OperationRuleContext): Map<string, StepInfo[]> {
@@ -149,7 +144,14 @@ const unproducedCapture: OperationRule = {
         const from = byName.get(name);
         if (!from) continue;
         const missing = ctx.environments.filter(
-          (env) => runsIn(info, env) && !from.some((p) => runsIn(p, env)),
+          (env) =>
+            runsIn(info, env) &&
+            !from.some((p) => {
+              const capture = fieldIn(p, 'capture', env) as
+                | Record<string, unknown>
+                | undefined;
+              return capture !== undefined && name in capture;
+            }),
         );
         if (missing.length === 0) continue;
         hits.push(
@@ -238,11 +240,10 @@ const sessionUndeclared: OperationRule = {
     const declared = new Set(Object.keys(ctx.operation.sessions ?? {}));
     const hits: RuleHit[] = [];
     for (const info of ctx.all) {
-      const raw = info.step.session;
-      if (!raw) continue;
       const bad = new Map<string, string[]>();
       for (const env of ctx.environments) {
-        if (!runsIn(info, env)) continue;
+        const raw = fieldIn(info, 'session', env);
+        if (!raw) continue;
         const vars: Record<string, unknown> = {
           ...(ctx.operation.common_variables ?? {}),
           ...(ctx.operation.variables?.[env] ?? {}),
@@ -256,7 +257,7 @@ const sessionUndeclared: OperationRule = {
       }
       for (const [value, envs] of bad) {
         const where =
-          envs.length === ctx.environments.length
+          envs.length === ctx.environments.length && info.onlyEnv === undefined
             ? ''
             : ` in ${envs.map((e) => `'${e}'`).join(', ')}`;
         hits.push(
@@ -372,7 +373,22 @@ const stsBeforeMutate: OperationRule = {
         reported.has(info.step)
       )
         return;
-      const checks = all.slice(0, k).filter((e) => isStsCheck(e.cmd));
+      const session = info.step.session ?? '(default)';
+      const anywhere = all.slice(0, k).filter((e) => isStsCheck(e.cmd));
+      const checks = anywhere.filter(
+        (e) => (e.info.step.session ?? '(default)') === session,
+      );
+      if (anywhere.length > 0 && checks.length === 0) {
+        reported.add(info.step);
+        hits.push(
+          commandHit(
+            info,
+            cmd,
+            `the identity check in step "${anywhere[0].info.stepName}" ran in session \`${anywhere[0].info.step.session ?? '(default)'}\`, not \`${session}\` where this state-changing aws command runs`,
+          ),
+        );
+        return;
+      }
       if (checks.length === 0) {
         reported.add(info.step);
         hits.push(
@@ -423,8 +439,16 @@ const waitAfterAsync: OperationRule = {
         !CFN_ASYNC.has(awsOperation(cmd))
       )
         return;
+      const stack = resourceIds(cmd);
+      const sameStack = (c: NormalizedCommand) => {
+        const other = resourceIds(c);
+        return (
+          stack.length === 0 || other.length === 0 || mentionsAny(c, stack)
+        );
+      };
       for (const later of all.slice(k + 1)) {
         if (later.cmd.operands[0] !== 'cloudformation') continue;
+        if (!sameStack(later.cmd)) continue;
         const op = awsOperation(later.cmd);
         if (op === 'wait') return;
         if (CFN_READ.test(op)) {
@@ -457,12 +481,19 @@ const backupBeforeDelete: OperationRule = {
     const hits: RuleHit[] = [];
     all.forEach(({ info, cmd }, k) => {
       if (!isDataDeletion(cmd)) return;
-      if (all.slice(0, k).some((e) => isBackup(e.cmd))) return;
+      const ids = resourceIds(cmd);
+      const backups = all.slice(0, k).filter((e) => isBackup(e.cmd));
+      const forThis = backups.filter(
+        (e) => ids.length === 0 || mentionsAny(e.cmd, ids),
+      );
+      if (forThis.length > 0) return;
       hits.push(
         commandHit(
           info,
           cmd,
-          `\`${describeCommand(cmd)}\` deletes data with no earlier snapshot or backup step`,
+          backups.length > 0
+            ? `\`${describeCommand(cmd)}\` deletes ${ids.map((i) => `\`${i}\``).join(', ')}; the earlier backup in step "${backups[0].info.stepName}" names another resource`
+            : `\`${describeCommand(cmd)}\` deletes data with no earlier snapshot or backup step`,
         ),
       );
     });

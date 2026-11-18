@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { parseShell } from '../../../src/lib/lint/shell-lexer';
+import { parseShell } from '../../src/lib/lint/shell-lexer';
 
 const argvs = (text: string) => parseShell(text).commands.map((c) => c.argv);
 

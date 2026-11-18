@@ -4,7 +4,7 @@ import {
   compilePattern,
   matchesPattern,
   parseCommands,
-} from '../../../src/lib/lint/command-model';
+} from '../../src/lib/lint/command-model';
 
 const one = (text: string) => parseCommands(text).commands[0];
 

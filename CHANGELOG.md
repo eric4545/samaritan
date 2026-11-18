@@ -31,7 +31,8 @@ All notable changes to this project are documented here. This project follows
   `samaritan:strict`, `samaritan:all`, or a local file. The nearest file
   above the operation is used. See `docs/linting.md` and `examples/lint/`.
 - **`run --mock --fail-on-skipped`** fails a mock run that skipped a step or
-  evaluated nothing, so it can gate CI. An evidence `file` that cannot be read
+  evaluated nothing, so it can gate CI; `--min-evaluated <n>` fails below
+  `n` evaluated steps. An evidence `file` that cannot be read
   now skips the step (the reason names the file) instead of replaying the
   part that could be read.
 - **`validate` shows the new lint rules as warnings**
@@ -140,6 +141,13 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **`validate --lint` no longer reports SAMARITAN placeholders as shell
+  problems.** `rm -rf ${DIR}` got SC2086 although SAMARITAN replaces
+  `${DIR}` before the shell sees it, and a variable set by an earlier step got
+  SC2154. Placeholders are masked for shellcheck (inline commands only) and
+  those codes are skipped there; `$VAR` shell variables are still checked.
+- **`variants.<env>` commands and rollback lists are linted.** shellcheck,
+  regex-lint and evidence checks skipped them.
 - **`validate` reports duplicate step IDs.** The check counted IDs after
   putting them in a set, so it never fired: two steps with the same `id`
   passed, or showed up only as a misleading "cannot depend on itself" error.

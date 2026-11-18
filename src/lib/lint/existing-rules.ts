@@ -38,6 +38,7 @@ function only(ctx: OperationRuleContext, info: StepInfo): Operation {
     ...info.step,
     sub_steps: undefined,
     rollback: undefined,
+    variants: undefined,
   } as Step;
   return { ...ctx.operation, steps: [step], rollback: undefined };
 }
@@ -373,7 +374,7 @@ export const EXISTING_RULES: OperationRule[] = [
     'style/hardcoded-identity',
     3,
     'warning',
-    'An account id inside an ARN (`arn:…:123456789012:…`) or a name from `lint.identities` written literally in a command or instruction. A bare 12-digit number (an image tag) is not flagged.',
+    'An account id inside an ARN (`arn:…:123456789012:…`), a personal `admin.<name>` account, or a name from `lint.identities` written literally in a command or instruction. A bare 12-digit number (an image tag) is not flagged.',
     (ctx) => {
       const names = ctx.config.identities;
       const hits: RuleHit[] = [];
@@ -401,6 +402,19 @@ export const EXISTING_RULES: OperationRule[] = [
           if (who) {
             hits.push({
               message: `${stepAt(info)}: '${who}' (from lint.identities) is hardcoded in the ${field}`,
+              step: info.step,
+              field,
+            });
+          }
+          // A personal admin account (`admin.alice`, `admin.alice@example.com`).
+          // One label after `admin.` (not a dotted host like admin.example.com).
+          const admin =
+            /(^|[^A-Za-z0-9_./-])(admin\.[A-Za-z][\w-]*)(?=@|\s|$|["':])/.exec(
+              text,
+            );
+          if (admin) {
+            hits.push({
+              message: `${stepAt(info)}: personal admin account '${admin[2]}' is hardcoded in the ${field}; use a variable`,
               step: info.step,
               field,
             });

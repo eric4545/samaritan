@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { RULES, resolveTmuxCommand } from '../../../src/lib/lint/rules';
-import { ids, lintCommand } from './helpers';
+import { RULES, resolveTmuxCommand } from '../../src/lib/lint/rules';
+import { ids, lintCommand } from './lint-helpers';
 
 const PROTECTED = { protected_branches: ['staging', 'master'] };
 const fires = (rule: string, command: string, config = {}) =>

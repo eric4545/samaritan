@@ -1,6 +1,6 @@
 import { dirname, join, relative, resolve } from 'node:path';
 import type { Operation, Step } from '../../models/operation';
-import { getStepSource } from '../../operations/step-source';
+import { getStepSource, setStepSource } from '../../operations/step-source';
 import { BUILTIN_VARIABLE_NAMES } from '../builtin-variables';
 import { stepDisplayName } from '../step-walk';
 import { parseCommands } from './command-model';
@@ -112,22 +112,85 @@ function buildStepInfos(operation: Operation): {
     steps: AnyStep[] | undefined,
     ancestors: AnyStep[],
     owner?: Step,
+    onlyEnv?: string,
   ) => {
     for (const step of steps ?? []) {
-      rollbacks.push(make(step, ancestors, true, -1, owner));
-      visitRollback(step.sub_steps, [...ancestors, step], owner);
+      rollbacks.push({ ...make(step, ancestors, true, -1, owner), onlyEnv });
+      visitRollback(step.sub_steps, [...ancestors, step], owner, onlyEnv);
+    }
+  };
+  /** A variant's rollback list is raw YAML: give its entries their paths. */
+  const stampRaw = (
+    steps: AnyStep[] | undefined,
+    file: string,
+    path: (string | number)[],
+  ) => {
+    (steps ?? []).forEach((step, k) => {
+      if (!step || typeof step !== 'object') return;
+      setStepSource(step, { file, path: [...path, k] });
+      stampRaw(step.sub_steps, file, [...path, k, 'sub_steps']);
+    });
+  };
+  const variants: StepInfo[] = [];
+  /** One entry per `variants.<env>`: only the fields that variant sets. */
+  const visitVariants = (base: StepInfo, ancestors: AnyStep[]) => {
+    const step = base.step as Step;
+    for (const [env, variant] of Object.entries(step.variants ?? {})) {
+      const own = {
+        ...variant,
+        name: `${stepDisplayName(step)} [variants.${env}]`,
+        variables: { ...(step.variables ?? {}), ...(variant?.variables ?? {}) },
+        when: step.when,
+      } as Step;
+      const source = getStepSource(step);
+      if (source) {
+        setStepSource(own, {
+          file: source.file,
+          path: [...source.path, 'variants', env],
+        });
+      }
+      variants.push({
+        ...make(
+          { ...own, rollback: undefined },
+          ancestors,
+          base.rollback,
+          base.order,
+          base.owner,
+        ),
+        step: own,
+        onlyEnv: env,
+        base,
+      });
+      const variantRollback = Array.isArray(variant?.rollback)
+        ? (variant.rollback as AnyStep[])
+        : undefined;
+      if (source && variantRollback) {
+        stampRaw(variantRollback, source.file, [
+          ...source.path,
+          'variants',
+          env,
+          'rollback',
+        ]);
+      }
+      visitRollback(variantRollback, [], step, env);
     }
   };
   const visit = (steps: Step[] | undefined, ancestors: Step[]) => {
     for (const step of steps ?? []) {
-      forward.push(make(step, ancestors, false, forward.length));
+      const info = make(step, ancestors, false, forward.length);
+      forward.push(info);
+      visitVariants(info, ancestors);
       visit(step.sub_steps, [...ancestors, step]);
       visitRollback(step.rollback, [], step);
     }
   };
   visit(operation.steps, []);
   visitRollback(operation.rollback?.steps, []);
-  return { forward, all: [...forward, ...rollbacks], declared };
+  return {
+    forward,
+    all: [...forward, ...variants, ...rollbacks],
+    declared,
+  };
 }
 
 /**

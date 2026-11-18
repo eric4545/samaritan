@@ -9,6 +9,7 @@ import {
   parseDocument,
   visit,
 } from 'yaml';
+import { getCachedRemoteTemplate } from '../template-fetcher';
 
 /** A position in a source file, 1-based. */
 export interface SourceLocation {
@@ -71,8 +72,13 @@ export class SourceIndex {
   private load(file: string): SourceFile | null {
     if (this.files.has(file)) return this.files.get(file) ?? null;
     let loaded: SourceFile | null = null;
-    if (!/^https?:\/\//.test(file) && existsSync(file)) {
-      const text = readFileSync(file, 'utf8');
+    // A remote `uses:` file: the parser fetched it already; never fetch here.
+    const text = /^https?:\/\//.test(file)
+      ? getCachedRemoteTemplate(file)
+      : existsSync(file)
+        ? readFileSync(file, 'utf8')
+        : undefined;
+    if (text !== undefined) {
       const counter = new LineCounter();
       const doc = parseDocument(text, { lineCounter: counter });
       loaded = {

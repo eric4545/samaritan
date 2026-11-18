@@ -2,13 +2,10 @@ import assert from 'node:assert';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import {
-  defaultLintConfig,
-  type LintConfig,
-} from '../../../src/lib/lint/config';
-import { lintOperation } from '../../../src/lib/lint/engine';
-import { BUILTIN_PRESETS } from '../../../src/lib/lint/rules';
-import type { Operation } from '../../../src/models/operation';
+import { defaultLintConfig, type LintConfig } from '../../src/lib/lint/config';
+import { lintOperation } from '../../src/lib/lint/engine';
+import { BUILTIN_PRESETS } from '../../src/lib/lint/rules';
+import type { Operation } from '../../src/models/operation';
 
 const ALL: LintConfig = {
   ...defaultLintConfig(),

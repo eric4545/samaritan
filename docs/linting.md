@@ -23,7 +23,8 @@ ops/release.yaml
 ```
 
 Each finding has a position: `line:column` in the operation file, or
-`file:line:column` when the step comes from a `uses:` file. A step expanded
+`file:line:column` when the step comes from a `uses:` file (a remote one
+included: the copy the parser fetched is used, never fetched again). A step expanded
 from `foreach` / `matrix` points at the entry you wrote.
 
 ## Exit codes
@@ -33,6 +34,10 @@ from `foreach` / `matrix` points at the entry you wrote.
 | `0` | No error-severity findings. Warnings may be present. |
 | `1` | At least one error-severity finding, or more warnings than `--max-warnings`. |
 | `2` | A file could not be linted: not found, does not parse, or its lint config is invalid. The other files are still linted and reported. |
+
+`--format json` follows
+[`src/schemas/lint-report.schema.json`](https://github.com/eric4545/samaritan/blob/main/src/schemas/lint-report.schema.json):
+keys are added, never removed or renamed.
 
 ## What the rules look at
 
@@ -47,8 +52,9 @@ under rule ids. The full list, generated from the code, is on
 | `expect` vs the command | The check against the output the command declares | `expect/json-shape`, `expect/contains-vs-matches`, `expect/multiline-contains` |
 | Existing checks | What `validate` reported before `lint` existed | `expect/invalid-regex`, `deps/cycle`, `steps/duplicate-id`, `vars/undefined` |
 
-Rules read the steps, sub-steps, each step's `rollback` and the operation's
-`rollback.steps`. A `script:` file runs in a child shell, so `exit` or
+Rules read the steps, sub-steps, each step's `variants.<env>` (its command
+and its rollback list, reported as `<step> [variants.<env>]`), each step's
+`rollback` and the operation's `rollback.steps`. A `script:` file runs in a child shell, so `exit` or
 `set -e` there is normal error handling: scripts go to shellcheck
 (`validate --lint`, or the `shell/shellcheck` rule), not to the command rules.
 
@@ -88,6 +94,12 @@ sub-steps) and, where it matters, once per environment, using `when:`:
   step that changes state (`kubectl apply`, `aws … create-`, `git push`,
   `systemctl restart`, …) with no check on it or the next step, or with no
   rollback anywhere.
+
+The opt-in ordering rules match identifiers where the command writes them: a
+snapshot counts as the backup only for the resource it names
+(`--db-instance-identifier web-db`), a `wait` only for its `--stack-name`, an
+`aws sts get-caller-identity` only in the same `session:`. Where a command
+names no identifier, any matching step counts.
 
 ## Tiers: how sure a rule is
 
@@ -138,6 +150,17 @@ steps:
   `lint/invalid-directive`.
 
 `validate` honours the same comments.
+
+## shellcheck and SAMARITAN placeholders
+
+`validate --lint` (and the `shell/shellcheck` rule) run shellcheck on each
+inline command with SAMARITAN's `${NAME}` placeholders replaced by
+underscores of the same length: SAMARITAN substitutes them before the shell
+sees the command, so `rm -rf ${DIR}` is not an unquoted variable. Shell
+syntax (`$X`, `${X:?}`, `${X%.txt}`) is kept. For inline commands these
+codes are not reported: SC2154 (a variable set by an earlier step runs in the
+same shell), SC2050, SC2194, SC2157, SC2043 (a masked placeholder reads as a
+constant) and SC1091. `script:` files are checked as they are.
 
 ## What `validate` shows
 

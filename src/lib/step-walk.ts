@@ -2,10 +2,24 @@ import type { Operation, RollbackStep, Step } from '../models/operation';
 
 export type AnyStep = Step | RollbackStep;
 
-/** Every step under `steps`: each step, its sub-steps and its own rollback. */
+/**
+ * Every step under `steps`: each step, its `variants.<env>` (as a step named
+ * `<name> [variants.<env>]` holding only what the variant sets), its
+ * sub-steps and its own rollback.
+ */
 export function* walkSteps(steps: AnyStep[] | undefined): Generator<AnyStep> {
   for (const step of steps ?? []) {
     yield step;
+    for (const [env, variant] of Object.entries(
+      (step as Step).variants ?? {},
+    )) {
+      yield {
+        ...variant,
+        name: `${step.name || '(rollback)'} [variants.${env}]`,
+        rollback: undefined,
+      } as AnyStep;
+      yield* walkSteps(variant?.rollback as AnyStep[] | undefined);
+    }
     yield* walkSteps(step.sub_steps);
     yield* walkSteps((step as Step).rollback);
   }

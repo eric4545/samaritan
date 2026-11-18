@@ -248,3 +248,37 @@ export function describeCommand(cmd: NormalizedCommand): string {
     .filter((w) => !w.includes('$') && !w.includes('…'));
   return [cmd.executable, ...words].join(' ');
 }
+
+const ID_OPTION =
+  /^--(stack-name|[a-z-]*-ids?|[a-z-]*-identifier|[a-z-]*-name|[a-z-]*-arn|bucket|key)$/;
+
+/**
+ * Resource identifiers a command names, where they are written statically:
+ * `--stack-name web`, `--db-instance-identifier db`, `--volume-id vol-1`,
+ * `kubectl delete pvc data-web-0`. Placeholders (`${DB}`) count as written:
+ * two steps naming `${DB}` name the same resource.
+ */
+export function resourceIds(cmd: NormalizedCommand): string[] {
+  const ids = cmd.options
+    .filter((o) => ID_OPTION.test(o.name) && o.value)
+    .map((o) => o.value as string);
+  if (['kubectl', 'oc'].includes(cmd.executable)) {
+    const [, kind, name] = cmd.operands;
+    if (kind?.includes('/')) ids.push(kind.split('/')[1]);
+    else if (name) ids.push(name);
+  }
+  if (cmd.executable === 'aws' && cmd.operands[0] === 's3') {
+    ids.push(...cmd.operands.slice(2).filter((w) => w.startsWith('s3://')));
+  }
+  return ids;
+}
+
+/** Does `cmd` mention any of `ids` (as an option value or a word)? */
+export function mentionsAny(cmd: NormalizedCommand, ids: string[]): boolean {
+  const words = [
+    ...cmd.operands,
+    ...cmd.options.map((o) => o.value ?? ''),
+    ...cmd.redirects.map((r) => r.target),
+  ];
+  return ids.some((id) => words.some((w) => w === id || w.includes(id)));
+}

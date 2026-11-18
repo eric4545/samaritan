@@ -1,9 +1,6 @@
-import {
-  defaultLintConfig,
-  type LintConfig,
-} from '../../../src/lib/lint/config';
-import { type LintFinding, lintOperation } from '../../../src/lib/lint/engine';
-import type { Operation } from '../../../src/models/operation';
+import { defaultLintConfig, type LintConfig } from '../../src/lib/lint/config';
+import { type LintFinding, lintOperation } from '../../src/lib/lint/engine';
+import type { Operation } from '../../src/models/operation';
 
 /** Lint one inline `command` with every rule on (unless the config says off). */
 export function lintCommand(

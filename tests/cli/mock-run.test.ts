@@ -117,3 +117,19 @@ describe('run --mock --fail-on-skipped', () => {
     assert.match(gated.stdout, /--fail-on-skipped: no expect was evaluated/);
   });
 });
+
+describe('run --mock --min-evaluated', () => {
+  it('fails when fewer expects were evaluated than required', () => {
+    const base = [
+      'run',
+      'examples/mock-run-expect.yaml',
+      '--env',
+      'staging',
+      '--mock',
+    ];
+    assert.strictEqual(runCli([...base, '--min-evaluated', '2']).status, 0);
+    const r = runCli([...base, '--min-evaluated', '3']);
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout, /--min-evaluated 3: only 2 expect\(s\) evaluated/);
+  });
+});

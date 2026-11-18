@@ -1,9 +1,9 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { defaultLintConfig } from '../../../src/lib/lint/config';
-import { lintOperation } from '../../../src/lib/lint/engine';
-import { parseOperation } from '../../../src/operations/parser';
-import { getFixturePath } from '../../fixtures/fixtures';
+import { defaultLintConfig } from '../../src/lib/lint/config';
+import { lintOperation } from '../../src/lib/lint/engine';
+import { parseOperation } from '../../src/operations/parser';
+import { getFixturePath } from '../fixtures/fixtures';
 
 const FILE = getFixturePath('lintSuppression');
 const USES_FILE = FILE.replace(

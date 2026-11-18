@@ -346,6 +346,9 @@ samaritan run examples/mock-run-expect.yaml --env staging --mock
   samaritan run examples/mock-run-expect.yaml --env staging --mock --fail-on-skipped
   ```
 
+  `--min-evaluated <n>` fails the run when fewer than `n` steps had their
+  `expect` evaluated, for files where some skips are expected.
+
   A passing mock run means the recorded outputs still satisfy the `expect`
   rules. It does not run the commands. Pair it with `samaritan lint` (see
   [Linting](/linting)).

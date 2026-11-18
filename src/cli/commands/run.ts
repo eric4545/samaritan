@@ -191,6 +191,7 @@ interface RunOptions {
   dryRun?: boolean;
   mock?: boolean;
   failOnSkipped?: boolean;
+  minEvaluated?: string;
   mode?: ExecutionMode;
   attach?: string;
   variables?: string[];
@@ -366,6 +367,18 @@ class OperationRunner {
 
     if (result.failed > 0) {
       process.exit(1);
+    }
+    if (options.minEvaluated !== undefined) {
+      const min = Number(options.minEvaluated);
+      if (!Number.isInteger(min) || min < 0) {
+        throw new Error('--min-evaluated needs a whole number ≥ 0');
+      }
+      if (result.evaluated < min) {
+        console.log(
+          `❌ --min-evaluated ${min}: only ${result.evaluated} expect(s) evaluated`,
+        );
+        process.exit(1);
+      }
     }
     // A mock run that checked nothing proves nothing: with --fail-on-skipped
     // (the CI gate) a skipped step or an empty run fails.
@@ -4195,6 +4208,10 @@ const runCommand = new Command('run')
   .option(
     '--fail-on-skipped',
     'With --mock: exit 1 when a step with an expect was skipped (no or unreadable evidence) or nothing was evaluated',
+  )
+  .option(
+    '--min-evaluated <n>',
+    'With --mock: exit 1 when fewer than <n> steps had their expect evaluated',
   )
   .option(
     '-m, --mode <mode>',

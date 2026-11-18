@@ -73,7 +73,16 @@ directory or example ships with this repo today.
 - Patterns are parsed like commands: same program, every option anywhere
   (combined short flags expand, `--x=v` splits), assignments by name
   (`AWS_PAGER=`), other words as an ordered prefix; `*` = one whole word.
+- Walks steps, sub-steps, `variants.<env>` (command + rollback list, named
+  `<step> [variants.<env>]`), step `rollback`, `rollback.steps`.
+- Tier-3 ordering rules match identifiers where written: a backup counts for
+  the resource it names, a `wait` for its stack, an sts check in the same
+  session.
+- `--format json` follows `src/schemas/lint-report.schema.json`.
 - `script:` files are not command-linted (child shell; shellcheck covers them).
+  shellcheck (`validate --lint`, `shell/shellcheck`) sees SAMARITAN `${NAME}`
+  masked as `_` and skips SC1091/SC2050/SC2194/SC2154/SC2157/SC2043 on
+  inline commands.
 
 ### validate
 - Also prints the lint rules it did not already have as warnings
@@ -139,7 +148,7 @@ directory or example ships with this repo today.
   prints PASS/FAIL/SKIP, exits non-zero on failure. No tmux/execution. An
   unreadable evidence `file` skips the step (reason names the file).
   `--fail-on-skipped` (CI gate) also exits 1 when any step was skipped or
-  nothing was evaluated.
+  nothing was evaluated; `--min-evaluated <n>` exits 1 below `n` evaluated.
 - Spawned `sessions:` (no `--attach`): one tmux session `samaritan-<id>`, one window per entry named after it; a step's `session:` picks the pane for `[p]`/`[y]`/`[v]`. Panes are addressed by tmux pane id (works with `base-index 1`). The view hint is `tmux attach -t …` outside tmux and, inside tmux, `tmux split-window -h "TMUX= tmux attach -t …"` or `tmux switch-client -t …` (`attachHintLines`)
 - `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning. It wins over `sessions:`: named sessions are not spawned and every step (whatever its `session:`) captures from / pastes into this one pane; `[t]` switches the pane mid-run; `resume` re-attaches it the same way. One samaritan run per pane: tmux allows one `pipe-pane`, so a second run on the same pane takes it over (warned); the first run detects that at its next step/`[v]`, re-attaches, and verifies from the pane scrollback (from the `[p]` paste line when there was one).
 - `--from-step <step>` — start at that step: its number in the manual (`2.7`; also the multi-env manual's `2g`) or its name, NOT the flat position (`--from-step 2` is Step 2 even when it is the 32nd step); earlier steps are recorded as **skipped**

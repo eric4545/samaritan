@@ -43,6 +43,46 @@ export interface StepInfo {
   owner?: Step;
   /** Ancestors (outermost first) for sub-steps. */
   ancestors: AnyStep[];
+  /**
+   * A `variants.<env>` entry: `step` holds only what the variant sets (plus
+   * the name, `variables` and `when`), and it applies in `onlyEnv` alone.
+   */
+  onlyEnv?: string;
+  /** For a variant: the step it overrides. */
+  base?: StepInfo;
+}
+
+/** Does this step (with its ancestors / owner) run in `env`? */
+export function runsIn(info: StepInfo, env: string): boolean {
+  if (info.onlyEnv !== undefined && info.onlyEnv !== env) return false;
+  const chain = [
+    ...info.ancestors,
+    ...(info.owner ? [info.owner] : []),
+    ...(info.base ? [info.base.step] : [info.step]),
+  ];
+  return chain.every((s) => {
+    const when = (s as { when?: string[] }).when;
+    return !when || when.length === 0 || when.includes(env);
+  });
+}
+
+/**
+ * The value of `field` for this step in `env`: a base step's field does not
+ * apply in an environment whose variant sets the same field.
+ */
+export function fieldIn<K extends keyof AnyStep>(
+  info: StepInfo,
+  field: K,
+  env: string,
+): AnyStep[K] | undefined {
+  if (!runsIn(info, env)) return undefined;
+  if (info.onlyEnv === undefined) {
+    const variant = (
+      info.step as { variants?: Record<string, Record<string, unknown>> }
+    ).variants?.[env];
+    if (variant && variant[field as string] !== undefined) return undefined;
+  }
+  return info.step[field];
 }
 
 export interface CommandRuleContext extends StepInfo {
