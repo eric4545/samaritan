@@ -23,6 +23,10 @@ describe('git/protected-push: the FR conformance matrix', () => {
     "bash -c 'git push origin HEAD:master'",
     "ssh deploy@example.com 'git push origin HEAD:master'",
     'echo "$(git push origin HEAD:staging)"',
+    // A long flag must not take `origin` as its value.
+    'git push --force-with-lease origin master',
+    // A leading assignment is not the program.
+    'GIT_DIR=/x/.git git push origin master',
   ];
   const negative = [
     'echo git push origin HEAD:staging',

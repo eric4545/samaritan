@@ -225,9 +225,13 @@ presets are not supported.
 Some rules are off until a preset or your config turns them on: team policy
 (`git/explicit-staging`, `git/no-verify`, `tmux/input-injection`,
 `aws/region-required`) and ordering heuristics (`flow/sts-before-mutate`,
-`flow/backup-before-delete`, `flow/checksum-before-exec`, …). `--list-rules`
-shows each rule's level by default, under `samaritan:strict` and under
-`samaritan:all`.
+`flow/backup-before-delete`, `flow/checksum-before-exec`, …). They ship off
+on purpose: the defaults apply to every SAMARITAN user, team policy belongs
+to the team that sets it, and most of the ordering heuristics are tier 3,
+which would bury the exact findings under review tripwires. `extends:
+[samaritan:all]` turns them all on at their preset level; a team preset can
+pick some. `--list-rules` shows each rule's level by default, under
+`samaritan:strict` and under `samaritan:all`.
 
 ### How a pattern matches
 

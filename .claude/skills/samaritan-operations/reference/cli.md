@@ -79,6 +79,13 @@ directory or example ships with this repo today.
   the resource it names, a `wait` for its stack, an sts check in the same
   session.
 - `--format json` follows `src/schemas/lint-report.schema.json`.
+- Opt-in by design (default `off`, level from `samaritan:all` or a team
+  preset): team-policy rules (`git/explicit-staging`, `git/no-verify`,
+  `tmux/input-injection`, `aws/region-required`, `shell/env-echo`,
+  `ssh/one-shot`, `curl/require-fail`, …) and the tier-3 ordering
+  heuristics (`flow/sts-before-mutate`, `flow/backup-before-delete`, …).
+  `samaritan:recommended` = the defaults. The list is locked in
+  `tests/lib/lint-conformance.test.ts`.
 - `script:` files are not command-linted (child shell; shellcheck covers them).
   shellcheck (`validate --lint`, `shell/shellcheck`) sees SAMARITAN `${NAME}`
   masked as `_` and skips SC1091/SC2050/SC2194/SC2154/SC2157/SC2043 on

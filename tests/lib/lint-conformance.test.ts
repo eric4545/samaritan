@@ -289,3 +289,49 @@ describe('rule conformance: every registered rule has a sample that fires', () =
     }
   });
 });
+
+describe('opt-in rules (product decision: off by default, on through a preset)', () => {
+  // Appendix-B team-policy rules and tier-3 ordering heuristics ship off and
+  // take their level from `samaritan:all` (or a team preset). Promoting one
+  // to a default is a deliberate change: edit this list with it.
+  const OPT_IN: Record<string, 'error' | 'warning'> = {
+    'shell/env-echo': 'warning',
+    'shell/unguarded-rm-rf': 'warning',
+    'shell/crontab-mutation': 'warning',
+    'tmux/input-injection': 'error',
+    'ssh/one-shot': 'warning',
+    'curl/require-fail': 'warning',
+    'git/explicit-staging': 'error',
+    'git/no-verify': 'error',
+    'aws/region-required': 'error',
+    'cmd/unknown-binary': 'warning',
+    'style/full-width-space': 'warning',
+    'style/hardcoded-env': 'warning',
+    'shell/shellcheck': 'warning',
+    'flow/sts-before-mutate': 'warning',
+    'flow/wait-after-async': 'warning',
+    'flow/backup-before-delete': 'warning',
+    'flow/restore-after-sed': 'warning',
+    'flow/chmod-600-credentials': 'warning',
+    'flow/checksum-before-exec': 'warning',
+    'flow/cwd-lost': 'warning',
+    'flow/aws-local-session': 'warning',
+  };
+
+  it('ships exactly these rules off', () => {
+    const off = RULES.filter((r) => r.defaultSeverity === 'off').map(
+      (r) => r.id,
+    );
+    assert.deepStrictEqual(off.sort(), Object.keys(OPT_IN).sort());
+  });
+
+  it('samaritan:all turns each on at its preset severity', () => {
+    for (const [id, level] of Object.entries(OPT_IN)) {
+      assert.strictEqual(BUILTIN_PRESETS['samaritan:all'][id], level, id);
+    }
+  });
+
+  it('samaritan:recommended is the defaults', () => {
+    assert.deepStrictEqual(BUILTIN_PRESETS['samaritan:recommended'], {});
+  });
+});
