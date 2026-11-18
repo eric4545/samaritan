@@ -1,14 +1,5 @@
 import type { CaptureRule, Step } from '../../models/operation';
-import {
-  awsOperation,
-  baseName,
-  describeCommand,
-  isBackup,
-  isDataDeletion,
-  isMutating,
-  mentionsAny,
-  resourceIds,
-} from './classify';
+import { baseName, describeCommand, isBackup, mentionsAny } from './classify';
 import { hasOption, type NormalizedCommand } from './command-model';
 import {
   type AnyStep,
@@ -24,6 +15,7 @@ import {
   stepAt,
   templateRefs,
 } from './rule-types';
+import { awsOperation } from './tools/aws';
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -293,13 +285,13 @@ const mutateWithoutVerify: OperationRule = {
     const steps = ctx.forward.filter((f) => f.text || verifies(f));
     const hits: RuleHit[] = [];
     steps.forEach((info, k) => {
-      const mutation = info.commands.find(isMutating);
+      const mutation = info.commands.find((c) => ctx.tools.isMutating(c));
       if (!mutation || verifies(info) || verifies(steps[k + 1])) return;
       hits.push(
         commandHit(
           info,
           mutation,
-          `\`${describeCommand(mutation)}\` changes state, and neither this step nor the next checks the result (\`expect\`, \`confirm\`, required evidence)`,
+          `\`${describeCommand(mutation, ctx.tools)}\` changes state, and neither this step nor the next checks the result (\`expect\`, \`confirm\`, required evidence)`,
         ),
       );
     });
@@ -319,7 +311,7 @@ const noRollbackOnMutate: OperationRule = {
     if ((ctx.operation.rollback?.steps ?? []).length > 0) return [];
     const hits: RuleHit[] = [];
     for (const info of ctx.forward) {
-      const mutation = info.commands.find(isMutating);
+      const mutation = info.commands.find((c) => ctx.tools.isMutating(c));
       if (!mutation) continue;
       const covered = [...info.ancestors, info.step].some(
         (s) => ((s as Step).rollback ?? []).length > 0,
@@ -329,7 +321,7 @@ const noRollbackOnMutate: OperationRule = {
         commandHit(
           info,
           mutation,
-          `\`${describeCommand(mutation)}\` changes state and there is no rollback for it (step \`rollback:\` or an operation \`rollback:\` plan)`,
+          `\`${describeCommand(mutation, ctx.tools)}\` changes state and there is no rollback for it (step \`rollback:\` or an operation \`rollback:\` plan)`,
         ),
       );
     }
@@ -369,7 +361,7 @@ const stsBeforeMutate: OperationRule = {
     all.forEach(({ info, cmd }, k) => {
       if (
         cmd.executable !== 'aws' ||
-        !isMutating(cmd) ||
+        !ctx.tools.isMutating(cmd) ||
         reported.has(info.step)
       )
         return;
@@ -439,9 +431,9 @@ const waitAfterAsync: OperationRule = {
         !CFN_ASYNC.has(awsOperation(cmd))
       )
         return;
-      const stack = resourceIds(cmd);
+      const stack = ctx.tools.resourceIds(cmd);
       const sameStack = (c: NormalizedCommand) => {
-        const other = resourceIds(c);
+        const other = ctx.tools.resourceIds(c);
         return (
           stack.length === 0 || other.length === 0 || mentionsAny(c, stack)
         );
@@ -480,9 +472,9 @@ const backupBeforeDelete: OperationRule = {
     const all = forwardCommands(ctx);
     const hits: RuleHit[] = [];
     all.forEach(({ info, cmd }, k) => {
-      if (!isDataDeletion(cmd)) return;
-      const ids = resourceIds(cmd);
-      const backups = all.slice(0, k).filter((e) => isBackup(e.cmd));
+      if (!ctx.tools.isDataDeletion(cmd)) return;
+      const ids = ctx.tools.resourceIds(cmd);
+      const backups = all.slice(0, k).filter((e) => isBackup(e.cmd, ctx.tools));
       const forThis = backups.filter(
         (e) => ids.length === 0 || mentionsAny(e.cmd, ids),
       );
@@ -492,8 +484,8 @@ const backupBeforeDelete: OperationRule = {
           info,
           cmd,
           backups.length > 0
-            ? `\`${describeCommand(cmd)}\` deletes ${ids.map((i) => `\`${i}\``).join(', ')}; the earlier backup in step "${backups[0].info.stepName}" names another resource`
-            : `\`${describeCommand(cmd)}\` deletes data with no earlier snapshot or backup step`,
+            ? `\`${describeCommand(cmd, ctx.tools)}\` deletes ${ids.map((i) => `\`${i}\``).join(', ')}; the earlier backup in step "${backups[0].info.stepName}" names another resource`
+            : `\`${describeCommand(cmd, ctx.tools)}\` deletes data with no earlier snapshot or backup step`,
         ),
       );
     });

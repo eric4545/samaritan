@@ -89,6 +89,13 @@ directory or example ships with this repo today.
   heuristics (`flow/sts-before-mutate`, `flow/backup-before-delete`, …).
   `samaritan:recommended` = the defaults. The list is locked in
   `tests/lib/lint-conformance.test.ts`.
+- Tool profiles (`src/lib/lint/tools/`): per-program data (option spec,
+  `mutating` / `backup` / `deletes_data` verbs, `resource_options`,
+  `output_options`). Teams add/extend with `lint.tools` (`binaries`,
+  `value_options`, `verb_depth`, …); verbs: words vs operands, `*` in a word,
+  `a|b`, lone `*` = a word, `''` = any; or `{verb, option, matches,
+  any_operand, redirect}`. Same-program profiles merge (lists add). No JS
+  plugins (configs never run code).
 - `script:` files are not command-linted (child shell; shellcheck covers them).
   shellcheck (`validate --lint`, `shell/shellcheck`) sees SAMARITAN `${NAME}`
   masked as `_` and skips SC1091/SC2050/SC2194/SC2154/SC2157/SC2043 on

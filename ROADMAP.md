@@ -76,8 +76,11 @@ in this roadmap:
   `# samaritan-lint-disable…` comments; exit codes 0/1/2, `--max-warnings`,
   `--strict`, `--format json`. New rules show as warnings in `validate`.
   `run --mock --fail-on-skipped` is the second CI gate. See `docs/linting.md`.
+  - ✅ Tool profiles: per-program knowledge as data (`src/lib/lint/tools/`),
+    extended by a team's `lint.tools`.
   - 🚧 Next: remote presets (pinned refs, offline reproducibility),
-    `--fix` per rule
+    `--fix` per rule. JavaScript rule plugins are deliberately not planned
+    (configs must not run code).
 
 ---
 

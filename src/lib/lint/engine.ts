@@ -17,6 +17,7 @@ import type {
 } from './rule-types';
 import { INVALID_DIRECTIVE_RULE, RULE_IDS, RULES } from './rules';
 import { SourceIndex, type SourceLocation, suppresses } from './source-index';
+import { BUILTIN_TOOLS, type ToolRegistry } from './tools/registry';
 
 export type { Severity };
 
@@ -83,7 +84,10 @@ function operationVariableNames(operation: Operation): Set<string> {
 }
 
 /** Forward steps in run order, then every rollback, with parsed commands. */
-function buildStepInfos(operation: Operation): {
+function buildStepInfos(
+  operation: Operation,
+  tools: ToolRegistry,
+): {
   forward: StepInfo[];
   all: StepInfo[];
   declared: Set<string>;
@@ -101,7 +105,7 @@ function buildStepInfos(operation: Operation): {
   ): StepInfo => {
     const text = step.command ?? '';
     const parsed = text
-      ? parseCommands(text)
+      ? parseCommands(text, tools.specOf)
       : { commands: [], unsupported: [] as string[] };
     const scoped = new Set(declared);
     for (const s of [...ancestors, ...(owner ? [owner] : []), step]) {
@@ -223,7 +227,8 @@ export function lintOperation(
       ruleSetting(rule, options.config) !== 'off' &&
       (scope === 'all' || rule.inValidate === 'warning'),
   );
-  const { forward, all, declared } = buildStepInfos(operation);
+  const tools = BUILTIN_TOOLS.with(options.config.tools);
+  const { forward, all, declared } = buildStepInfos(operation, tools);
   const environments = (operation.environments ?? []).map((e) => e.name);
   const opFile = resolve(options.operationFile);
   const index = new SourceIndex();
@@ -237,13 +242,18 @@ export function lintOperation(
     all,
     environments,
     declaredVariables: declared,
+    tools,
   };
   for (const rule of enabled) {
     try {
       if (rule.kind === 'command') {
         for (const info of all) {
           if (!info.text) continue;
-          const ctx: CommandRuleContext = { ...info, config: options.config };
+          const ctx: CommandRuleContext = {
+            ...info,
+            config: options.config,
+            tools,
+          };
           for (const hit of rule.check(ctx)) hits.push({ rule, hit });
         }
       } else {

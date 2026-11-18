@@ -1,13 +1,10 @@
-import {
-  COMMAND_RULES,
-  protectedPushTargets,
-  resolveTmuxCommand,
-} from './command-lint';
+import { COMMAND_RULES, protectedPushTargets } from './command-lint';
 import type { RuleSetting } from './config';
 import { EXISTING_RULES } from './existing-rules';
 import { EXPECT_RULES } from './expect-consistency';
 import type { OperationRule, Rule } from './rule-types';
 import { FLOW_RULES } from './step-dataflow';
+import { resolveTmuxCommand } from './tools/tmux';
 
 export type {
   CommandRule,

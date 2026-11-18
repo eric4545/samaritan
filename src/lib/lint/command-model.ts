@@ -5,6 +5,8 @@ import {
   type Redirect,
   type SimpleCommand,
 } from './shell-lexer';
+import { BUILTIN_TOOLS } from './tools/registry';
+import type { BinarySpec } from './tools/types';
 
 /**
  * A simple command split into what lint rules and `banned:` / `required:`
@@ -33,192 +35,6 @@ export interface NormalizedCommand {
   /** Operator before this command (`&&`, `||`, `|`, `;`, …; '' at the start). */
   prefix: string;
 }
-
-interface BinarySpec {
-  /** Options that take the next word (or `=value`) as their value. */
-  valueOptions?: string[];
-  /** Every `--long` option takes a value unless listed in `booleanOptions`. */
-  longTakesValue?: boolean;
-  booleanOptions?: string[];
-  /** Short options whose value can only be attached (`-psecret`). */
-  attachedValueOnly?: string[];
-  /** `-abc` means `-a -b -c`. */
-  combineShort?: boolean;
-  /** Spec that applies after the first operand (the subcommand). */
-  subcommands?: Record<string, BinarySpec>;
-}
-
-const GIT_SUB_DEFAULT: BinarySpec = { combineShort: true };
-
-const SPECS: Record<string, BinarySpec> = {
-  git: {
-    valueOptions: [
-      '-C',
-      '-c',
-      '--git-dir',
-      '--work-tree',
-      '--namespace',
-      '--super-prefix',
-      '--config-env',
-    ],
-    subcommands: {
-      push: {
-        combineShort: true,
-        valueOptions: [
-          '-o',
-          '--push-option',
-          '--repo',
-          '--receive-pack',
-          '--exec',
-        ],
-      },
-      add: { combineShort: true, valueOptions: ['--chmod'] },
-      commit: {
-        combineShort: true,
-        valueOptions: [
-          '-m',
-          '-F',
-          '-c',
-          '-C',
-          '-t',
-          '--message',
-          '--file',
-          '--author',
-          '--date',
-        ],
-      },
-    },
-  },
-  tmux: {
-    valueOptions: ['-L', '-S', '-f', '-c', '-T'],
-    combineShort: true,
-  },
-  aws: {
-    longTakesValue: true,
-    booleanOptions: [
-      '--no-cli-pager',
-      '--debug',
-      '--no-verify-ssl',
-      '--no-paginate',
-      '--no-sign-request',
-      '--dry-run',
-      '--no-dry-run',
-      '--cli-auto-prompt',
-      '--no-cli-auto-prompt',
-      '--recursive',
-      '--quiet',
-      '--only-show-errors',
-      '--no-progress',
-      '--human-readable',
-      '--summarize',
-      '--force',
-      '--delete',
-    ],
-  },
-  mysql: {
-    valueOptions: ['-u', '-h', '-P', '-e', '-D', '--user', '--host'],
-    attachedValueOnly: ['-p'],
-  },
-  kubectl: {
-    valueOptions: [
-      '-n',
-      '-o',
-      '-l',
-      '-f',
-      '-c',
-      '--context',
-      '--namespace',
-      '--kubeconfig',
-      '--selector',
-      '--output',
-      '--filename',
-      '--container',
-    ],
-  },
-  set: { valueOptions: ['-o'], combineShort: true },
-  bash: { valueOptions: ['-c', '-o', '-O'], combineShort: false },
-  ssh: {
-    valueOptions: [
-      '-p',
-      '-i',
-      '-l',
-      '-o',
-      '-F',
-      '-J',
-      '-L',
-      '-R',
-      '-D',
-      '-b',
-      '-c',
-      '-E',
-      '-e',
-      '-I',
-      '-m',
-      '-O',
-      '-Q',
-      '-S',
-      '-W',
-      '-w',
-      '-B',
-    ],
-    combineShort: true,
-  },
-  rm: { combineShort: true },
-  curl: {
-    combineShort: true,
-    valueOptions: [
-      '-o',
-      '-X',
-      '-H',
-      '-d',
-      '-u',
-      '-A',
-      '-e',
-      '-w',
-      '-m',
-      '-T',
-      '-F',
-      '-b',
-      '-c',
-      '-x',
-      '-K',
-      '-E',
-      '-r',
-      '-C',
-      '-y',
-      '-Y',
-      '-z',
-      '--output',
-      '--request',
-      '--header',
-      '--data',
-      '--data-raw',
-      '--data-binary',
-      '--user',
-      '--user-agent',
-      '--write-out',
-      '--max-time',
-      '--connect-timeout',
-      '--retry',
-      '--upload-file',
-      '--form',
-      '--cookie',
-      '--proxy',
-      '--cacert',
-      '--cert',
-      '--key',
-    ],
-  },
-  wget: { valueOptions: ['-O', '-o', '-P', '--output-document'] },
-  sed: { valueOptions: ['-e', '-f'], attachedValueOnly: ['-i'] },
-  chmod: {},
-};
-SPECS.mariadb = SPECS.mysql;
-SPECS.mysqldump = SPECS.mysql;
-SPECS.mysqladmin = SPECS.mysql;
-SPECS.sh = SPECS.bash;
-SPECS.zsh = SPECS.bash;
-SPECS.dash = SPECS.bash;
 
 /** Wrappers and the options of theirs that take a value. */
 const WRAPPERS: Record<string, string[]> = {
@@ -303,7 +119,7 @@ function splitArgs(
     const next = args[k + 1];
     if (endOfOptions || word === '-' || !word.startsWith('-')) {
       if (operands.length === 0 && spec.subcommands) {
-        spec = spec.subcommands[word] ?? GIT_SUB_DEFAULT;
+        spec = spec.subcommands[word] ?? spec.subcommandDefault ?? {};
       }
       operands.push(word);
       continue;
@@ -362,12 +178,18 @@ function splitArgs(
   return { options, operands };
 }
 
-export function normalizeCommand(cmd: SimpleCommand): NormalizedCommand {
+/** How a program's options parse; `ToolRegistry.specOf` is one. */
+export type SpecLookup = (executable: string) => BinarySpec | undefined;
+
+export function normalizeCommand(
+  cmd: SimpleCommand,
+  specOf: SpecLookup = BUILTIN_TOOLS.specOf,
+): NormalizedCommand {
   const { argv, wrappers, assignments } = unwrap(cmd.argv);
   const executable = argv.length > 0 ? basename(argv[0]) : '';
   const { options, operands } = splitArgs(
     argv.slice(1),
-    SPECS[executable] ?? {},
+    specOf(executable) ?? {},
   );
   return {
     executable,
@@ -384,13 +206,16 @@ export function normalizeCommand(cmd: SimpleCommand): NormalizedCommand {
 }
 
 /** Parse and normalize every simple command in a shell text. */
-export function parseCommands(text: string): {
+export function parseCommands(
+  text: string,
+  specOf: SpecLookup = BUILTIN_TOOLS.specOf,
+): {
   commands: NormalizedCommand[];
   unsupported: string[];
 } {
   const parsed = parseShell(text);
   return {
-    commands: parsed.commands.map(normalizeCommand),
+    commands: parsed.commands.map((c) => normalizeCommand(c, specOf)),
     unsupported: parsed.unsupported,
   };
 }
@@ -405,12 +230,15 @@ export function hasOption(cmd: NormalizedCommand, name: string): boolean {
  * too when the pattern gives one), each option (and its value when given),
  * and the operands as a prefix in order. `*` is a whole-token wildcard.
  */
-export function compilePattern(pattern: string): NormalizedCommand {
+export function compilePattern(
+  pattern: string,
+  specOf: SpecLookup = BUILTIN_TOOLS.specOf,
+): NormalizedCommand {
   const parsed = parseShell(pattern);
   if (parsed.commands.length !== 1) {
     throw new Error(`pattern must be one simple command: '${pattern}'`);
   }
-  return normalizeCommand(parsed.commands[0]);
+  return normalizeCommand(parsed.commands[0], specOf);
 }
 
 const tokenMatches = (want: string, have: string | undefined): boolean =>

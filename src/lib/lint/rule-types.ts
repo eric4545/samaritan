@@ -1,6 +1,7 @@
 import type { Operation, RollbackStep, Step } from '../../models/operation';
 import type { NormalizedCommand } from './command-model';
 import type { LintConfig, RuleSetting } from './config';
+import type { ToolRegistry } from './tools/registry';
 
 /**
  * Claim strength of a rule (docs/linting.md):
@@ -87,6 +88,8 @@ export function fieldIn<K extends keyof AnyStep>(
 
 export interface CommandRuleContext extends StepInfo {
   config: LintConfig;
+  /** What lint knows about programs: built-in profiles + `lint.tools`. */
+  tools: ToolRegistry;
 }
 
 export interface OperationRuleContext {
@@ -100,6 +103,8 @@ export interface OperationRuleContext {
   environments: string[];
   /** Variables declared anywhere in the operation (all environments). */
   declaredVariables: ReadonlySet<string>;
+  /** What lint knows about programs: built-in profiles + `lint.tools`. */
+  tools: ToolRegistry;
 }
 
 interface RuleBase {

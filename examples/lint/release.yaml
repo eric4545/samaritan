@@ -21,6 +21,10 @@ environments:
       VERSION: 1.4.0
 
 steps:
+  - name: Snapshot the web-server app config
+    type: manual
+    command: web-ctl --cluster ${CLUSTER} snapshot create --app web-server
+
   - name: Tag the release
     type: manual
     instruction: Tag the release commit and push the tag, not a branch.

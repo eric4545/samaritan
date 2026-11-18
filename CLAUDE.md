@@ -97,7 +97,8 @@ multi-operator `--pic` focus + `report merge`, rollback (step + operation-level,
 full parity), postmortem / incident-report (RCA) documents, procedure lint
 (`samaritan lint`: rule registry `src/lib/lint/rules.ts` over command /
 flow / expect families, own shell lexer `src/lib/lint/shell-lexer.ts`,
-`lint:` config + `extends` presets in `samaritan.config.yaml`, `line:col`
+`lint:` config + `extends` presets + `tools` (team tool profiles; built-ins
+in `src/lib/lint/tools/`) in `samaritan.config.yaml`, `line:col`
 from per-step provenance `src/operations/step-source.ts`, suppression
 comments; new rules feed `validate` as warnings only), `run --mock
 --fail-on-skipped` (CI gate).

@@ -1,4 +1,4 @@
-import { awsOperation, shellVarsIn } from './classify';
+import { shellVarsIn } from './classify';
 import {
   compilePattern,
   hasOption,
@@ -14,6 +14,10 @@ import {
   stepAt,
 } from './rule-types';
 import { parseShell } from './shell-lexer';
+import { AWS_CREATE_ALLOWLIST, awsOperation } from './tools/aws';
+import { MYSQL_FAMILY } from './tools/databases';
+import { CLUSTER_SCOPED_KINDS } from './tools/kubernetes';
+import { resolveTmuxCommand, TMUX_INPUT, TMUX_KILL } from './tools/tmux';
 
 // ── shell ───────────────────────────────────────────────────────────────────
 
@@ -101,8 +105,6 @@ const errexit: CommandRule = {
     return hits;
   },
 };
-
-const MYSQL_FAMILY = new Set(['mysql', 'mariadb', 'mysqldump', 'mysqladmin']);
 
 const passwordOnCmdline: CommandRule = {
   kind: 'command',
@@ -220,100 +222,6 @@ const unguardedRmRf: CommandRule = {
 };
 
 // ── tmux ────────────────────────────────────────────────────────────────────
-
-/** tmux commands sharing a first letter with the commands rules look for. */
-const TMUX_COMMANDS = [
-  'kill-pane',
-  'kill-server',
-  'kill-session',
-  'kill-window',
-  'delete-buffer',
-  'detach-client',
-  'display-menu',
-  'display-message',
-  'display-panes',
-  'display-popup',
-  'send-keys',
-  'send-prefix',
-  'server-access',
-  'set-buffer',
-  'set-environment',
-  'set-hook',
-  'set-option',
-  'set-window-option',
-  'show-buffer',
-  'show-environment',
-  'show-hooks',
-  'show-messages',
-  'show-options',
-  'show-prompt-history',
-  'show-window-options',
-  'source-file',
-  'split-window',
-  'start-server',
-  'suspend-client',
-  'swap-pane',
-  'swap-window',
-  'switch-client',
-  'paste-buffer',
-  'pipe-pane',
-  'previous-layout',
-  'previous-window',
-  'list-buffers',
-  'list-clients',
-  'list-commands',
-  'list-keys',
-  'list-panes',
-  'list-sessions',
-  'list-windows',
-  'load-buffer',
-  'lock-client',
-  'lock-server',
-  'lock-session',
-  'last-pane',
-  'last-window',
-  'link-window',
-];
-const TMUX_ALIASES: Record<string, string> = {
-  killp: 'kill-pane',
-  killw: 'kill-window',
-  detach: 'detach-client',
-  deleteb: 'delete-buffer',
-  display: 'display-message',
-  displayp: 'display-panes',
-  menu: 'display-menu',
-  popup: 'display-popup',
-  send: 'send-keys',
-  setb: 'set-buffer',
-  pasteb: 'paste-buffer',
-  loadb: 'load-buffer',
-  pipep: 'pipe-pane',
-  splitw: 'split-window',
-  switchc: 'switch-client',
-  lsp: 'list-panes',
-  ls: 'list-sessions',
-};
-const TMUX_KILL = new Set([
-  'kill-pane',
-  'kill-server',
-  'kill-session',
-  'kill-window',
-  'detach-client',
-]);
-const TMUX_INPUT = new Set([
-  'send-keys',
-  'set-buffer',
-  'paste-buffer',
-  'load-buffer',
-]);
-
-/** Resolve a tmux command word: alias, exact name, or unique prefix. */
-export function resolveTmuxCommand(word: string): string | undefined {
-  if (TMUX_ALIASES[word]) return TMUX_ALIASES[word];
-  if (TMUX_COMMANDS.includes(word)) return word;
-  const matches = TMUX_COMMANDS.filter((c) => c.startsWith(word));
-  return matches.length === 1 ? matches[0] : undefined;
-}
 
 /** Every tmux command in one invocation (`tmux a \; b`). */
 function tmuxCommands(
@@ -494,7 +402,11 @@ const protectedPush: CommandRule = {
       const inner = nestedCommandText(cmd);
       if (!inner) continue;
       for (const nested of parseShell(inner).commands) {
-        visit(normalizeCommand(nested), cmd.line, cmd.executable);
+        visit(
+          normalizeCommand(nested, ctx.tools.specOf),
+          cmd.line,
+          cmd.executable,
+        );
       }
     }
     return hits;
@@ -645,22 +557,6 @@ const awsRegion: CommandRule = {
   },
 };
 
-/** `aws <svc> create-*` operations that are operational actions, not resources. */
-export const AWS_CREATE_ALLOWLIST = [
-  'create-snapshot',
-  'create-snapshots',
-  'create-db-snapshot',
-  'create-db-cluster-snapshot',
-  'create-cluster-snapshot',
-  'create-backup',
-  'create-tags',
-  'create-application-version',
-  'create-user',
-  'create-login-profile',
-  'create-invalidation',
-  'create-image',
-];
-
 const awsCreateManaged: CommandRule = {
   kind: 'command',
   id: 'aws/cli-create-managed',
@@ -693,29 +589,6 @@ const awsCreateManaged: CommandRule = {
   },
 };
 
-const CLUSTER_SCOPED = new Set([
-  'ns',
-  'namespace',
-  'namespaces',
-  'pv',
-  'persistentvolume',
-  'persistentvolumes',
-  'no',
-  'node',
-  'nodes',
-  'clusterrole',
-  'clusterroles',
-  'clusterrolebinding',
-  'clusterrolebindings',
-  'crd',
-  'crds',
-  'customresourcedefinition',
-  'customresourcedefinitions',
-  'sc',
-  'storageclass',
-  'storageclasses',
-]);
-
 const kubectlDeleteClusterScoped: CommandRule = {
   kind: 'command',
   id: 'kubectl/delete-ns',
@@ -735,7 +608,7 @@ const kubectlDeleteClusterScoped: CommandRule = {
       const kinds = (cmd.operands[1] ?? '')
         .split(',')
         .map((k) => k.split('/')[0].split('.')[0].toLowerCase());
-      const hit = kinds.find((k) => CLUSTER_SCOPED.has(k));
+      const hit = kinds.find((k) => CLUSTER_SCOPED_KINDS.has(k));
       if (!hit) continue;
       hits.push(
         commandHit(
@@ -817,7 +690,11 @@ const unknownBinary: CommandRule = {
   description:
     'A program that is neither a shell builtin, a common tool, nor listed in `lint.known_binaries` (catches typos such as `kubeclt`). Paths and `$VAR` programs are skipped.',
   check(ctx) {
-    const known = new Set([...KNOWN_BINARIES, ...ctx.config.known_binaries]);
+    const known = new Set([
+      ...KNOWN_BINARIES,
+      ...ctx.tools.binaries(),
+      ...ctx.config.known_binaries,
+    ]);
     const hits: RuleHit[] = [];
     for (const cmd of ctx.commands) {
       const exe = cmd.executable;
@@ -876,7 +753,7 @@ const banned: CommandRule = {
   check(ctx) {
     const hits: RuleHit[] = [];
     for (const entry of ctx.config.banned) {
-      const pattern = compilePattern(entry.pattern);
+      const pattern = compilePattern(entry.pattern, ctx.tools.specOf);
       for (const cmd of ctx.commands) {
         if (!matchesPattern(pattern, cmd)) continue;
         hits.push(
@@ -903,7 +780,7 @@ const requiredFlags: CommandRule = {
   check(ctx) {
     const hits: RuleHit[] = [];
     for (const entry of ctx.config.required) {
-      const pattern = compilePattern(entry.pattern);
+      const pattern = compilePattern(entry.pattern, ctx.tools.specOf);
       for (const cmd of ctx.commands) {
         if (!matchesPattern(pattern, cmd)) continue;
         const missing = entry.flags.filter((f) => !hasOption(cmd, f));

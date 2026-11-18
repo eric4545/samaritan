@@ -237,6 +237,57 @@ which would bury the exact findings under review tripwires. `extends:
 pick some. `--list-rules` shows each rule's level by default, under
 `samaritan:strict` and under `samaritan:all`.
 
+### Teaching lint about a tool (`tools`)
+
+Everything lint knows about a program is a **tool profile**: how its options
+parse, which of its verbs change state, take a backup or delete data, which
+options name a resource, and how it declares its output format. `aws`,
+`kubectl`, `git`, `helm`, `psql`, `systemctl`, `terraform`, `docker`,
+`crontab`, `sed`, `curl` and others come built in. Add your own tool, or
+extend a built-in one, under `lint.tools`:
+
+```yaml
+lint:
+  tools:
+    - binaries: [web-ctl]
+      value_options: [--cluster]      # `--cluster prod` is one option, not an operand
+      verb_depth: 2                   # messages say `web-ctl app purge`
+      mutating: ['deploy|rollback|scale']
+      backup: ['snapshot create']
+      deletes_data: ['app purge']
+      resource_options: [--app]       # `--app web-server` names the resource
+    - binaries: [git]                 # extends the built-in git profile
+      mutating: [tag]
+```
+
+Then `web-ctl deploy` counts as a state change (`flow/mutate-without-verify`,
+`flow/no-rollback-on-mutate`), `web-ctl app purge --app web-server` needs an
+earlier `web-ctl snapshot create --app web-server` (`flow/backup-before-delete`,
+matched by `--app`), `web-ctl` is a known program, and `banned:` /
+`required:` patterns parse it with its options.
+
+| Key | Meaning |
+| --- | --- |
+| `binaries` | Program names the profile applies to (required). |
+| `value_options` / `boolean_options` / `long_options_take_value` / `combine_short` | How options parse. |
+| `verb_depth` | How many words name the action in messages (default 1). |
+| `mutating` / `backup` / `deletes_data` | Verbs, see below. |
+| `resource_options` / `resource_operand` | Options (they take a value) or the operand index that name a resource. |
+| `output_options` | Option whose value is the output format (`expect/json-shape`). |
+
+A verb is words matched against the start of the operands: `*` inside a word
+is any text, `|` separates alternatives, a lone `*` is any one word, `''` is
+any invocation. Or an object: `{ verb, option, matches, any_operand, redirect }`,
+all of which must hold, e.g. `{ option: -c, matches: '\bdrop\b' }`.
+
+A profile for a program that already has one extends it: verb lists and
+option lists add up, and only the settings you give change. Profiles in a
+preset (`extends:`) and in your file add up too.
+
+There are no JavaScript plugins: a `samaritan.config.yaml` in a repository you
+clone never runs code, and lint stays deterministic. Rules are built in; tool
+knowledge is data you can share.
+
 ### How a pattern matches
 
 A pattern is parsed like a command. A command matches when it has:

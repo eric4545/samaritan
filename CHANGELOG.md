@@ -7,6 +7,14 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Teach lint about your own tools (`lint.tools`).** What lint knows about
+  a program (how its options parse, which verbs change state, take a backup
+  or delete data, which options name a resource, its output format) is now a
+  tool profile. The built-in ones cover `aws`, `kubectl`, `git`, `helm`,
+  `psql`, `systemctl`, `terraform`, `docker`, `crontab`, `sed`, `curl` and
+  more; a team adds its in-house CLI, or extends a built-in profile, in
+  `samaritan.config.yaml` and shares it through presets. See
+  `docs/linting.md` and `examples/lint/presets/ops-team.yaml`.
 - **`samaritan lint`: named rules for how an operation is written.** Three
   families, each rule with a stable id, a tier (how sure it is) and a
   severity: the command itself (each step's command is parsed: `&&`, `|`,
@@ -141,6 +149,9 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **`psql -c '<sql>'` is read correctly by lint.** The SQL was never seen,
+  so a `DROP`/`UPDATE` through psql did not count as a state change or a data
+  deletion.
 - **A lint rule that crashes no longer fails `validate`.** It made the file
   invalid with `Parsing error: …`, although lint findings are warnings only
   there. `validate` now warns `lint skipped: rule <id> failed: …`, and `lint`

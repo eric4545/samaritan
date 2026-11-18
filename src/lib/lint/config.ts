@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import Ajv from 'ajv';
 import yaml from 'js-yaml';
 import { compilePattern } from './command-model';
+import type { ToolProfile, Verb } from './tools/types';
 
 export type RuleSetting = 'off' | 'warning' | 'error';
 
@@ -31,6 +32,8 @@ export interface LintConfig {
   aws_sessions: string[];
   /** Extra `aws … create-*` operations `aws/cli-create-managed` accepts. */
   aws_create_allowlist: string[];
+  /** Team tool profiles (`lint.tools`), merged over the built-in ones. */
+  tools: ToolProfile[];
   /** File the config came from; undefined for built-in defaults. */
   source?: string;
 }
@@ -56,12 +59,59 @@ export function defaultLintConfig(): LintConfig {
     known_binaries: [],
     aws_sessions: [],
     aws_create_allowlist: [],
+    tools: [],
   };
 }
 
 const STRING_LIST = {
   type: 'array',
   items: { type: 'string', minLength: 1 },
+} as const;
+
+const OPTION_LIST = {
+  type: 'array',
+  items: { type: 'string', pattern: '^-' },
+} as const;
+
+const VERB = {
+  oneOf: [
+    { type: 'string' },
+    {
+      type: 'object',
+      additionalProperties: false,
+      minProperties: 1,
+      properties: {
+        verb: { type: 'string' },
+        option: { type: 'string', pattern: '^-' },
+        matches: { type: 'string' },
+        any_operand: STRING_LIST,
+        redirect: { type: 'boolean' },
+      },
+    },
+  ],
+} as const;
+
+const VERB_LIST = { type: 'array', items: VERB } as const;
+
+/** A `lint.tools` entry: a tool profile in YAML (snake_case). */
+const TOOL = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['binaries'],
+  properties: {
+    binaries: { ...STRING_LIST, minItems: 1 },
+    value_options: OPTION_LIST,
+    boolean_options: OPTION_LIST,
+    long_options_take_value: { type: 'boolean' },
+    combine_short: { type: 'boolean' },
+    verb_depth: { type: 'integer', minimum: 1 },
+    mutating: VERB_LIST,
+    backup: VERB_LIST,
+    deletes_data: VERB_LIST,
+    resource_options: OPTION_LIST,
+    resource_operand: { type: 'integer', minimum: 0 },
+    output_options: OPTION_LIST,
+  },
 } as const;
 
 const LINT_SCHEMA = {
@@ -107,12 +157,89 @@ const LINT_SCHEMA = {
     known_binaries: STRING_LIST,
     aws_sessions: STRING_LIST,
     aws_create_allowlist: STRING_LIST,
+    tools: { type: 'array', items: TOOL },
   },
 } as const;
 
 const validateLintSection = new Ajv({ allErrors: true }).compile(LINT_SCHEMA);
 
-type LintSection = Partial<Omit<LintConfig, 'source'>> & { extends?: string[] };
+/** `lint.tools` entries as written in YAML. */
+interface RawVerb {
+  verb?: string;
+  option?: string;
+  matches?: string;
+  any_operand?: string[];
+  redirect?: boolean;
+}
+interface RawTool {
+  binaries: string[];
+  value_options?: string[];
+  boolean_options?: string[];
+  long_options_take_value?: boolean;
+  combine_short?: boolean;
+  verb_depth?: number;
+  mutating?: (string | RawVerb)[];
+  backup?: (string | RawVerb)[];
+  deletes_data?: (string | RawVerb)[];
+  resource_options?: string[];
+  resource_operand?: number;
+  output_options?: string[];
+}
+
+type LintSection = Partial<Omit<LintConfig, 'source' | 'tools'>> & {
+  extends?: string[];
+  tools?: RawTool[];
+};
+
+function toVerb(raw: string | RawVerb, label: string): Verb {
+  if (typeof raw === 'string') return raw;
+  if (raw.matches !== undefined) {
+    try {
+      new RegExp(raw.matches);
+    } catch {
+      throw new LintConfigError(
+        `${label}: lint.tools: \`matches: ${raw.matches}\` is not a valid regex`,
+      );
+    }
+  }
+  return {
+    verb: raw.verb,
+    option: raw.option,
+    matches: raw.matches,
+    anyOperand: raw.any_operand,
+    redirect: raw.redirect,
+  };
+}
+
+/** A `lint.tools` entry → a tool profile (the same shape as the built-ins). */
+export function toolProfile(raw: RawTool, label = 'lint'): ToolProfile {
+  const verbs = (list?: (string | RawVerb)[]) =>
+    list?.map((v) => toVerb(v, label));
+  return {
+    id: raw.binaries.join(','),
+    binaries: raw.binaries,
+    spec: {
+      // A resource option names something, so it takes a value.
+      valueOptions:
+        raw.value_options || raw.resource_options
+          ? [...(raw.value_options ?? []), ...(raw.resource_options ?? [])]
+          : undefined,
+      booleanOptions: raw.boolean_options,
+      longTakesValue: raw.long_options_take_value,
+      combineShort: raw.combine_short,
+    },
+    verbDepth: raw.verb_depth,
+    mutating: verbs(raw.mutating),
+    backup: verbs(raw.backup),
+    deletesData: verbs(raw.deletes_data),
+    resourceOptions: raw.resource_options,
+    resourceOperands:
+      raw.resource_operand !== undefined
+        ? { index: raw.resource_operand }
+        : undefined,
+    output: raw.output_options ? { options: raw.output_options } : undefined,
+  };
+}
 
 const LIST_KEYS = [
   'protected_branches',
@@ -182,13 +309,24 @@ function checkSection(
   return lint;
 }
 
-/** Apply `layer` over `base`: rules merge, lists of patterns add, other lists replace. */
-function merge(base: LintConfig, layer: LintSection): LintConfig {
+/**
+ * Apply `layer` over `base`: rules merge, lists of patterns and tools add
+ * up, other lists replace.
+ */
+function merge(
+  base: LintConfig,
+  layer: LintSection,
+  label = 'lint',
+): LintConfig {
   const next: LintConfig = {
     ...base,
     rules: { ...base.rules, ...(layer.rules ?? {}) },
     banned: [...base.banned, ...(layer.banned ?? [])],
     required: [...base.required, ...(layer.required ?? [])],
+    tools: [
+      ...base.tools,
+      ...(layer.tools ?? []).map((t) => toolProfile(t, label)),
+    ],
   };
   for (const key of LIST_KEYS) {
     if (layer[key] !== undefined) next[key] = [...(layer[key] as string[])];
@@ -248,7 +386,7 @@ function resolveSection(
       config,
     );
   }
-  return merge(config, { ...section, extends: undefined });
+  return merge(config, { ...section, extends: undefined }, label);
 }
 
 /**

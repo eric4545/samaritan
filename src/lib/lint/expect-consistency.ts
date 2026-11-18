@@ -1,4 +1,4 @@
-import { hasOption, type NormalizedCommand } from './command-model';
+import type { NormalizedCommand } from './command-model';
 import {
   expectChecks,
   type OperationRule,
@@ -76,33 +76,6 @@ function outputCommand(info: StepInfo): NormalizedCommand | undefined {
   return top[top.length - 1];
 }
 
-function optionValue(cmd: NormalizedCommand, ...names: string[]) {
-  return cmd.options.find((o) => names.includes(o.name))?.value;
-}
-
-/** `json`, `jsonpath`, `text`, … as the command declares it, else undefined. */
-export function declaredOutputFormat(
-  cmd: NormalizedCommand | undefined,
-): string | undefined {
-  if (!cmd) return undefined;
-  if (cmd.executable === 'aws') return optionValue(cmd, '--output');
-  if (['kubectl', 'oc'].includes(cmd.executable)) {
-    const value = optionValue(cmd, '-o', '--output');
-    if (!value) return undefined;
-    if (value.startsWith('jsonpath')) return 'jsonpath';
-    if (value.startsWith('custom-columns')) return 'custom-columns';
-    return value;
-  }
-  if (cmd.executable === 'jq') {
-    return hasOption(cmd, '-r') ||
-      hasOption(cmd, '--raw-output') ||
-      hasOption(cmd, '-j')
-      ? 'text'
-      : 'json';
-  }
-  return undefined;
-}
-
 const TEXT_FIELDS = [...LITERAL_FIELDS, ...REGEX_FIELDS, 'equals'];
 
 const jsonShape: OperationRule = {
@@ -116,7 +89,7 @@ const jsonShape: OperationRule = {
   check(ctx) {
     const hits: RuleHit[] = [];
     for (const info of ctx.all) {
-      const format = declaredOutputFormat(outputCommand(info));
+      const format = ctx.tools.outputFormat(outputCommand(info));
       if (!format) continue;
       for (const check of expectChecks(info.step.expect)) {
         if (format === 'json' && check.jsonpath === undefined) {

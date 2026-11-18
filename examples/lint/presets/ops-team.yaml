@@ -20,4 +20,16 @@ lint:
     flow/chmod-600-credentials: warning
     flow/restore-after-sed: warning
     flow/wait-after-async: warning
-  known_binaries: [web-ctl]            # in-house tools cmd/unknown-binary accepts
+
+  # Teach lint about the team's in-house CLI: the same kind of profile the
+  # built-in tools have (aws, kubectl, git, …). Its verbs drive the
+  # state-change, backup and resource rules; its options parse like any other
+  # program's; and `web-ctl` is a known program for cmd/unknown-binary.
+  tools:
+    - binaries: [web-ctl]
+      value_options: [--cluster]
+      verb_depth: 2                   # `web-ctl app purge` in messages
+      mutating: ['deploy|rollback|scale']
+      backup: ['snapshot create']
+      deletes_data: ['app purge']
+      resource_options: [--app]       # `--app web-server` names the resource
