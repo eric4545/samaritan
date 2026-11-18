@@ -273,13 +273,19 @@ class OperationValidator {
       return;
     }
 
-    const stepIds = new Set<string>();
-
-    // First pass: collect all step IDs
-    for (let i = 0; i < operation.steps.length; i++) {
-      const step = operation.steps[i];
-      if (step.id) {
-        stepIds.add(step.id);
+    // Step IDs must be unique: `needs`, `--from-step` and the session record
+    // all address a step by its ID. One error per repeated ID, naming every
+    // step that carries it.
+    const stepsById = new Map<string, number[]>();
+    operation.steps.forEach((step, i) => {
+      if (!step.id) return;
+      stepsById.set(step.id, [...(stepsById.get(step.id) ?? []), i + 1]);
+    });
+    for (const [id, positions] of stepsById) {
+      if (positions.length > 1) {
+        result.errors.push(
+          `Duplicate step ID: ${id} (steps ${positions.join(', ')})`,
+        );
       }
     }
 
@@ -303,15 +309,6 @@ class OperationValidator {
 
     for (let i = 0; i < operation.steps.length; i++) {
       const step = operation.steps[i];
-
-      // Check step ID uniqueness
-      if (step.id) {
-        const duplicateId =
-          Array.from(stepIds).filter((id) => id === step.id).length > 1;
-        if (duplicateId) {
-          result.errors.push(`Duplicate step ID: ${step.id}`);
-        }
-      }
 
       // Note: Basic step type validation (command/instruction requirements) is now handled by JSON schema
 

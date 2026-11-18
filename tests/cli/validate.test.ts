@@ -289,6 +289,29 @@ steps:
   });
 });
 
+describe('validate step ID uniqueness', () => {
+  it('errors once per repeated ID, naming every step that carries it', () => {
+    const result = runCli([
+      'validate',
+      'tests/fixtures/operations/invalid/duplicate-step-id.yaml',
+    ]);
+    assert.strictEqual(result.status, 1);
+    const lines = result.stdout
+      .split('\n')
+      .filter((l) => l.includes('Duplicate step ID'));
+    assert.deepStrictEqual(
+      lines.map((l) => l.trim()),
+      ['Duplicate step ID: deploy (steps 1, 3)'],
+    );
+  });
+
+  it('does not flag unique IDs', () => {
+    const result = runCli(['validate', 'examples/deployment-with-needs.yaml']);
+    assert.strictEqual(result.status, 0, result.stdout);
+    assert.ok(!result.stdout.includes('Duplicate step ID'));
+  });
+});
+
 describe('validate step dependencies (needs)', () => {
   it('errors on a dependency cycle', () => {
     const result = runCli([

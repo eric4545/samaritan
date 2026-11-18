@@ -105,6 +105,23 @@ describe('lintOperationRegex', () => {
     assert.strictEqual(findings[0].field, 'matches');
   });
 
+  it('lints operation-level rollback.steps', () => {
+    const operation = opWith([step(undefined, 'Deploy')]);
+    operation.rollback = {
+      steps: [
+        {
+          name: 'Global undo',
+          command: 'undo',
+          expect: { matches: '[bad' },
+        },
+      ],
+    };
+    const findings = lintOperationRegex(operation);
+    assert.strictEqual(findings.length, 1);
+    assert.strictEqual(findings[0].stepName, 'Global undo');
+    assert.strictEqual(findings[0].level, 'error');
+  });
+
   it('lints retry.while as a regex guard', () => {
     const findings = lintOperationRegex(
       opWith([

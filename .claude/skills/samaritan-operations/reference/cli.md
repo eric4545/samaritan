@@ -38,12 +38,16 @@ directory or example ships with this repo today.
 ## Key flags
 
 ### validate
-- `--lint` — run shellcheck over `command`/`script` (warnings by default).
+- `--lint` — run shellcheck over `command`/`script` of every step, sub-step,
+  step `rollback` and operation `rollback.steps` (warnings by default).
 - `--strict` — promote lint warnings and schema warnings to errors.
 - Always runs a built-in regex-lint over `expect` regex fields (`matches`,
-  `all_lines_match`, `any_line_matches`, `no_line_matches`, `retry.while`):
+  `all_lines_match`, `any_line_matches`, `no_line_matches`, `retry.while`) on
+  every step, sub-step and rollback step (step-level and `rollback.steps`):
   uncompilable patterns are errors; ReDoS-prone ones (e.g. `(a+)+`) are warnings
   (errors under `--strict`). No flag needed — regex compilation is built-in.
+- Duplicate top-level step `id`s are an error, one line per repeated ID:
+  `Duplicate step ID: deploy (steps 1, 3)`.
 
 ### groups (`--group`)
 - An operation that declares `groups:` needs `-g, --group <name>` on

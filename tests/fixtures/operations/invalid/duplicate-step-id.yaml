@@ -1,0 +1,21 @@
+# Two top-level steps share the ID `deploy` and no `needs` refers to it, so
+# only the uniqueness check can catch it.
+name: duplicate-step-id
+version: 1.0.0
+description: Two steps share one ID
+environments:
+  - name: staging
+    description: Staging
+steps:
+  - id: deploy
+    name: Deploy web-server
+    type: automatic
+    command: echo deploy
+  - id: check
+    name: Check web-server
+    type: automatic
+    command: echo check
+  - id: deploy
+    name: Verify web-server
+    type: automatic
+    command: echo verify

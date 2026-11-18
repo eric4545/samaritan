@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import type { Operation, Step } from '../models/operation';
+import type { Operation } from '../models/operation';
+import { stepDisplayName, walkOperationSteps } from './step-walk';
 
 /**
  * A single shellcheck finding, annotated with the step it came from.
@@ -84,7 +85,8 @@ export function lintScript(
 }
 
 /**
- * Walk every step (and sub-step) of an operation, linting inline `command`s and
+ * Walk every step, sub-step and rollback step (step-level and operation-level)
+ * of an operation, linting inline `command`s and
  * the contents of referenced `script` files. Script paths resolve relative to
  * the operation file; missing script files are skipped silently (the generator
  * surfaces that separately).
@@ -96,29 +98,20 @@ export function lintOperationCommands(
   const operationDir = dirname(resolve(operationFile));
   const findings: ShellLintFinding[] = [];
 
-  const visit = (steps: Step[] | undefined): void => {
-    if (!steps) return;
-    for (const step of steps) {
-      if (step.command) {
-        findings.push(...lintScript(step.command, step.name, 'command'));
-      }
-      if (step.script) {
-        const scriptPath = resolve(operationDir, step.script);
-        if (existsSync(scriptPath)) {
-          findings.push(
-            ...lintScript(
-              readFileSync(scriptPath, 'utf8'),
-              step.name,
-              'script',
-            ),
-          );
-        }
-      }
-      visit(step.sub_steps);
+  for (const step of walkOperationSteps(operation)) {
+    const name = stepDisplayName(step);
+    if (step.command) {
+      findings.push(...lintScript(step.command, name, 'command'));
     }
-  };
-
-  visit(operation.steps);
+    if (step.script) {
+      const scriptPath = resolve(operationDir, step.script);
+      if (existsSync(scriptPath)) {
+        findings.push(
+          ...lintScript(readFileSync(scriptPath, 'utf8'), name, 'script'),
+        );
+      }
+    }
+  }
   return findings;
 }
 

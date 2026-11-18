@@ -533,7 +533,8 @@ verify:
 > flags** — case-sensitive, no multiline, and an **unanchored partial match**
 > (`Running` matches anywhere; anchor with `^...$` for a full-string/full-line
 > match). `samaritan validate` runs a built-in **regex-lint** pass over these
-> fields (and `expect.retry.while`): an uncompilable pattern is a hard **error**,
+> fields (and `expect.retry.while`) on every step, sub-step and rollback step,
+> including `rollback.steps`: an uncompilable pattern is a hard **error**,
 > and an obviously catastrophic (ReDoS-prone) pattern such as `(a+)+` is a
 > **warning** (promoted to an error under `--strict`).
 

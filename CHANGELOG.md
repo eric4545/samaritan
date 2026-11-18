@@ -109,6 +109,18 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **`validate` reports duplicate step IDs.** The check counted IDs after
+  putting them in a set, so it never fired: two steps with the same `id`
+  passed, or showed up only as a misleading "cannot depend on itself" error.
+  It now prints `Duplicate step ID: deploy (steps 1, 3)`.
+- **`validate --lint` checks rollback commands.** shellcheck skipped every
+  step-level `rollback` and the operation's `rollback.steps`. Rollback
+  commands now get the same warnings as forward ones, so `--lint` may report
+  new warnings on existing files; the exit code is unchanged unless
+  `--strict`.
+- **regex-lint checks `rollback.steps`.** An invalid `expect` regex in the
+  operation-level rollback passed validation and could never match at run
+  time. It is now an error, like on any other step.
 - **Spawned `sessions:` work with `base-index 1`.** With `base-index` or
   `pane-base-index` set to 1 in `tmux.conf`, the panes SAMARITAN opened were
   never found: nothing was captured and `[p]` reported a paste that did not
