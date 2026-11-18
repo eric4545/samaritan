@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs';
 import { Command } from 'commander';
 import {
   type LintConfig,
@@ -38,7 +37,6 @@ export async function lintFile(
   profiles: string[] = [],
 ): Promise<FileLintResult> {
   const empty = { file, findings: [], errorCount: 0, warningCount: 0 };
-  if (!existsSync(file)) return { ...empty, fatal: `file not found: ${file}` };
 
   let config: LintConfig;
   try {
@@ -54,10 +52,16 @@ export async function lintFile(
   try {
     operation = await parseOperation(file);
   } catch (error) {
+    // The parser reads the file; a missing one fails there (no check-then-read).
+    const missing = /^Failed to read file/.test(
+      String((error as Error).message),
+    );
     return {
       ...empty,
       config: config.source,
-      fatal: `cannot parse: ${String((error as Error).message).split('\n')[0]}`,
+      fatal: missing
+        ? `file not found: ${file}`
+        : `cannot parse: ${String((error as Error).message).split('\n')[0]}`,
     };
   }
 
@@ -153,8 +157,32 @@ export function formatJson(results: FileLintResult[]): string {
   );
 }
 
+const CELL_ESCAPES: Record<string, string> = {
+  '|': '\\|',
+  '<': '&lt;',
+  '>': '&gt;',
+};
+
+/**
+ * Text for one Markdown table cell. `|` always needs escaping (also inside
+ * code spans). For a page rendered as HTML (`html`), `<` and `>` outside
+ * code spans are written as entities: `in <env>` would otherwise open a tag
+ * (VitePress fails the build on it).
+ */
+export function tableCell(text: string, html = false): string {
+  return text
+    .split(/(`[^`]*`)/)
+    .map((part) =>
+      part.replace(
+        part.startsWith('`') || !html ? /\|/g : /[|<>]/g,
+        (c) => CELL_ESCAPES[c],
+      ),
+    )
+    .join('');
+}
+
 /** The registry as a Markdown table, with the effective severity. */
-export function formatRuleList(config?: LintConfig): string {
+export function formatRuleList(config?: LintConfig, html = false): string {
   const lines = [
     '| Rule | Default | `samaritan:strict` | `samaritan:all` | Tier | What it flags |',
     '| --- | --- | --- | --- | --- | --- |',
@@ -164,7 +192,7 @@ export function formatRuleList(config?: LintConfig): string {
     const strict = BUILTIN_PRESETS['samaritan:strict'][rule.id] ?? setting;
     const all = BUILTIN_PRESETS['samaritan:all'][rule.id] ?? setting;
     lines.push(
-      `| \`${rule.id}\` | ${setting} | ${strict} | ${all} | ${rule.tier} | ${rule.description.replace(/\|/g, '\\|')} |`,
+      `| \`${rule.id}\` | ${setting} | ${strict} | ${all} | ${rule.tier} | ${tableCell(rule.description, html)} |`,
     );
   }
   return lines.join('\n');

@@ -52,7 +52,7 @@ function renderLintRules(): string {
     'Change a severity in the `lint.rules` section of `samaritan.config.yaml`;',
     'see [Linting](/linting).',
     '',
-    formatRuleList(),
+    formatRuleList(undefined, true),
     '',
   ].join('\n');
 }

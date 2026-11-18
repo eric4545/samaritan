@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import Ajv from 'ajv';
 import yaml from 'js-yaml';
@@ -254,19 +254,42 @@ const LIST_KEYS = [
  * (ESLint-style discovery), or undefined.
  */
 export function findConfigFile(operationFile: string): string | undefined {
+  return findConfig(operationFile)?.file;
+}
+
+/** The nearest config file and its text, read once (no check-then-read). */
+function findConfig(
+  operationFile: string,
+): { file: string; text: string } | undefined {
   let dir = dirname(resolve(operationFile));
   for (;;) {
-    const candidate = join(dir, CONFIG_FILE_NAME);
-    if (existsSync(candidate)) return candidate;
+    const file = join(dir, CONFIG_FILE_NAME);
+    const text = readIfPresent(file);
+    if (text !== undefined) return { file, text };
     const parent = dirname(dir);
     if (parent === dir) return undefined;
     dir = parent;
   }
 }
 
-function readYaml(file: string, label: string): unknown {
+/** A file's text, or undefined when there is no such file. */
+function readIfPresent(file: string): string | undefined {
   try {
-    return yaml.load(readFileSync(file, 'utf8'));
+    return readFileSync(file, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR') {
+      return undefined;
+    }
+    throw new LintConfigError(
+      `${file}: cannot read config: ${(error as Error).message}`,
+    );
+  }
+}
+
+function parseYaml(text: string, label: string): unknown {
+  try {
+    return yaml.load(text);
   } catch (error) {
     throw new LintConfigError(
       `${label}: cannot read config: ${(error as Error).message.split('\n')[0]}`,
@@ -366,12 +389,13 @@ function resolveSection(
         `${label}: lint.extends: cycle through ${name}`,
       );
     }
-    if (!existsSync(file)) {
+    const text = readIfPresent(file);
+    if (text === undefined) {
       throw new LintConfigError(
         `${label}: lint.extends: file not found: ${name}`,
       );
     }
-    const document = readYaml(file, file) as { lint?: unknown } | null;
+    const document = parseYaml(text, file) as { lint?: unknown } | null;
     const inner =
       document && typeof document === 'object' && 'lint' in document
         ? document.lint
@@ -399,8 +423,13 @@ export function readLintConfig(
   configFile: string,
   registry: LintRegistry,
   profiles: string[] = [],
+  text?: string,
 ): LintConfig {
-  const document = readYaml(configFile, configFile) as {
+  const content = text ?? readIfPresent(configFile);
+  if (content === undefined) {
+    throw new LintConfigError(`config file not found: ${configFile}`);
+  }
+  const document = parseYaml(content, configFile) as {
     lint?: unknown;
   } | null;
   const section = document?.lint ?? {};
@@ -429,13 +458,10 @@ export function loadLintConfig(
   profiles: string[] = [],
 ): LintConfig {
   if (explicitConfig) {
-    if (!existsSync(explicitConfig)) {
-      throw new LintConfigError(`config file not found: ${explicitConfig}`);
-    }
     return readLintConfig(explicitConfig, registry, profiles);
   }
-  const found = findConfigFile(operationFile);
-  if (found) return readLintConfig(found, registry, profiles);
+  const found = findConfig(operationFile);
+  if (found) return readLintConfig(found.file, registry, profiles, found.text);
   return resolveSection(
     { extends: profiles },
     'lint',

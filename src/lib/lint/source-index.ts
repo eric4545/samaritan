@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import {
   type Document,
   isMap,
@@ -10,6 +10,15 @@ import {
   visit,
 } from 'yaml';
 import { getCachedRemoteTemplate } from '../template-fetcher';
+
+/** A file's text, or undefined when it cannot be read (no check-then-read). */
+function readIfPresent(file: string): string | undefined {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
 
 /** A position in a source file, 1-based. */
 export interface SourceLocation {
@@ -75,9 +84,7 @@ export class SourceIndex {
     // A remote `uses:` file: the parser fetched it already; never fetch here.
     const text = /^https?:\/\//.test(file)
       ? getCachedRemoteTemplate(file)
-      : existsSync(file)
-        ? readFileSync(file, 'utf8')
-        : undefined;
+      : readIfPresent(file);
     if (text !== undefined) {
       const counter = new LineCounter();
       const doc = parseDocument(text, { lineCounter: counter });

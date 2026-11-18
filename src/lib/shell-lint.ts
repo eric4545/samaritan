@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { Operation } from '../models/operation';
 import { stepDisplayName, walkOperationSteps } from './step-walk';
@@ -138,11 +138,15 @@ export function lintOperationCommands(
       findings.push(...lintScript(step.command, name, 'command'));
     }
     if (step.script) {
-      const scriptPath = resolve(operationDir, step.script);
-      if (existsSync(scriptPath)) {
-        findings.push(
-          ...lintScript(readFileSync(scriptPath, 'utf8'), name, 'script'),
-        );
+      // Read once: a missing script file is skipped (no check-then-read).
+      let text: string | undefined;
+      try {
+        text = readFileSync(resolve(operationDir, step.script), 'utf8');
+      } catch {
+        text = undefined;
+      }
+      if (text !== undefined) {
+        findings.push(...lintScript(text, name, 'script'));
       }
     }
   }

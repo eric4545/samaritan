@@ -76,6 +76,11 @@ function cell(value: string): string {
   return value.replace(/\|/g, '&#124;').replace(/\n+/g, ' ').trim();
 }
 
+/** A description cell: also `<` / `>`, which VitePress would read as HTML tags. */
+function prose(value: string): string {
+  return cell(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /** Union separator for the Type column — same reasoning as `cell()`. */
 const UNION = ' &#124; ';
 
@@ -160,7 +165,7 @@ function renderTable(root: SchemaNode, node: SchemaNode): string[] {
     const description =
       (resolved.description ?? '') + renderConstraints(resolved);
     lines.push(
-      `| \`${name}\` | ${renderType(root, property)} | ${isRequired} | ${defaultValue} | ${cell(description)} |`,
+      `| \`${name}\` | ${renderType(root, property)} | ${isRequired} | ${defaultValue} | ${prose(description)} |`,
     );
   }
   return lines;
