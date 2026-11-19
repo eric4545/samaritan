@@ -203,7 +203,7 @@ cat .samaritan-runs/f3a9b2/events.jsonl | jq 'select(.type=="assert_result" and 
 
 ## Evidence report
 
-Generate a human-readable Markdown report from any JSONL log. Two ways to get one:
+Generate a human-readable report from any JSONL log: Markdown by default, or [one self-contained HTML file](#one-file-to-share-html) with the screenshots inside it. Two ways to get one:
 
 ```bash
 # A report.md is ALWAYS written beside the operation; --report adds an extra copy
@@ -214,6 +214,9 @@ samaritan report .samaritan-runs/f3a9b2/events.jsonl
 
 # Save to a specific file
 samaritan report /tmp/samaritan-f3a9b2.jsonl --output evidence-report.md
+
+# One self-contained HTML file, screenshots embedded
+samaritan report .samaritan-runs/f3a9b2/events.jsonl --format html --output evidence-report.html
 ```
 
 The report includes a summary (steps, duration, PIC/reviewer), per-step command + output, verification sign-offs, and a dedicated rollback events section. Attach it directly to a change ticket.
@@ -228,6 +231,31 @@ The report includes a summary (steps, duration, PIC/reviewer), per-step command 
 | Any other file | `[<file name>](evidence/<file>)` |
 
 Share the whole run directory (`.samaritan-runs/<session-id>/`) and the images open. A report written to another place links to the same files with a relative path.
+
+### One file to share (HTML)
+
+A Markdown report with screenshots is a directory, not a file: the images break as soon as `report.md` is moved without `evidence/`, and Jira or Bitbucket do not render images written into Markdown as data. `--format html` writes the same report as one `.html` file:
+
+```bash
+samaritan report .samaritan-runs/f3a9b2/events.jsonl --format html -o change-evidence.html
+
+# The --report copy of a run, as HTML (report.md beside the operation stays Markdown)
+samaritan run deployment.yaml --env production --report ./reports --report-format html
+
+# A merged report, as HTML
+samaritan report merge <alice-session-id> <bob-session-id> --format html -o merged.html
+```
+
+| Evidence | In the HTML report |
+|---|---|
+| A screenshot or photo (PNG, JPEG, GIF, WebP) | The image itself, embedded as a `data:` URI |
+| An image file that is gone, or is not really an image | A link to it, marked `(not embedded: file missing or not an image)` |
+| Any other file (log, video, …) | A link, relative to where the report is written, as in Markdown |
+| Text, output, URLs | As in Markdown |
+
+The headings, the "Steps at a glance" table and every section are the Markdown report's. The file loads nothing from anywhere (no script, stylesheet or font from the network), so it opens offline from a ticket attachment. Everything in it is escaped: a note or captured output that contains HTML shows as text. An embedded image takes about 4/3 of its file size (base64). There is no PDF format: open the HTML in a browser and print to PDF.
+
+`resume` has no `--report`: after a resumed run, render the HTML from that run's `events.jsonl` with `samaritan report`.
 
 **Verification shows the final state.** Each step renders its *last* verify attempt (the full checklist plus the output it was checked against), with an attempt count when it was re-verified. A failure the operator accepted with `o` reads as overridden, with who, when and the reason. It is also flagged in the step heading and listed in the summary:
 
@@ -250,5 +278,7 @@ step attributed to the operator who actually ran it (see [Multi-operator focus m
 ```bash
 samaritan report merge <alice-session-id> <bob-session-id> --output merged-report.md
 ```
+
+Add `--format html` for one self-contained file (see [One file to share](#one-file-to-share-html)).
 
 The sessions must be runs of the same operation file, environment and [group](./groups.md). Steps are merged by position, so sessions of two groups or two environments are refused.

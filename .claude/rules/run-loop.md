@@ -409,8 +409,19 @@ report is written (`ReportOptions.linkFrom`; default the run dir →
 `evidence/<file>`), wrapped in `<…>` when the path has spaces/brackets. The
 old location (`~/.samaritan/sessions/<id>/evidence/`) produced a link that
 never opened. `link` evidence renders `<url>`, text in a fence longer than
-any backtick run in it. e2e: "[e] multi-line paste"; CLI:
-`tests/cli/evidence.test.ts`.
+any backtick run in it. **HTML** (`ReportOptions.format: 'html'`; `report`/
+`report merge --format html`, `run --report-format html` for the `--report`
+copy only): `renderReport` builds the SAME Markdown with screenshot/photo
+paths swapped for `data:` URIs (`imageDataUri`, magic-byte sniffed; a
+relative path resolves against the run dir) and converts it with
+`reportMarkdownToHtml` (`src/lib/report-html.ts`, escapes ALL text, only
+`data:image/(png|jpeg|gif|webp)` becomes an `<img>`, `javascript:`-style
+hrefs refused). A new report construct must render in that converter too
+(`tests/lib/report-html.test.ts`). `report merge` reads `optsWithGlobals()`:
+the parent `report` declares the same `-o`/`-f` and Commander gave them to the
+PARENT, so `merge -o` wrote nothing (keep those options default-less).
+e2e: "[e] multi-line paste"; CLI: `tests/cli/evidence.test.ts`,
+`tests/cli/report-html.test.ts`.
 
 ## `q`/`Ctrl+C` abort — both SAVE (paused/resumable)
 

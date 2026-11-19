@@ -8,6 +8,11 @@ description: |
   Run interactively:
     samaritan run evidence-required-step.yaml --env production
 
+  Share the run as ONE file, screenshots embedded (opens offline, survives
+  being moved or attached to a ticket):
+    samaritan run evidence-required-step.yaml --env production --report ./reports --report-format html
+    samaritan report .samaritan-runs/<session-id>/events.jsonl --format html -o report.html
+
   Each step shows what it wants in its header:
     Evidence : required — screenshot, link  ([e] adds it)
 

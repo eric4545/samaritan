@@ -14,7 +14,7 @@ import {
   createInterface as createReadlineInterface,
   emitKeypressEvents,
 } from 'node:readline';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { detectMimeType } from '../../evidence/collector';
 import {
   cleanTerminalOutput,
@@ -71,7 +71,13 @@ import {
   pastePreview,
   unrunPaste,
 } from '../../lib/paste-guard';
-import { generateReport, renderReport } from '../../lib/report-generator';
+import {
+  generateReport,
+  REPORT_EXTENSIONS,
+  REPORT_FORMATS,
+  type ReportFormat,
+  renderReport,
+} from '../../lib/report-generator';
 import {
   filterRollbackByEnv,
   findNearestRollbackSource,
@@ -205,6 +211,8 @@ interface RunOptions {
   verbose?: boolean;
   continueOnError?: boolean;
   report?: string;
+  /** Format of the `--report <dir>` copy; the run's own report.md stays Markdown. */
+  reportFormat?: ReportFormat;
   fromStep?: string | number;
   requireEvidence?: boolean;
   // Focus mode: `--pic [name]` — true when the flag is given without a value
@@ -621,16 +629,21 @@ class OperationRunner {
 
         if (options.report && logPath) {
           mkdirSync(options.report, { recursive: true });
+          const format = options.reportFormat ?? 'markdown';
           const reportFile = join(
             options.report,
-            `samaritan-${session.id}-report.md`,
+            `samaritan-${session.id}-report${REPORT_EXTENSIONS[format]}`,
           );
           // The canonical report.md is beside the operation; --report places
           // an extra copy. Rendered for ITS directory, so links to evidence
-          // files (stored in the run directory) still open from there.
+          // files (stored in the run directory) still open from there; HTML
+          // embeds the images instead.
           writeFileSync(
             reportFile,
-            generateReport(logPath, { linkFrom: resolve(options.report) }),
+            generateReport(logPath, {
+              linkFrom: resolve(options.report),
+              format,
+            }),
             'utf-8',
           );
           console.log(`📄 Report: ${reportFile}`);
@@ -4323,7 +4336,16 @@ const runCommand = new Command('run')
   )
   .option('-v, --verbose', 'Verbose output')
   .option('--continue-on-error', 'Continue execution even if steps fail')
-  .option('--report <dir>', 'Write Markdown evidence report to directory')
+  .option(
+    '--report <dir>',
+    'Write an extra copy of the evidence report to directory (format: --report-format)',
+  )
+  .addOption(
+    new Option(
+      '--report-format <format>',
+      'Format of the --report copy; html is one self-contained file with screenshot/photo evidence embedded (default: markdown)',
+    ).choices(REPORT_FORMATS),
+  )
   .option(
     '--from-step <step>',
     'Start at this step: its number in the manual (e.g. 2.7), its id, or its name; earlier steps are recorded as skipped',
@@ -4348,6 +4370,12 @@ const runCommand = new Command('run')
       ) {
         console.error(
           `❌ Invalid mode "${options.mode}". Must be one of: ${VALID_MODES.join(' | ')}`,
+        );
+        process.exit(1);
+      }
+      if (options.reportFormat && !options.report) {
+        console.error(
+          '❌ --report-format sets the format of the --report copy; add --report <dir>.',
         );
         process.exit(1);
       }
