@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -192,5 +192,26 @@ ${Array.from(
     assert.ok(r.stdout.length > 65_536, `only ${r.stdout.length} bytes`);
     assert.match(r.stdout, /✖ 2000 problems \(2000 errors, 0 warnings\)\n$/);
     assert.strictEqual(r.status, 1);
+  });
+
+  it('a reader that closes early (`| head`) keeps the exit code, no EPIPE error', async () => {
+    // Warnings only: lint exits 0, so an unhandled EPIPE (exit 1 + stack
+    // trace) cannot hide behind the expected code.
+    const warnings = write(
+      'warnings.yaml',
+      many.replace(/command: exit 1/g, 'command: git push origin HEAD:main'),
+    );
+    const child = spawn(TSX, [INDEX, 'lint', warnings]);
+    let stderr = '';
+    child.stderr.on('data', (d) => {
+      stderr += d;
+    });
+    // Read one chunk, then close the read end while lint is still writing.
+    child.stdout.once('data', () => child.stdout.destroy());
+    const code = await new Promise<number | null>((done) =>
+      child.on('close', done),
+    );
+    assert.strictEqual(stderr, '');
+    assert.strictEqual(code, 0);
   });
 });
