@@ -417,7 +417,7 @@ relative path resolves against the run dir) and converts it with
 `reportMarkdownToHtml` (`src/lib/report-html.ts`, escapes ALL text, only
 `data:image/(png|jpeg|gif|webp)` becomes an `<img>`, `javascript:`-style
 hrefs refused). Free text inside `[…]`/`![…]` goes through `linkText()`
-(escapes `[`, `]`, `\\`): a `]` in a description turned the image into prose
+(escapes `[`, `]` and backslash): a `]` in a description turned the image into prose
 with its base64 visible. A new report construct must render in that converter too
 (`tests/lib/report-html.test.ts`). `report merge` reads `optsWithGlobals()`:
 the parent `report` declares the same `-o`/`-f` and Commander gave them to the
