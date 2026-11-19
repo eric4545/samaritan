@@ -409,8 +409,28 @@ report is written (`ReportOptions.linkFrom`; default the run dir →
 `evidence/<file>`), wrapped in `<…>` when the path has spaces/brackets. The
 old location (`~/.samaritan/sessions/<id>/evidence/`) produced a link that
 never opened. `link` evidence renders `<url>`, text in a fence longer than
-any backtick run in it. e2e: "[e] multi-line paste"; CLI:
-`tests/cli/evidence.test.ts`.
+any backtick run in it. **HTML** (`ReportOptions.format: 'html'`; `report`/
+`report merge --format html`, `run --report-format html` for the `--report`
+copy only): `renderReport` builds the SAME Markdown with screenshot/photo
+paths swapped for `data:` URIs (`imageDataUri`, magic-byte sniffed; a
+relative path resolves against the run dir) and converts it with
+`reportMarkdownToHtml` (`src/lib/report-html.ts`, escapes ALL text, only
+`data:image/(png|jpeg|gif|webp)` becomes an `<img>`, `javascript:`-style
+hrefs refused). Free text inside `[…]`/`![…]` goes through `linkText()`
+(escapes `[`, `]` and backslash): a `]` in a description turned the image into prose
+with its base64 visible. **Never build a `RegExp` from report text** (not
+even its length): CodeQL js/regex-injection (high) blocked the PR on the
+fence-close pattern built with `new RegExp` from the opening fence;
+`closesFence` is a string check. Keep the converter LINEAR too (hostile input made three regexes
+quadratic): code spans are pulled out first by a one-pass run pairing
+(`extractCodeSpans`, slots in private-use chars), labels exclude an
+unescaped `[`, `linkText` splits instead of `/\s*\n\s*/`; the "linear time
+on hostile input" tests guard it. A new report construct must render in that converter too
+(`tests/lib/report-html.test.ts`). `report merge` reads `optsWithGlobals()`:
+the parent `report` declares the same `-o`/`-f` and Commander gave them to the
+PARENT, so `merge -o` wrote nothing (keep those options default-less).
+e2e: "[e] multi-line paste"; CLI: `tests/cli/evidence.test.ts`,
+`tests/cli/report-html.test.ts`.
 
 ## `q`/`Ctrl+C` abort — both SAVE (paused/resumable)
 

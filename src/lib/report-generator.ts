@@ -18,6 +18,7 @@ import type {
 import { cleanTerminalOutput, stripControlChars } from './assertions';
 import { escapeTableText } from './markdown-table';
 import { redactLocalPaths } from './path-redact';
+import { imageDataUri, reportMarkdownToHtml } from './report-html';
 import { foldEvents, readEvents, type SessionEvent } from './session-log';
 
 /** Redacts operator-local path prefixes; identity when no bases are known. */
@@ -30,7 +31,23 @@ const RUN_IDENTITY_FIELDS = [
   ['Group', 'group'],
 ] as const;
 
+/** Output formats of the evidence report. PDF: print the HTML from a browser. */
+export const REPORT_FORMATS = ['markdown', 'html'] as const;
+export type ReportFormat = (typeof REPORT_FORMATS)[number];
+
+/** File extension per report format (`run --report <dir>` naming). */
+export const REPORT_EXTENSIONS: Record<ReportFormat, string> = {
+  markdown: '.md',
+  html: '.html',
+};
+
 export interface ReportOptions {
+  /**
+   * `markdown` (default) links evidence files. `html` is one self-contained
+   * file: the same report, with screenshot/photo evidence embedded as
+   * `data:` URIs so it opens offline after being moved or attached.
+   */
+  format?: ReportFormat;
   /**
    * Directory the report is WRITTEN to, when that is not the run directory
    * (`run --report <dir>`, `report --output`, `report merge --output`).
@@ -84,6 +101,15 @@ export function renderReport(
       outside && !options.linkFrom ? redact(path) : rel.split(sep).join('/'),
     );
   };
+  // HTML embeds image evidence; a relative path in an old log is read from
+  // the run directory, where the run stored it.
+  const embedImage =
+    options.format === 'html'
+      ? (path: string) =>
+          imageDataUri(
+            isAbsolute(path) || !runDir ? path : resolve(runDir, path),
+          )
+      : undefined;
   const status = (sessionEnd?.status as string) ?? 'unknown';
   const startTs = events[0]?.ts ? formatTs(events[0].ts) : 'unknown';
 
@@ -202,7 +228,7 @@ export function renderReport(
   lines.push(...renderStepOverview(steps, marks));
 
   for (const step of steps) {
-    lines.push(...renderStep(step, redact, href, marks));
+    lines.push(...renderStep(step, redact, href, marks, embedImage));
   }
 
   // Approval Trail — aggregates every step-level approve/reject decision so
@@ -249,8 +275,9 @@ export function renderReport(
   // Every rendered field is already cleaned where it carries terminal output;
   // this final pass guarantees the whole report is plain UTF-8 Markdown — no
   // NUL/SI/ESC left from names, notes, reasons or commands (Slack and `file`
-  // treat a single NUL as binary).
-  return stripControlChars(lines.join('\n'));
+  // treat a single NUL as binary). HTML is built from that same Markdown.
+  const markdown = stripControlChars(lines.join('\n'));
+  return options.format === 'html' ? reportMarkdownToHtml(markdown) : markdown;
 }
 
 /** Run-level facts about a step that its own record does not carry. */
@@ -413,11 +440,15 @@ function rollbackStatusLabel(status: string): string {
   return status;
 }
 
+/** A `data:` URI for an image file, or `undefined` when it cannot be embedded. */
+type EmbedImage = (path: string) => string | undefined;
+
 function renderStep(
   step: StepRecord,
   redact: Redact,
   href: Redact,
   marks: StepMarks,
+  embedImage?: EmbedImage,
 ): string[] {
   const lines: string[] = [];
   const stepNum = stepNumber(step);
@@ -501,7 +532,7 @@ function renderStep(
 
   for (const evidence of step.evidence) {
     lines.push('');
-    lines.push(...renderEvidenceBlock(evidence, redact, href));
+    lines.push(...renderEvidenceBlock(evidence, redact, href, embedImage));
   }
 
   lines.push('');
@@ -649,10 +680,29 @@ function markdownLinkTarget(target: string): string {
 
 const IMAGE_TYPES = new Set(['screenshot', 'photo']);
 
+/**
+ * Text for `[...]` / `![...]`: an operator's description is free text, and a
+ * `]` in it ("Grafana [prod] panel]") ended the alt text early, so the image
+ * rendered as prose with its whole target visible (in HTML, the base64 of
+ * the screenshot). Brackets and backslashes are escaped; a line break would
+ * split the link across lines, so it becomes a space.
+ */
+function linkText(text: string): string {
+  // split, not /\s*\n\s*/: that regex rescans a long run of spaces from
+  // every position in it (polynomial time on a crafted description).
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/[\\[\]]/g, '\\$&');
+}
+
 function renderEvidenceBlock(
   evidence: StepEvidenceRef,
   redact: Redact,
   href: Redact,
+  embedImage?: EmbedImage,
 ): string[] {
   const lines: string[] = [];
   const label = evidence.description
@@ -663,11 +713,22 @@ function renderEvidenceBlock(
 
   if (evidence.path) {
     const name = evidence.filename ?? evidence.type;
-    lines.push(
-      IMAGE_TYPES.has(evidence.type)
-        ? `![${evidence.description ?? name}](${href(evidence.path)})`
-        : `[${name}](${href(evidence.path)})`,
-    );
+    if (!IMAGE_TYPES.has(evidence.type)) {
+      lines.push(`[${linkText(name)}](${href(evidence.path)})`);
+    } else if (embedImage) {
+      // HTML: the image itself, so the report is one file. One that cannot be
+      // read (moved, deleted, not really an image) stays a link and says so.
+      const dataUri = embedImage(evidence.path);
+      lines.push(
+        dataUri
+          ? `![${linkText(evidence.description ?? name)}](${dataUri})`
+          : `[${linkText(name)}](${href(evidence.path)}) _(not embedded: file missing or not an image)_`,
+      );
+    } else {
+      lines.push(
+        `![${linkText(evidence.description ?? name)}](${href(evidence.path)})`,
+      );
+    }
   } else if (evidence.type === 'link' && evidence.content) {
     // A URL (chat message, CI build, dashboard): a link, not a code block.
     lines.push(`<${evidence.content.trim()}>`);

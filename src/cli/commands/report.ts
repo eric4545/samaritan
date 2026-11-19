@@ -1,27 +1,64 @@
 import { writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { Command } from 'commander';
-import { generateReport } from '../../lib/report-generator';
+import { Command, Option } from 'commander';
+import {
+  generateReport,
+  REPORT_FORMATS,
+  type ReportFormat,
+  type ReportOptions,
+} from '../../lib/report-generator';
 import { mergeSessions } from '../../lib/report-merge';
 
-function linkOptions(output?: string): { linkFrom?: string } {
-  return output ? { linkFrom: dirname(resolve(output)) } : {};
+interface ReportCliOptions {
+  output?: string;
+  format?: ReportFormat;
+}
+
+function reportOptions(options: ReportCliOptions): ReportOptions {
+  return {
+    format: options.format ?? 'markdown',
+    // Evidence files are linked relative to where the report is written.
+    ...(options.output ? { linkFrom: dirname(resolve(options.output)) } : {}),
+  };
+}
+
+/**
+ * `-f, --format`. No Commander default on purpose: `report merge` reads the
+ * options through `optsWithGlobals()`, and a parent default would overwrite
+ * the value given to `merge` (see below).
+ */
+const formatOption = (): Option =>
+  new Option(
+    '-f, --format <format>',
+    'Output format; html is one self-contained file with screenshot/photo evidence embedded (default: markdown)',
+  ).choices(REPORT_FORMATS);
+
+function writeOrPrint(
+  text: string,
+  options: ReportCliOptions,
+  what: string,
+): void {
+  if (options.output) {
+    writeFileSync(options.output, text, 'utf-8');
+    console.log(`📄 ${what} written to ${options.output}`);
+  } else {
+    console.log(text);
+  }
 }
 
 export const reportCommand = new Command('report')
-  .description('Generate a Markdown evidence report from a JSONL session log')
+  .description(
+    'Generate an evidence report (Markdown or HTML) from a JSONL session log',
+  )
   .argument('<jsonl>', 'Path to the JSONL session log file')
   .option('-o, --output <file>', 'Output file path (default: stdout)')
-  .action((jsonlPath: string, options: { output?: string }) => {
-    // Evidence files are linked relative to where the report is written.
-    const md = generateReport(jsonlPath, linkOptions(options.output));
-
-    if (options.output) {
-      writeFileSync(options.output, md, 'utf-8');
-      console.log(`📄 Evidence report written to ${options.output}`);
-    } else {
-      console.log(md);
-    }
+  .addOption(formatOption())
+  .action((jsonlPath: string, options: ReportCliOptions) => {
+    writeOrPrint(
+      generateReport(jsonlPath, reportOptions(options)),
+      options,
+      'Evidence report',
+    );
   });
 
 // `report merge <sessions...>` — consolidate several operators' partial runs of
@@ -34,19 +71,21 @@ reportCommand
   )
   .argument('<sessions...>', 'Two or more session IDs to merge')
   .option('-o, --output <file>', 'Output file path (default: stdout)')
-  .action((sessions: string[], options: { output?: string }) => {
-    let md: string;
-    try {
-      md = mergeSessions(sessions, linkOptions(options.output));
-    } catch (err: any) {
-      console.error(`❌ ${err.message}`);
-      process.exit(1);
-    }
-
-    if (options.output) {
-      writeFileSync(options.output, md, 'utf-8');
-      console.log(`📄 Merged report written to ${options.output}`);
-    } else {
-      console.log(md);
-    }
-  });
+  .addOption(formatOption())
+  .action(
+    (sessions: string[], _options: ReportCliOptions, command: Command) => {
+      // The parent `report` declares the same flags, and Commander lets a
+      // parent take its own options after the subcommand name: `report merge
+      // a b -o out.md` set the PARENT's `output`, so merge printed to stdout
+      // and wrote nothing. Read both levels.
+      const options = command.optsWithGlobals<ReportCliOptions>();
+      let text: string;
+      try {
+        text = mergeSessions(sessions, reportOptions(options));
+      } catch (err: any) {
+        console.error(`❌ ${err.message}`);
+        process.exit(1);
+      }
+      writeOrPrint(text, options, 'Merged report');
+    },
+  );

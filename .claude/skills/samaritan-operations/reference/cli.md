@@ -174,7 +174,8 @@ directory or example ships with this repo today.
 - `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning. It wins over `sessions:`: named sessions are not spawned and every step (whatever its `session:`) captures from / pastes into this one pane; `[t]` switches the pane mid-run; `resume` re-attaches it the same way. One samaritan run per pane: tmux allows one `pipe-pane`, so a second run on the same pane takes it over (warned); the first run detects that at its next step/`[v]`, re-attaches, and verifies from the pane scrollback (from the `[p]` paste line when there was one).
 - `--from-step <step>` — start at that step: its number in the manual (`2.7`; also the multi-env manual's `2g`), its `id`, or its name (several matches: error lists them), NOT the flat position (`--from-step 2` is Step 2 even when it is the 32nd step); earlier steps are recorded as **skipped**
   (distinct from `resume --from-step`, which marks earlier steps completed).
-- `--report <dir>` — write an extra copy of the run report.
+- `--report <dir>` — write an extra copy of the run report (`samaritan-<id>-report.md`).
+- `--report-format <markdown|html>` — format of that `--report` copy (`html` → `samaritan-<id>-report.html`, one self-contained file with screenshot/photo evidence embedded as `data:` URIs). Needs `--report` (error otherwise). The always-on `report.md` stays Markdown. Not on `resume` (it has no `--report`): render a resumed run with `report <events.jsonl> --format html`.
 - `--auto-approve` — note: `automatic` context marks steps complete WITHOUT
   running commands (non-interactive execution is a roadmap item, not real).
 - `--no-require-evidence` — disable the evidence-required gate (see below);
@@ -196,6 +197,17 @@ directory or example ships with this repo today.
   the operator who ran it (`**Operator**:` line + a summary `- Operators:` list).
   `-o, --output <file>` writes to a file (default: stdout). Errors if the
   sessions are from different operations, groups or environments.
+  `-f, --format <markdown|html>` as for `report`.
+
+### report
+- `report <events.jsonl>` — render a run's report from its event log;
+  `-o, --output <file>` (default: stdout). `-f, --format <markdown|html>`
+  (default `markdown`): `html` is ONE self-contained file — the same
+  Markdown structure and headings, screenshot/photo evidence embedded as
+  `data:image/…;base64` (type sniffed from the bytes: PNG, JPEG, GIF, WebP),
+  every other file still a relative link, an image that is missing or not an
+  image a link marked `(not embedded: file missing or not an image)`. All
+  text HTML-escaped; no external resources. No PDF (print the HTML).
 
 ## Interactive run loop actions
 
@@ -254,7 +266,7 @@ or in non-sidecar `automatic` runs.
 Each `run`/`resume` writes a black box beside the operation at
 `<op-dir>/.samaritan-runs/<id>/`:
 - `events.jsonl` — append-only event stream
-- `report.md` — always-on per-step verification ledger + approval trail; terminal-escape noise is cleaned from captured output and operator-local path prefixes (home `→ ~`, run dir, operation dir) are stripped so it's safe to share. Counts only genuinely completed steps (`Steps completed: N/total`); an aborted/cancelled run flags where it stopped — an `Aborted at step N: <name>` summary line plus a `🛑 (aborted here — in progress)` marker on the in-progress step's heading
+- `report.md` — always-on (always Markdown; HTML via `run --report-format html` or `report --format html`) per-step verification ledger + approval trail; terminal-escape noise is cleaned from captured output and operator-local path prefixes (home `→ ~`, run dir, operation dir) are stripped so it's safe to share. Counts only genuinely completed steps (`Steps completed: N/total`); an aborted/cancelled run flags where it stopped — an `Aborted at step N: <name>` summary line plus a `🛑 (aborted here — in progress)` marker on the in-progress step's heading
 
 `.samaritan-runs/` is gitignored (force-add to commit a run). Sessions also
 persist to `~/.samaritan/sessions/<id>.json` for `resume`, which takes the

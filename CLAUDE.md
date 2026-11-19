@@ -87,7 +87,7 @@ mock data — `mock-data.md` and `feature-surface.md` apply to every file).
 
 **Implemented:** YAML parsing (env matrix, templates, `foreach`/matrix,
 `uses`/`with`, `groups` + `--group` parse-time projection, recorded on the
-session, `session_start` and `report.md`; `report merge` refuses mixed groups), Markdown + Confluence ADF generation, JSON-Schema validation
+session, `session_start` and `report.md`; `report merge` refuses mixed groups), Markdown + Confluence ADF generation, evidence report as Markdown or one self-contained HTML file (`report`/`report merge --format html`, `run --report-format html`: images embedded as `data:` URIs, `src/lib/report-html.ts`), JSON-Schema validation
 (`--lint` shellcheck, `expect` regex-lint), Git metadata, evidence models +
 embedding (`evidence.results`), `schema` export, interactive `run` (sidecar /
 manual / automatic / hybrid), session persistence + `resume`/`sessions`,

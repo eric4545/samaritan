@@ -48,7 +48,9 @@ in this roadmap:
 - ✅ Evidence report generation — the canonical `report.md` is always written
   beside the operation under `.samaritan-runs/<id>/`; `samaritan run --report
   <dir>` places an extra copy (`run` only, not `resume`) — Markdown
-  report embedding captured evidence (images, files, code blocks) per
+  (or, with `report --format html` / `run --report-format html`, one
+  self-contained HTML file with screenshots embedded; no PDF — print the
+  HTML) report embedding captured evidence (images, files, code blocks) per
   step, a per-step verification ledger, and an aggregated Approval Trail
 - ✅ `samaritan diff` command — compares how an operation's steps render
   across two environments (resolved commands, expects, etc.) and reports

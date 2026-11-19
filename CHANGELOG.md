@@ -18,6 +18,17 @@ All notable changes to this project are documented here. This project follows
 - **`resume` takes a short session id**, any unique leading part of it, the
   way git takes a short hash: `samaritan resume 3f2a9c1e`. `samaritan
   sessions` prints the shortest unique one in its `Resume:` line.
+- **Evidence report as one self-contained HTML file (`--format html`).** A
+  Markdown report with screenshots is a directory: move `report.md` without
+  `evidence/` and the images break, and ticket tools do not render images
+  embedded in Markdown. `samaritan report <events.jsonl> --format html -o
+  report.html` (also `report merge --format html`, and `run --report <dir>
+  --report-format html` for the `--report` copy) writes the same report, same
+  headings and sections, with screenshot/photo evidence embedded as `data:`
+  URIs. Other files stay links; an image that is missing is named, not shown
+  broken. Offline, no new dependency, every text HTML-escaped. Markdown stays
+  the default and `report.md` beside the operation is unchanged. No PDF:
+  print the HTML from a browser. See `docs/evidence-and-reports.md`.
 
 - **Lint flags instructions that leave the decision to the operator
   (`instruction/vague-decision`).** "consider pausing", "surface them", and
@@ -190,6 +201,15 @@ All notable changes to this project are documented here. This project follows
   and sends nothing for an image; typing `v` works too), and the "no image"
   message reminds you that `⌘⌃⇧4` copies a screenshot while `⌘⇧4` saves a
   file.
+- **A `]` in an evidence description no longer breaks the image.** A
+  screenshot described as `Grafana [prod] panel]` ended the image early: the
+  report showed the Markdown as text instead of the image, and the HTML
+  report showed the screenshot's whole base64 as a paragraph. Brackets in a
+  description or file name are now escaped.
+- **`report merge -o <file>` wrote nothing.** The parent `report` command
+  took `-o` given after `merge`, so the merged report went to stdout and no
+  file was written. `merge` now honours `-o` (and `-f`).
+
 - **`samaritan lint` output read through a pipe is complete.** `lint
   --format json | jq` (and the text report piped to a file reader) got only
   the first 64 KiB: the command exited before the pipe had taken the rest,
