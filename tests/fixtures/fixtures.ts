@@ -231,6 +231,8 @@ export const FIXTURES = {
     'tests/fixtures/operations/features/lint-command-rules.yaml',
   lintSuppression: 'tests/fixtures/operations/features/lint-suppression.yaml',
   lintVariants: 'tests/fixtures/operations/features/lint-variants.yaml',
+  lintVagueDecision:
+    'tests/fixtures/operations/features/lint-vague-decision.yaml',
 } as const;
 
 /**

@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -159,5 +159,59 @@ describe('a rule that crashes', () => {
     } finally {
       console.log = log;
     }
+  });
+});
+
+describe('samaritan lint: output read through a pipe is complete', () => {
+  // A run with many findings printed more than a pipe buffer (64 KiB);
+  // process.exit() right after console.log() dropped the rest, so
+  // `lint --format json | jq` got invalid JSON.
+  const many = `name: many-findings
+version: 1.0.0
+description: mock
+environments:
+  - name: staging
+    description: Staging
+steps:
+${Array.from(
+  { length: 2000 },
+  (_, k) => `  - name: Step ${k}\n    type: manual\n    command: exit 1\n`,
+).join('')}`;
+  const file = write('many.yaml', many);
+
+  it('--format json is whole, parses and keeps the exit code', () => {
+    const r = runCli(['lint', file, '--format', 'json']);
+    assert.ok(r.stdout.length > 65_536, `only ${r.stdout.length} bytes`);
+    const report = JSON.parse(r.stdout);
+    assert.strictEqual(report.files[0].findings.length, 2000);
+    assert.strictEqual(r.status, 1);
+  });
+
+  it('text output ends with its summary line', () => {
+    const r = runCli(['lint', file]);
+    assert.ok(r.stdout.length > 65_536, `only ${r.stdout.length} bytes`);
+    assert.match(r.stdout, /✖ 2000 problems \(2000 errors, 0 warnings\)\n$/);
+    assert.strictEqual(r.status, 1);
+  });
+
+  it('a reader that closes early (`| head`) keeps the exit code, no EPIPE error', async () => {
+    // Warnings only: lint exits 0, so an unhandled EPIPE (exit 1 + stack
+    // trace) cannot hide behind the expected code.
+    const warnings = write(
+      'warnings.yaml',
+      many.replace(/command: exit 1/g, 'command: git push origin HEAD:main'),
+    );
+    const child = spawn(TSX, [INDEX, 'lint', warnings]);
+    let stderr = '';
+    child.stderr.on('data', (d) => {
+      stderr += d;
+    });
+    // Read one chunk, then close the read end while lint is still writing.
+    child.stdout.once('data', () => child.stdout.destroy());
+    const code = await new Promise<number | null>((done) =>
+      child.on('close', done),
+    );
+    assert.strictEqual(stderr, '');
+    assert.strictEqual(code, 0);
   });
 });

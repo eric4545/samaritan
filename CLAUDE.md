@@ -147,6 +147,10 @@ npx @biomejs/biome check .        # lint
 - **Single quotes, no semicolons** (Biome v2.2.4 enforces). Compile target
   ES2022, module resolution Node16.
 - **Functional patterns**, explicit types, avoid deep nesting (extract functions).
+- **Never `process.exit()` right after printing output a tool may pipe** —
+  Node writes to pipes asynchronously and the exit drops what the pipe has not
+  taken (`lint --format json | jq` got 64 KiB). Use `return
+  exitAfterFlush(code)` (`src/lib/exit-after-flush.ts`).
 - Naming: interfaces/types `PascalCase`, functions `camelCase`, constants
   `SCREAMING_SNAKE_CASE`, files `kebab-case.ts`.
 - Two justified `biome.json` exceptions: `noExplicitAny` (YAML parsing) and

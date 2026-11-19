@@ -290,4 +290,22 @@ describe('family C and style: cases that must not fire', () => {
       s('echo ${IMG}', { name: 'C' }),
     ]);
   });
+  it('instruction/vague-decision: concrete conditionals, other fields, pastes', () => {
+    silent('instruction/vague-decision', [
+      s('echo "retry as needed"', {
+        description: 'Consider pausing if errors appear.',
+        instruction:
+          'If 5xx responses exceed 1% after the switch, ask the web-server owners to redeploy; STOP if they continue for 5 minutes.',
+        expect: { contains: 'as needed' },
+      }),
+      s('x', {
+        name: 'T',
+        instruction: 'STOP only if no one on call has acknowledged the page.',
+      }),
+      s('x', {
+        name: 'U',
+        instruction: 'Paste:\n~~~text\nRetry as needed.\n~~~',
+      }),
+    ]);
+  });
 });

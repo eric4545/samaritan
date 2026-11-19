@@ -46,7 +46,11 @@ directory or example ships with this repo today.
   (`flow/*`: forward-var, unproduced-capture (per env, "may not execute"),
   capture-group-oob, session-undeclared, mutate-without-verify,
   no-rollback-on-mutate, + opt-in ordering heuristics), expect vs command
-  (`expect/contains-vs-matches`, `json-shape`, `multiline-contains`), and the
+  (`expect/contains-vs-matches`, `json-shape`, `multiline-contains`),
+  instruction prose (`instruction/vague-decision`: "consider pausing",
+  "surface them", "as needed"/"as appropriate"/"if necessary" next to an
+  action verb; `instruction` only, fences and inline code skipped; warning,
+  error under strict/all; team phrases in `lint.vague_phrases`), and the
   existing validate checks under ids (`expect/*`, `deps/*`,
   `steps/duplicate-id`, `vars/*`, `evidence/*`, `rollback/empty`, `style/*`,
   `compat/discarded-verify`, `shell/shellcheck`).
@@ -68,7 +72,7 @@ directory or example ships with this repo today.
   or a local file, relative), `rules` (`off|warning|error`), `banned`
   (`{pattern, message}`), `required` (`{pattern, flags, message}`),
   `protected_branches`, `identities`, `known_binaries`, `aws_sessions`,
-  `aws_create_allowlist`. Unknown keys / rule ids / presets, extends cycles →
+  `aws_create_allowlist`, `vague_phrases` (adds up across `extends`). Unknown keys / rule ids / presets, extends cycles →
   exit 2.
 - Patterns are parsed like commands: same program, every option anywhere
   (combined short flags expand, `--x=v` splits), assignments by name

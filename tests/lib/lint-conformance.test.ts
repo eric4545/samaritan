@@ -122,6 +122,9 @@ const SAMPLES: Record<string, Sample> = {
     expect: { contains: '"phase": "Running"' },
   }),
   'expect/multiline-contains': cmd('x', { expect: { contains: 'a\nb' } }),
+  'instruction/vague-decision': steps([
+    { name: 'S', type: 'manual', instruction: 'Retry as needed.' },
+  ]),
   'steps/duplicate-id': steps([
     { id: 'a', name: 'A', type: 'manual' },
     { id: 'a', name: 'B', type: 'manual' },

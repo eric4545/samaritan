@@ -1,0 +1,26 @@
+# instruction/vague-decision (samaritan lint): only `instruction` is read,
+# line by line. Step 1 has two findings on its line 2; the other steps must
+# stay silent.
+name: lint-vague-decision
+version: 1.0.0
+description: Vague-decision wording in instructions, and where it is ignored
+environments:
+  - name: staging
+    description: Staging
+steps:
+  - name: Watch the rollout
+    type: manual
+    instruction: |
+      Watch the error rate on the dashboard.
+      Errors during the rollout: surface them right away and consider pausing before the cutover.
+  - name: Same wording in the description
+    type: manual
+    description: Errors during the rollout, surface them right away and consider pausing before the cutover.
+    command: echo ok
+  - name: Same wording in the command
+    type: manual
+    command: echo "retry as needed"
+  - name: Suppressed by a comment above the instruction
+    type: manual
+    # samaritan-lint-disable-next-line instruction/vague-decision -- reviewed
+    instruction: Retry as needed.

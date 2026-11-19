@@ -7,6 +7,16 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Lint flags instructions that leave the decision to the operator
+  (`instruction/vague-decision`).** "consider pausing", "surface them", and
+  "as needed" / "as appropriate" / "if necessary" next to an action ("retry
+  as needed") in a step's `instruction` read like a check but give no
+  condition and no action. Only `instruction` is read (not `description`,
+  `command` or `expect`); fenced paste blocks and inline code are skipped;
+  variants, sub-steps and rollback steps are checked. A warning by default
+  (`validate` prints it), an error under `--strict` / `samaritan:all`. Teams
+  add phrases with `lint.vague_phrases`. See `docs/linting.md`.
+
 - **Teach lint about your own tools (`lint.tools`).** What lint knows about
   a program (how its options parse, which verbs change state, take a backup
   or delete data, which options name a resource, its output format) is now a
@@ -148,6 +158,13 @@ All notable changes to this project are documented here. This project follows
   put them back in their natural order.
 
 ### Fixed
+
+- **`samaritan lint` output read through a pipe is complete.** `lint
+  --format json | jq` (and the text report piped to a file reader) got only
+  the first 64 KiB: the command exited before the pipe had taken the rest,
+  so large reports were cut off and the JSON did not parse. `lint` and
+  `schema` now exit only after their output is written. Exit codes are
+  unchanged.
 
 - **`psql -c '<sql>'` is read correctly by lint.** The SQL was never seen,
   so a `DROP`/`UPDATE` through psql did not count as a state change or a data

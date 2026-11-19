@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Command } from 'commander';
+import { exitAfterFlush } from '../../lib/exit-after-flush';
 
 interface SchemaExportOptions {
   output?: string;
@@ -59,7 +60,7 @@ const schemaCommand = new Command('schema')
         console.log(output);
       }
 
-      process.exit(0);
+      return exitAfterFlush(0);
     } catch (error: any) {
       console.error(`❌ Failed to export schema: ${error.message}`);
       process.exit(1);

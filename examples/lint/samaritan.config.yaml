@@ -38,3 +38,10 @@ lint:
     - pattern: 'kubectl *'
       flags: ['--context']
       message: name the cluster explicitly; never rely on the current context
+
+  # Instruction wording this team treats as a decision left to the operator,
+  # on top of the built-in "consider pausing", "surface them", "retry as
+  # needed", … (instruction/vague-decision). Literal, case-insensitive,
+  # whole words. Write the condition and the action instead:
+  #   "STOP if 5xx continues for 5 minutes."
+  vague_phrases: [use your judgement, if it looks wrong]
