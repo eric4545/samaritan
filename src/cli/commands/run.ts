@@ -25,7 +25,12 @@ import {
 import { getBuiltinVariables } from '../../lib/builtin-variables';
 import type { CaptureBackend, PaneOwner } from '../../lib/capture-backend';
 import { copyToClipboard } from '../../lib/clipboard';
-import { readClipboardImage } from '../../lib/clipboard-image';
+import {
+  type ClipboardProbe,
+  copiedSince,
+  probeClipboard,
+  readClipboardImage,
+} from '../../lib/clipboard-image';
 import {
   confirmResultPrompt,
   normalizeConfirm,
@@ -2283,6 +2288,35 @@ class OperationRunner {
     // captures the pane, a dragged/typed path attaches the file, a URL is
     // recorded as a link and anything else as text (a multi-line paste is one
     // answer). The kind is worked out by `classifyEvidenceInput`.
+    // The clipboard as it was when the current step started. A Mac terminal
+    // sends NOTHING for Cmd+V when the clipboard holds an image or a copied
+    // file, so the [e] prompt cannot wait for a paste: it compares the
+    // clipboard with this, and an image or file copied since is offered on a
+    // bare Enter. TTY only; never slows a step (probed in the background).
+    let clipboardAtStepStart: Promise<ClipboardProbe | undefined> =
+      Promise.resolve(undefined);
+    const lookAtClipboard = (): Promise<ClipboardProbe | undefined> => {
+      if (!process.stdin.isTTY) return Promise.resolve(undefined);
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(undefined), 3000);
+        timer.unref();
+        probeClipboard()
+          .catch(() => undefined)
+          .then((probe) => {
+            clearTimeout(timer);
+            resolve(probe);
+          });
+      });
+    };
+    // An image, or a copied file that exists here.
+    const attachable = (
+      probe: ClipboardProbe | undefined,
+    ): ClipboardProbe | undefined =>
+      probe?.kind === 'image' ||
+      (probe?.kind === 'file' && probe.path && existsSync(probe.path))
+        ? probe
+        : undefined;
+
     const captureEvidence = async (
       stepIndex: number,
       evidenceConfig: Step['evidence'],
@@ -2303,10 +2337,20 @@ class OperationRunner {
         ? 'capture the pane screen (no new output this step)'
         : 'capture pane output since step start';
 
+      const [clipBefore, clipAtOpen] = await Promise.all([
+        clipboardAtStepStart,
+        lookAtClipboard(),
+      ]);
+      const onClipboard = attachable(clipAtOpen);
       console.log(
         `\n${evidencePromptLines({
           wanted: wantedEvidenceTypes(evidenceConfig),
           captureLabel: captured !== undefined ? captureLabel : undefined,
+          clipboard: onClipboard && {
+            kind: onClipboard.kind as 'image' | 'file',
+            fresh: !!attachable(copiedSince(clipBefore, clipAtOpen)),
+            name: onClipboard.path ? basename(onClipboard.path) : undefined,
+          },
         }).join('\n')}`,
       );
       const answer = await readMultiline('    Evidence > ', {
@@ -2319,8 +2363,31 @@ class OperationRunner {
 
       // The old two-step menu (`f` then a path, `t` then text) still works.
       const word = answer.trim().toLowerCase();
+      const isClipboardKey =
+        answer === CLIPBOARD_KEY || word === 'v' || word === 'clipboard';
+      // ↵ alone: an image or file copied since the step started (looked at
+      // again now: it may have been copied after [e] opened, then Cmd+V sent
+      // nothing). Ctrl+V / v: a copied FILE is attached as that file; reading
+      // it as an image would record the file's icon.
+      const clipNow =
+        word === '' || isClipboardKey ? await lookAtClipboard() : undefined;
+      const fromClipboard = isClipboardKey
+        ? clipNow?.kind === 'file'
+          ? attachable(clipNow)
+          : undefined
+        : word === ''
+          ? attachable(copiedSince(clipBefore, clipNow))
+          : undefined;
+      // Taken once: a second [e] does not offer the same copy again.
+      if (isClipboardKey || fromClipboard)
+        clipboardAtStepStart = Promise.resolve(clipNow);
       let input: EvidenceInput | { kind: 'clipboard' };
-      if (word === 'f' || word === 'file') {
+      if (fromClipboard) {
+        input =
+          fromClipboard.kind === 'file' && fromClipboard.path
+            ? { kind: 'file', path: fromClipboard.path }
+            : { kind: 'clipboard' };
+      } else if (word === 'f' || word === 'file') {
         const rawPath = await question(
           '    Path (drag & drop into terminal): ',
         );
@@ -2347,11 +2414,7 @@ class OperationRunner {
           return;
         }
         input = { kind: 'link', url };
-      } else if (
-        answer === CLIPBOARD_KEY ||
-        word === 'v' ||
-        word === 'clipboard'
-      ) {
+      } else if (isClipboardKey) {
         input = { kind: 'clipboard' };
       } else if (word === 'capture') {
         input = { kind: 'empty' };
@@ -3059,6 +3122,9 @@ class OperationRunner {
         // `sessions` shows where the run is by the manual's number, also
         // when it is aborted before any step completes.
         sessionManager.setCurrentStepLabel(state.context.sessionId, labelOf(i));
+
+        // What is on the clipboard now: [e] offers what is copied after this.
+        clipboardAtStepStart = lookAtClipboard();
 
         // Emit step_start for every step so the report can reconstruct the timeline
         logger.emit({

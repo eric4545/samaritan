@@ -171,6 +171,14 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **Clipboard screenshots on macOS: copy, then ↵.** A Mac terminal sends
+  nothing at all for `⌘V` when the clipboard holds a screenshot or a copied
+  file, so pasting one at the `[e]` prompt did nothing. The run now looks at
+  the clipboard itself: a screenshot or file copied during the step is shown
+  in the prompt (`📋 On your clipboard: the screenshot you just copied`) and
+  `↵` attaches it, also when it was copied after `[e]` opened. A file copied
+  in Finder is attached as the file, not as its icon. Also on a Linux
+  desktop (`wl-paste`/`xclip`).
 - **Clipboard screenshots on macOS: the real error is shown, and more
   images are read.** Every failure to read the clipboard used to print "the
   clipboard holds no image", even when the helper itself failed (not allowed

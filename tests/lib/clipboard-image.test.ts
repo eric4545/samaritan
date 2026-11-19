@@ -13,8 +13,14 @@ import {
   type ClipboardEnv,
   clipboardImageTools,
   clipboardUnavailableReason,
+  copiedSince,
+  fileFromUriList,
   isPng,
+  macProbeArgs,
+  parseMacProbe,
+  probeClipboard,
   type RunTool,
+  type RunToolAsync,
   readClipboardImage,
 } from '../../src/lib/clipboard-image';
 
@@ -255,5 +261,121 @@ describe('readClipboardImage', () => {
     );
     assert.strictEqual(result.ok, false);
     assert.match((result as { reason: string }).reason, /over SSH/);
+  });
+});
+
+describe('probeClipboard: what is on the clipboard, without taking it', () => {
+  const ok = (stdout: string | Buffer) =>
+    Promise.resolve({
+      status: 0,
+      stdout: Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout),
+    });
+
+  it('macOS: one ASCII JXA script, its JSON parsed', async () => {
+    const args = macProbeArgs();
+    assert.deepStrictEqual(args.slice(0, 2), ['-l', 'JavaScript']);
+    assert.ok(/^[\x20-\x7e]*$/.test(args.join('')), 'ASCII only');
+    const calls: string[][] = [];
+    const run: RunToolAsync = (command, a) => {
+      calls.push([command, ...a]);
+      return ok(
+        '{"changeCount":42,"types":["public.png","public.tiff"],"path":null}\n',
+      );
+    };
+    assert.deepStrictEqual(
+      await probeClipboard(ctx({ platform: 'darwin' }), run),
+      { fingerprint: 'mac:42', kind: 'image' },
+    );
+    assert.strictEqual(calls[0][0], 'osascript');
+  });
+
+  it('macOS: a copied file wins over its icon (TIFF)', () => {
+    assert.deepStrictEqual(
+      parseMacProbe(
+        '{"changeCount":7,"types":["public.file-url","public.tiff"],"path":"/Users/alice/Desktop/shot.png"}',
+      ),
+      {
+        fingerprint: 'mac:7',
+        kind: 'file',
+        path: '/Users/alice/Desktop/shot.png',
+      },
+    );
+  });
+
+  it('macOS: text is other, nothing is empty, garbage is undefined', () => {
+    assert.strictEqual(
+      parseMacProbe('{"changeCount":1,"types":["public.utf8-plain-text"]}')
+        ?.kind,
+      'other',
+    );
+    assert.strictEqual(
+      parseMacProbe('{"changeCount":1,"types":[]}')?.kind,
+      'empty',
+    );
+    assert.strictEqual(parseMacProbe('execution error'), undefined);
+  });
+
+  it('a failing helper or SSH gives undefined (behave as before)', async () => {
+    const fail: RunToolAsync = () =>
+      Promise.resolve({ status: 1, stdout: Buffer.alloc(0) });
+    assert.strictEqual(
+      await probeClipboard(ctx({ platform: 'darwin' }), fail),
+      undefined,
+    );
+    const never: RunToolAsync = () => {
+      throw new Error('must not run');
+    };
+    assert.strictEqual(
+      await probeClipboard(
+        ctx({ platform: 'darwin', env: { SSH_TTY: '/dev/pts/0' } }),
+        never,
+      ),
+      undefined,
+    );
+  });
+
+  it('Linux X11: TARGETS, then the PNG bytes fingerprint the image', async () => {
+    const x11 = ctx({ env: { DISPLAY: ':0' }, tools: ['xclip'] });
+    const run: RunToolAsync = (_c, a) =>
+      ok(a.includes('TARGETS') ? 'TARGETS\nimage/png\n' : PNG);
+    const probe = await probeClipboard(x11, run);
+    assert.strictEqual(probe?.kind, 'image');
+    assert.match(probe?.fingerprint ?? '', /^image:[0-9a-f]{40}$/);
+  });
+
+  it('Linux: a copied file (text/uri-list) is the file', async () => {
+    const x11 = ctx({ env: { DISPLAY: ':0' }, tools: ['xclip'] });
+    const run: RunToolAsync = (_c, a) =>
+      ok(
+        a.includes('TARGETS')
+          ? 'text/uri-list\nimage/png'
+          : 'file:///home/alice/shot%201.png\r\n',
+      );
+    assert.deepStrictEqual(await probeClipboard(x11, run), {
+      fingerprint: 'file:/home/alice/shot 1.png',
+      kind: 'file',
+      path: '/home/alice/shot 1.png',
+    });
+    assert.strictEqual(fileFromUriList('https://example.com/x'), undefined);
+  });
+});
+
+describe('copiedSince', () => {
+  const text = { fingerprint: 'mac:1', kind: 'other' as const };
+  const shot = { fingerprint: 'mac:2', kind: 'image' as const };
+
+  it('an image copied after the step started', () => {
+    assert.deepStrictEqual(copiedSince(text, shot), shot);
+  });
+  it('not the image that was already there', () => {
+    assert.strictEqual(copiedSince(shot, shot), undefined);
+  });
+  it('not text, and nothing when a probe is missing', () => {
+    assert.strictEqual(
+      copiedSince(shot, { fingerprint: 'mac:3', kind: 'other' }),
+      undefined,
+    );
+    assert.strictEqual(copiedSince(undefined, shot), undefined);
+    assert.strictEqual(copiedSince(text, undefined), undefined);
   });
 });

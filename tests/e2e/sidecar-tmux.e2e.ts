@@ -1437,6 +1437,111 @@ describe('sidecar e2e (real tmux)', () => {
     },
   );
 
+  // A Mac terminal sends NOTHING for Cmd+V when the clipboard holds an image
+  // or a copied file, so the prompt cannot wait for a paste: the run looks
+  // at the clipboard when the step starts and again at [e] / ↵. The stand-in
+  // xclip answers TARGETS and text/uri-list like the real one (the probe's
+  // Linux path); the macOS probe script is not run here.
+  it(
+    '[e] offers a screenshot or file copied during the step (Cmd+V sends nothing)',
+    {
+      skip: skip || (process.platform === 'linux' ? false : 'linux only'),
+      timeout: 120_000,
+    },
+    async () => {
+      const ws = workspace('evidence-kinds.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const bin = join(ws.dir, 'bin');
+        mkdirSync(bin);
+        writeFileSync(
+          join(bin, 'xclip'),
+          [
+            '#!/bin/sh',
+            'd="$(dirname "$0")"',
+            'case "$*" in',
+            '  *TARGETS*) cat "$d/targets" ;;',
+            '  *text/uri-list*) cat "$d/uri" ;;',
+            '  *) cat "$d/clipboard.bin" ;;',
+            'esac',
+            '',
+          ].join('\n'),
+        );
+        chmodSync(join(bin, 'xclip'), 0o755);
+        const copyText = () => {
+          writeFileSync(join(bin, 'targets'), 'TARGETS\nUTF8_STRING\n');
+          writeFileSync(join(bin, 'clipboard.bin'), 'some text');
+        };
+        copyText();
+
+        d.type(
+          `cd ${ROOT} && HOME=${ws.dir} DISPLAY=:99 WAYLAND_DISPLAY= PATH=${bin}:$PATH ${TSX} ${CLI} run ${ws.op} --env staging --attach ${d.work}`,
+        );
+        await d.waitFor(/\[Step 1 · 1\/2\][\s\S]*\? more/);
+
+        // A screenshot copied to the clipboard during the step; Cmd+V would
+        // send nothing, so the operator only presses ↵.
+        writeFileSync(join(bin, 'targets'), 'TARGETS\nimage/png\n');
+        writeFileSync(join(bin, 'clipboard.bin'), PNG_BYTES);
+        d.key('e');
+        await d.waitFor('📋 On your clipboard: the screenshot you just copied');
+        await d.waitFor('↵ alone    attach the screenshot you just copied');
+        await evidencePrompt(d, 1);
+        d.enter();
+        await d.waitFor('Recording screenshot from the clipboard');
+        await d.waitFor('Description (optional');
+        d.type('Alert panel');
+        await evidenceRecorded(d, 1);
+
+        // Taken once: the next [e] does not offer the same copy on ↵.
+        d.key('e');
+        await d.waitFor('(on it now: screenshot, not a new copy)');
+        await evidencePrompt(d, 2);
+        tmux(['send-keys', '-t', d.main, 'Escape']);
+        await d.waitFor(/(Cancelled — no evidence recorded[\s\S]*){1}/);
+
+        // A file copied in the file manager: Ctrl+V takes the FILE (on a
+        // Mac its icon is on the clipboard too, as an image).
+        const shot = join(ws.dir, 'alert shot.png');
+        writeFileSync(shot, PNG_BYTES);
+        writeFileSync(
+          join(bin, 'uri'),
+          `file://${shot.replace(/ /g, '%20')}\r\n`,
+        );
+        writeFileSync(
+          join(bin, 'targets'),
+          'TARGETS\ntext/uri-list\nimage/png\n',
+        );
+        d.key('e');
+        await d.waitFor('attach the file alert shot.png you just copied');
+        await evidencePrompt(d, 3);
+        tmux(['send-keys', '-t', d.main, 'C-v']);
+        await d.waitFor('Recording screenshot alert shot.png');
+        await d.waitFor(/(Description \(optional[\s\S]*){2}/);
+        d.enter();
+        await evidenceRecorded(d, 2);
+
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('[Step 2 · 2/2]');
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        await d.waitFor('Report:', { timeoutMs: 20_000 });
+
+        const stored = readdirSync(runEvidenceDir(ws.dir)).sort();
+        assert.strictEqual(stored.length, 2, stored.join(', '));
+        const report = readReport(ws.dir);
+        const clip = stored.find((f) => f.endsWith('-clipboard.png'));
+        const file = stored.find((f) => f.endsWith('-alert-shot.png'));
+        assert.ok(clip && file, stored.join(', '));
+        assert.ok(report.includes(`![Alert panel](evidence/${clip})`), report);
+        assert.ok(report.includes(`(evidence/${file})`), report);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
   it(
     'abort → resume keeps the evidence; [x] deletes the stored copy and the gate returns',
     { skip, timeout: 120_000 },

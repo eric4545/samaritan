@@ -138,6 +138,12 @@ export function evidencePromptLines(ctx: {
   captureLabel?: string;
   /** Defaults to this machine's. */
   platform?: NodeJS.Platform;
+  /**
+   * An image or file on the clipboard. `fresh`: copied since the step
+   * started, so a bare Enter attaches it (the pane capture moves to the
+   * word `capture`).
+   */
+  clipboard?: { kind: 'image' | 'file'; fresh: boolean; name?: string };
 }): string[] {
   // On a Mac, Cmd+V is the terminal's text paste: with only an image on the
   // clipboard it sends nothing, so the prompt seems to ignore the screenshot.
@@ -145,10 +151,30 @@ export function evidencePromptLines(ctx: {
     (ctx.platform ?? process.platform) === 'darwin'
       ? '       Ctrl+V     the screenshot on your clipboard (Ctrl, not Cmd: Cmd+V pastes text only; or type v)'
       : '       Ctrl+V     the screenshot on your clipboard (or type v)';
+  const clip = ctx.clipboard;
+  const what = clip
+    ? clip.kind === 'file'
+      ? `file ${clip.name ?? ''}`.trim()
+      : 'screenshot'
+    : '';
+  const enterLines = clip?.fresh
+    ? [
+        `       ↵ alone    attach the ${what} you just copied`,
+        ...(ctx.captureLabel ? [`       capture    ${ctx.captureLabel}`] : []),
+      ]
+    : ctx.captureLabel
+      ? [`       ↵ alone    ${ctx.captureLabel}`]
+      : [];
   return [
     `    📎 Add evidence${ctx.wanted ? ` (this step asks for: ${ctx.wanted})` : ''}`,
-    ...(ctx.captureLabel ? [`       ↵ alone    ${ctx.captureLabel}`] : []),
+    ...(clip?.fresh
+      ? [`    📋 On your clipboard: the ${what} you just copied`]
+      : []),
+    ...enterLines,
     clipboardLine,
+    ...(clip && !clip.fresh
+      ? [`                  (on it now: ${what}, not a new copy)`]
+      : []),
     '       file       drag a screenshot or file in, or type its path',
     '       link       paste a URL (chat message, CI build, dashboard)',
     '       text       type or paste it, several lines are fine',

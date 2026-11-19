@@ -365,6 +365,23 @@ clipboard (osascript: …)`. Before, every failure read "the clipboard holds no
 image", which hid a broken helper. On darwin the no-image reason adds the
 `Cmd+Ctrl+Shift+4` hint and `evidencePromptLines` says `Ctrl, not Cmd` (⌘V is
 the terminal's text paste and sends nothing for an image).
+
+**Copied, not pasted (`probeClipboard`).** ⌘V sends NO bytes for an
+image/file clipboard, so no key handler can see it. run.ts keeps
+`clipboardAtStepStart` (set next to `step_start`, a background promise,
+`lookAtClipboard()`: TTY only, 3 s cap, never throws) and in
+`captureEvidence` compares it with a probe at `[e]` open (prompt line
+`📋 On your clipboard: the … you just copied`, `↵ alone` → it, pane capture →
+`capture`) and a fresh probe at a bare `↵` (catches a copy made after `[e]`
+opened): `copiedSince(before, now)` = image/file whose `fingerprint` changed
+(darwin `mac:<changeCount>` from a JXA `NSPasteboard` script; Linux
+`TARGETS` + sha1 of the PNG / the `text/uri-list` path). A copied FILE wins
+over an image (Finder also puts the icon as TIFF): `↵`/`Ctrl+V` attach the
+file via the normal `file` path. After taking a copy, `clipboardAtStepStart`
+is reset to it (offered once). Piped stdin never probes. e2e "[e] offers a
+screenshot or file copied during the step" (stand-in xclip answering
+`TARGETS` / `text/uri-list`); the darwin probe script itself is unverified
+here — check on a real Mac before changing it.
 `MultilineBuffer` reports `clipboard` only for Ctrl+V on an EMPTY prompt.
 The e2e ("[e] Ctrl+V") puts a stand-in `xclip` on PATH: it proves key →
 file → report, NOT the real helpers. The `osascript` (JXA and AppleScript)

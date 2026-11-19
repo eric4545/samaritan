@@ -207,7 +207,8 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
   |---|---|---|
   | `↵` alone (a pane is attached) | `command_output`: the pane output since the step started, cleaned of colour codes. When nothing was printed since the step started (a "record the result" step that follows the step that ran the command), the pane **screen** instead | fenced code block |
   | A path to an existing file, dragged in or typed (quotes, `\ ` escapes and `~` are understood) | `screenshot` for `png`/`jpg`/`jpeg`/`webp`/`gif`, `video` for `mp4`/`webm`/`mov`, `file` for anything else. The file is **copied** to `evidence/` in the run directory, beside `report.md` | image (`![description](evidence/<file>)`) or link |
-  | `Ctrl+V` on the empty prompt (or the answer `v`) | `screenshot`: the **image** on your clipboard, saved as `evidence/<id>-clipboard.png` | image |
+  | `↵` alone, when a screenshot or file was **copied during this step** (the prompt then says `📋 On your clipboard: the screenshot you just copied`) | that screenshot (`screenshot`) or that file, as for a path; the pane capture moves to the answer `capture` | image or link |
+  | `Ctrl+V` on the empty prompt (or the answer `v`) | `screenshot`: the **image** on your clipboard, saved as `evidence/<id>-clipboard.png`. A **file** copied in Finder or a file manager is attached as that file | image |
   | A single `http://` / `https://` URL: a chat message permalink, a CI build, a dashboard | `link` | clickable link |
   | Anything else, one line or many | `text` | fenced `text` block |
 
@@ -224,13 +225,15 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
 
   When there is no image on the clipboard, or no helper, a line says why and nothing is recorded. When a helper **fails** (not allowed to run, timed out), the line quotes its own error (`No image taken: could not read the clipboard (osascript: …)`) rather than calling the clipboard empty. Some terminals bind `Ctrl+V` to their own paste; answer `v` at the prompt instead.
 
+  **Copy, then ↵.** A Mac terminal sends nothing at all for `⌘V` when the clipboard holds an image or a copied file (there is no text to paste), so SAMARITAN looks at the clipboard itself: when a step starts, when `[e]` opens and when you press `↵`. Anything copied in between, a screenshot (`⌘⌃⇧4`) or a file (`⌘C` in Finder), is what `↵ alone` attaches, even when you copied it after opening `[e]`. It is taken once: the next `[e]` does not offer the same copy. A copy from before the step started is only mentioned (`on it now: screenshot, not a new copy`); `Ctrl+V` takes it. This works on macOS and on a Linux desktop with `wl-paste` or `xclip`; not over SSH.
+
   **On a Mac:**
 
   | What happens | Why | Do this |
   |---|---|---|
-  | `⌘V` at the prompt does nothing | `⌘V` is the terminal's text paste; with only an image on the clipboard it sends nothing | Press `Ctrl+V` (the control key), or type `v` and Enter |
+  | `⌘V` at the prompt does nothing | `⌘V` is the terminal's text paste; with only an image or a file on the clipboard it sends nothing | Press `↵`: what you copied during the step is attached. Or `Ctrl+V` (the control key), or type `v` and Enter |
   | `the clipboard holds no image` right after a screenshot | `⌘⇧4` / `⌘⇧3` save the screenshot to a file; only `⌘⌃⇧4` / `⌘⌃⇧3` copy it to the clipboard | Take it with `⌘⌃⇧4`, or drag the saved file (or its thumbnail) into the prompt |
-  | `the clipboard holds no image` after copying a file in Finder | The clipboard holds the file, not its picture | Drag the file into the prompt, or type its path |
+  | You copied a file in Finder | The clipboard holds the file (and its icon) | `↵` or `Ctrl+V` attaches the file itself, not the icon |
   | `could not read the clipboard (osascript: …)` | The quoted error is from macOS | Act on it, or save the screenshot and give its path |
   | Over SSH to another host | The clipboard is on your Mac | Copy the file to the host and give its path, or paste a link |
 

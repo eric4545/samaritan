@@ -161,6 +161,32 @@ describe('evidence input helpers', () => {
     assert.match(without, /Ctrl\+V {5}the screenshot on your clipboard/);
   });
 
+  it('a screenshot copied during the step: ↵ attaches it, the pane capture moves to `capture`', () => {
+    const lines = evidencePromptLines({
+      captureLabel: 'capture pane output since step start',
+      clipboard: { kind: 'image', fresh: true },
+    }).join('\n');
+    assert.match(lines, /📋 On your clipboard: the screenshot you just copied/);
+    assert.match(lines, /↵ alone {4}attach the screenshot you just copied/);
+    assert.match(lines, /capture {4}capture pane output since step start/);
+    assert.ok(!lines.includes('↵ alone    capture pane'));
+  });
+
+  it('a copied file is named; an older clipboard image is only mentioned', () => {
+    assert.match(
+      evidencePromptLines({
+        clipboard: { kind: 'file', fresh: true, name: 'shot.png' },
+      }).join('\n'),
+      /↵ alone {4}attach the file shot\.png you just copied/,
+    );
+    const stale = evidencePromptLines({
+      captureLabel: 'capture pane output since step start',
+      clipboard: { kind: 'image', fresh: false },
+    }).join('\n');
+    assert.match(stale, /↵ alone {4}capture pane output since step start/);
+    assert.match(stale, /on it now: screenshot, not a new copy/);
+  });
+
   it('on a Mac the prompt says Ctrl+V, not Cmd+V (Cmd+V sends no image)', () => {
     const mac = evidencePromptLines({ platform: 'darwin' }).join('\n');
     assert.match(mac, /Ctrl, not Cmd: Cmd\+V pastes text only; or type v/);
