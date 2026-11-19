@@ -165,3 +165,38 @@ export function deletePersistedSession(sessionId: string): void {
     }
   }
 }
+
+/**
+ * A session named by its full id or by a unique leading part of it, the way
+ * git takes a short commit hash: `resume 3f2a9c1e` instead of 36 characters.
+ */
+export function resolveSessionIdPrefix(
+  input: string,
+  ids: string[],
+): { id: string } | { error: string } | undefined {
+  const wanted = input.trim().toLowerCase();
+  if (!wanted) return undefined;
+  if (ids.includes(wanted)) return { id: wanted };
+  const hits = ids.filter((id) => id.toLowerCase().startsWith(wanted));
+  if (hits.length === 1) return { id: hits[0] };
+  if (hits.length > 1)
+    return {
+      error: `"${input}" starts ${hits.length} session ids (${hits
+        .map((id) => shortSessionId(id, ids))
+        .join(', ')}). Type more of it.`,
+    };
+  return undefined;
+}
+
+/**
+ * The shortest leading part of `id` (at least 8 characters) that no other
+ * session id starts with: what `sessions` prints for `resume`.
+ */
+export function shortSessionId(id: string, ids: string[]): string {
+  const others = ids.filter((other) => other !== id);
+  for (let len = 8; len < id.length; len++) {
+    const prefix = id.slice(0, len);
+    if (!others.some((other) => other.startsWith(prefix))) return prefix;
+  }
+  return id;
+}

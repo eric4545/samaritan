@@ -30,24 +30,40 @@ function ctx(over: Partial<ClipboardEnv> & { tools?: string[] }): ClipboardEnv {
 }
 
 describe('clipboardImageTools', () => {
-  it('macOS: pngpaste when installed, then the built-in osascript', () => {
+  it('macOS: pngpaste when installed, then the AppKit reader, then AppleScript', () => {
     const names = (tools: string[]) =>
       clipboardImageTools(ctx({ platform: 'darwin', tools })).map(
         (t) => t.name,
       );
-    assert.deepStrictEqual(names(['pngpaste']), ['pngpaste', 'osascript']);
-    assert.deepStrictEqual(names([]), ['osascript']);
+    assert.deepStrictEqual(names(['pngpaste']), [
+      'pngpaste',
+      'osascript (AppKit)',
+      'osascript',
+    ]);
+    assert.deepStrictEqual(names([]), ['osascript (AppKit)', 'osascript']);
   });
 
   it('osascript gets the destination as an argument, never spliced into the script', () => {
-    const [tool] = clipboardImageTools(ctx({ platform: 'darwin' }));
-    const args = tool.args("/tmp/it's here.png");
-    assert.strictEqual(args[args.length - 1], "/tmp/it's here.png");
-    assert.ok(
-      args.slice(0, -1).every((a) => !a.includes('here.png')),
-      'the path is not part of any -e line',
-    );
-    assert.ok(args.includes('set png to (the clipboard as «class PNGf»)'));
+    for (const tool of clipboardImageTools(ctx({ platform: 'darwin' }))) {
+      const args = tool.args("/tmp/it's here.png");
+      assert.strictEqual(args[args.length - 1], "/tmp/it's here.png");
+      assert.ok(
+        args.slice(0, -1).every((a) => !a.includes('here.png')),
+        `${tool.name}: the path is not part of any -e line`,
+      );
+    }
+  });
+
+  it('the AppKit reader is JavaScript for Automation in plain ASCII, and converts TIFF', () => {
+    const [jxa] = clipboardImageTools(ctx({ platform: 'darwin' }));
+    const args = jxa.args('/tmp/x.png');
+    assert.deepStrictEqual(args.slice(0, 2), ['-l', 'JavaScript']);
+    const script = args.slice(2, -1).join('\n');
+    // «» in an -e argument depends on the locale osascript runs under.
+    assert.ok(/^[\x20-\x7e\n]*$/.test(script), 'script is ASCII only');
+    assert.match(script, /public\.png/);
+    assert.match(script, /public\.tiff/);
+    assert.match(script, /representationUsingTypeProperties/);
   });
 
   it('Linux: wl-paste under Wayland, xclip under X11, only when installed', () => {
@@ -147,6 +163,85 @@ describe('readClipboardImage', () => {
     };
     assert.strictEqual(readClipboardImage(dest, mac, run).ok, false);
     assert.ok(!existsSync(dest));
+  });
+
+  it('a helper error is reported, not hidden behind "holds no image"', () => {
+    const run: RunTool = (command) => ({
+      status: 1,
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.from(
+        `${command}: execution error: Not authorized to send Apple events. (-1743)\n`,
+      ),
+    });
+    const result = readClipboardImage(dest, mac, run);
+    assert.strictEqual(result.ok, false);
+    const { reason } = result as { reason: string };
+    assert.doesNotMatch(reason, /holds no image/);
+    assert.match(reason, /Not authorized to send Apple events/);
+  });
+
+  it('"no image flavour" errors from every helper still read as no image, with the Mac screenshot shortcut', () => {
+    const run: RunTool = () => ({
+      status: 1,
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.from(
+        'execution error: Error: the clipboard holds no image (-2700)\n',
+      ),
+    });
+    const { reason } = readClipboardImage(dest, mac, run) as {
+      reason: string;
+    };
+    assert.match(reason, /holds no image/);
+    assert.match(reason, /Cmd\+Ctrl\+Shift\+4/);
+  });
+
+  it('AppleScript -1700 (no PNG flavour) counts as no image', () => {
+    const run: RunTool = () => ({
+      status: 1,
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.from(
+        'execution error: Can’t make some data into the expected type. (-1700)\n',
+      ),
+    });
+    const { reason } = readClipboardImage(dest, mac, run) as {
+      reason: string;
+    };
+    assert.match(reason, /holds no image/);
+  });
+
+  it('a helper that times out says so', () => {
+    const run: RunTool = () => ({
+      status: null,
+      stdout: Buffer.alloc(0),
+      timedOut: true,
+    });
+    const { reason } = readClipboardImage(dest, x11, run) as {
+      reason: string;
+    };
+    assert.match(reason, /xclip: no answer within 5 s/);
+  });
+
+  it('falls through to the next helper when the first fails', () => {
+    const calls: string[] = [];
+    const run: RunTool = (command, args) => {
+      calls.push(`${command} ${args[0]}`);
+      if (args[0] === '-l') {
+        writeFileSync(args[args.length - 1], PNG);
+        return { status: 0, stdout: Buffer.alloc(0) };
+      }
+      return { status: 1, stdout: Buffer.alloc(0) };
+    };
+    const result = readClipboardImage(
+      dest,
+      ctx({ platform: 'darwin', tools: ['pngpaste'] }),
+      run,
+    );
+    assert.deepStrictEqual(result, {
+      ok: true,
+      tool: 'osascript (AppKit)',
+      bytes: PNG.length,
+    });
+    assert.strictEqual(calls.length, 2);
   });
 
   it('with no helper it runs nothing and says why', () => {

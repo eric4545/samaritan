@@ -136,11 +136,19 @@ export function evidencePromptLines(ctx: {
   wanted?: string;
   /** Label of the pane capture a bare Enter takes, when a pane has output. */
   captureLabel?: string;
+  /** Defaults to this machine's. */
+  platform?: NodeJS.Platform;
 }): string[] {
+  // On a Mac, Cmd+V is the terminal's text paste: with only an image on the
+  // clipboard it sends nothing, so the prompt seems to ignore the screenshot.
+  const clipboardLine =
+    (ctx.platform ?? process.platform) === 'darwin'
+      ? '       Ctrl+V     the screenshot on your clipboard (Ctrl, not Cmd: Cmd+V pastes text only; or type v)'
+      : '       Ctrl+V     the screenshot on your clipboard (or type v)';
   return [
     `    📎 Add evidence${ctx.wanted ? ` (this step asks for: ${ctx.wanted})` : ''}`,
     ...(ctx.captureLabel ? [`       ↵ alone    ${ctx.captureLabel}`] : []),
-    '       Ctrl+V     the screenshot on your clipboard',
+    clipboardLine,
     '       file       drag a screenshot or file in, or type its path',
     '       link       paste a URL (chat message, CI build, dashboard)',
     '       text       type or paste it, several lines are fine',

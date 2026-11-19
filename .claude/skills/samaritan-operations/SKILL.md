@@ -32,8 +32,8 @@ samaritan generate manual path/to/op.yaml -f adf --output manual.json
 
 # Drive it interactively (default mode = sidecar)
 samaritan run path/to/op.yaml
-samaritan resume <session-id>
-samaritan sessions          # list resumable sessions
+samaritan resume <session-id>   # or a unique leading part: resume 3f2a9c1e
+samaritan sessions          # list resumable sessions (prints the short id)
 ```
 
 Run any command with `--help` for full flags. Locally, use

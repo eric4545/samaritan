@@ -81,6 +81,8 @@ import {
   getRunEvidenceDir,
   getRunReportPath,
   getSessionEvidenceDir,
+  listSavedSessions,
+  resolveSessionIdPrefix,
 } from '../../lib/session-persistence';
 import { SessionState } from '../../lib/session-state';
 import {
@@ -247,7 +249,11 @@ export function resolveFocusPic(
 
 /** The numbered view of the flat step list the pickers and messages use. */
 function toPositioned(flatSteps: FlatStep[]): PositionedStep[] {
-  return flatSteps.map((f) => ({ label: f.label, name: f.step.name }));
+  return flatSteps.map((f) => ({
+    label: f.label,
+    name: f.step.name,
+    ...(f.step.id ? { id: f.step.id } : {}),
+  }));
 }
 
 /**
@@ -703,9 +709,19 @@ class OperationRunner {
   }
 
   async resumeSession(
-    sessionId: string,
+    sessionIdOrPrefix: string,
     options: ResumeOptions,
   ): Promise<void> {
+    // `resume 3f2a9c1e`: a unique leading part of the id, like a short hash.
+    const byPrefix = sessionManager.getSession(sessionIdOrPrefix)
+      ? undefined
+      : resolveSessionIdPrefix(
+          sessionIdOrPrefix,
+          listSavedSessions().map((s) => s.id),
+        );
+    if (byPrefix && 'error' in byPrefix) throw new Error(byPrefix.error);
+    const sessionId =
+      byPrefix && 'id' in byPrefix ? byPrefix.id : sessionIdOrPrefix;
     console.log(`🔄 Resuming session: ${sessionId}`);
 
     // getSession now checks in-memory then file-based persistence
@@ -2819,6 +2835,47 @@ class OperationRunner {
       const labelOf = (k: number): string =>
         pickableSteps[k]?.label ?? String(k + 1);
 
+      // The [b] / [j] / completion-rollback step picker. The answer is a
+      // number, an id, or part of a name/id: several matches narrow the list
+      // to them and ask again, a miss asks again, Enter cancels. Re-asking is
+      // TTY-only: piped stdin gets one answer (readline batch gotcha).
+      const pickStep = async (
+        title: string,
+        allowed: number[],
+        statusOf?: (k: number) => string | undefined,
+      ): Promise<number | undefined> => {
+        let offered = allowed;
+        console.log(`\n    ${title}`);
+        for (const row of renderStepPickerRows(
+          pickableSteps,
+          offered,
+          statusOf,
+        ))
+          console.log(row);
+        for (;;) {
+          const ans = (await question(STEP_PICK_PROMPT)).trim();
+          if (!ans) {
+            console.log('    ↩  Cancelled.');
+            return undefined;
+          }
+          const pick = resolveStepPick(ans, pickableSteps, offered);
+          if (!('error' in pick)) return pick.index;
+          if (pick.matches) {
+            offered = pick.matches;
+            console.log(`    🔎 ${pick.matches.length} steps match "${ans}":`);
+            for (const row of renderStepPickerRows(
+              pickableSteps,
+              offered,
+              statusOf,
+            ))
+              console.log(row);
+          } else {
+            console.log(`    ⚠️  ${pick.error}`);
+          }
+          if (!process.stdin.isTTY || rlClosed) return undefined;
+        }
+      };
+
       // Record a step as skipped in the black box so the report/step_log shows
       // it (StepRecord.status 'skipped'). Used by [j] jump and run --from-step.
       const logSkip = (k: number): void => {
@@ -3657,25 +3714,13 @@ class OperationRunner {
               // [b] — go back to an earlier (already-processed) step and re-run
               // from there. Single sub-prompt (number) keeps within the readline
               // batch-stdin constraint (Gotcha #3).
-              console.log('\n    Go back to which step?');
-              const behind = Array.from({ length: i }, (_, k) => k);
-              for (const row of renderStepPickerRows(
-                pickableSteps,
-                behind,
+              const picked = await pickStep(
+                'Go back to which step?',
+                Array.from({ length: i }, (_, k) => k),
                 (k) => steps[k].status,
-              ))
-                console.log(row);
-              const ans = (await question(STEP_PICK_PROMPT)).trim();
-              if (!ans) {
-                console.log('    ↩  Cancelled.');
-                continue;
-              }
-              const pick = resolveStepPick(ans, pickableSteps, behind);
-              if ('error' in pick) {
-                console.log(`    ⚠️  ${pick.error}`);
-                continue;
-              }
-              navTarget = pick.index;
+              );
+              if (picked === undefined) continue;
+              navTarget = picked;
               // With steps in between, a rewind would reset all of them (and
               // a [j] back over them would record them skipped). Offer to
               // re-run only the picked step and come back here instead.
@@ -3693,30 +3738,16 @@ class OperationRunner {
               // [j] — jump forward to a later step. Steps in between are marked
               // skipped (see executor.jumpToStep). Single sub-prompt (number)
               // keeps within the readline batch-stdin constraint (Gotcha #3).
-              console.log(
-                '\n    Jump to which step? (steps in between are marked skipped)',
-              );
-              const ahead = Array.from(
-                { length: steps.length - i - 1 },
-                (_, k) => i + 1 + k,
-              );
-              for (const row of renderStepPickerRows(
-                pickableSteps,
-                ahead,
+              const picked = await pickStep(
+                'Jump to which step? (steps in between are marked skipped)',
+                Array.from(
+                  { length: steps.length - i - 1 },
+                  (_, k) => i + 1 + k,
+                ),
                 (k) => steps[k].status,
-              ))
-                console.log(row);
-              const ans = (await question(STEP_PICK_PROMPT)).trim();
-              if (!ans) {
-                console.log('    ↩  Cancelled.');
-                continue;
-              }
-              const pick = resolveStepPick(ans, pickableSteps, ahead);
-              if ('error' in pick) {
-                console.log(`    ⚠️  ${pick.error}`);
-                continue;
-              }
-              navTarget = pick.index;
+              );
+              if (picked === undefined) continue;
+              navTarget = picked;
               navIsJump = true;
               break;
             }
@@ -3950,15 +3981,12 @@ class OperationRunner {
             continue;
           }
           if (rollbackable.length && isRollback(choice)) {
-            console.log('\n    Roll back which step?');
-            for (const row of renderStepPickerRows(pickableSteps, rollbackable))
-              console.log(row);
-            const ans = (await question(STEP_PICK_PROMPT)).trim();
-            if (ans) {
-              const pick = resolveStepPick(ans, pickableSteps, rollbackable);
-              if ('error' in pick) console.log(`    ⚠️  ${pick.error}`);
-              else await doRollback(finalSteps[pick.index].step, pick.index);
-            }
+            const picked = await pickStep(
+              'Roll back which step?',
+              rollbackable,
+            );
+            if (picked !== undefined)
+              await doRollback(finalSteps[picked].step, picked);
             continue;
           }
           break;
@@ -4232,7 +4260,7 @@ const runCommand = new Command('run')
   .option('--report <dir>', 'Write Markdown evidence report to directory')
   .option(
     '--from-step <step>',
-    'Start at this step: its number in the manual (e.g. 2.7) or its name; earlier steps are recorded as skipped',
+    'Start at this step: its number in the manual (e.g. 2.7), its id, or its name; earlier steps are recorded as skipped',
   )
   .option(
     '--no-require-evidence',
@@ -4271,12 +4299,15 @@ const runCommand = new Command('run')
 
 const resumeCommand = new Command('resume')
   .description('Resume a paused or failed operation session')
-  .argument('<session-id>', 'Session ID to resume')
+  .argument(
+    '<session-id>',
+    'Session ID to resume, or a unique leading part of it (as `sessions` prints it)',
+  )
   .option('-v, --verbose', 'Verbose output')
   .option('--auto-approve', 'Auto-approve remaining manual steps')
   .option(
     '--from-step <step>',
-    'Resume from this step: its number in the manual (e.g. 2.7) or its name',
+    'Resume from this step: its number in the manual (e.g. 2.7), its id, or its name',
   )
   .option(
     '--attach <tmux-target>',

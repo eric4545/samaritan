@@ -77,9 +77,23 @@ describe('sessions command', () => {
     const sessionId = idMatch[1];
 
     const result = runCli(['sessions']);
+    // The hint uses a short id: a unique leading part, like a git hash.
+    const hint = result.stdout.match(/samaritan resume ([0-9a-f-]+)/g) ?? [];
+    const short = hint
+      .map((h) => h.replace('samaritan resume ', ''))
+      .find((p) => sessionId.startsWith(p));
     assert.ok(
-      result.stdout.includes(`samaritan resume ${sessionId}`),
-      'sessions must print a resume hint for the aborted (paused) session',
+      short && short.length >= 8 && short.length < sessionId.length,
+      `sessions must print a short resume hint for the aborted session; got:\n${result.stdout}`,
+    );
+
+    // ...and resume takes that short id.
+    const resumed = runCli(['resume', short as string], { input: 'q\n' });
+    assert.ok(
+      (resumed.stdout + resumed.stderr).includes(
+        `Resuming session: ${sessionId}`,
+      ),
+      `resume <short id> must resume the full session; got:\n${resumed.stdout}${resumed.stderr}`,
     );
   });
 });

@@ -1,0 +1,26 @@
+name: E2E Step Ids
+version: 1.0.0
+description: Steps with ids, for the [b]/[j] picker (pick by id, narrow by fragment)
+environments:
+  - name: staging
+    description: Staging
+steps:
+  - name: Preflight checks
+    id: preflight
+    type: manual
+    instruction: Check the dashboard is green.
+  - name: Deploy web-server
+    id: deploy
+    type: manual
+    sub_steps:
+      - name: Scale down old
+        id: scale-down
+        type: manual
+        instruction: Scale the old replica set to zero.
+      - name: Scale up new
+        id: scale-up
+        type: manual
+        instruction: Scale the new replica set up.
+  - name: Notify
+    type: manual
+    instruction: Post in the release channel.

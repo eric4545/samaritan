@@ -14,6 +14,10 @@ description: |
      steps that DEPEND on it too (reverse dependency order); the global rollback
      plan is ordered by reverse-topological order
 
+  Step `id`s also name a step in the run: the [b] back / [j] jump pickers
+  list them and take them as an answer (`b` then `deploy`), and so does
+  `samaritan run ... --from-step push`.
+
 environments:
   - name: production
     description: Production environment

@@ -7,6 +7,18 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Pick a step by its `id`, and find it by typing part of it.** The `[b]`
+  back, `[j]` jump and completion-screen rollback pickers list each step's
+  `id` in its own column (`2.1  scale-down  Scale down old  (completed)`) and
+  take the id as an answer, so you no longer read `2.3.1` off the list. Part
+  of a name or id narrows the list to the steps it matches and asks again
+  (`🔎 2 steps match "scale":`); a typo asks again too, Enter cancels. Before,
+  an ambiguous or unknown answer dropped you back to the step bar.
+  `--from-step` (on `run` and `resume`) takes the id as well.
+- **`resume` takes a short session id**, any unique leading part of it, the
+  way git takes a short hash: `samaritan resume 3f2a9c1e`. `samaritan
+  sessions` prints the shortest unique one in its `Resume:` line.
+
 - **Lint flags instructions that leave the decision to the operator
   (`instruction/vague-decision`).** "consider pausing", "surface them", and
   "as needed" / "as appropriate" / "if necessary" next to an action ("retry
@@ -159,6 +171,17 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **Clipboard screenshots on macOS: the real error is shown, and more
+  images are read.** Every failure to read the clipboard used to print "the
+  clipboard holds no image", even when the helper itself failed (not allowed
+  to run, timed out); now the helper's own error is quoted. macOS now first
+  reads the clipboard through AppKit, which also takes an image copied as
+  TIFF (from Preview, Safari, Keynote) and does not depend on the terminal's
+  locale; the AppleScript reader stays as a fallback. The evidence prompt on
+  a Mac says to press `Ctrl+V`, not `⌘V` (`⌘V` is the terminal's text paste
+  and sends nothing for an image; typing `v` works too), and the "no image"
+  message reminds you that `⌘⌃⇧4` copies a screenshot while `⌘⇧4` saves a
+  file.
 - **`samaritan lint` output read through a pipe is complete.** `lint
   --format json | jq` (and the text report piped to a file reader) got only
   the first 64 KiB: the command exited before the pipe had taken the rest,

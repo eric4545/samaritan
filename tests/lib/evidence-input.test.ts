@@ -161,6 +161,14 @@ describe('evidence input helpers', () => {
     assert.match(without, /Ctrl\+V {5}the screenshot on your clipboard/);
   });
 
+  it('on a Mac the prompt says Ctrl+V, not Cmd+V (Cmd+V sends no image)', () => {
+    const mac = evidencePromptLines({ platform: 'darwin' }).join('\n');
+    assert.match(mac, /Ctrl, not Cmd: Cmd\+V pastes text only; or type v/);
+    const linux = evidencePromptLines({ platform: 'linux' }).join('\n');
+    assert.ok(!linux.includes('Cmd'));
+    assert.match(linux, /or type v/);
+  });
+
   it('evidenceLinkUrl: only a link-typed result holding a URL', () => {
     assert.strictEqual(
       evidenceLinkUrl({ type: 'link', content: ' https://example.com/x\n' }),

@@ -1691,4 +1691,71 @@ describe('sidecar e2e (real tmux)', () => {
       }
     },
   );
+  it(
+    '[b] picker: shows step ids, narrows on a fragment, picks by id',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-step-ids.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
+        // 1 → 2 (a section: passes by itself) → 2.1 → 2.2 → 3 Notify.
+        for (const heading of [
+          /\[Step 1 · 1\/5\][\s\S]*\? more/,
+          /\[Step 2\.1 · 3\/5\][\s\S]*\? more/,
+          /\[Step 2\.2 · 4\/5\][\s\S]*\? more/,
+        ]) {
+          await d.waitFor(heading, { timeoutMs: 40_000 });
+          // A second Enter inside the debounce window is dropped on purpose.
+          await sleep(ENTER_DEBOUNCE_MS + 100);
+          d.enter();
+        }
+        await d.waitFor(/\[Step 3 · 5\/5\][\s\S]*\? more/, {
+          timeoutMs: 15_000,
+        });
+
+        d.key('b');
+        // The id column, aligned, beside the manual number.
+        await d.waitFor(/2\.1 {2}scale-down {2}Scale down old/, {
+          timeoutMs: 10_000,
+        });
+        // A fragment that matches two steps narrows the list and asks again.
+        d.type('scale');
+        await d.waitFor('🔎 2 steps match "scale":', { timeoutMs: 10_000 });
+        // The id picks the step outright.
+        d.type('scale-down');
+        await d.waitFor('Re-run only Step 2.1: Scale down old', {
+          timeoutMs: 10_000,
+        });
+        d.key('y');
+        // The revisit: Step 2.1's heading a SECOND time, then its bar.
+        await d.waitFor(/(\[Step 2\.1 · 3\/5\][\s\S]*){2}\? more/, {
+          timeoutMs: 15_000,
+        });
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        // Back where [b] was pressed: Step 3's heading a second time.
+        await d.waitFor(/(\[Step 3 · 5\/5\][\s\S]*){2}\? more/, {
+          timeoutMs: 15_000,
+        });
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 20_000,
+        });
+
+        const eventsPath = findFile(ws.dir, 'events.jsonl');
+        assert.ok(eventsPath, 'events.jsonl written');
+        assert.match(
+          readFileSync(eventsPath, 'utf8'),
+          /"action":"rerun".*re-running Step 2\.1: Scale down old only/,
+        );
+        const report = readReport(ws.dir);
+        assert.ok(report.includes('Steps completed: 5/5'), report);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
 });
