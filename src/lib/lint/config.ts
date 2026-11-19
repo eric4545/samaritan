@@ -32,6 +32,8 @@ export interface LintConfig {
   aws_sessions: string[];
   /** Extra `aws … create-*` operations `aws/cli-create-managed` accepts. */
   aws_create_allowlist: string[];
+  /** Team phrases `instruction/vague-decision` flags, besides its built-in ones. */
+  vague_phrases: string[];
   /** Team tool profiles (`lint.tools`), merged over the built-in ones. */
   tools: ToolProfile[];
   /** File the config came from; undefined for built-in defaults. */
@@ -59,6 +61,7 @@ export function defaultLintConfig(): LintConfig {
     known_binaries: [],
     aws_sessions: [],
     aws_create_allowlist: [],
+    vague_phrases: [],
     tools: [],
   };
 }
@@ -157,6 +160,7 @@ const LINT_SCHEMA = {
     known_binaries: STRING_LIST,
     aws_sessions: STRING_LIST,
     aws_create_allowlist: STRING_LIST,
+    vague_phrases: STRING_LIST,
     tools: { type: 'array', items: TOOL },
   },
 } as const;
@@ -333,8 +337,8 @@ function checkSection(
 }
 
 /**
- * Apply `layer` over `base`: rules merge, lists of patterns and tools add
- * up, other lists replace.
+ * Apply `layer` over `base`: rules merge, lists of patterns, vague phrases
+ * and tools add up, other lists replace.
  */
 function merge(
   base: LintConfig,
@@ -346,6 +350,7 @@ function merge(
     rules: { ...base.rules, ...(layer.rules ?? {}) },
     banned: [...base.banned, ...(layer.banned ?? [])],
     required: [...base.required, ...(layer.required ?? [])],
+    vague_phrases: [...base.vague_phrases, ...(layer.vague_phrases ?? [])],
     tools: [
       ...base.tools,
       ...(layer.tools ?? []).map((t) => toolProfile(t, label)),

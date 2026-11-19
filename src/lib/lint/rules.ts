@@ -2,6 +2,7 @@ import { COMMAND_RULES, protectedPushTargets } from './command-lint';
 import type { RuleSetting } from './config';
 import { EXISTING_RULES } from './existing-rules';
 import { EXPECT_RULES } from './expect-consistency';
+import { INSTRUCTION_RULES } from './instruction-lint';
 import type { OperationRule, Rule } from './rule-types';
 import { FLOW_RULES } from './step-dataflow';
 import { resolveTmuxCommand } from './tools/tmux';
@@ -32,6 +33,7 @@ export const RULES: readonly Rule[] = [
   ...COMMAND_RULES,
   ...FLOW_RULES,
   ...EXPECT_RULES,
+  ...INSTRUCTION_RULES,
   ...EXISTING_RULES,
   INVALID_DIRECTIVE_RULE,
 ];

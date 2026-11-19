@@ -15,7 +15,7 @@ paths:
 | Lexer | `shell-lexer.ts` | Shell text → simple commands. No expansion, ever (determinism). |
 | Command model | `command-model.ts` | argv → executable / options / operands / assignments / redirects, using a `SpecLookup`. Patterns (`banned:`/`required:`). |
 | Tool profiles | `tools/*.ts`, `tools/registry.ts` | Everything lint knows about a program, as data: option spec, verbs that mutate / back up / delete data, resource options, output format. |
-| Rules | `command-lint.ts` (family A), `step-dataflow.ts` (B), `expect-consistency.ts` (C), `existing-rules.ts` (validate checks) | One rule = id + tier + default severity + `check`. |
+| Rules | `command-lint.ts` (family A), `step-dataflow.ts` (B), `expect-consistency.ts` (C), `instruction-lint.ts` (instruction prose; phrase list is data), `existing-rules.ts` (validate checks) | One rule = id + tier + default severity + `check`. |
 | Registry, presets | `rules.ts` | The canonical list of rule ids; `samaritan:recommended|strict|all`. |
 | Engine | `engine.ts` | Builds step infos (variants included), runs rules, locates (`source-index.ts`), suppresses, sorts. Wraps a crashing rule in `LintRuleError`. |
 | Config | `config.ts` | `lint:` section, `extends`, `tools`, ajv-validated. |

@@ -44,8 +44,8 @@ keys are added, never removed or renamed.
 
 ## What the rules look at
 
-There are three families of rules, plus the checks `validate` already did, now
-under rule ids. The full list, generated from the code, is on
+There are three families of rules, a check on instruction prose, plus the
+checks `validate` already did, now under rule ids. The full list, generated from the code, is on
 [Lint rules](/reference/lint-rules).
 
 | Family | Looks at | Examples |
@@ -53,6 +53,7 @@ under rule ids. The full list, generated from the code, is on
 | The command itself | One step's `command`, parsed | `shell/exit-verbs`, `shell/errexit`, `tmux/kill-commands`, `git/protected-push`, `aws/no-pager`, `cmd/banned` |
 | Between steps | The steps in run order, per environment | `flow/forward-var`, `flow/unproduced-capture`, `flow/session-undeclared`, `flow/mutate-without-verify` |
 | `expect` vs the command | The check against the output the command declares | `expect/json-shape`, `expect/contains-vs-matches`, `expect/multiline-contains` |
+| The instruction prose | Each step's `instruction` text, line by line | `instruction/vague-decision` |
 | Existing checks | What `validate` reported before `lint` existed | `expect/invalid-regex`, `deps/cycle`, `steps/duplicate-id`, `vars/undefined` |
 
 Rules read the steps, sub-steps, each step's `variants.<env>` (its command
@@ -79,6 +80,36 @@ Syntax the parser cannot analyse is reported as `analysis/unsupported`
 (heredoc, process substitution `<( )`, backticks, `case`, function
 definitions), never skipped silently. Lines after a heredoc's `<<` are not
 checked. `echo git push origin HEAD:main` is an `echo`, not a push.
+
+### Instructions that leave the decision to the operator
+
+`instruction/vague-decision` (tier 3, a warning by default, an error under
+`--strict` and `samaritan:all`) reads each step's `instruction`, line by line,
+for wording that hands the operator a run-time decision with no condition and
+no action: the manual reads as if a check exists, but nothing says when or
+what to do.
+
+| Flagged | Why |
+| --- | --- |
+| `consider pausing` / `consider stopping` / `consider aborting` | No condition that decides it. |
+| `surface them` | No destination. `surface them to <channel>` names one and passes. |
+| `as needed` / `as appropriate` / `if necessary` | Only on a line that also names an action (`retry`, `re-run`, `restart`, `roll back`, `scale`, `escalate`, …): `retry as needed` says neither how often nor when to stop. |
+
+Write the condition and the action instead:
+
+```yaml
+instruction: |
+  If 5xx responses exceed 1% after the switch, ask the web-server owners to redeploy.
+  STOP if 5xx continues for 5 minutes.
+```
+
+Only `instruction` is read: `description`, `command` and `expect` are not.
+Lines inside a ``` or `~~~` fence (text the operator pastes as written) and
+`inline code` are skipped. Each `variants.<env>` instruction, sub-step and
+rollback step is checked like any step. Add your team's phrases with
+`lint.vague_phrases` (literal, case-insensitive, whole words). Silence one
+finding with `# samaritan-lint-disable-next-line instruction/vague-decision`
+above `instruction:`.
 
 ### Between steps
 
@@ -205,6 +236,7 @@ lint:
   known_binaries: [web-ctl]      # cmd/unknown-binary
   aws_sessions: [ops]            # flow/aws-local-session
   aws_create_allowlist: [create-topic]   # aws/cli-create-managed
+  vague_phrases: [use your judgement]    # instruction/vague-decision
 ```
 
 An unknown key, an unknown rule id or preset, a severity other than `off` /
@@ -222,7 +254,7 @@ command is a config error (`lint` exits `2`).
 | `samaritan:all` | Every rule on, the opt-in ones included, at their preset level. |
 | `./path/to/preset.yaml` | A local file, relative to the file naming it: a `lint:` section (or the section itself), which may `extends` further. |
 
-`rules` merge (later wins), `banned` and `required` add up, and the other lists
+`rules` merge (later wins), `banned`, `required` and `vague_phrases` add up, and the other lists
 (`protected_branches`, `identities`, …) are replaced by the later one. Remote
 presets are not supported.
 

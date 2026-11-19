@@ -1,6 +1,7 @@
 # A release operation that is clean under ./samaritan.config.yaml.
 # Try breaking it: drop `--context` from a kubectl command, push to
-# HEAD:release, or add `set -e` to a command, then run
+# HEAD:release, add `set -e` to a command, or write "retry as needed" in an
+# instruction, then run
 #   samaritan lint examples/lint/release.yaml
 name: Release Web Server
 version: 1.0.0
