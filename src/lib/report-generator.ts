@@ -680,6 +680,17 @@ function markdownLinkTarget(target: string): string {
 
 const IMAGE_TYPES = new Set(['screenshot', 'photo']);
 
+/**
+ * Text for `[...]` / `![...]`: an operator's description is free text, and a
+ * `]` in it ("Grafana [prod] panel]") ended the alt text early, so the image
+ * rendered as prose with its whole target visible (in HTML, the base64 of
+ * the screenshot). Brackets and backslashes are escaped; a line break would
+ * split the link across lines, so it becomes a space.
+ */
+function linkText(text: string): string {
+  return text.replace(/\s*\n\s*/g, ' ').replace(/[\\[\]]/g, '\\$&');
+}
+
 function renderEvidenceBlock(
   evidence: StepEvidenceRef,
   redact: Redact,
@@ -696,18 +707,20 @@ function renderEvidenceBlock(
   if (evidence.path) {
     const name = evidence.filename ?? evidence.type;
     if (!IMAGE_TYPES.has(evidence.type)) {
-      lines.push(`[${name}](${href(evidence.path)})`);
+      lines.push(`[${linkText(name)}](${href(evidence.path)})`);
     } else if (embedImage) {
       // HTML: the image itself, so the report is one file. One that cannot be
       // read (moved, deleted, not really an image) stays a link and says so.
       const dataUri = embedImage(evidence.path);
       lines.push(
         dataUri
-          ? `![${evidence.description ?? name}](${dataUri})`
-          : `[${name}](${href(evidence.path)}) _(not embedded: file missing or not an image)_`,
+          ? `![${linkText(evidence.description ?? name)}](${dataUri})`
+          : `[${linkText(name)}](${href(evidence.path)}) _(not embedded: file missing or not an image)_`,
       );
     } else {
-      lines.push(`![${evidence.description ?? name}](${href(evidence.path)})`);
+      lines.push(
+        `![${linkText(evidence.description ?? name)}](${href(evidence.path)})`,
+      );
     }
   } else if (evidence.type === 'link' && evidence.content) {
     // A URL (chat message, CI build, dashboard): a link, not a code block.

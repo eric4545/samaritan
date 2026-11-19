@@ -87,10 +87,16 @@ function safeHref(target: string): string | undefined {
 /**
  * One regex for every inline form, tried left to right. Groups:
  * 1-2 code span, 3-4 image, 5-6 link, 7 autolink, 8 bold, 9 italic,
- * 10 backslash escape.
+ * 10 backslash escape. Image alt and link text may contain escaped
+ * brackets (`\]`), which the report writes for a description with `]`.
  */
 const INLINE =
-  /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|!\[([^\]]*)\]\((<[^>\n]*>|[^)\s]*)\)|\[([^\]]*)\]\((<[^>\n]*>|[^)\s]*)\)|<((?:https?|mailto):[^\s<>]+)>|\*\*(.+?)\*\*|(?<![\w\\])_([^_\n]+?)_(?!\w)|\\([\\`*_{}[\]()#+\-.!|<>])/g;
+  /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|!\[((?:\\.|[^\]\\])*)\]\((<[^>\n]*>|[^)\s]*)\)|\[((?:\\.|[^\]\\])*)\]\((<[^>\n]*>|[^)\s]*)\)|<((?:https?|mailto):[^\s<>]+)>|\*\*(.+?)\*\*|(?<![\w\\])_([^_\n]+?)_(?!\w)|\\([\\`*_{}[\]()#+\-.!|<>])/g;
+
+/** Undo Markdown backslash escapes (alt text is an attribute, not inline). */
+function unescapeText(text: string): string {
+  return text.replace(/\\([\\`*_{}[\]()#+\-.!|<>])/g, '$1');
+}
 
 export function renderInline(text: string): string {
   let html = '';
@@ -104,7 +110,7 @@ export function renderInline(text: string): string {
         /^ .* $/.test(code) && code.trim() ? code.slice(1, -1) : code;
       html += `<code>${escapeHtml(body)}</code>`;
     } else if (imgSrc !== undefined) {
-      html += renderImage(alt ?? '', linkTarget(imgSrc));
+      html += renderImage(unescapeText(alt ?? ''), linkTarget(imgSrc));
     } else if (href !== undefined) {
       const target = safeHref(linkTarget(href));
       html += target

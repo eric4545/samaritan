@@ -201,6 +201,11 @@ All notable changes to this project are documented here. This project follows
   and sends nothing for an image; typing `v` works too), and the "no image"
   message reminds you that `⌘⌃⇧4` copies a screenshot while `⌘⇧4` saves a
   file.
+- **A `]` in an evidence description no longer breaks the image.** A
+  screenshot described as `Grafana [prod] panel]` ended the image early: the
+  report showed the Markdown as text instead of the image, and the HTML
+  report showed the screenshot's whole base64 as a paragraph. Brackets in a
+  description or file name are now escaped.
 - **`report merge -o <file>` wrote nothing.** The parent `report` command
   took `-o` given after `merge`, so the merged report went to stdout and no
   file was written. `merge` now honours `-o` (and `-f`).

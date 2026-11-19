@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
+import { generateReport } from '../../src/lib/report-generator';
 import {
   imageDataUri,
   renderBlocks,
@@ -103,6 +104,74 @@ describe('renderInline', () => {
 
   it('undoes backslash escapes', () => {
     assert.equal(renderInline('a \\| b \\*c\\*'), 'a | b *c*');
+  });
+
+  it('reads escaped brackets in image alt and link text', () => {
+    assert.equal(
+      renderInline(
+        '![Grafana \\[prod\\] panel\\]](data:image/png;base64,iVBORw0K)',
+      ),
+      '<img src="data:image/png;base64,iVBORw0K" alt="Grafana [prod] panel]">',
+    );
+    assert.equal(
+      renderInline('[app\\]x.log](evidence/app.log)'),
+      '<a href="evidence/app.log">app]x.log</a>',
+    );
+  });
+});
+
+describe('evidence description with brackets', () => {
+  // An operator typed "]" in a screenshot description: the image ended early
+  // and rendered as text, with the whole base64 of the screenshot visible.
+  const dir = mkdtempSync(join(tmpdir(), 'samaritan-report-brackets-'));
+  after(() => rmSync(dir, { recursive: true, force: true }));
+  const shot = join(dir, 'shot.png');
+  writeFileSync(shot, PNG);
+  const jsonl = join(dir, 'events.jsonl');
+  writeFileSync(
+    jsonl,
+    `${[
+      { type: 'session_start', op: join(dir, 'op.yaml'), total_steps: 1 },
+      { type: 'step_start', step: 0, name: 'Deploy web-server', label: '1' },
+      {
+        type: 'evidence_captured',
+        step: 0,
+        evidence_type: 'screenshot',
+        description: 'Grafana [prod] panel]\nsecond line',
+        path: shot,
+        filename: 'shot.png',
+      },
+      { type: 'session_end', status: 'completed' },
+    ]
+      .map((e) =>
+        JSON.stringify({
+          ts: '2026-01-01T00:00:00Z',
+          session_id: 'abc123',
+          ...e,
+        }),
+      )
+      .join('\n')}\n`,
+  );
+
+  it('Markdown escapes the brackets so the image stays an image', () => {
+    const md = generateReport(jsonl);
+    assert.ok(
+      md.includes('![Grafana \\[prod\\] panel\\] second line](shot.png)'),
+      md,
+    );
+  });
+
+  it('HTML embeds the image with the description as alt text', () => {
+    const html = generateReport(jsonl, { format: 'html' });
+    const uri = `data:image/png;base64,${PNG.toString('base64')}`;
+    assert.ok(
+      html.includes(
+        `<img src="${uri}" alt="Grafana [prod] panel] second line">`,
+      ),
+      html,
+    );
+    // The base64 appears once: in the src, never as visible text.
+    assert.equal(html.split(PNG.toString('base64')).length, 2, html);
   });
 });
 
