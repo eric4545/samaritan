@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { exitAfterFlush } from '../../lib/exit-after-flush';
 import {
   type LintConfig,
   LintConfigError,
@@ -236,7 +237,7 @@ const lintCommand = new Command('lint')
 
     if (options.listRules) {
       console.log(formatRuleList());
-      process.exit(LINT_EXIT.ok);
+      return exitAfterFlush(LINT_EXIT.ok);
     }
     if (files.length === 0) {
       console.error('error: give at least one operation file');
@@ -270,7 +271,7 @@ const lintCommand = new Command('lint')
         ? formatJson(results)
         : formatText(results, maxWarnings),
     );
-    process.exit(lintExitCode(results, maxWarnings));
+    return exitAfterFlush(lintExitCode(results, maxWarnings));
   });
 
 export { lintCommand };

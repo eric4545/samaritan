@@ -159,6 +159,13 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **`samaritan lint` output read through a pipe is complete.** `lint
+  --format json | jq` (and the text report piped to a file reader) got only
+  the first 64 KiB: the command exited before the pipe had taken the rest,
+  so large reports were cut off and the JSON did not parse. `lint` and
+  `schema` now exit only after their output is written. Exit codes are
+  unchanged.
+
 - **`psql -c '<sql>'` is read correctly by lint.** The SQL was never seen,
   so a `DROP`/`UPDATE` through psql did not count as a state change or a data
   deletion.

@@ -161,3 +161,36 @@ describe('a rule that crashes', () => {
     }
   });
 });
+
+describe('samaritan lint: output read through a pipe is complete', () => {
+  // A run with many findings printed more than a pipe buffer (64 KiB);
+  // process.exit() right after console.log() dropped the rest, so
+  // `lint --format json | jq` got invalid JSON.
+  const many = `name: many-findings
+version: 1.0.0
+description: mock
+environments:
+  - name: staging
+    description: Staging
+steps:
+${Array.from(
+  { length: 2000 },
+  (_, k) => `  - name: Step ${k}\n    type: manual\n    command: exit 1\n`,
+).join('')}`;
+  const file = write('many.yaml', many);
+
+  it('--format json is whole, parses and keeps the exit code', () => {
+    const r = runCli(['lint', file, '--format', 'json']);
+    assert.ok(r.stdout.length > 65_536, `only ${r.stdout.length} bytes`);
+    const report = JSON.parse(r.stdout);
+    assert.strictEqual(report.files[0].findings.length, 2000);
+    assert.strictEqual(r.status, 1);
+  });
+
+  it('text output ends with its summary line', () => {
+    const r = runCli(['lint', file]);
+    assert.ok(r.stdout.length > 65_536, `only ${r.stdout.length} bytes`);
+    assert.match(r.stdout, /✖ 2000 problems \(2000 errors, 0 warnings\)\n$/);
+    assert.strictEqual(r.status, 1);
+  });
+});
