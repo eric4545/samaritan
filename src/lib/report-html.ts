@@ -223,6 +223,16 @@ function tableCells(row: string): string[] {
     .map((cell) => cell.trim().replace(/\\\|/g, '|'));
 }
 
+/**
+ * A line that closes a fence opened with `length` backticks: only backticks
+ * (at least that many) between optional whitespace. A string check, not a
+ * RegExp built from the opener, which CodeQL reads as a regex built from input.
+ */
+function closesFence(line: string, length: number): boolean {
+  const ticks = line.trim();
+  return ticks.length >= length && /^`+$/.test(ticks);
+}
+
 /** Leading spaces of a line; a blank line counts as indented without limit. */
 function indentOf(line: string): number {
   return line.trim() === ''
@@ -248,10 +258,9 @@ export function renderBlocks(lines: string[]): string {
     const fence = line.match(FENCE_OPEN);
     if (fence) {
       const [, indent, ticks, info] = fence;
-      const close = new RegExp(`^ *\`{${ticks.length},}\\s*$`);
       const body: string[] = [];
       i++;
-      while (i < lines.length && !close.test(lines[i])) {
+      while (i < lines.length && !closesFence(lines[i], ticks.length)) {
         const l = lines[i];
         body.push(
           l.startsWith(indent) ? l.slice(indent.length) : l.trimStart(),

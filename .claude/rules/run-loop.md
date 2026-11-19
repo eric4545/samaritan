@@ -418,9 +418,11 @@ relative path resolves against the run dir) and converts it with
 `data:image/(png|jpeg|gif|webp)` becomes an `<img>`, `javascript:`-style
 hrefs refused). Free text inside `[…]`/`![…]` goes through `linkText()`
 (escapes `[`, `]` and backslash): a `]` in a description turned the image into prose
-with its base64 visible. Keep the converter LINEAR (CodeQL
-js/polynomial-redos blocked the PR: the exported `renderInline` takes library
-input): code spans are pulled out first by a one-pass run pairing
+with its base64 visible. **Never build a `RegExp` from report text** (not
+even its length): CodeQL js/regex-injection (high) blocked the PR on the
+fence-close pattern built with `new RegExp` from the opening fence;
+`closesFence` is a string check. Keep the converter LINEAR too (hostile input made three regexes
+quadratic): code spans are pulled out first by a one-pass run pairing
 (`extractCodeSpans`, slots in private-use chars), labels exclude an
 unescaped `[`, `linkText` splits instead of `/\s*\n\s*/`; the "linear time
 on hostile input" tests guard it. A new report construct must render in that converter too

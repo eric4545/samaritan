@@ -293,6 +293,22 @@ describe('renderBlocks', () => {
     );
   });
 
+  it('closes an indented fence on an indented, padded or longer run', () => {
+    assert.equal(
+      renderBlocks(['- x', '', '  ```', '  a', '  ```  ', '- y']),
+      '<ul><li>x\n<pre><code>a</code></pre></li><li>y</li></ul>',
+    );
+    assert.equal(
+      renderBlocks(['```', 'a', '`````']),
+      '<pre><code>a</code></pre>',
+    );
+    // A shorter run, or backticks followed by text, does not close it.
+    assert.equal(
+      renderBlocks(['````', '```', '```js', 'b', '````']),
+      '<pre><code>```\n```js\nb</code></pre>',
+    );
+  });
+
   it('closes a fence only on a run at least as long as the opener', () => {
     const html = renderBlocks(['````', '```', 'inner', '```', '````']);
     assert.equal(html, '<pre><code>```\ninner\n```</code></pre>');
