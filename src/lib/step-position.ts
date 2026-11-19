@@ -11,6 +11,8 @@ export interface PositionedStep {
   /** Dotted manual number, e.g. "10" or "10.2". */
   label: string;
   name: string;
+  /** The step's authored `id`, when it has one — typed in a picker. */
+  id?: string;
   /** Excluded by `when` for the target environment — never visited. */
   filteredByEnv?: boolean;
 }
@@ -86,7 +88,9 @@ export function stepRef(steps: PositionedStep[], index: number): string {
 /**
  * Rows of a step picker (`[b]`, `[j]`, the completion-screen rollback). ONE
  * number per row: the manual's. The flat position is not shown, because a
- * second number per row is what made the list hard to pick from.
+ * second number per row is what made the list hard to pick from. A step's
+ * `id` gets its own aligned column (only when a listed step has one): an id
+ * is stable and easy to type, where `2.3.1` has to be read off the list.
  */
 export function renderStepPickerRows(
   steps: PositionedStep[],
@@ -95,15 +99,17 @@ export function renderStepPickerRows(
 ): string[] {
   const listed = indexes.filter((k) => steps[k]);
   const width = Math.max(0, ...listed.map((k) => steps[k].label.length));
+  const idWidth = Math.max(0, ...listed.map((k) => steps[k].id?.length ?? 0));
   return listed.map((k) => {
     const status = statusOf?.(k);
-    return `      ${steps[k].label.padEnd(width)}  ${steps[k].name}${status ? `  (${status})` : ''}`;
+    const id = idWidth ? `${(steps[k].id ?? '').padEnd(idWidth)}  ` : '';
+    return `      ${steps[k].label.padEnd(width)}  ${id}${steps[k].name}${status ? `  (${status})` : ''}`;
   });
 }
 
 /** Prompt under a step picker. */
 export const STEP_PICK_PROMPT =
-  '    Step (number as listed, e.g. 2.7, or part of the name) [Enter to cancel]: ';
+  '    Step (number, id, or part of the name/id to narrow the list) [Enter to cancel]: ';
 
 /**
  * Resolve a step the operator named to a flat step index. `allowed` = the
@@ -112,7 +118,12 @@ export const STEP_PICK_PROMPT =
  * 1. the manual's number (`2`, `2.7`): the step LABEL, never the flat
  *    position. `2` is Step 2 even when it is the 32nd step of the run.
  * 2. the multi-env manual's number for the same step (`2g`, `1b1`).
- * 3. the step name: an exact match, else a unique case-insensitive fragment.
+ * 3. the step's `id`, case-insensitive.
+ * 4. the step name: an exact match, else a unique case-insensitive fragment
+ *    of the name or the id.
+ *
+ * Several fragment matches return `matches` as well as the error, so an
+ * interactive picker can narrow its list to them and ask again.
  *
  * A leading `Step ` and a trailing `:` are dropped, so text copied from the
  * manual or the run heading works.
@@ -121,7 +132,7 @@ export function resolveStepPick(
   answer: string,
   steps: PositionedStep[],
   allowed: number[],
-): { index: number } | { error: string } {
+): { index: number } | { error: string; matches?: number[] } {
   const ans = answer
     .trim()
     .replace(/^step\s+/i, '')
@@ -132,11 +143,14 @@ export function resolveStepPick(
   const lower = ans.toLowerCase();
   const numberOf = (k: number): boolean =>
     steps[k].label === ans || multiEnvStepLabel(steps[k].label) === lower;
+  const idOf = (k: number): boolean => steps[k].id?.toLowerCase() === lower;
 
   const byNumber = offered.find(numberOf);
   if (byNumber !== undefined) return { index: byNumber };
+  const byId = offered.find(idOf);
+  if (byId !== undefined) return { index: byId };
 
-  const elsewhere = steps.findIndex((_, k) => numberOf(k));
+  const elsewhere = steps.findIndex((_, k) => numberOf(k) || idOf(k));
   if (elsewhere !== -1)
     return {
       error: `${stepRef(steps, elsewhere)} is not one of the steps listed.`,
@@ -152,11 +166,16 @@ export function resolveStepPick(
   const matches =
     byName.length > 0
       ? byName
-      : offered.filter((k) => steps[k].name.toLowerCase().includes(lower));
+      : offered.filter(
+          (k) =>
+            steps[k].name.toLowerCase().includes(lower) ||
+            !!steps[k].id?.toLowerCase().includes(lower),
+        );
   if (matches.length === 1) return { index: matches[0] };
   if (matches.length > 1)
     return {
-      error: `"${ans}" matches ${matches.length} steps: ${matches.map(describe).join(', ')}. Be more specific.`,
+      error: `${matches.length} steps match "${ans}": ${matches.map(describe).join(', ')}. Be more specific.`,
+      matches,
     };
   return { error: `No listed step matches "${ans}".` };
 }

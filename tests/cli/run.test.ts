@@ -1471,6 +1471,30 @@ describe('run command: --from-step starts at a later step', () => {
     );
   });
 
+  it("takes a step's id; an ambiguous fragment lists the matches", () => {
+    const fixture = join(
+      process.cwd(),
+      'tests/fixtures/operations/features/e2e-step-ids.yaml',
+    );
+    const byId = runCli(
+      ['run', fixture, '--env', 'staging', '--from-step', 'scale-up'],
+      { input: 'q\n', timeout: 15_000 },
+    );
+    const firstBanner = (byId.stdout + byId.stderr).match(
+      /\[Step [\d.]+ · \d+\/\d+\]/,
+    );
+    assert.strictEqual(firstBanner?.[0], '[Step 2.2 · 4/5]');
+
+    const ambiguous = runCli(
+      ['run', fixture, '--env', 'staging', '--from-step', 'scale'],
+      { input: 'q\n', timeout: 15_000 },
+    );
+    assert.match(
+      ambiguous.stdout + ambiguous.stderr,
+      /--from-step: 2 steps match "scale": 2\.1 Scale down old, 2\.2 Scale up new/,
+    );
+  });
+
   it('takes the manual number of a sub-step, or a step name', () => {
     // nested fixture: 1 { 1.1 { 1.1.1 … } … }. Flat position 2 is Step 1.1;
     // `--from-step 2` must be Step 2, never the 2nd row of the flat list.

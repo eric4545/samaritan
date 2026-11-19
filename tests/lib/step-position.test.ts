@@ -156,3 +156,75 @@ describe('renderStepPickerRows / stepRef', () => {
     assert.strictEqual(stepRef(STEPS, 3), 'Step 2.2: review-upload');
   });
 });
+
+// Same shape with step `id`s, as authored in the operation YAML.
+const WITH_IDS: PositionedStep[] = [
+  { label: '1', name: 'Preflight checks', id: 'preflight' },
+  { label: '2', name: 'Deploy web-server', id: 'deploy' },
+  { label: '2.1', name: 'Scale down old', id: 'scale-down' },
+  { label: '2.2', name: 'Apply manifest', id: 'apply' },
+  { label: '2.3', name: 'Scale up new', id: 'scale-up' },
+  { label: '3', name: 'Notify' },
+];
+const ALL = WITH_IDS.map((_, k) => k);
+
+describe('resolveStepPick — step id and find', () => {
+  it('picks by step id, exactly and case-insensitively', () => {
+    assert.deepStrictEqual(resolveStepPick('scale-down', WITH_IDS, ALL), {
+      index: 2,
+    });
+    assert.deepStrictEqual(resolveStepPick('Scale-Up', WITH_IDS, ALL), {
+      index: 4,
+    });
+  });
+
+  it('an id exact match wins over a name fragment of another step', () => {
+    // "deploy" is the id of step 2 AND inside no other name; "apply" is
+    // the id of 2.2 and a fragment of "Apply manifest" (same step).
+    assert.deepStrictEqual(resolveStepPick('apply', WITH_IDS, ALL), {
+      index: 3,
+    });
+  });
+
+  it('a fragment searches ids too', () => {
+    assert.deepStrictEqual(resolveStepPick('flight', WITH_IDS, ALL), {
+      index: 0,
+    });
+  });
+
+  it('an id of a step not on offer says so', () => {
+    const pick = resolveStepPick('preflight', WITH_IDS, [2, 3, 4]);
+    assert.match(
+      (pick as { error: string }).error,
+      /Step 1: Preflight checks is not one of the steps listed/,
+    );
+  });
+
+  it('several matches come back as the narrowed list to pick from', () => {
+    const pick = resolveStepPick('scale', WITH_IDS, ALL);
+    assert.ok('error' in pick);
+    assert.deepStrictEqual((pick as { matches: number[] }).matches, [2, 4]);
+    assert.match((pick as { error: string }).error, /2 steps match "scale"/);
+  });
+});
+
+describe('renderStepPickerRows — ids', () => {
+  it('adds an aligned id column when a listed step has an id', () => {
+    assert.deepStrictEqual(
+      renderStepPickerRows(WITH_IDS, [0, 2, 5], (k) =>
+        k === 0 ? 'completed' : '',
+      ),
+      [
+        '      1    preflight   Preflight checks  (completed)',
+        '      2.1  scale-down  Scale down old',
+        '      3                Notify',
+      ],
+    );
+  });
+
+  it('no id column when none of the listed steps has one', () => {
+    assert.deepStrictEqual(renderStepPickerRows(WITH_IDS, [5]), [
+      '      3  Notify',
+    ]);
+  });
+});

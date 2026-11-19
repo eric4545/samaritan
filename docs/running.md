@@ -195,7 +195,7 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
   ```
       📎 Add evidence (this step asks for: screenshot)
          ↵ alone    capture pane output since step start
-         Ctrl+V     the screenshot on your clipboard
+         Ctrl+V     the screenshot on your clipboard (or type v)
          file       drag a screenshot or file in, or type its path
          link       paste a URL (chat message, CI build, dashboard)
          text       type or paste it, several lines are fine
@@ -207,7 +207,8 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
   |---|---|---|
   | `↵` alone (a pane is attached) | `command_output`: the pane output since the step started, cleaned of colour codes. When nothing was printed since the step started (a "record the result" step that follows the step that ran the command), the pane **screen** instead | fenced code block |
   | A path to an existing file, dragged in or typed (quotes, `\ ` escapes and `~` are understood) | `screenshot` for `png`/`jpg`/`jpeg`/`webp`/`gif`, `video` for `mp4`/`webm`/`mov`, `file` for anything else. The file is **copied** to `evidence/` in the run directory, beside `report.md` | image (`![description](evidence/<file>)`) or link |
-  | `Ctrl+V` on the empty prompt (or the answer `v`) | `screenshot`: the **image** on your clipboard, saved as `evidence/<id>-clipboard.png` | image |
+  | `↵` alone, when a screenshot or file was **copied during this step** (the prompt then says `📋 On your clipboard: the screenshot you just copied`) | that screenshot (`screenshot`) or that file, as for a path; the pane capture moves to the answer `capture` | image or link |
+  | `Ctrl+V` on the empty prompt (or the answer `v`) | `screenshot`: the **image** on your clipboard, saved as `evidence/<id>-clipboard.png`. A **file** copied in Finder or a file manager is attached as that file | image |
   | A single `http://` / `https://` URL: a chat message permalink, a CI build, a dashboard | `link` | clickable link |
   | Anything else, one line or many | `text` | fenced `text` block |
 
@@ -217,12 +218,24 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
 
   | Where SAMARITAN runs | Helper | Notes |
   |---|---|---|
-  | macOS | `pngpaste` when installed, else the built-in `osascript` | Nothing to install |
+  | macOS | `pngpaste` when installed, then the built-in `osascript`: an AppKit reader (takes PNG, or converts TIFF), then AppleScript | Nothing to install |
   | Linux, Wayland | `wl-paste` (package `wl-clipboard`) | |
   | Linux, X11 | `xclip` | |
   | A host reached over SSH | none | The clipboard is on your own computer. Save the screenshot, copy it to the host and give its path, or paste a link to it |
 
-  When there is no image on the clipboard, or no helper, a line says why and nothing is recorded. Some terminals bind `Ctrl+V` to their own paste; answer `v` at the prompt instead.
+  When there is no image on the clipboard, or no helper, a line says why and nothing is recorded. When a helper **fails** (not allowed to run, timed out), the line quotes its own error (`No image taken: could not read the clipboard (osascript: …)`) rather than calling the clipboard empty. Some terminals bind `Ctrl+V` to their own paste; answer `v` at the prompt instead.
+
+  **Copy, then ↵.** A Mac terminal sends nothing at all for `⌘V` when the clipboard holds an image or a copied file (there is no text to paste), so SAMARITAN looks at the clipboard itself: when a step starts, when `[e]` opens and when you press `↵`. Anything copied in between, a screenshot (`⌘⌃⇧4`) or a file (`⌘C` in Finder), is what `↵ alone` attaches, even when you copied it after opening `[e]`. It is taken once: the next `[e]` does not offer the same copy. A copy from before the step started is only mentioned (`on it now: screenshot, not a new copy`); `Ctrl+V` takes it. This works on macOS and on a Linux desktop with `wl-paste` or `xclip`; not over SSH.
+
+  **On a Mac:**
+
+  | What happens | Why | Do this |
+  |---|---|---|
+  | `⌘V` at the prompt does nothing | `⌘V` is the terminal's text paste; with only an image or a file on the clipboard it sends nothing | Press `↵`: what you copied during the step is attached. Or `Ctrl+V` (the control key), or type `v` and Enter |
+  | `the clipboard holds no image` right after a screenshot | `⌘⇧4` / `⌘⇧3` save the screenshot to a file; only `⌘⌃⇧4` / `⌘⌃⇧3` copy it to the clipboard | Take it with `⌘⌃⇧4`, or drag the saved file (or its thumbnail) into the prompt |
+  | You copied a file in Finder | The clipboard holds the file (and its icon) | `↵` or `Ctrl+V` attaches the file itself, not the icon |
+  | `could not read the clipboard (osascript: …)` | The quoted error is from macOS | Act on it, or save the screenshot and give its path |
+  | Over SSH to another host | The clipboard is on your Mac | Copy the file to the host and give its path, or paste a link |
 
   The old two-step answers still work: `f` asks for a path, `t` for text, `l` for a URL.
 
@@ -258,7 +271,7 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
   **After Enter, samaritan waits for the command and verifies it for you.** It shows `⏳ Running… verify follows when it finishes`. Once the pane is back at the same bare prompt it showed before the paste (digits such as clocks or exit codes may differ) and output has been quiet for 0.3s, it prints `✔ Finished.` and runs `[v]` against the step's `expect`. A step without `expect` just reports it finished. A slow, silent program in the foreground (e.g. `kubectl rollout status`) keeps it waiting. If the prompt can't be recognised (a `cd` changed it), 3s of quiet with the shell back in front counts as finished. **Any key stops waiting** and hands the action bar back; press `[v]` yourself when the command is done. The usual step flow is `[p]` → glance at the pane → `[y]` → `↵`.
 
   A refusal sends nothing and keeps `[y]` available (leave copy-mode, press `[y]` again). If the pane changed, press Enter there yourself, or `[p]` to paste again. `[y]` only ever applies to the paste made from the same step (or rollback entry). It isn't carried over to another step, or to the same step revisited with `[b]`. Logged as `user_input`/`enter_sent`, and the report marks the command `⏎ Enter sent from samaritan [y]`. There is no flag or setting for it.
-- **`[b]` back** — go back to an earlier, already-processed step to re-run it (e.g. an external dependency was fixed and you want to retry from there). Shows the prior steps, one per row, under the same number as the heading and the manual (`2.7  deploy  (completed)`). Type that number, or the step name or a unique part of it. The number the multi-environment manual prints for the same step (`2g`) and text copied from a heading (`Step 2.7:`) work too. A plain `2` always means Step 2, never the second row. The chosen step **and every step after it** are reset to pending and execution resumes from there. The append-only JSONL audit log keeps the full history of the earlier attempt, and the rewound step index is persisted so `resume` stays consistent. Not offered on the first step.
+- **`[b]` back** — go back to an earlier, already-processed step to re-run it (e.g. an external dependency was fixed and you want to retry from there). Shows the prior steps, one per row, under the same number as the heading and the manual (`2.7  deploy  (completed)`). When steps have an `id`, it is listed in its own column (`2.7  deploy-api  deploy  (completed)`). Type the number, the `id`, or the step name. Part of a name or id **finds**: when it matches several steps, the list narrows to them and the prompt asks again (`🔎 2 steps match "scale":`); a typo also asks again; Enter cancels. The number the multi-environment manual prints for the same step (`2g`) and text copied from a heading (`Step 2.7:`) work too. A plain `2` always means Step 2, never the second row. The chosen step **and every step after it** are reset to pending and execution resumes from there. The append-only JSONL audit log keeps the full history of the earlier attempt, and the rewound step index is persisted so `resume` stays consistent. Not offered on the first step.
   - **Re-run only one step.** When there are steps between the one you pick and the one you are on, `[b]` asks `Re-run only Step <picked>, then come back to Step <current>? [y / n=rewind: …]`.
     - `y` resets **only** the picked step. Its header shows `Next : back to Step <number>: <name>`. Once it is done (or skipped), the run returns straight to where you were, and the steps in between keep their status: they are neither re-run nor marked skipped.
     - `n` rewinds as described above.
@@ -387,11 +400,13 @@ samaritan sessions
 # Include completed and cancelled sessions
 samaritan sessions --all
 
-# Continue a run where you left off
+# Continue a run where you left off. The id can be shortened to any unique
+# leading part (`samaritan sessions` prints the shortest one, like a git hash)
 samaritan resume <session-id>
+samaritan resume 3f2a9c1e
 
 # Or jump to a specific step
-samaritan resume <session-id> --from-step 2.7      # the manual's step number, or a step name
+samaritan resume <session-id> --from-step 2.7      # the manual's step number, a step id, or a step name
 
 # Sidecar: capture from a different pane than the one the run used
 samaritan resume <session-id> --attach work:0.1

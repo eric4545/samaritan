@@ -1,6 +1,9 @@
 import { Command } from 'commander';
 import { SessionUtils } from '../../lib/session-manager';
-import { listSavedSessions } from '../../lib/session-persistence';
+import {
+  listSavedSessions,
+  shortSessionId,
+} from '../../lib/session-persistence';
 
 const RESUMABLE_STATUSES = new Set(['running', 'paused', 'failed']);
 
@@ -24,6 +27,9 @@ export const sessionsCommand = new Command('sessions')
     }
 
     console.log(`📋 ${sessions.length} session(s):\n`);
+    // Short ids are unique against EVERY saved session, not just the listed
+    // ones, so `resume <short>` never hits a hidden completed session.
+    const allIds = listSavedSessions().map((s) => s.id);
     for (const s of sessions) {
       const emoji = SessionUtils.getSessionStatusEmoji(s.status);
       console.log(`${emoji} ${s.id}`);
@@ -35,7 +41,9 @@ export const sessionsCommand = new Command('sessions')
       );
       console.log(`   Updated: ${s.updated_at.toISOString()}`);
       if (RESUMABLE_STATUSES.has(s.status)) {
-        console.log(`   Resume:  samaritan resume ${s.id}`);
+        console.log(
+          `   Resume:  samaritan resume ${shortSessionId(s.id, allIds)}`,
+        );
       }
       console.log('');
     }

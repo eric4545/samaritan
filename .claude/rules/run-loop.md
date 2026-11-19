@@ -220,8 +220,15 @@ note and prompt uses (in run.ts: `ref(k)` / `labelOf(k)`; never print
 `k + 1`); `resolveStepPick(answer, pickableSteps, allowed)` strips a leading
 `Step ` / trailing `:` and matches, in order: the label (`2`, `2.7`), the
 multi-env manual's number for the same step (`multiEnvStepLabel`: `2.7` →
-`2g`, `1.2.1` → `1b1`), an exact name, a unique case-insensitive name
-fragment (ambiguous → lists matches, refuses). Digits and dots only is ALWAYS
+`2g`, `1.2.1` → `1b1`), the step `id` (case-insensitive; `toPositioned`
+copies `f.step.id` into `PositionedStep.id`), an exact name, a unique
+case-insensitive fragment of the name OR id (ambiguous → error AND
+`matches`). Rows get an aligned `id` column only when a listed step has an
+id. The interactive pickers go through `pickStep(title, allowed, statusOf)`
+in run.ts: `matches` narrows `offered` and re-asks (`🔎 N steps match`), any
+other error re-asks, Enter cancels; re-asking only on a TTY and while
+`!rlClosed` (piped stdin: one answer, the batch-stdin gotcha). e2e "[b]
+picker: shows step ids" (`e2e-step-ids.yaml`). Digits and dots only is ALWAYS
 a number, never a name fragment; a number that exists but is not on offer is
 named and refused. The completion-screen rollback picker and `--from-step`
 (`resolveFromStep`, `run` and `resume`) go through the same resolver.
@@ -343,17 +350,48 @@ recording another kind); the gate counts ANY item.
 
 **Clipboard image (`Ctrl+V` / answer `v`).** A terminal paste is text only,
 so the image is fetched by a helper: `readClipboardImage(dest)`
-(`src/lib/clipboard-image.ts`; `clipboardImageTools`: darwin `pngpaste` then
-`osascript` writing `«class PNGf»` to the path passed as ARGV, never spliced
-into the script; linux `wl-paste --type image/png` under Wayland, `xclip -t
-image/png -o` under X11). The result must start with the PNG magic, else
-nothing is left on disk and `No image taken: <reason>` is printed
-(`clipboardUnavailableReason`: SSH, no helper, no desktop session).
+(`src/lib/clipboard-image.ts`; `clipboardImageTools`: darwin `pngpaste`, then
+`osascript (AppKit)` = `osascript -l JavaScript` over `NSPasteboard`
+(`public.png`, else `public.tiff` → PNG via `NSBitmapImageRep`; ASCII-only
+so the locale cannot break it), then `osascript` AppleScript writing
+`«class PNGf»`; the path is passed as ARGV, never spliced into a script;
+linux `wl-paste --type image/png` under Wayland, `xclip -t image/png -o`
+under X11). The result must start with the PNG magic, else nothing is left
+on disk and `No image taken: <reason>` is printed
+(`clipboardUnavailableReason`: SSH, no helper, no desktop session). A helper
+that exits non-zero with a stderr line that is NOT a "no image" error
+(`NO_IMAGE_ERROR`), or times out (5 s), is QUOTED: `could not read the
+clipboard (osascript: …)`. Before, every failure read "the clipboard holds no
+image", which hid a broken helper. On darwin the no-image reason adds the
+`Cmd+Ctrl+Shift+4` hint and `evidencePromptLines` says `Ctrl, not Cmd` (⌘V is
+the terminal's text paste and sends nothing for an image).
+
+**Copied, not pasted (`probeClipboard`).** ⌘V sends NO bytes for an
+image/file clipboard, so no key handler can see it. run.ts keeps
+`clipboardAtStepStart` (set next to `step_start`, a background promise,
+`lookAtClipboard()`: TTY only, 3 s cap, never throws) and in
+`captureEvidence` compares it with a probe at `[e]` open (prompt line
+`📋 On your clipboard: the … you just copied`, `↵ alone` → it, pane capture →
+`capture`) and a fresh probe at a bare `↵` (catches a copy made after `[e]`
+opened): `copiedSince(before, now)` = image/file whose `fingerprint` changed
+(darwin `mac:<changeCount>` from a JXA `NSPasteboard` script; Linux
+`TARGETS` + sha1 of the PNG / the `text/uri-list` path). A copied FILE wins
+over an image (Finder also puts the icon as TIFF): `↵`/`Ctrl+V` attach the
+file via the normal `file` path. After taking a copy, `clipboardAtStepStart`
+is reset to it (offered once). Piped stdin never probes. e2e "[e] offers a
+screenshot or file copied during the step" (stand-in xclip answering
+`TARGETS` / `text/uri-list`); the darwin probe script runs on no CI machine:
+check on a real Mac before changing it. **JXA trap (seen on a real Mac):**
+`JSON.stringify` of a bridged NSInteger property (`pb.changeCount`) prints a
+STRING (`"changeCount":"42"`); a number-only guard in `parseMacProbe`
+dropped every real probe and the offer silently never appeared. The script
+wraps it in `Number(…)` and the parser accepts a numeric string too. Unit
+fixtures must use the shape real `osascript` prints, not an idealised one.
 `MultilineBuffer` reports `clipboard` only for Ctrl+V on an EMPTY prompt.
 The e2e ("[e] Ctrl+V") puts a stand-in `xclip` on PATH: it proves key →
-file → report, NOT the real helpers. The `osascript` and `wl-paste` command
-lines have never been run against a real clipboard from this repo's tests;
-check on a real desktop before changing them.
+file → report, NOT the real helpers. The `osascript` (JXA and AppleScript)
+and `wl-paste` command lines have never been run against a real clipboard
+from this repo's tests; check on a real Mac / desktop before changing them.
 
 **Never read free text with `question()`** where a paste is plausible:
 readline ends at the first newline, so a pasted block gave line 1 to the
