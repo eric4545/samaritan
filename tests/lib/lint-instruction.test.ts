@@ -13,6 +13,7 @@ import {
 import { lintOperation } from '../../src/lib/lint/engine';
 import { LINT_REGISTRY } from '../../src/lib/lint/rules';
 import type { Operation } from '../../src/models/operation';
+import { getFixturePath } from '../fixtures/fixtures';
 
 const RULE = 'instruction/vague-decision';
 
@@ -175,36 +176,15 @@ describe('instruction/vague-decision', () => {
 });
 
 describe('instruction/vague-decision from a file', () => {
-  const OP = `name: Vague decision
-version: 1.0.0
-description: mock
-environments:
-  - name: staging
-    description: s
-steps:
-  - name: Watch the rollout
-    type: manual
-    instruction: |
-      Watch the error rate on the dashboard.
-      ${VAGUE}
-  - name: Described
-    type: manual
-    description: "${VAGUE}"
-    command: echo ok
-`;
+  const FILE = getFixturePath('lintVagueDecision');
 
   it('reports the line inside the instruction and the step in JSON', async () => {
-    const file = tempFile('op.yaml', OP);
-    writeFileSync(
-      join(file, '..', 'samaritan.config.yaml'),
-      `lint:\n  rules:\n    ${RULE}: error\n`,
-    );
-    const result = await lintFile(file);
+    const result = await lintFile(FILE, undefined, ['samaritan:strict']);
     const hits = result.findings.filter((f) => f.ruleId === RULE);
-    assert.strictEqual(hits.length, 2);
+    // Step 1 only: description, command and the suppressed step stay silent.
     assert.deepStrictEqual(
       hits.map((f) => f.location?.line),
-      [12, 12],
+      [15, 15],
     );
     const json = JSON.parse(formatJson([result]));
     const finding = json.files[0].findings.find(
@@ -213,21 +193,6 @@ steps:
     assert.strictEqual(finding.ruleId, RULE);
     assert.strictEqual(finding.severity, 'error');
     assert.match(finding.message, /step "Watch the rollout" \(line 2\)/);
-  });
-
-  it('honours a suppression comment above the instruction', async () => {
-    const file = tempFile(
-      'op.yaml',
-      OP.replace(
-        '    instruction: |',
-        `    # samaritan-lint-disable-next-line ${RULE} -- reviewed\n    instruction: |`,
-      ),
-    );
-    const result = await lintFile(file);
-    assert.deepStrictEqual(
-      result.findings.filter((f) => f.ruleId === RULE),
-      [],
-    );
   });
 });
 
