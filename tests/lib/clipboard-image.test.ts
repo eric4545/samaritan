@@ -289,6 +289,31 @@ describe('probeClipboard: what is on the clipboard, without taking it', () => {
     assert.strictEqual(calls[0][0], 'osascript');
   });
 
+  it('macOS: changeCount as JXA really prints it (a string) parses', () => {
+    // JXA's JSON.stringify renders the bridged NSInteger property as a
+    // string: {"changeCount":"42",…}. A number-only guard dropped every
+    // real probe, so the clipboard offer never appeared on a Mac.
+    assert.deepStrictEqual(
+      parseMacProbe('{"changeCount":"42","types":["public.png"],"path":null}'),
+      { fingerprint: 'mac:42', kind: 'image' },
+    );
+    assert.strictEqual(
+      parseMacProbe('{"changeCount":"not a count","types":[]}'),
+      undefined,
+    );
+    assert.strictEqual(
+      parseMacProbe('{"changeCount":"","types":[]}'),
+      undefined,
+    );
+  });
+
+  it('macOS: the probe script turns changeCount into a number itself', () => {
+    assert.ok(
+      macProbeArgs().some((a) => a.includes('Number(pb.changeCount)')),
+      'changeCount is unwrapped in the script, not left to JSON.stringify',
+    );
+  });
+
   it('macOS: a copied file wins over its icon (TIFF)', () => {
     assert.deepStrictEqual(
       parseMacProbe(

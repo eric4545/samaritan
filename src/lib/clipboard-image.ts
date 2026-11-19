@@ -287,7 +287,9 @@ const MAC_PROBE_LINES = [
   '      if (!fileUrl.isNil()) path = ObjC.unwrap(fileUrl.path);',
   '    }',
   '  }',
-  '  return JSON.stringify({ changeCount: pb.changeCount, types: types, path: path });',
+  // JSON.stringify renders the bridged NSInteger as a string ("42"):
+  // unwrap it to a JS number here; the parser accepts either form.
+  '  return JSON.stringify({ changeCount: Number(pb.changeCount), types: types, path: path });',
   '}',
 ];
 
@@ -305,9 +307,19 @@ export function parseMacProbe(stdout: string): ClipboardProbe | undefined {
   } catch {
     return undefined;
   }
-  if (typeof parsed?.changeCount !== 'number') return undefined;
+  // A number from the script, or a numeric string: older osascript output
+  // (and JXA's own JSON.stringify of a bridged NSInteger) is "42".
+  const raw = parsed?.changeCount;
+  const changeCount =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && /^\d+$/.test(raw.trim())
+        ? Number(raw.trim())
+        : undefined;
+  if (changeCount === undefined || !Number.isFinite(changeCount))
+    return undefined;
   const types = Array.isArray(parsed.types) ? parsed.types.map(String) : [];
-  const fingerprint = `mac:${parsed.changeCount}`;
+  const fingerprint = `mac:${changeCount}`;
   if (typeof parsed.path === 'string' && parsed.path)
     return { fingerprint, kind: 'file', path: parsed.path };
   if (types.some((t) => IMAGE_TYPES.has(t)))

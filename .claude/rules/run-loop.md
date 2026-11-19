@@ -380,8 +380,13 @@ over an image (Finder also puts the icon as TIFF): `↵`/`Ctrl+V` attach the
 file via the normal `file` path. After taking a copy, `clipboardAtStepStart`
 is reset to it (offered once). Piped stdin never probes. e2e "[e] offers a
 screenshot or file copied during the step" (stand-in xclip answering
-`TARGETS` / `text/uri-list`); the darwin probe script itself is unverified
-here — check on a real Mac before changing it.
+`TARGETS` / `text/uri-list`); the darwin probe script runs on no CI machine:
+check on a real Mac before changing it. **JXA trap (seen on a real Mac):**
+`JSON.stringify` of a bridged NSInteger property (`pb.changeCount`) prints a
+STRING (`"changeCount":"42"`); a number-only guard in `parseMacProbe`
+dropped every real probe and the offer silently never appeared. The script
+wraps it in `Number(…)` and the parser accepts a numeric string too. Unit
+fixtures must use the shape real `osascript` prints, not an idealised one.
 `MultilineBuffer` reports `clipboard` only for Ctrl+V on an EMPTY prompt.
 The e2e ("[e] Ctrl+V") puts a stand-in `xclip` on PATH: it proves key →
 file → report, NOT the real helpers. The `osascript` (JXA and AppleScript)
