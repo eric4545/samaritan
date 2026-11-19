@@ -120,6 +120,92 @@ describe('renderInline', () => {
   });
 });
 
+describe('code spans', () => {
+  it('bind before bold and links, like CommonMark', () => {
+    assert.equal(
+      renderInline('**Step 1: run `kubectl get pods`**'),
+      '<strong>Step 1: run <code>kubectl get pods</code></strong>',
+    );
+    assert.equal(
+      renderInline('`[x](y)` and `**a**`'),
+      '<code>[x](y)</code> and <code>**a**</code>',
+    );
+  });
+
+  it('pair runs of the same length; an unmatched run is literal', () => {
+    assert.equal(renderInline('``a ` b``'), '<code>a ` b</code>');
+    assert.equal(renderInline('`` only open'), '`` only open');
+    assert.equal(renderInline('`a`` b`'), '<code>a`` b</code>');
+  });
+
+  it('keep their source text inside an attribute', () => {
+    assert.equal(
+      renderInline('![run `ls`](data:image/png;base64,iVBORw0K)'),
+      '<img src="data:image/png;base64,iVBORw0K" alt="run `ls`">',
+    );
+  });
+
+  it('are not confused by private-use characters in the input', () => {
+    assert.equal(renderInline('a0 `b`'), 'a�0� <code>b</code>');
+  });
+});
+
+describe('linear time on hostile input', () => {
+  // CodeQL js/polynomial-redos: these shapes rescanned the rest of the line
+  // from every position (seconds at 100k characters, before).
+  const n = 100_000;
+  for (const [name, input] of [
+    ['a run of backticks', '`'.repeat(n)],
+    ['a run of [', '['.repeat(n)],
+    ['a run of ![', '!['.repeat(n / 2)],
+    [
+      'many unclosed runs',
+      Array.from({ length: 400 }, (_, k) => `${'`'.repeat(k + 1)}a`).join(' '),
+    ],
+  ] as const) {
+    it(name, () => {
+      const start = performance.now();
+      renderInline(input);
+      assert.ok(performance.now() - start < 1500, `${name} took too long`);
+    });
+  }
+
+  it('a description of spaces', () => {
+    const start = performance.now();
+    const md = generateReport(writeLogWithDescription(`${' '.repeat(n)}x`));
+    assert.ok(performance.now() - start < 1500, 'took too long');
+    assert.ok(md.includes('![x](shot.png)'), md.slice(-300));
+  });
+});
+
+const logDirs: string[] = [];
+after(() => {
+  for (const dir of logDirs) rmSync(dir, { recursive: true, force: true });
+});
+function writeLogWithDescription(description: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'samaritan-report-desc-'));
+  logDirs.push(dir);
+  writeFileSync(join(dir, 'shot.png'), PNG);
+  const jsonl = join(dir, 'events.jsonl');
+  const events = [
+    { type: 'session_start', op: join(dir, 'op.yaml'), total_steps: 1 },
+    { type: 'step_start', step: 0, name: 'Deploy web-server', label: '1' },
+    {
+      type: 'evidence_captured',
+      step: 0,
+      evidence_type: 'screenshot',
+      description,
+      path: join(dir, 'shot.png'),
+      filename: 'shot.png',
+    },
+  ];
+  writeFileSync(
+    jsonl,
+    `${events.map((e) => JSON.stringify({ ts: '2026-01-01T00:00:00Z', session_id: 'abc123', ...e })).join('\n')}\n`,
+  );
+  return jsonl;
+}
+
 describe('evidence description with brackets', () => {
   // An operator typed "]" in a screenshot description: the image ended early
   // and rendered as text, with the whole base64 of the screenshot visible.

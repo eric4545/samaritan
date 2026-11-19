@@ -688,7 +688,14 @@ const IMAGE_TYPES = new Set(['screenshot', 'photo']);
  * split the link across lines, so it becomes a space.
  */
 function linkText(text: string): string {
-  return text.replace(/\s*\n\s*/g, ' ').replace(/[\\[\]]/g, '\\$&');
+  // split, not /\s*\n\s*/: that regex rescans a long run of spaces from
+  // every position in it (polynomial time on a crafted description).
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/[\\[\]]/g, '\\$&');
 }
 
 function renderEvidenceBlock(

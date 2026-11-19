@@ -418,7 +418,12 @@ relative path resolves against the run dir) and converts it with
 `data:image/(png|jpeg|gif|webp)` becomes an `<img>`, `javascript:`-style
 hrefs refused). Free text inside `[…]`/`![…]` goes through `linkText()`
 (escapes `[`, `]` and backslash): a `]` in a description turned the image into prose
-with its base64 visible. A new report construct must render in that converter too
+with its base64 visible. Keep the converter LINEAR (CodeQL
+js/polynomial-redos blocked the PR: the exported `renderInline` takes library
+input): code spans are pulled out first by a one-pass run pairing
+(`extractCodeSpans`, slots in private-use chars), labels exclude an
+unescaped `[`, `linkText` splits instead of `/\s*\n\s*/`; the "linear time
+on hostile input" tests guard it. A new report construct must render in that converter too
 (`tests/lib/report-html.test.ts`). `report merge` reads `optsWithGlobals()`:
 the parent `report` declares the same `-o`/`-f` and Commander gave them to the
 PARENT, so `merge -o` wrote nothing (keep those options default-less).

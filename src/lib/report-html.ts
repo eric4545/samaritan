@@ -85,13 +85,70 @@ function safeHref(target: string): string | undefined {
 }
 
 /**
- * One regex for every inline form, tried left to right. Groups:
- * 1-2 code span, 3-4 image, 5-6 link, 7 autolink, 8 bold, 9 italic,
- * 10 backslash escape. Image alt and link text may contain escaped
- * brackets (`\]`), which the report writes for a description with `]`.
+ * One regex for every inline form except code spans, tried left to right.
+ * Groups: 1-2 image, 3-4 link, 5 autolink, 6 bold, 7 italic, 8 backslash
+ * escape. Image alt and link text may contain escaped brackets (`\]`), which
+ * the report writes for a description with `]`; an unescaped `[` ends them,
+ * so a run of `[` cannot make every one of them rescan the rest of the line.
  */
 const INLINE =
-  /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|!\[((?:\\.|[^\]\\])*)\]\((<[^>\n]*>|[^)\s]*)\)|\[((?:\\.|[^\]\\])*)\]\((<[^>\n]*>|[^)\s]*)\)|<((?:https?|mailto):[^\s<>]+)>|\*\*(.+?)\*\*|(?<![\w\\])_([^_\n]+?)_(?!\w)|\\([\\`*_{}[\]()#+\-.!|<>])/g;
+  /!\[((?:\\.|[^[\]\\])*)\]\((<[^>\n]*>|[^)\s]*)\)|\[((?:\\.|[^[\]\\])*)\]\((<[^>\n]*>|[^)\s]*)\)|<((?:https?|mailto):[^\s<>]+)>|\*\*(.+?)\*\*|(?<![\w\\])_([^_\n]+?)_(?!\w)|\\([\\`*_{}[\]()#+\-.!|<>])/g;
+
+/** Stands in for a code span while the rest of the line is parsed. */
+const SLOT_OPEN = '';
+const SLOT_CLOSE = '';
+const SLOT = /(\d+)/g;
+
+interface CodeSpan {
+  raw: string;
+  html: string;
+}
+
+/**
+ * Pull the code spans out of a line in one pass (CommonMark: a run of N
+ * backticks opens a span that the next run of exactly N closes; a run with
+ * no closer is literal text). Each span becomes a slot, so links and
+ * emphasis around it still parse and nothing inside it does. Linear: the
+ * next run of each length is looked up, never searched for.
+ */
+function extractCodeSpans(text: string): { text: string; spans: CodeSpan[] } {
+  const runs: Array<{ start: number; end: number }> = [];
+  for (let i = 0; i < text.length; ) {
+    if (text[i] !== '`') {
+      i++;
+      continue;
+    }
+    const start = i;
+    while (i < text.length && text[i] === '`') i++;
+    runs.push({ start, end: i });
+  }
+  const closer: number[] = new Array(runs.length).fill(-1);
+  const nextOfLength = new Map<number, number>();
+  for (let r = runs.length - 1; r >= 0; r--) {
+    const len = runs[r].end - runs[r].start;
+    closer[r] = nextOfLength.get(len) ?? -1;
+    nextOfLength.set(len, r);
+  }
+
+  const spans: CodeSpan[] = [];
+  let out = '';
+  let pos = 0;
+  for (let r = 0; r < runs.length; r++) {
+    const close = closer[r];
+    if (close < 0 || runs[r].start < pos) continue;
+    const body = text.slice(runs[r].end, runs[close].start);
+    const code = /^ .* $/s.test(body) && body.trim() ? body.slice(1, -1) : body;
+    out += text.slice(pos, runs[r].start);
+    out += `${SLOT_OPEN}${spans.length}${SLOT_CLOSE}`;
+    spans.push({
+      raw: text.slice(runs[r].start, runs[close].end),
+      html: `<code>${escapeHtml(code)}</code>`,
+    });
+    pos = runs[close].end;
+    r = close;
+  }
+  return { text: out + text.slice(pos), spans };
+}
 
 /** Undo Markdown backslash escapes (alt text is an attribute, not inline). */
 function unescapeText(text: string): string {
@@ -99,29 +156,41 @@ function unescapeText(text: string): string {
 }
 
 export function renderInline(text: string): string {
+  // Private-use characters in the input would read as slots: replace them.
+  const clean = text.replace(/[]/g, '�');
+  const { text: slotted, spans } = extractCodeSpans(clean);
+  // Inside an attribute (alt, href) a span is its source text, not markup.
+  const raw = (s: string): string =>
+    s.replace(SLOT, (_, n) => spans[Number(n)]?.raw ?? '');
+  return renderSpans(slotted, raw).replace(
+    SLOT,
+    (_, n) => spans[Number(n)]?.html ?? '',
+  );
+}
+
+function renderSpans(text: string, raw: (s: string) => string): string {
   let html = '';
   let last = 0;
   for (const m of text.matchAll(INLINE)) {
     html += escapeHtml(text.slice(last, m.index));
     last = m.index + m[0].length;
-    const [, , code, alt, imgSrc, label, href, autolink, bold, italic, esc] = m;
-    if (code !== undefined) {
-      const body =
-        /^ .* $/.test(code) && code.trim() ? code.slice(1, -1) : code;
-      html += `<code>${escapeHtml(body)}</code>`;
-    } else if (imgSrc !== undefined) {
-      html += renderImage(unescapeText(alt ?? ''), linkTarget(imgSrc));
+    const [, alt, imgSrc, label, href, autolink, bold, italic, esc] = m;
+    if (imgSrc !== undefined) {
+      html += renderImage(
+        unescapeText(raw(alt ?? '')),
+        linkTarget(raw(imgSrc)),
+      );
     } else if (href !== undefined) {
-      const target = safeHref(linkTarget(href));
-      html += target
-        ? `<a href="${escapeHtml(target)}">${renderInline(label ?? '')}</a>`
-        : renderInline(label ?? '');
+      const target = safeHref(linkTarget(raw(href)));
+      const inner = renderSpans(label ?? '', raw);
+      html += target ? `<a href="${escapeHtml(target)}">${inner}</a>` : inner;
     } else if (autolink !== undefined) {
-      html += `<a href="${escapeHtml(autolink)}">${escapeHtml(autolink)}</a>`;
+      const url = raw(autolink);
+      html += `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`;
     } else if (bold !== undefined) {
-      html += `<strong>${renderInline(bold)}</strong>`;
+      html += `<strong>${renderSpans(bold, raw)}</strong>`;
     } else if (italic !== undefined) {
-      html += `<em>${renderInline(italic)}</em>`;
+      html += `<em>${renderSpans(italic, raw)}</em>`;
     } else if (esc !== undefined) {
       html += escapeHtml(esc);
     }
