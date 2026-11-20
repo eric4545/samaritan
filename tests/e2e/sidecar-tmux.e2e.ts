@@ -506,6 +506,169 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
+    'resume after [y] sent the command: recap, scrollback verify PASS, ↵ completes without running it again',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-resume-sent.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('Scale web-server', { timeoutMs: 40_000 });
+        await d.waitFor('v verify', { timeoutMs: 15_000 });
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        d.key('y');
+        // Stop the run while the command is still running in the work pane.
+        await sleep(500);
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 20_000 });
+        const id = aborted.match(RESUME_HINT)?.[1];
+        assert.ok(id, 'the stop prints the resume hint');
+        // The command finishes in the pane after samaritan stopped.
+        await d.waitFor(/^web-server scaled E2E_SCALED_OK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+
+        d.type(launch(ws.dir, `resume ${id}`));
+        await d.waitFor('This step was started before the run stopped', {
+          timeoutMs: 30_000,
+        });
+        await d.waitFor('Enter sent from samaritan at', { timeoutMs: 5_000 });
+        await d.waitFor('It already ran and passed', { timeoutMs: 15_000 });
+        await d.waitFor('? more', { timeoutMs: 15_000 });
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        const next = await d.waitFor('[Step 2 · 2/2]', { timeoutMs: 15_000 });
+        assert.ok(
+          !next.includes('Mark done anyway?'),
+          'a scrollback PASS needs no stray-Enter confirmation',
+        );
+        // Nothing was pasted or run again in the work pane.
+        const runs = d
+          .capture(work)
+          .split('\n')
+          .filter((l) => l.trim() === 'web-server scaled E2E_SCALED_OK');
+        assert.strictEqual(runs.length, 1, 'the command ran exactly once');
+
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        await d.waitFor(/(Report:[\s\S]*){2}/, { timeoutMs: 20_000 });
+        const report = readReport(ws.dir);
+        assert.match(
+          report,
+          /## Step 1: Scale web-server[\s\S]*↻ Resumed after the run stopped on this step\. Before it: pasted, Enter sent from samaritan\./,
+        );
+        assert.match(report, /\| 1 \| Scale web-server \| ✅ completed \|/);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'resume after [y] sent the command: a scrollback FAIL leaves the step open',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-resume-sent.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('v verify', { timeoutMs: 40_000 });
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        d.key('y');
+        await sleep(500);
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 20_000 });
+        const id = aborted.match(RESUME_HINT)?.[1];
+        assert.ok(id);
+        await d.waitFor(/^web-server scaled E2E_SCALED_OK$/m, {
+          pane: work,
+          timeoutMs: 15_000,
+        });
+        // The expect changed after the stop (the step list did not): the
+        // output left in the pane no longer passes it.
+        writeFileSync(
+          ws.op,
+          readFileSync(ws.op, 'utf8').replace(
+            'contains: E2E_SCALED_OK',
+            'contains: E2E_NOT_IN_OUTPUT',
+          ),
+        );
+
+        d.type(launch(ws.dir, `resume ${id}`));
+        await d.waitFor('Checking the output it left in the pane', {
+          timeoutMs: 30_000,
+        });
+        const failed = await d.waitFor('Enter=back to step', {
+          timeoutMs: 15_000,
+        });
+        assert.ok(!failed.includes('It already ran and passed'));
+        d.enter();
+        await d.waitFor('Back to the step', { timeoutMs: 15_000 });
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('Mark done anyway?', { timeoutMs: 15_000 });
+        d.key('n');
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        await d.waitFor(/(Report:[\s\S]*){2}/, { timeoutMs: 20_000 });
+        assert.match(
+          readReport(ws.dir),
+          /\| 1 \| Scale web-server \| (?!✅ completed)/,
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'resume after a [p] paste that was never run: no verify from scrollback, ↵ still asks',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-resume-sent.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        const work = d.work as string;
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('v verify', { timeoutMs: 40_000 });
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 20_000 });
+        const id = aborted.match(RESUME_HINT)?.[1];
+        assert.ok(id);
+
+        d.type(launch(ws.dir, `resume ${id}`));
+        await d.waitFor('The paste was not run from samaritan', {
+          timeoutMs: 30_000,
+        });
+        const screen = await d.waitFor('? more', { timeoutMs: 15_000 });
+        assert.ok(!screen.includes('It already ran and passed'));
+        assert.ok(!screen.includes('Checking the output it left'));
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        // The un-run paste is still on the work pane's input line.
+        await d.waitFor('Mark done anyway?', { timeoutMs: 15_000 });
+        d.key('n');
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        await d.waitFor(/(Report:[\s\S]*){2}/, { timeoutMs: 20_000 });
+        assert.match(
+          readReport(ws.dir),
+          /↻ Resumed after the run stopped on this step\. Before it: pasted\./,
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
     'resume of an --attach run on an operation with sessions: re-attaches the pane, never spawns',
     { skip, timeout: 150_000 },
     async () => {

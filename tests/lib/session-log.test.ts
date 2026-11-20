@@ -42,6 +42,22 @@ describe('foldEvents', () => {
     ]);
   });
 
+  it('records a step resumed after the run stopped on it as a step note', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({
+        type: 'user_input',
+        action: 'resumed_after_abort',
+        step: 0,
+        notes: '↻ Resumed after the run stopped on this step.',
+      }),
+      ev({ type: 'step_complete', step: 0 }),
+    ]);
+    assert.deepStrictEqual(steps[0].notes, [
+      '↻ Resumed after the run stopped on this step.',
+    ]);
+  });
+
   it('captures command input and attaches pane output', () => {
     const { steps } = foldEvents([
       ev({

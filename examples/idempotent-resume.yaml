@@ -1,0 +1,71 @@
+name: Scale web-server (safe to resume)
+version: 1.0.0
+description: |
+  A change written so that `samaritan resume` can pick it up after the run
+  stopped halfway, without running anything twice by mistake.
+
+  - "Apply" converges: running it again prints `unchanged`, and its expect
+    accepts both outcomes. After a resume, if samaritan had sent it before the
+    stop, its output still in the pane is checked against that expect first;
+    a PASS lets you complete the step without running it again.
+  - "Scale" does not converge on its own, so a read-only check before it
+    shows the target state; when the check already passes, skip (`s`) the
+    change step. This is Ansible's desired state written with the fields a
+    step already has.
+
+  Try it: run in sidecar mode, press [p] then [y] on step 2, stop with
+  Ctrl+C, then `samaritan resume <id>`.
+
+environments:
+  - name: staging
+    description: Staging cluster
+    variables:
+      NAMESPACE: web
+      REPLICAS: 3
+  - name: production
+    description: Production cluster
+    variables:
+      NAMESPACE: web
+      REPLICAS: 6
+    approval_required: true
+
+steps:
+  - name: Check current replicas
+    type: manual
+    instruction: Read-only. Shows whether the change below is still needed.
+    command: kubectl get deployment web-server -n ${NAMESPACE} -o jsonpath='{.spec.replicas}'
+    expect:
+      matches: '^[0-9]+$'
+
+  - name: Apply web-server deployment
+    type: manual
+    instruction: Converges to the manifest. Safe to run again after a resume.
+    command: kubectl apply -n ${NAMESPACE} -f deploy/web-server.yaml
+    expect:
+      any_line_matches: 'deployment\.apps/web-server (unchanged|configured|created)'
+    rollback:
+      command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
+
+  - name: Check replicas before scaling
+    type: manual
+    instruction: |
+      Read-only check of the target state. If it already PASSES, the scale
+      step below has nothing to do: skip it with `s`.
+    command: kubectl get deployment web-server -n ${NAMESPACE} -o jsonpath='{.spec.replicas}'
+    expect:
+      equals: '${REPLICAS}'
+
+  - name: Scale web-server
+    type: manual
+    instruction: Sets an absolute count (never a delta), so running it twice changes nothing.
+    command: kubectl scale deployment web-server -n ${NAMESPACE} --replicas=${REPLICAS}
+    expect:
+      contains: deployment.apps/web-server scaled
+    rollback:
+      command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
+
+  - name: Wait for rollout
+    type: manual
+    command: kubectl rollout status deployment/web-server -n ${NAMESPACE} --timeout=300s
+    expect:
+      contains: successfully rolled out

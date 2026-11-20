@@ -182,6 +182,28 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **`resume` no longer resumes blind.** Found with small repros of a stopped
+  run:
+  - Editing the operation between the stop and the resume (a step removed or
+    added before the step the run stopped on) made `resume` continue on a
+    different step, silently skipping one that never ran. `resume` now
+    refuses when a step the run recorded, or the step it resumes at, is no
+    longer at the same position, lists them, and prints a `run --from-step`
+    command to start over. Changes to steps not reached yet are accepted.
+    `session_start` records the step list for this; `report merge` refuses
+    runs of two versions of a file the same way.
+  - A step skipped before the stop came back as completed, so a later step
+    that `needs` it no longer warned. Earlier steps now keep the status the
+    run recorded.
+  - The step the run stopped on now says what was done on it (pasted, Enter
+    sent from samaritan, verify result), on screen and as a note in
+    `report.md`. When samaritan had sent its command and the step has
+    `expect`, the output left in the re-attached pane is checked first: on a
+    PASS, `↵` completes the step without running the command a second time.
+    See "Resuming safely" in `docs/running.md` and
+    `examples/idempotent-resume.yaml` (steps that are safe to run twice, with
+    the fields a step already has).
+
 - **Clipboard screenshots on macOS: copy, then ↵.** A Mac terminal sends
   nothing at all for `⌘V` when the clipboard holds a screenshot or a copied
   file, so pasting one at the `[e]` prompt did nothing. The run now looks at

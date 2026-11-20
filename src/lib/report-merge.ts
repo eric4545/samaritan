@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import type { RollbackRecord, StepRecord } from '../models/step-record';
 import { type ReportOptions, renderReport } from './report-generator';
+import { type RecordedStep, recordedStepList } from './resume-state';
 import { foldEvents, readEvents, type SessionEvent } from './session-log';
 import { candidateRunLogPaths, loadSession } from './session-persistence';
 
@@ -10,6 +11,7 @@ interface SessionFold {
   operationFile: string;
   group?: string;
   environment?: string;
+  stepList?: RecordedStep[];
   operator: string;
   events: SessionEvent[];
   steps: StepRecord[];
@@ -68,6 +70,7 @@ function loadSessionFold(sessionId: string): SessionFold {
     operationFile: session.operation_file,
     group: session.group,
     environment: session.environment,
+    stepList: recordedStepList(events),
     operator: session.operator || 'unknown',
     events,
     steps,
@@ -118,7 +121,13 @@ export function mergeStepRecords(
  * steps, so their evidence must not be blended either.
  */
 export function assertSameRunbook(
-  folds: Array<{ sessionId: string; group?: string; environment?: string }>,
+  folds: Array<{
+    sessionId: string;
+    group?: string;
+    environment?: string;
+    /** `session_start.steps`; absent in logs written before it existed. */
+    stepList?: RecordedStep[];
+  }>,
 ): void {
   const axes = [
     ['group', 'groups'],
@@ -131,6 +140,20 @@ export function assertSameRunbook(
       .join(', ');
     throw new Error(
       `Cannot merge sessions from different ${plural}: ${detail}. Merge the sessions of one ${key} at a time.`,
+    );
+  }
+  // The same file edited between two runs: compare the step names each run
+  // recorded (runs from before step lists were recorded are not checked).
+  const listed = folds.filter((f) => f.stepList);
+  const shapes = new Set(
+    listed.map((f) => JSON.stringify(f.stepList?.map((s) => s.name))),
+  );
+  if (shapes.size > 1) {
+    const detail = listed
+      .map((f) => `${f.sessionId} (${f.stepList?.length} steps)`)
+      .join(', ');
+    throw new Error(
+      `Cannot merge runs of different versions of the runbook: ${detail}. Their steps are not at the same positions.`,
     );
   }
 }

@@ -71,6 +71,10 @@
     "valid": true,
     "errors": 0
   },
+  "examples/idempotent-resume.yaml": {
+    "valid": true,
+    "errors": 0
+  },
   "examples/lint/release.yaml": {
     "valid": true,
     "errors": 0

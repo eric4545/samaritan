@@ -211,15 +211,27 @@ export class OperationExecutor {
 
   /**
    * Resume interactive execution from a specific step index (cross-process resume).
-   * Marks all preceding steps as completed and sets the current index.
+   * Each preceding step gets the status the run recorded for it
+   * (`recordedStatus`, folded from `events.jsonl`): a skipped step stays
+   * skipped, so `needs` gating still sees it. A step with no record (jumped
+   * over by `resume --from-step`, or an older log) counts as completed.
    */
-  resumeFromIndex(stepIndex: number): void {
+  resumeFromIndex(
+    stepIndex: number,
+    recordedStatus: (
+      index: number,
+    ) => 'completed' | 'failed' | 'skipped' | 'pending' | undefined = () =>
+      undefined,
+  ): void {
     if (this.state.status !== 'pending') {
       throw new Error(`Cannot resume operation in ${this.state.status} state`);
     }
     for (let i = 0; i < stepIndex && i < this.state.steps.length; i++) {
-      this.state.steps[i].status = 'completed';
-      this.state.completedSteps++;
+      const status = recordedStatus(i) ?? 'completed';
+      this.state.steps[i].status = status;
+      if (status === 'completed') this.state.completedSteps++;
+      else if (status === 'skipped') this.state.skippedSteps++;
+      else if (status === 'failed') this.state.failedSteps++;
     }
     this.state.currentStepIndex = stepIndex;
     this.state.status = 'running';

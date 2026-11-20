@@ -287,7 +287,7 @@ marks every still-`pending` step from `currentStepIndex` up to `target` as
 `i = target - 1; continue` mechanism; the loop branches on `navIsJump` to pick
 the method and log `action:'jump'` vs `'back'`. `run --from-step <step>` calls
 `jumpToStep(resolveFromStep(...))` after `startInteractive()` — distinct from `resume --from-step`
-(uses `resumeFromIndex`, marks earlier steps `completed` not `skipped`).
+(uses `resumeFromIndex`: recorded steps keep their status, jumped-over steps with no record are `completed`, not `skipped`).
 Append-only `events.jsonl` is never rewritten. A `step_skip` event (folded to
 `status:'skipped'`) is emitted so jumped-over steps render honestly. Both
 `goToStep`/`jumpToStep` reuse the closed `operation_started` `ExecutionEventType`
@@ -601,6 +601,42 @@ must not come back on spawned `sessions:` windows. With `sessions:` declared,
 one pane (per-step `session:` ignored). Warns `Saved tmux pane … no longer exists` when
 gone, passes the backend to the loop and tears it down after. e2e: "abort →
 resume re-attaches the --attach pane".
+
+## Resume never resumes blind (`src/lib/resume-state.ts`)
+
+Pure helpers over the run's `events.jsonl` (`readRunEvents` in run.ts reads
+either location). `resumeSession` order matters: parse → `prepareFlatOperation`
+→ `runbookMismatches` BEFORE any executor, tmux spawn or pane attach.
+- **Statuses:** `executor.resumeFromIndex(i, recordedStatus)` gives each
+  earlier step its folded status (`recordedStatusOf` = `foldEvents`);
+  env-filtered → `skipped`; no record → `completed` (resume `--from-step`,
+  older logs). It used to mark EVERY earlier step completed: a skipped step
+  then satisfied `needs` (seen in a real repro).
+- **Step list:** `session_start.steps` = `recordedStepsOf(flatSteps)`
+  (`{label, name}`, names resolved). `runbookMismatches(events, now, i)`
+  compares, by resolved name, every index with a fold record plus the resume
+  index (from the recorded list when it never started). Any mismatch →
+  `runbookChangedMessage` thrown (exit 1). Steps after the resume point and
+  never reached may change. Events are append-only and keyed by index, so a
+  remap is impossible: refuse, never shift (the original bug resumed on a
+  different step and silently skipped one). `report merge`
+  (`assertSameRunbook`) compares `stepList` the same way.
+- **Recap:** `interruptedStepRecap(events, i)` = everything recorded for the
+  step since it last ended (`step_complete`/`step_skip`/`step_failed`), not
+  only the latest attempt (an Enter from an earlier aborted attempt still
+  counts), rollback `context` events excluded. The loop param `resumed`
+  prints `recapLines` once after the heading (`resumedRecapShown`) and emits
+  `user_input`/`resumed_after_abort` `{notes, pasted, enter_sent,
+  verified?}` → `foldEvents` pushes `notes` onto the step.
+- **Scrollback verify:** once (`resumedVerifyDone`), when the recap has a
+  paste or Enter and the step has `expect`: `sliceFromLastCommandEcho(
+  captureHistory())` must be ≥ 2 lines (a lone line is the un-run paste on
+  the input line), then the SAME `verifyManualOutput` as `[v]` with that
+  slice as the capture. PASS → `verifiedBeforeStop` (skips
+  `confirmDoneWithNothingRun`) and `advance = advanceOnPass`. Nothing is
+  written to the pane. e2e: "resume after [y] sent the command" (PASS,
+  FAIL) and "resume after a [p] paste that was never run"
+  (`e2e-resume-sent.yaml`). CLI: `tests/cli/resume-safety.test.ts`.
 
 ## Retryable verification (`expect.retry`)
 

@@ -29,7 +29,7 @@ missing answer, not a "no".
 | 5 | Session + resume | `src/models/session.ts`, `session-manager.ts`, `resume`, `sessions` | Is whatever shapes the step list stored on the session and re-applied? Is it shown in the listing? |
 | 6 | Events | `logger.emit` in `run.ts`, `src/lib/session-log.ts` | Does `session_start` (or the step event) record it? The report is built ONLY from events. |
 | 7 | Report | `src/lib/report-generator.ts` | Can a reader of `report.md` alone tell which runbook, environment and group ran? Old logs without the field still render. |
-| 8 | Report merge | `src/lib/report-merge.ts` | Steps merge by INDEX. Anything that changes the step list must be in `assertSameRunbook`. |
+| 8 | Report merge | `src/lib/report-merge.ts` | Steps merge by INDEX. Anything that changes the step list must be in `assertSameRunbook` (it compares group, environment and the recorded `session_start.steps`). |
 | 9 | Docs, skill, rules, example, CHANGELOG | `docs/`, `.claude/skills/`, `.claude/rules/`, `examples/` | Does every sentence describe behaviour you saw, not behaviour you intended? |
 
 Rows 4 to 8 are the ones that get skipped. The report has no access to the

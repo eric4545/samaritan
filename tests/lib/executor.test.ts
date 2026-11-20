@@ -518,6 +518,50 @@ describe('Bug fixes — review findings', () => {
     assert.strictEqual(state.steps[1].status, 'pending');
     assert.strictEqual(state.status, 'running');
   });
+
+  it('resumeFromIndex keeps the recorded status of each earlier step', () => {
+    // A step skipped (or left pending by a rollback) before the abort must
+    // not come back as completed: `needs` gating reads these statuses.
+    const executor = createExecutor(
+      {
+        ...twoStepOperation,
+        steps: [
+          { name: 'Step A', type: 'manual' },
+          { name: 'Step B', type: 'manual' },
+          { name: 'Step C', type: 'manual' },
+          { name: 'Step D', type: 'manual' },
+        ],
+      },
+      ExecutorUtils.createContext('bug-fix-op', 'test', {}, 'tester'),
+    );
+    const recorded: Record<number, 'skipped' | 'failed' | 'pending'> = {
+      0: 'skipped',
+      1: 'failed',
+      2: 'pending',
+    };
+    executor.resumeFromIndex(3, (i) => recorded[i]);
+    const state = executor.getState();
+    assert.deepStrictEqual(
+      state.steps.map((s) => s.status),
+      ['skipped', 'failed', 'pending', 'pending'],
+    );
+    assert.strictEqual(state.completedSteps, 0);
+    assert.strictEqual(state.skippedSteps, 1);
+    assert.strictEqual(state.failedSteps, 1);
+    assert.strictEqual(state.currentStepIndex, 3);
+  });
+
+  it('resumeFromIndex treats an earlier step with no record as completed', () => {
+    // `resume --from-step` jumps over steps that never ran: documented as
+    // completed, and older logs have no record at all.
+    const executor = createExecutor(
+      twoStepOperation,
+      ExecutorUtils.createContext('bug-fix-op', 'test', {}, 'tester'),
+    );
+    executor.resumeFromIndex(1, () => undefined);
+    assert.strictEqual(executor.getState().steps[0].status, 'completed');
+    assert.strictEqual(executor.getState().completedSteps, 1);
+  });
 });
 
 describe('goToStep (back-to-previous-step navigation)', () => {

@@ -416,6 +416,44 @@ samaritan resume <session-id> --attach work:0.1
 
 Quitting a run with `q`, `abort`, or **`Ctrl+C`** stops execution but **saves the session as paused**, prints the resume command, and keeps it listed in `samaritan sessions` — so you can stop mid-operation and pick it back up later. (`Ctrl+C` no longer hard-quits without saving — it now unwinds through the same save path as `abort`.) Resume restores variables, execution mode, and the current step index, then re-enters the interactive loop.
 
+### Resuming safely
+
+A step can be stopped halfway: the command was sent, the run stopped before you marked it done. Running it again is harmless for some commands (`kubectl apply`) and harmful for others (a `POST`, an `INSERT`, a counter). `resume` does not guess. It works from the run's `events.jsonl`:
+
+- **Earlier steps keep the status they ended with.** A step you skipped stays skipped, so a later step that `needs` it still warns (`⚠️ This step needs: Step A (skipped)`). A rolled-back step stays not done. Steps `resume --from-step` jumps over without a record count as done.
+- **An edited runbook is refused when it moved recorded steps.** Events address steps by position. If a step was added, removed or reordered at or before the step the run stopped on, resuming would mark the wrong steps done or skip one that never ran, so `resume` stops and lists them:
+
+  ```text
+  ❌ Resume failed: The runbook changed since this run started: steps it already recorded are no longer at the same position.
+      Step   Recorded  →  Now
+      1      Check replicas  →  Scale web-server
+      2      Scale web-server  →  Check health
+  ```
+
+  Restore the file as it was when the run started, or start a new run at the step you need (`samaritan run <file> --env <env> --from-step "<step>"`, which the message prints). Edits to steps the run has not reached yet, and to commands, are fine. `report merge` refuses runs of two versions of a file for the same reason.
+- **The step the run stopped on shows what was done on it.**
+
+  ```text
+      ↻  This step was started before the run stopped (09:12:03).
+         • pasted into the pane at 09:12:03
+         • Enter sent from samaritan at 09:12:04
+         The command may already have run. Check its result before running it again.
+  ```
+
+  `report.md` records the same as a note on the step. A command you typed by hand is not recorded, so when nothing was sent from samaritan the recap says so.
+- **When samaritan had sent the command and the step has `expect`, its output is checked first.** Sidecar re-attaches the pane the run used; if the command's output is still in its scrollback, `resume` verifies it against the step's `expect`, like `[v]`. On a PASS (`↻ It already ran and passed`), `↵` completes the step without running the command again. On a FAIL, or with no output left in the pane, you get the normal step. This needs the same pane (`attach_target`, or `resume --attach`) and the output within tmux's history.
+
+**Write steps that can run twice.** This is the same rule as Ansible's desired state, with the fields a step already has: prefer a command that converges (`kubectl apply`, `helm upgrade --install`) over one that acts (`kubectl create`, `kubectl scale` by a delta), and let `expect` accept both "already there" and "changed". Then running it again after a resume is harmless, and its output tells the report which one happened:
+
+```yaml
+- name: Apply web-server deployment
+  command: kubectl apply -f deploy/web-server.yaml
+  expect:
+    any_line_matches: 'deployment\.apps/web-server (unchanged|configured|created)'
+```
+
+For a command that cannot converge, put a read-only check step before it with an `expect` for the target state: if that check passes, skip (`s`) the change step. See `examples/idempotent-resume.yaml`.
+
 ## Named sessions
 
 Define where each step runs — local or over SSH:
