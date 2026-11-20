@@ -193,6 +193,20 @@ start warns about an earlier step's un-run paste. Deliberately NOT cleared on
 step change: the pane text is still there. e2e: "un-run [p] paste"
 (`e2e-paste-guard.yaml`); unit: `tests/lib/paste-guard.test.ts`.
 
+**Saved for `resume`.** Every write of `lastPaste` goes through
+`rememberPaste(p)`, which also saves `toSavedPaste(p)` (`{command, pane_id,
+session_name, shell?, step, context?}`; nothing without a pane id) as
+`session.pending_paste` via `sessionManager.setPendingPaste` (saved only on
+change). Forgotten on `[u]` success and on `[y]`'s Enter (it runs). At loop
+start (after `ref` exists), `restorePendingPaste(saved, captureRef.backend,
+paneState().paneId)` rebuilds it ONLY on the same pane id, then `unrunPaste`
+re-checks the cursor line (run/cleared while stopped → forgotten); restored →
+`⚠️ … (pasted before the run stopped) … [u] clears it` +
+`user_input`/`paste_restored` (not folded), and `announcedPaste` stops the
+first step's own warning from repeating it. Before: the resumed run did not
+know, and `[p]` appended to it. e2e "abort → resume keeps an un-run [p]
+paste".
+
 ### Pane target (`target:`) + `[u]` clear paste
 
 `StepContent.target` names the tmux WINDOW a command belongs in (`window` or

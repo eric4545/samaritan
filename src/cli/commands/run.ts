@@ -76,6 +76,8 @@ import {
   checkClearSafe,
   type PendingPaste,
   pastePreview,
+  restorePendingPaste,
+  toSavedPaste,
   unrunPaste,
 } from '../../lib/paste-guard';
 import {
@@ -1227,6 +1229,16 @@ class OperationRunner {
     // line until the operator runs or clears it. A later [p] would append to
     // it (`echo aecho b`), and ↵ would mark a never-run step done (#115).
     let lastPaste: PendingPaste | undefined;
+    // Every change to lastPaste goes through here: it is also saved on the
+    // session, so `resume` can re-check the pane for a paste left un-run
+    // before an abort (restored at loop start, see restorePendingPaste).
+    const rememberPaste = (paste: PendingPaste | undefined): void => {
+      lastPaste = paste;
+      sessionManager.setPendingPaste(
+        state.context.sessionId,
+        toSavedPaste(paste),
+      );
+    };
     // The p → y → ↵ legend prints once per run (sidecarFlowLegend).
     let flowLegendShown = false;
 
@@ -1306,7 +1318,7 @@ class OperationRunner {
         );
         return false;
       }
-      lastPaste = undefined;
+      rememberPaste(undefined);
       // [y] must never press Enter for text that is gone.
       armedEnter = undefined;
       // A forward step's own paste: the step starts over from this clean
@@ -1783,6 +1795,8 @@ class OperationRunner {
       if (!armed.backend.sendEnter?.(armed.sessionName, armed.state.paneId))
         return refuse('tmux did not accept the key');
       armedEnter = undefined;
+      // It runs now: nothing un-run is left for [p], [u] or `resume`.
+      if (lastPaste?.command === armed.command) rememberPaste(undefined);
       logger.emit({
         type: 'user_input',
         action: 'enter_sent',
@@ -2121,7 +2135,7 @@ class OperationRunner {
               continue;
             const beforePaste = backend.paneState?.(sessionName);
             backend.pasteCommand(sessionName, cmd);
-            lastPaste = {
+            rememberPaste({
               backend,
               sessionName,
               command: cmd,
@@ -2129,7 +2143,7 @@ class OperationRunner {
               context,
               paneId: beforePaste?.paneId,
               shell: beforePaste?.currentCommand,
-            };
+            });
             logger.emit({
               type: 'user_input',
               action: 'send_to_pane',
@@ -3106,6 +3120,41 @@ class OperationRunner {
       const labelOf = (k: number): string =>
         pickableSteps[k]?.label ?? String(k + 1);
 
+      // `resume`: a paste left un-run before the abort is still on the
+      // re-attached pane's input line. Restore it (same pane id only) so [p]
+      // keeps refusing to paste on top of it and [u] can clear it. Run or
+      // cleared in the meantime → forget it.
+      const savedPaste = sessionManager.getSession(
+        state.context.sessionId,
+      )?.pending_paste;
+      // Said once at loop start: the first step's own warning skips it.
+      let announcedPaste: PendingPaste | undefined;
+      if (savedPaste && captureRef.backend) {
+        const restored = restorePendingPaste(
+          savedPaste,
+          captureRef.backend,
+          captureRef.backend.paneState?.(savedPaste.session_name)?.paneId,
+        );
+        if (restored && unrunPaste(restored)) {
+          lastPaste = restored;
+          announcedPaste = restored;
+          console.log(
+            `\n⚠️  ${restored.backend.describeTarget(restored.sessionName)} still has the paste from ${ref(restored.step)} on its input line, not run (pasted before the run stopped): ${pastePreview(restored.command)}${restored.backend.clearInputLine ? ' — [u] clears it' : ''}`,
+          );
+          logger.emit({
+            type: 'user_input',
+            action: 'paste_restored',
+            step: restored.step,
+            session: restored.backend.describeTarget(restored.sessionName),
+            command: restored.command,
+            actor: state.context.operator,
+            ...(restored.context ? { context: restored.context } : {}),
+          });
+        } else if (restored) {
+          rememberPaste(undefined);
+        }
+      }
+
       // The [b] / [j] / completion-rollback step picker. The answer is a
       // number, an id, or part of a name/id: several matches narrow the list
       // to them and ask again, a miss asks again, Enter cancels. Re-asking is
@@ -3688,14 +3737,14 @@ class OperationRunner {
             // Anchor [v] to this paste: only output after it counts.
             recordPasteAnchor(backend, sessionName, beforePaste);
             backend.pasteCommand(sessionName, runnableCommand);
-            lastPaste = {
+            rememberPaste({
               backend,
               sessionName,
               command: runnableCommand,
               step: i,
               paneId: beforePaste?.paneId,
               shell: beforePaste?.currentCommand,
-            };
+            });
             // Recorded as a user_input breadcrumb (not command_sent): sidecar
             // never executes, so folding it into the step's command list would
             // render a misleading duplicate "Command sent" row in the report.
@@ -3812,7 +3861,10 @@ class OperationRunner {
           // [b] → re-run only the picked step, then come back (#117).
           let navRerunOnly = false;
           const earlierPaste = unrunPaste(lastPaste);
-          if (earlierPaste && earlierPaste.step !== i) {
+          const alreadyAnnounced =
+            !!earlierPaste && earlierPaste === announcedPaste;
+          announcedPaste = undefined;
+          if (earlierPaste && earlierPaste.step !== i && !alreadyAnnounced) {
             console.log(
               `\n    ⚠️  ${earlierPaste.backend.describeTarget(earlierPaste.sessionName)} still has the paste from "${steps[earlierPaste.step]?.step.name ?? ref(earlierPaste.step)}" on its input line, not run: ${pastePreview(earlierPaste.command)}${earlierPaste.backend.clearInputLine ? ' — [u] clears it' : ''}`,
             );

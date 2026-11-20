@@ -1,3 +1,4 @@
+import type { SavedPaste } from '../models/session';
 import type { CaptureBackend } from './capture-backend';
 import type { PaneState } from './pane-enter-guard';
 import { normalizePasteText } from './tmux-session';
@@ -93,4 +94,48 @@ export function checkClearSafe(
   if (!pasteStillOnInputLine(now.cursorLine, paste.command))
     return 'the pasted command is no longer at the cursor (run, edited or cleared already)';
   return undefined;
+}
+
+/**
+ * The paste as saved on the session for `resume`, or undefined when it cannot
+ * be pinned to a pane (no pane id was readable at paste time): a paste that
+ * cannot be re-checked against the same pane is not worth restoring.
+ */
+export function toSavedPaste(
+  paste: PendingPaste | undefined,
+): SavedPaste | undefined {
+  if (!paste?.paneId) return undefined;
+  return {
+    command: paste.command,
+    pane_id: paste.paneId,
+    session_name: paste.sessionName,
+    ...(paste.shell ? { shell: paste.shell } : {}),
+    step: paste.step,
+    ...(paste.context ? { context: paste.context } : {}),
+  };
+}
+
+/**
+ * `resume`: rebuild the saved paste on the re-attached backend, ONLY when that
+ * backend is the same pane (`paneId`) the paste went to. A different pane
+ * (`resume --attach` elsewhere, a pane that closed) cannot hold it. The
+ * caller still checks `unrunPaste()`: the operator may have run or cleared it
+ * while samaritan was not running.
+ */
+export function restorePendingPaste(
+  saved: SavedPaste | undefined,
+  backend: CaptureBackend | undefined,
+  paneIdNow: string | undefined,
+): PendingPaste | undefined {
+  if (!saved || !backend || !paneIdNow || paneIdNow !== saved.pane_id)
+    return undefined;
+  return {
+    backend,
+    sessionName: saved.session_name,
+    command: saved.command,
+    step: saved.step,
+    paneId: saved.pane_id,
+    ...(saved.shell ? { shell: saved.shell } : {}),
+    ...(saved.context ? { context: saved.context } : {}),
+  };
 }

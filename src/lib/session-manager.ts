@@ -5,7 +5,11 @@ import type {
   RetryRecord,
 } from '../models/evidence';
 import type { ExecutionMode, SessionStatus } from '../models/operation';
-import type { OperationSession, SessionCheckpoint } from '../models/session';
+import type {
+  OperationSession,
+  SavedPaste,
+  SessionCheckpoint,
+} from '../models/session';
 import type { StepRecord } from '../models/step-record';
 import type {
   ExecutionContext,
@@ -316,6 +320,20 @@ export class SessionManager {
       session.updated_at = new Date();
       saveSession(session);
     }
+  }
+
+  /**
+   * Remember (or, with `undefined`, forget) the last un-run `[p]` paste, so
+   * `resume` can re-check the pane for it. Saved only when it changes.
+   */
+  setPendingPaste(sessionId: string, paste: SavedPaste | undefined): void {
+    const session = this.getSession(sessionId);
+    if (!session) return;
+    if (JSON.stringify(session.pending_paste) === JSON.stringify(paste)) return;
+    if (paste) session.pending_paste = paste;
+    else delete session.pending_paste;
+    session.updated_at = new Date();
+    saveSession(session);
   }
 
   /**

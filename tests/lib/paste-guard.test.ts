@@ -7,6 +7,8 @@ import {
   type PendingPaste,
   pastePreview,
   pasteStillOnInputLine,
+  restorePendingPaste,
+  toSavedPaste,
   unrunPaste,
 } from '../../src/lib/paste-guard';
 
@@ -156,6 +158,61 @@ describe('checkClearSafe', () => {
     const bare = { ...paste, paneId: undefined, shell: undefined };
     assert.strictEqual(
       checkClearSafe(bare, state({ paneId: '%7', currentCommand: 'zsh' })),
+      undefined,
+    );
+  });
+});
+
+// resume: the un-run paste is saved on the session and restored only onto the
+// SAME pane, so [p] keeps refusing to paste on top of it after an abort.
+describe('toSavedPaste / restorePendingPaste', () => {
+  const backend = fakeBackend('$ echo PG_ONE');
+  const paste: PendingPaste = {
+    backend,
+    sessionName: 'default',
+    command: 'echo PG_ONE',
+    step: 2,
+    context: 'rollback',
+    paneId: '%3',
+    shell: 'bash',
+  };
+
+  it('saves what resume needs, without the backend', () => {
+    assert.deepStrictEqual(toSavedPaste(paste), {
+      command: 'echo PG_ONE',
+      pane_id: '%3',
+      session_name: 'default',
+      shell: 'bash',
+      step: 2,
+      context: 'rollback',
+    });
+  });
+
+  it('saves nothing without a pane id (cannot be re-checked) or a paste', () => {
+    assert.strictEqual(
+      toSavedPaste({ ...paste, paneId: undefined }),
+      undefined,
+    );
+    assert.strictEqual(toSavedPaste(undefined), undefined);
+  });
+
+  it('round-trips onto the same pane', () => {
+    const saved = toSavedPaste(paste);
+    const restored = restorePendingPaste(saved, backend, '%3');
+    assert.deepStrictEqual(restored, paste);
+    assert.strictEqual(unrunPaste(restored), restored);
+  });
+
+  it('restores nothing onto another pane, or without a backend', () => {
+    const saved = toSavedPaste(paste);
+    assert.strictEqual(restorePendingPaste(saved, backend, '%9'), undefined);
+    assert.strictEqual(
+      restorePendingPaste(saved, backend, undefined),
+      undefined,
+    );
+    assert.strictEqual(restorePendingPaste(saved, undefined, '%3'), undefined);
+    assert.strictEqual(
+      restorePendingPaste(undefined, backend, '%3'),
       undefined,
     );
   });

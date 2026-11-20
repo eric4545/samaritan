@@ -2002,4 +2002,93 @@ describe('sidecar e2e (real tmux)', () => {
       }
     },
   );
+
+  it(
+    'abort → resume keeps an un-run [p] paste: [p] still refuses, [u] clears it, and a run paste is forgotten',
+    { skip, timeout: 180_000 },
+    async () => {
+      const ws = workspace('e2e-paste-guard.yaml');
+      const d = TmuxDriver.create({ split: true });
+      const work = d.work as string;
+      const cursor = (): string => capturePaneCursorLine(work) ?? '';
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${work}`));
+        await d.waitFor('p paste', { timeoutMs: 40_000 });
+        // Paste, do not run it, stop the run.
+        d.key('p');
+        await d.waitFor('echo PG_ONE', { pane: work, timeoutMs: 15_000 });
+        await d.waitFor('[y] to run it', { timeoutMs: 10_000 });
+        d.key('q');
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 15_000 });
+        const id = aborted.match(RESUME_HINT)?.[1];
+        assert.ok(id, 'abort prints the resume hint');
+
+        // resume re-attaches the pane and knows the paste is still there.
+        d.type(launch(ws.dir, `resume ${id}`));
+        await d.waitFor(
+          /still has the paste from Step 1: Paste guard one on its input line, not run \(pasted before the run stopped\): echo PG_ONE — \[u\] clears it/,
+          { timeoutMs: 30_000 },
+        );
+        await d.waitFor('u clear paste', { timeoutMs: 15_000 });
+
+        // [p] refuses instead of appending (the bug before: PG_ONEecho PG_ONE).
+        d.key('p');
+        await d.waitFor('Nothing pasted.', { timeoutMs: 15_000 });
+        await sleep(500);
+        assert.ok(
+          !cursor().includes('PG_ONEecho'),
+          `[p] appended to the restored paste: ${cursor()}`,
+        );
+
+        // [u] clears it; then paste + run it for real.
+        d.key('u');
+        await d.waitFor('Cleared the un-run paste', { timeoutMs: 15_000 });
+        assert.ok(!cursor().includes('PG_ONE'), cursor());
+        d.key('p');
+        await d.waitFor('[y] to run it', { timeoutMs: 15_000 });
+        d.key('y');
+        await d.waitFor(/^PG_ONE$/m, { pane: work, timeoutMs: 15_000 });
+        await d.waitFor('Finished', { timeoutMs: 15_000 });
+        d.enter();
+        await d.waitFor('MANUAL: Paste guard two', { timeoutMs: 15_000 });
+        d.key('q');
+        await d.waitFor(/(Run aborted[\s\S]*){2}/, { timeoutMs: 15_000 });
+
+        // That paste ran: a second resume has nothing to restore.
+        d.type(launch(ws.dir, `resume ${id}`));
+        await d.waitFor(/Resuming at Step[\s\S]*\? more/, {
+          timeoutMs: 30_000,
+        });
+        assert.strictEqual(
+          d.capture().split('pasted before the run stopped').length - 1,
+          1,
+          'only the first resume restores a paste',
+        );
+        d.key('q');
+        await d.waitFor(/(Run aborted[\s\S]*){3}/, { timeoutMs: 15_000 });
+
+        const report = readReport(ws.dir);
+        assert.match(
+          report,
+          /🧹 Cleared an un-run paste from .+ \(never run\): echo PG_ONE/,
+        );
+        const events = readFileSync(
+          findFile(ws.dir, 'events.jsonl') as string,
+          'utf8',
+        )
+          .trim()
+          .split('\n')
+          .map((l) => JSON.parse(l));
+        assert.deepStrictEqual(
+          events
+            .filter((e) => e.action === 'paste_restored')
+            .map((e) => e.command),
+          ['echo PG_ONE'],
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
 });

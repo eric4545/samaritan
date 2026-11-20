@@ -30,6 +30,12 @@ All notable changes to this project are documented here. This project follows
   with the paste still at the cursor (not in copy-mode, not
   `synchronize-panes`). It then checks the line is clear, and the report
   records `🧹 Cleared an un-run paste … (never run)`.
+- **An un-run paste survives `resume`.** A paste left on the pane's input
+  line when the run stopped was forgotten: after `resume`, `[p]` pasted on
+  top of it (`echo aecho b`). The session now saves it until it runs or is
+  cleared; `resume` onto the same pane re-checks it, says `… still has the
+  paste from Step N … (pasted before the run stopped) — [u] clears it`, and
+  `[p]` keeps refusing until it is run or cleared.
 
 - **Pick a step by its `id`, and find it by typing part of it.** The `[b]`
   back, `[j]` jump and completion-screen rollback pickers list each step's

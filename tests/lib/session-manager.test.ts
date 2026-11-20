@@ -488,3 +488,25 @@ test('SessionManager - setAttachTarget persists the sidecar pane for resume', ()
   const reloaded = new SessionManager().getSession(session.id);
   assert.strictEqual(reloaded?.attach_target, 'work:0.1');
 });
+
+test('SessionManager - setPendingPaste saves the un-run paste for resume, and forgets it', () => {
+  const sessionManager = new SessionManager();
+  const session = sessionManager.createSession('op', 'dev', 'alice', 'sidecar');
+  const paste = {
+    command: 'echo one',
+    pane_id: '%3',
+    session_name: 'default',
+    shell: 'bash',
+    step: 1,
+  };
+
+  sessionManager.setPendingPaste(session.id, paste);
+  assert.deepStrictEqual(
+    new SessionManager().getSession(session.id)?.pending_paste,
+    paste,
+  );
+
+  sessionManager.setPendingPaste(session.id, undefined);
+  const reloaded = new SessionManager().getSession(session.id);
+  assert.ok(reloaded && !('pending_paste' in reloaded));
+});

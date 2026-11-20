@@ -32,4 +32,26 @@ export interface OperationSession {
   completion_percentage?: number; // Calculated progress
   step_log?: StepRecord[]; // Structured per-step record derived from the JSONL event log
   attach_target?: string; // Sidecar tmux pane attached via --attach / [t] — re-attached on resume
+  /**
+   * The last `[p]` paste while it may still be un-run on the pane's input line
+   * (`[p]` never presses Enter). Saved so `resume` can re-check that pane and
+   * keep refusing to paste on top of it (`[u]` clears it). Removed once it
+   * runs (`[y]`) or is cleared (`[u]`). See `restorePendingPaste`.
+   */
+  pending_paste?: SavedPaste;
+}
+
+/** A `[p]` paste as saved on the session (`src/lib/paste-guard.ts`). */
+export interface SavedPaste {
+  command: string;
+  /** Stable `#{pane_id}` the paste went to. */
+  pane_id: string;
+  /** Capture backend key (`step.session ?? 'default'`). */
+  session_name: string;
+  /** Foreground program at paste time (the shell). */
+  shell?: string;
+  /** Flat step index the paste was made on. */
+  step: number;
+  /** Rollback context when pasted from a rollback entry. */
+  context?: string;
 }

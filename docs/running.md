@@ -449,7 +449,7 @@ Every `samaritan run` also creates a resumable **session state** file at `~/.sam
 
 A step that `resume` (or `[b]`) enters again is reported as its last attempt (commands, verification, status), but it keeps the **notes** from every attempt: an `[n]` note, a paste outside the step's [target window](#pane-target-target-paste-only-into-the-right-window), or a cleared or un-run paste made before the abort still shows in `report.md`.
 
-Within a run, `[p]` remembers its last paste so it can refuse to paste on top of it and offer `[u]`. That memory is not saved: after `resume`, a paste left un-run before the abort is not known to samaritan, so clear it in the pane (Ctrl+U) before `[p]`.
+An **un-run paste survives `resume`.** The session saves the last `[p]` paste until it runs (`[y]`) or is cleared (`[u]`). When `resume` re-attaches the **same** pane and the paste is still on its input line, it says so before the first step: `⚠️ <pane> still has the paste from Step 1: … on its input line, not run (pasted before the run stopped): <command> — [u] clears it`. `[p]` keeps refusing to paste on top of it, `[u]` clears it, and `↵` on the step it came from asks `Mark done anyway?`. A paste you ran or cleared in the pane while samaritan was stopped, or a `resume --attach` to another pane, restores nothing. Logged as `user_input`/`paste_restored`.
 
 ```bash
 # List resumable sessions (running / paused / failed)
