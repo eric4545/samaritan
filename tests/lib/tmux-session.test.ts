@@ -18,6 +18,7 @@ import {
   buildPasteBufferArgs,
   capturePaneCursorLine,
   capturePaneScreen,
+  clearInputLineIn,
   isLocalSession,
   listTmuxPanes,
   normalizePasteText,
@@ -26,6 +27,7 @@ import {
   paneNameOf,
   paneOwnerFile,
   parsePaneList,
+  readPaneIdentity,
   readPaneOwner,
   readPaneState,
   sanitizeSessionName,
@@ -920,6 +922,103 @@ describe('bootstrapSessions — real tmux', () => {
         else process.env.TMUX_TMPDIR = saved.dir;
         if (saved.tmux !== undefined) process.env.TMUX = saved.tmux;
         rmSync(socketDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+// Step `target:` reads the attached pane's LIVE session + window name, and
+// [u] presses Ctrl+U to clear an un-run paste. Both against real tmux.
+describe('readPaneIdentity + clearInputLineIn — real tmux', () => {
+  const hasTmux =
+    process.platform !== 'win32' &&
+    spawnSync('tmux', ['-V'], { encoding: 'utf8' }).status === 0;
+  const waitUntil = async (ok: () => boolean): Promise<boolean> => {
+    for (let i = 0; i < 40 && !ok(); i++)
+      await new Promise((r) => setTimeout(r, 100));
+    return ok();
+  };
+
+  it('undefined for a pane that does not exist', () => {
+    assert.strictEqual(
+      readPaneIdentity('samaritan-no-such-session-xyz:0.0'),
+      undefined,
+    );
+  });
+
+  it(
+    'reads session + window name, live after a rename',
+    { skip: !hasTmux },
+    () => {
+      const session = `sam-ident-${process.pid}-${Date.now()}`;
+      spawnSync('tmux', ['new-session', '-d', '-s', session, '-n', 'staging']);
+      try {
+        const id = readPaneIdentity(`${session}:staging`);
+        assert.deepStrictEqual(id, {
+          session,
+          windowName: 'staging',
+          displayName: `${session}:staging.${id?.displayName.split('.').pop()}`,
+        });
+        spawnSync('tmux', [
+          'rename-window',
+          '-t',
+          `${session}:0`,
+          'production',
+        ]);
+        assert.strictEqual(
+          readPaneIdentity(`${session}:0`)?.windowName,
+          'production',
+        );
+      } finally {
+        spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
+      }
+    },
+  );
+
+  it(
+    'Ctrl+U clears a multi-line bracketed paste from a bash prompt',
+    { skip: !hasTmux },
+    async () => {
+      const session = `sam-clear-${process.pid}-${Date.now()}`;
+      spawnSync('tmux', [
+        'new-session',
+        '-d',
+        '-s',
+        session,
+        'env PS1="CLEAR_PROMPT\\$ " bash --norc --noprofile',
+      ]);
+      try {
+        const target = `${session}:0.0`;
+        const cursor = () => capturePaneCursorLine(target) ?? '';
+        assert.ok(await waitUntil(() => cursor().includes('CLEAR_PROMPT')));
+        spawnSync('tmux', [
+          'set-buffer',
+          '-b',
+          'sam-clear',
+          '--',
+          'echo CLEAR_A \\\n  && echo CLEAR_B',
+        ]);
+        spawnSync('tmux', [
+          'paste-buffer',
+          '-d',
+          '-p',
+          '-b',
+          'sam-clear',
+          '-t',
+          target,
+        ]);
+        assert.ok(await waitUntil(() => cursor().includes('echo CLEAR_B')));
+        const paneId = readPaneState(target)?.paneId ?? '';
+        assert.ok(clearInputLineIn(paneId));
+        assert.ok(
+          await waitUntil(() => cursor().trimEnd() === 'CLEAR_PROMPT$'),
+          `cursor line after Ctrl+U: ${cursor()}`,
+        );
+        // Nothing ran: no output line from either half of the command.
+        const screen = capturePaneScreen(target) ?? '';
+        assert.ok(!/^CLEAR_[AB]$/m.test(screen), screen);
+      } finally {
+        spawnSync('tmux', ['kill-session', '-t', session], { stdio: 'ignore' });
       }
     },
   );

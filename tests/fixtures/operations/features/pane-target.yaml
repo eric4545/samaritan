@@ -1,0 +1,30 @@
+name: Pane Target
+version: 1.0.0
+description: Steps that name the tmux window their command belongs in.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      WEB_WINDOW: web-staging
+  - name: production
+    description: Production environment
+    variables:
+      WEB_WINDOW: web-production
+
+steps:
+  - name: Restart web-server
+    type: manual
+    target: ${WEB_WINDOW}
+    command: kubectl rollout restart deploy/web-server
+    rollback:
+      - command: kubectl rollout undo deploy/web-server
+        target: ops:${WEB_WINDOW}
+
+  - name: Check database
+    type: manual
+    target: db
+    variants:
+      production:
+        target: db-primary
+    command: psql -c 'select 1'

@@ -394,7 +394,12 @@ function renderRollback(
     if (cmd.displayed) {
       const outcome = ROLLBACK_OUTCOMES[cmd.outcome ?? ''] ?? '⚠️ not run';
       const notes = [
+        ...(cmd.target ? [`run in window "${cmd.target}"`] : []),
         ...(cmd.pasted ? ['pasted into pane'] : []),
+        ...(cmd.targetOverride
+          ? [`⚠️ pasted into ${cmd.targetOverride}, outside the target`]
+          : []),
+        ...(cmd.pasteCleared ? ['un-run paste cleared'] : []),
         ...(cmd.enterSent ? [ENTER_SENT_NOTE] : []),
         ...(cmd.verified === undefined
           ? []
@@ -482,6 +487,10 @@ function renderStep(
 
   if (step.executed_by) {
     lines.push(`**Operator**: ${step.executed_by}`);
+  }
+
+  if (step.target) {
+    lines.push(`**Run in**: 🎯 window "${step.target}"`);
   }
 
   for (const cmd of step.commands) {

@@ -92,7 +92,9 @@ export function buildGlobalRollback(
       const heading = stepRollbackHeadingText(step);
       const entries = (step.rollback ?? [])
         .filter(hasRollbackContent)
-        .map((rb) => withProvenance(rb, step.name, anchor, heading));
+        .map((rb) =>
+          withProvenance(rb, step.name, anchor, heading, step.target),
+        );
       if (entries.length > 0) groups.push(entries);
       walk(step.sub_steps);
     }
@@ -106,17 +108,20 @@ export function buildGlobalRollback(
 /**
  * Clone a rollback step, prefixing its `name` with the source step it undoes and
  * tagging it with that step's `sourceAnchor` (the jump-link target). Keeps the
- * original name (if any) so authored rollback labels survive.
+ * original name (if any) so authored rollback labels survive. An entry without
+ * its own `target:` takes the step's: it undoes work done in that window.
  */
 function withProvenance(
   rb: RollbackStep,
   stepName: string,
   anchor: string,
   heading: string,
+  stepTarget?: string,
 ): EffectiveRollbackStep {
   const prefix = `↩ Rollback for "${stepName}"`;
   return {
     ...rb,
+    ...(!rb.target && stepTarget ? { target: stepTarget } : {}),
     name: rb.name ? `${prefix}: ${rb.name}` : prefix,
     sourceAnchor: anchor,
     sourceHeading: heading,

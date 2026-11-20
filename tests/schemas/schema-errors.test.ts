@@ -131,3 +131,33 @@ describe('every command prints the field, not just validate (#118)', () => {
     });
   }
 });
+
+describe('step target: schema', () => {
+  it('accepts window, session:window and ${VAR} on steps, rollback and variants', () => {
+    const errors = errorsFor([
+      {
+        name: 'A',
+        type: 'manual',
+        command: 'echo a',
+        target: 'ops:${WEB_WINDOW}',
+        rollback: [{ command: 'echo undo', target: 'web-staging' }],
+        variants: { sbx: { target: 'web-sbx' } },
+      },
+    ]);
+    assert.deepStrictEqual(errors, []);
+  });
+
+  it('rejects a blank or non-string target, naming the field', () => {
+    assert.deepStrictEqual(
+      errorsFor([{ name: 'A', type: 'manual', command: 'x', target: '  ' }]),
+      ['steps[0] "A" → target: must match pattern "\\S"'],
+    );
+    const errors = errorsFor([
+      { name: 'A', type: 'manual', command: 'x', target: 7 },
+    ]);
+    assert.ok(
+      errors.includes('steps[0] "A" → target: must be string (got number 7)'),
+      errors.join('\n'),
+    );
+  });
+});

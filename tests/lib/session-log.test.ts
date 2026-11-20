@@ -400,6 +400,33 @@ describe('foldEvents', () => {
     assert.strictEqual(steps[0].status, 'completed');
   });
 
+  it('keeps notes from before the abort when resume re-enters the step', () => {
+    // An override made, then the run aborted: the resumed attempt must not
+    // erase it from the report (seen in a real tmux walk).
+    const { steps } = foldEvents([
+      ev({ type: 'step_start', step: 0, name: 'Deploy', target: 'web' }),
+      ev({
+        type: 'user_input',
+        action: 'target_override',
+        target: 'web',
+        pane: 'ops:db.0',
+        window: 'db',
+      }),
+      ev({ type: 'user_input', action: 'note', notes: 'paused for a page' }),
+      ev({ type: 'session_end', status: 'paused' }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy', target: 'web' }),
+      ev({ type: 'user_input', action: 'note', notes: 'resumed' }),
+      ev({ type: 'step_complete', step: 0 }),
+    ]);
+    assert.strictEqual(steps.length, 1);
+    assert.strictEqual(steps[0].target, 'web');
+    assert.deepStrictEqual(steps[0].notes, [
+      '⚠️ Pasted into ops:db.0 (window "db"), not the step\'s target window "web" — operator override',
+      'paused for a page',
+      'resumed',
+    ]);
+  });
+
   it('buildStepRecords returns just the steps array', () => {
     const records = buildStepRecords([
       ev({ type: 'step_start', step: 0, name: 'A' }),

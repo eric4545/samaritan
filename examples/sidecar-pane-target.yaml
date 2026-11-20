@@ -1,0 +1,98 @@
+# Sidecar Pane Target Example
+#
+# A change that moves between shells: the web-server commands run in one tmux
+# window, the database commands in another. `target:` names the window each
+# step belongs in, so a sidecar run never pastes a command into the wrong one.
+#
+# Set up your tmux windows by name first (window names, not numbers):
+#   tmux rename-window web-staging     # or: tmux new-window -n web-staging
+#   tmux new-window -n db-staging
+#
+# Then run, attached to the web window's pane:
+#   samaritan run examples/sidecar-pane-target.yaml -e staging \
+#     --attach work:web-staging.0
+#
+# Each step prints where it runs:
+#   🎯 Run in window "web-staging" — attached pane work:web-staging.0 ✓
+#   ⚠️  Run in window "db-staging" — the attached pane work:web-staging.0 is
+#      in window "web-staging". [t] attaches the right pane.
+#
+# [p], [!] and the re-run of a failed verify check the attached pane first.
+# Outside the target window they ask `Paste into it anyway?`; n pastes
+# nothing (press [t] to attach the right pane), y pastes and the report
+# records the override.
+#
+# Changed your mind about a paste? [u] clears it from the pane's input line
+# (one Ctrl+U, only while the pane still holds that un-run paste at the shell
+# prompt). The report records it as cleared, never run.
+#
+# `target:` takes `window` or `session:window`, and ${VAR} — here the window
+# names differ per environment. `samaritan diff` shows them side by side:
+#   samaritan diff examples/sidecar-pane-target.yaml staging production
+
+name: Sidecar Pane Target Example
+version: 1.0.0
+description: |
+  Restarts the web service and migrates its database, each command in its own
+  tmux window. The step `target:` keeps every paste in the right window.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      WEB_WINDOW: web-staging
+      DB_WINDOW: db-staging
+      NAMESPACE: staging
+      HEALTH_URL: http://staging.example.com/health
+
+  - name: production
+    description: Production environment
+    variables:
+      WEB_WINDOW: web-production
+      DB_WINDOW: db-production
+      NAMESPACE: production
+      HEALTH_URL: https://production.example.com/health
+    approval_required: true
+
+steps:
+  - name: Scale web-server down
+    type: automatic
+    target: ${WEB_WINDOW}
+    command: kubectl scale deploy/web-server --replicas=0 -n ${NAMESPACE}
+    expect:
+      contains: scaled
+    rollback:
+      # No target of its own: it runs where the step ran (${WEB_WINDOW}).
+      - command: kubectl scale deploy/web-server --replicas=2 -n ${NAMESPACE}
+        expect:
+          contains: scaled
+
+  - name: Migrate database schema
+    type: automatic
+    target: ${DB_WINDOW}
+    command: ./migrate.sh --target latest
+    expect:
+      contains: migration complete
+    rollback:
+      - command: ./migrate.sh --target previous
+        expect:
+          contains: migration complete
+
+  - name: Scale web-server up
+    type: automatic
+    target: ${WEB_WINDOW}
+    command: kubectl scale deploy/web-server --replicas=2 -n ${NAMESPACE}
+    expect:
+      contains: scaled
+    rollback:
+      - command: kubectl scale deploy/web-server --replicas=0 -n ${NAMESPACE}
+        expect:
+          contains: scaled
+
+  - name: Check health
+    type: automatic
+    # `session:window` pins the window in one tmux session too.
+    target: work:${WEB_WINDOW}
+    command: curl -fsS ${HEALTH_URL}
+    expect:
+      contains: ok

@@ -1496,6 +1496,8 @@ ${filteredOperation.environments
           stepInfo += `\n(time) Timeout: ${step.timeout}s`;
         if (step.session)
           stepInfo += `\n(server) Session: ${escapeConfluenceMacros(step.session)}`;
+        if (step.target)
+          stepInfo += `\nRun in: ${escapeConfluenceMacros(step.target)}`;
         if (step.ticket)
           stepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket)}`;
         if (step.if)
@@ -1846,6 +1848,10 @@ ${filteredOperation.rollback.conditions?.length ? `*Conditions*: ${filteredOpera
           const sep = cellContent ? '\n' : '';
           cellContent += `${sep}(server) Session: ${escapeConfluenceMacros(rollbackStep.session)}`;
         }
+        if (rollbackStep.target) {
+          const sep = cellContent ? '\n' : '';
+          cellContent += `${sep}Run in: ${escapeConfluenceMacros(rollbackStep.target)}`;
+        }
 
         // Fallback
         if (!cellContent) {
@@ -2046,6 +2052,10 @@ function renderInlineRollback(
       const sep = cellContent ? '\n' : '';
       cellContent += `${sep}(server) Session: ${escapeConfluenceMacros(rb.session)}`;
     }
+    if (rb?.target) {
+      const sep = cellContent ? '\n' : '';
+      cellContent += `${sep}Run in: ${escapeConfluenceMacros(rb.target)}`;
+    }
 
     if (rb?.evidence) {
       cellContent += formatEvidenceArea(rb.evidence, env.name, operationDir);
@@ -2200,6 +2210,8 @@ function addConfluenceSubStepRows(
       subStepInfo += `\n(time) Timeout: ${subStep.timeout}s`;
     if (subStep.session)
       subStepInfo += `\n(server) Session: ${escapeConfluenceMacros(subStep.session)}`;
+    if (subStep.target)
+      subStepInfo += `\nRun in: ${escapeConfluenceMacros(subStep.target)}`;
     if (subStep.ticket)
       subStepInfo += `\n(flag) Tickets: ${escapeConfluenceMacros(Array.isArray(subStep.ticket) ? subStep.ticket.join(', ') : subStep.ticket)}`;
     if (subStep.if)

@@ -157,6 +157,9 @@ export const FIXTURES = {
   confluenceScriptAndExpect:
     'tests/fixtures/operations/features/confluence-script-and-expect.yaml',
 
+  // Per-step pane target (`target:` — the tmux window a command belongs in)
+  paneTarget: 'tests/fixtures/operations/features/pane-target.yaml',
+
   // Cross-format render parity (all StepContent fields)
   allContentFields:
     'tests/fixtures/operations/features/all-content-fields.yaml',

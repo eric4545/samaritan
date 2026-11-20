@@ -26,7 +26,10 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { ENTER_DEBOUNCE_MS } from '../../src/cli/commands/run.ts';
-import { TmuxPaneCapture } from '../../src/lib/tmux-session.ts';
+import {
+  capturePaneCursorLine,
+  TmuxPaneCapture,
+} from '../../src/lib/tmux-session.ts';
 import { hasTmux, TmuxDriver, tmux } from './tmux-driver.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -1857,6 +1860,142 @@ describe('sidecar e2e (real tmux)', () => {
         );
         const report = readReport(ws.dir);
         assert.ok(report.includes('Steps completed: 5/5'), report);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
+    'step target: [p] asks before pasting outside the target window, [t] fixes it, [u] clears a paste',
+    { skip, timeout: 180_000 },
+    async () => {
+      const ws = workspace('e2e-pane-target.yaml');
+      const d = TmuxDriver.create({ split: true });
+      // The window the step names. The run starts attached to d.work, which
+      // is in window 0 (not "pt-app").
+      tmux(['new-window', '-d', '-t', d.session, '-n', 'pt-app']);
+      const app = `${d.session}:pt-app.0`;
+      const cursor = (pane: string): string =>
+        capturePaneCursorLine(pane) ?? '';
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
+        // The step says where it runs, and that the attached pane is not there.
+        await d.waitFor('Run in window "pt-app" — the attached pane', {
+          timeoutMs: 40_000,
+        });
+
+        // [p] asks; n pastes nothing.
+        d.key('p');
+        await d.waitFor('belongs in window "pt-app"', { timeoutMs: 15_000 });
+        await d.waitFor('Paste into it anyway?', { timeoutMs: 10_000 });
+        d.key('n');
+        await d.waitFor('Nothing pasted.', { timeoutMs: 10_000 });
+        await sleep(500);
+        assert.ok(
+          !d.capture(d.work as string).includes('echo PT_ONE'),
+          'n must leave the wrong pane untouched',
+        );
+
+        // [p] again, y: pasted there (logged as an override).
+        d.key('p');
+        await d.waitFor(/Paste into it anyway\?[\s\S]*Paste into it anyway\?/, {
+          timeoutMs: 15_000,
+        });
+        d.key('y');
+        await d.waitFor('echo PT_ONE', {
+          pane: d.work as string,
+          timeoutMs: 15_000,
+        });
+
+        // [u] clears it from the input line; nothing ran.
+        await d.waitFor('u clear paste', { timeoutMs: 10_000 });
+        d.key('u');
+        await d.waitFor('Cleared the un-run paste', { timeoutMs: 15_000 });
+        assert.ok(
+          !cursor(d.work as string).includes('PT_ONE'),
+          `input line still holds the paste: ${cursor(d.work as string)}`,
+        );
+        assert.ok(
+          !/^PT_ONE$/m.test(d.capture(d.work as string)),
+          'the cleared command never ran',
+        );
+
+        // [t] the right pane: ✓, and [p] pastes without asking.
+        d.key('t');
+        await d.waitFor('Select pane', { timeoutMs: 15_000 });
+        d.type(app);
+        await d.waitFor('attached pane', { timeoutMs: 15_000 });
+        await d.waitFor(/Run in window "pt-app" — attached pane \S+ ✓/, {
+          timeoutMs: 15_000,
+        });
+        d.key('p');
+        await d.waitFor('echo PT_ONE', { pane: app, timeoutMs: 15_000 });
+        await d.waitFor('[y] to run it', { timeoutMs: 10_000 });
+        assert.strictEqual(
+          d.capture().split('Paste into it anyway?').length - 1,
+          2,
+          'no prompt for the target pane',
+        );
+        d.key('y');
+        await d.waitFor('\nPT_ONE', { pane: app, timeoutMs: 15_000 });
+        await d.waitFor('Finished', { timeoutMs: 15_000 });
+        d.enter();
+
+        // Step 2: paste, then [u] — ↵ then asks, since nothing ran.
+        await d.waitFor('MANUAL: Check web-server', { timeoutMs: 15_000 });
+        d.key('p');
+        await d.waitFor('echo PT_TWO', { pane: app, timeoutMs: 15_000 });
+        await d.waitFor('[y] to run it', { timeoutMs: 10_000 });
+        d.key('u');
+        await d.waitFor(
+          /Cleared the un-run paste[\s\S]*Cleared the un-run paste/,
+          {
+            timeoutMs: 15_000,
+          },
+        );
+        await sleep(ENTER_DEBOUNCE_MS + 100);
+        d.enter();
+        await d.waitFor('Mark done anyway?', { timeoutMs: 15_000 });
+        d.key('y');
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+
+        const report = readReport(ws.dir);
+        assert.match(report, /\*\*Run in\*\*: 🎯 window "pt-app"/);
+        assert.strictEqual(
+          report.split('**Run in**').length - 1,
+          1,
+          'only step 1 has a target',
+        );
+        assert.match(
+          report,
+          /⚠️ Pasted into \S+ \(window "[^"]+"\), not the step's target window "pt-app" — operator override/,
+        );
+        assert.match(report, /🧹 Cleared an un-run paste from .+: echo PT_ONE/);
+        assert.match(report, /🧹 Cleared an un-run paste from .+: echo PT_TWO/);
+        const events = readFileSync(
+          findFile(ws.dir, 'events.jsonl') as string,
+          'utf8',
+        )
+          .trim()
+          .split('\n')
+          .map((l) => JSON.parse(l));
+        assert.strictEqual(
+          events.filter((e) => e.action === 'target_override').length,
+          1,
+        );
+        assert.deepStrictEqual(
+          events
+            .filter((e) => e.action === 'paste_cleared')
+            .map((e) => [e.command, e.cleared]),
+          [
+            ['echo PT_ONE', true],
+            ['echo PT_TWO', true],
+          ],
+        );
       } finally {
         d.kill();
         ws.cleanup();

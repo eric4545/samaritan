@@ -182,6 +182,28 @@ describe('Render parity: all StepContent fields across formats', () => {
     }
   });
 
+  it('renders target (Run in) on steps, sub-steps and rollback in all formats', async () => {
+    const { multiEnv, singleEnv, adf, confluence } = await generateAll();
+
+    for (const [label, content] of Object.entries({
+      multiEnv,
+      singleEnv,
+      adf,
+      confluence,
+    })) {
+      for (const marker of [
+        'Run in: web-production',
+        'Run in: monitoring',
+        'Run in: ops:web-rollback',
+      ]) {
+        assert.ok(
+          content.includes(marker),
+          `${label}: should render ${marker}`,
+        );
+      }
+    }
+  });
+
   it('renders session in all formats', async () => {
     const { multiEnv, singleEnv, adf, confluence } = await generateAll();
 

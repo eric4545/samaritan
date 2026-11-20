@@ -54,3 +54,6 @@ on `report.md`, `events.jsonl`, `sessions` and `report merge`.
 
 - A step filtered out by `when:` still counts in the report's
   `Steps completed: N/M` total.
+- `lastPaste` (the un-run `[p]` paste memory behind the `[p]` refusal and
+  `[u]`) is in memory only: after `resume`, a paste left on the pane's input
+  line before the abort is unknown to samaritan, and `[p]` can append to it.

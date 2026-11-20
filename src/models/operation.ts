@@ -159,6 +159,12 @@ export interface StepContent {
   evidence?: EvidenceConfig;
   options?: StepOptions;
   session?: string;
+  /**
+   * The tmux window this step's command must run in: `window` or
+   * `session:window`. In sidecar mode `[p]`/`[!]`/re-run ask before pasting
+   * into an attached pane in another window (src/lib/pane-target.ts).
+   */
+  target?: string;
   pic?: string;
   reviewer?: string;
   expect?: ExpectConfig | ExpectConfig[] | string;

@@ -142,6 +142,30 @@ describe('Single-env heading-based Markdown manual (issue #15)', () => {
     t.assert.snapshot(md);
   });
 
+  it('renders target as Run in, resolved per env with --resolve-vars, variants win', async () => {
+    const op = await parseFixture('paneTarget');
+    const staging = generateSingleEnvManual(op, 'staging', true);
+    assert.ok(staging.includes('> Run in: web-staging'), 'step target');
+    assert.ok(staging.includes('> Run in: ops:web-staging'), 'rollback target');
+    assert.ok(staging.includes('> Run in: db'), 'plain target');
+    const production = generateSingleEnvManual(op, 'production', true);
+    assert.ok(production.includes('> Run in: web-production'));
+    assert.ok(production.includes('> Run in: db-primary'), 'variant target');
+    // Without --resolve-vars the placeholder stays, like every other field.
+    assert.ok(
+      generateSingleEnvManual(op, 'staging').includes(
+        '> Run in: ${WEB_WINDOW}',
+      ),
+    );
+  });
+
+  it('snapshot: paneTarget — Run in lines on steps and rollback', async (t) => {
+    const op = await parseFixture('paneTarget');
+    const md = generateSingleEnvManual(op, 'staging', true);
+    assert.ok(md.includes('Run in'), 'renders target');
+    t.assert.snapshot(md);
+  });
+
   it('snapshot: withSessions — verify string shorthand rendered as expect block', async (t) => {
     const op = await parseFixture('withSessions');
     const md = generateSingleEnvManual(op, 'production');

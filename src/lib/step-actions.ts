@@ -3,7 +3,8 @@
  * behind `?`. Every key keeps working whether shown or not — this only decides
  * the hint line, so muscle memory never breaks.
  *
- * Shown: the keys of the usual sidecar flow (`[p]` → `[y]` → `↵`, `[v]`), skip,
+ * Shown: the keys of the usual sidecar flow (`[p]` → `[y]` → `↵`, `[v]`), `[u]`
+ * while an earlier paste is still un-run on the pane's input line, skip,
  * rollback, `[t]` while no pane is attached (attaching is the first thing
  * to do then) and `[e]` while required evidence is missing. Everything else (copy, note, evidence, back, jump, global
  * rollback, abort, and `[t]` to swap an attached pane) is listed by `?`.
@@ -29,6 +30,11 @@ export interface StepActionContext {
    * command, a pane that supports both writes). Optional: absent = no.
    */
   canRun?: boolean;
+  /**
+   * An earlier `[p]` paste is still un-run on the pane's input line: `[u]`
+   * clears it (and `[p]` refuses until then). Optional: absent = no.
+   */
+  unrunPaste?: boolean;
   /** Evidence already captured on this step (`[x]` can remove it). */
   hasEvidence: boolean;
   /**
@@ -57,6 +63,10 @@ export function stepActionHints(ctx: StepActionContext): {
     }),
     { key: '↵', label: 'done' },
     ...when(ctx.sidecar && ctx.hasCommand, { key: 'p', label: 'paste' }),
+    ...when(ctx.sidecar && !!ctx.unrunPaste, {
+      key: 'u',
+      label: 'clear paste',
+    }),
     ...when(ctx.hasExpect, { key: 'v', label: 'verify' }),
     ...when(!!ctx.evidenceMissing, { key: 'e', label: 'evidence' }),
     ...when(ctx.sidecar && !ctx.paneAttached, {
@@ -159,6 +169,10 @@ export function unavailableKeyMessage(
         return ctx.sidecar
           ? undefined
           : '[y] runs a [p] paste in sidecar mode only';
+      case 'u':
+        return ctx.sidecar
+          ? undefined
+          : '[u] clears a [p] paste in sidecar mode only';
       case 't':
         return ctx.sidecar
           ? undefined

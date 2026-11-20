@@ -19,6 +19,7 @@ steps:
     command: kubectl apply -f deployment.yaml --context=${TARGET_HOST}
     timeout: 120
     session: primary
+    target: web-production
     pic: ops-team@example.com
     reviewer: sre-lead@example.com
     description: Primary deployment step exercising all content fields
@@ -36,6 +37,7 @@ steps:
             description: Staging deployment output
     rollback:
       - command: kubectl rollout undo deployment/web-server --context=${TARGET_HOST}
+        target: ops:web-rollback
         pic: ops-team@example.com
         reviewer: sre-lead@example.com
         expect:
@@ -50,6 +52,7 @@ steps:
       - name: Check Pod Status
         type: automatic
         command: kubectl get pods --context=${TARGET_HOST}
+        target: monitoring
         expect:
           - contains: Running
           - not_contains: Failed

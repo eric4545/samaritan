@@ -29,6 +29,7 @@ Pressing `[t]` fires immediately (no Enter needed) and shows a numbered picker o
 - **Named targets.** A window you named (`tmux rename-window deploy`, `new-window -n deploy`) is listed as `session:windowName.pane`. A window tmux names after its running program (`automatic-rename`) keeps the index form (`work:2.0`), because that name changes whenever the program does.
 - **Live list.** Your answer is checked against the panes as they are when you press Enter, not the list printed earlier. A number picks the pane by its stable id (`%3`), so a pane that tmux renumbered in the meantime is still the one you picked. If that pane has closed, samaritan says so and prints the current list. `r` re-lists without picking.
 - **Pinned for the whole run.** Once attached, every paste, capture and `[y]` Enter goes to that pane id. Closing another pane in the window renumbers the panes, but samaritan keeps using the same pane. Messages show the pane's current name.
+- **Steps can name their window.** A step with `target:` says which tmux window its command belongs in, and `[p]` asks before pasting anywhere else. See [Pane target](#pane-target-target-paste-only-into-the-right-window).
 
 **How sidecar attach works:**
 
@@ -98,7 +99,7 @@ Each step heading uses the **same number as the single-environment manual** (`ge
 | `manual` | `✋ Mark done` | Same compact bar: `Enter`/notes=confirm, `v`=verify, `p`/`y`/`t` (sidecar), `s`=skip, `r`=rollback, `?`=more (`n`=note, `e`=evidence, `b`=back, `j`=jump, `g`=global rollback, `q`/`abort`=quit) |
 | `approval` | `⚡ approve/reject` | `approve`, `reject`, `r`=rollback, `g`=global rollback, `skip` |
 
-**The step bar is compact.** It shows the keys of the usual flow (`[!]` → `↵`, or `[p]` → `[y]` → `↵` to look before it runs, and `[v]`), plus `[s]`, `[r]` and `[?] more`. `[t]` is shown while no pane is attached, and `[e]` while a step's required evidence is missing. The first time the bar offers `[p]` with a pane attached, one line spells the flow out: `ℹ️  Flow: p pastes the command into the pane → y runs it (verify follows) → ↵ marks the step done. ? lists more keys.` `?` prints the rest once (copy, note, evidence, back, jump, global rollback, abort…). **Every key works whether it is shown or not**, so `n`, `e`, `b` and `j` need no `?` first.
+**The step bar is compact.** It shows the keys of the usual flow (`[!]` → `↵`, or `[p]` → `[y]` → `↵` to look before it runs, and `[v]`), plus `[s]`, `[r]` and `[?] more`. `[t]` is shown while no pane is attached, `[e]` while a step's required evidence is missing, and `[u] clear paste` while an earlier paste is still un-run on the pane's input line. The first time the bar offers `[p]` with a pane attached, one line spells the flow out: `ℹ️  Flow: p pastes the command into the pane → y runs it (verify follows) → ↵ marks the step done. ? lists more keys.` `?` prints the rest once (copy, note, evidence, back, jump, global rollback, abort…). **Every key works whether it is shown or not**, so `n`, `e`, `b` and `j` need no `?` first.
 
 `g`=global rollback is only offered when the operation declares a top-level `rollback:` block. It runs the consolidated recovery (see [Group per-step rollbacks into the global rollback](./rollback.md#group-per-step-rollbacks-into-the-global-rollback-aggregate_step_rollbacks)) and then aborts.
 
@@ -252,10 +253,22 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
 - **Forward gating (`needs`)** — before starting a step whose `needs` aren't all completed (e.g. a dependency was skipped by `[j]` jump or `--from-step`), the run loop warns (`⚠️ This step needs: …`) and prompts `Start anyway? [y=proceed / Enter=go back]`. `y` proceeds and records a `needs_override` audit event; Enter rewinds to the first unmet dependency. A **skipped** dependency counts as unmet.
 - **`[p]` send to pane** (sidecar only) — **pastes** the step's `${VAR}`-resolved command into the attached tmux pane **without** pressing Enter, so you review it at your own prompt and run it yourself. The command is delivered via a tmux paste buffer with **bracketed paste** (`paste-buffer -p`), so a multi-line command (e.g. a heredoc script) lands as **one atomic block** at your prompt and does **not** execute line-by-line — you press Enter once yourself to run it. Only offered when the step has a command and a pane is attached (a spawn-own `sessions:` pane, or one attached via `[t]`/`--attach`); with nothing attached it tells you to `[t]` attach first. Before pasting, line endings are normalized: CRLF or a lone CR becomes LF, and trailing newlines are stripped. tmux rewrites every LF to CR when it pastes. A stray `\r`, for example from a CRLF variable value, would therefore reach the shell as a blank line after each `\` continuation and split the block into separate commands. A trailing newline would act as Enter in a shell without bracketed paste. **Multi-line commands paste straight away, with no confirmation.** They land as one un-run block because the pane's shell supports bracketed paste (on by default in bash ≥ 4.4 and zsh ≥ 5.1). Don't use `[p]` for a multi-line command in a `sh`/`dash` pane, or with bracketed paste turned off: there each line runs as it arrives. In bash, an empty row after a line that exactly fills the pane width is a readline redraw artifact. The pasted bytes are unchanged. To re-run a command during verify, just press `[p]` again, then `[v]`. Logged as a `user_input`/`send_to_pane` breadcrumb in the JSONL audit log. `[p]` itself never executes anything; `[y]` (below) is the one explicit way to have samaritan press Enter.
   - **An un-run paste is tracked.** Samaritan reads the pane's cursor line. While it still ends with the pasted command, the command has not run:
-    - `[p]` is **refused** (`Nothing pasted.`) until you run or clear it (Ctrl+U), so a new paste never lands on the end of an old one (`echo aecho b`).
+    - `[p]` is **refused** (`Nothing pasted.`) until you run it or clear it with `[u]` (below), so a new paste never lands on the end of an old one (`echo aecho b`).
     - `↵` on that step asks `Mark done anyway? [y / n=go back]`. `y` is logged (`user_input`/`paste_not_run`) and shows as a ⚠️ note on the step in `report.md`.
     - Entering a later step warns when an earlier step's paste is still on the pane's input line.
     - Rollback `p` and `↵` follow the same rules.
+- **`[u]` clear paste** (sidecar only, shown while a paste is un-run) — clears the un-run paste from the pane's input line by pressing **Ctrl+U** there once, so you do not have to switch panes. Use it when you pasted the wrong thing, or into the wrong pane. Like `[y]`, it sends the key **only while the pane is provably still holding that paste at the shell prompt**, and otherwise refuses with `🛑 Ctrl+U NOT sent: <reason>`:
+
+  | Check | Why |
+  |---|---|
+  | Same pane (`#{pane_id}`) as the paste, still alive | Ctrl+U must go to the pane that holds the paste |
+  | Not in copy/view mode | Ctrl+U would scroll instead |
+  | `synchronize-panes` off | Ctrl+U would reach every pane in the window |
+  | Input not disabled (`select-pane -d`) | The key would be dropped |
+  | Same foreground program as at paste time | In an editor or pager Ctrl+U means something else |
+  | The pasted command is still at the cursor | It was already run, edited or cleared |
+
+  Afterwards samaritan reads the cursor line again: `🧹 Cleared the un-run paste from <pane>` when it is gone, or `⚠️ Sent Ctrl+U … but the paste is still on its input line` when the shell left part of it (Ctrl+U clears the whole multi-line bracketed paste in bash; another shell's binding may differ). Clearing the step's own paste starts the step over from that prompt: `[v]` and `[e]` read pane output from there, and `↵` asks `Mark done anyway?` because nothing ran. Works in the rollback bar too. Logged as `user_input`/`paste_cleared` (with whether the line was clear afterwards); `report.md` shows `🧹 Cleared an un-run paste … (never run): <command>` on the step.
 - **`[!]` paste + run** (sidecar only, with a pane attached) — one key for `[p]` then `[y]`: pastes the command and presses the same guarded Enter, then waits and verifies `expect`. The command is already shown in samaritan's pane, so you read it there first. It is its own key and not `y` on purpose: a `y` meant for a yes/no prompt that lands on the bar must never start a command. Use `[p]` when you want to see the command on the pane's input line before it runs. With `run.advance_on_pass: true` a PASS then completes the step, so a healthy step is one key.
 - **`[y]` run it (Enter in pane)** (sidecar only, shown right after a `[p]` paste) — samaritan presses Enter in the attached pane for you, so you don't have to switch panes. It sends Enter **only while the pane is exactly as the paste left it**. Right after `[p]`, samaritan waits for the paste to finish echoing, then checks the command is sitting at the cursor (otherwise `[y]` isn't offered). When you press `[y]` it re-reads the pane and refuses with `🛑 Enter NOT sent: <reason>` if any of these changed:
 
@@ -278,6 +291,47 @@ On **PASS**, samaritan prints `✅ Verify passed. The step is not done yet: pres
     - Logged as `user_input` `rerun` / `rerun_return`. If you abort during the re-run, `resume` continues after the re-run step, not at the step you came from.
     - Prefer this over `[b]` followed by `[j]`: a `[j]` back over the rewound steps records them as **skipped** even though they ran.
 - **`[j]` jump** — jump **forward** to a later step (e.g. steps 3–5 are irrelevant this run and you want to go straight to step 6). Shows the steps after the current one and takes the same answers as `[b]`; the current step and every step up to (but not including) the target are recorded as **skipped** (⏭) in the run report, and execution resumes at the target. The append-only JSONL audit log keeps the full history. Not offered on the last step. To start a fresh run partway through instead, use `run --from-step <step>` (see below).
+
+## Pane target (`target:`): paste only into the right window
+
+A change often moves between shells: the web-server commands in one tmux window, the database in another, staging and production side by side. Sidecar attaches **one** pane, so nothing stopped a `production` step's command from being pasted into the `staging` shell. A step's `target:` names the tmux window its command belongs in:
+
+```yaml
+steps:
+  - name: Restart web-server
+    target: ${WEB_WINDOW}        # web-staging / web-production per environment
+    command: kubectl rollout restart deploy/web-server
+  - name: Migrate database schema
+    target: ops:db-staging       # session:window pins the tmux session too
+    command: ./migrate.sh --target latest
+```
+
+| Form | Matches the attached pane when |
+|---|---|
+| `window` | its window is named `window`, in any tmux session |
+| `session:window` | its session is `session` and its window is `window` |
+
+Names are compared exactly, on the pane's **live** names (a window renamed after attaching counts as renamed). Name your windows on purpose (`tmux rename-window web-staging`, `new-window -n web-staging`): a window tmux names after its running program (`automatic-rename`) changes name with every command. `${VAR}` resolves for the run's environment, and `variants.<env>` can override it.
+
+In a sidecar run:
+
+- **Every step shows where it runs**, under the command:
+  - `🎯 Run in window "web-staging" — attached pane work:web-staging.0 ✓`
+  - `⚠️  Run in window "db-staging" — the attached pane work:web-staging.0 is in window "web-staging". [t] attaches the right pane.`
+  - After `[t]`, the line is printed again for the new pane.
+- **`[p]`, `[!]` and the re-run of a failed verify check the attached pane before pasting.** In another window (or when the window name cannot be read) they say `🛑 This command belongs in window "db-staging", but the attached pane … is in window "web-staging".` and ask `Paste into it anyway? [y / n=cancel — [t] attaches another pane]`.
+  - `n` pastes nothing. Press `[t]` to attach the right pane.
+  - `y` pastes, is logged as `user_input`/`target_override`, and is not asked again for the same step and pane. `report.md` shows a ⚠️ note on the step: `Pasted into <pane> (window "…"), not the step's target window "…" — operator override`.
+- **Rollback entries** are checked the same way. An entry without its own `target:` runs where the step it undoes ran (`[r]`, the nearest-upstream offer, and entries folded into `[g]` by `aggregate_step_rollbacks`); an operation-level `rollback.steps` entry is checked only against its own `target:`.
+- `report.md` prints `**Run in**: 🎯 window "…"` on each step that has a target.
+
+What it does **not** do:
+
+- It does not check panes samaritan spawns from `sessions:` (a run without `--attach`): those are chosen by the step's `session:`, one window per session.
+- It does not move the attached pane for you, and it does not stop you typing a command into a pane yourself.
+- `manual` mode has no attached pane; the step only prints `🎯 Run in window "…"`.
+
+The manuals print `Run in: <target>` on the step (and rollback entry) in every format; `samaritan diff` lists it per environment. Example: [`examples/sidecar-pane-target.yaml`](https://github.com/eric4545/samaritan/blob/main/examples/sidecar-pane-target.yaml).
 
 ## Evidence-required gate
 
@@ -392,6 +446,10 @@ Every `samaritan run`/`resume` writes a **run record next to the operation file*
 A run started with `--group` (see [Groups](./groups.md)) stores the group in its session, so `resume` needs no flag for it.
 
 Every `samaritan run` also creates a resumable **session state** file at `~/.samaritan/sessions/<session-id>.json`, persisted after each completed step (the session ID is printed at the start of the run: `📋 Session: <id>`). This file now carries a structured **`step_log`** — per step it records the input command(s), captured output, verification result, approval (with rationale), notes, evidence references, status, and timing — derived by folding `events.jsonl`, so the saved session is meaningful on its own, not just metadata.
+
+A step that `resume` (or `[b]`) enters again is reported as its last attempt (commands, verification, status), but it keeps the **notes** from every attempt: an `[n]` note, a paste outside the step's [target window](#pane-target-target-paste-only-into-the-right-window), or a cleared or un-run paste made before the abort still shows in `report.md`.
+
+Within a run, `[p]` remembers its last paste so it can refuse to paste on top of it and offer `[u]`. That memory is not saved: after `resume`, a paste left un-run before the abort is not known to samaritan, so clear it in the pane (Ctrl+U) before `[p]`.
 
 ```bash
 # List resumable sessions (running / paused / failed)

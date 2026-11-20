@@ -155,3 +155,32 @@ describe('buildEffectiveRollback dependency ordering', () => {
     assert.doesNotThrow(() => buildEffectiveRollback(plan, steps));
   });
 });
+
+// A folded step rollback undoes work done in the step's window: without its
+// own `target:` it takes the step's, so [g] checks the pane like [r] does.
+describe('buildGlobalRollback — target inheritance', () => {
+  it('folded entries take the step target unless they set their own', () => {
+    const withTarget = (s: Step, target: string): Step => ({ ...s, target });
+    const result = buildGlobalRollback(
+      [],
+      [
+        withTarget(
+          step('Deploy', [
+            { name: 'Undo', command: 'kubectl rollout undo' },
+            { name: 'Elsewhere', command: 'echo x', target: 'db' },
+          ]),
+          'production',
+        ),
+        step('Plain', [{ name: 'Undo plain', command: 'echo y' }]),
+      ],
+      { aggregate: true },
+    );
+    const byName = new Map(result.map((r) => [r.name, r.target]));
+    assert.equal(byName.get('↩ Rollback for "Deploy": Undo'), 'production');
+    assert.equal(byName.get('↩ Rollback for "Deploy": Elsewhere'), 'db');
+    assert.equal(byName.get('↩ Rollback for "Plain": Undo plain'), undefined);
+    // No `target` key is added where neither the entry nor the step has one.
+    const plain = result.find((r) => r.name?.includes('Plain'));
+    assert.ok(plain && !('target' in plain));
+  });
+});

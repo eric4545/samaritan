@@ -587,3 +587,132 @@ describe('renderReport — run identity', () => {
     assert.ok(!md.includes('- Environment:'));
   });
 });
+
+// Step `target:` + [u]: what the run emits must reach report.md (the report
+// sees only events, never the Operation).
+describe('renderReport — pane target and cleared pastes', () => {
+  const run = (stepEvents: SessionEvent[]): string =>
+    render([
+      ev({ type: 'session_start', op: 'op.yaml' }),
+      ev({ type: 'step_start', step: 0, name: 'Restart web-server' }),
+      ...stepEvents,
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+
+  it('shows the window the step belongs in (from step_start)', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml' }),
+      ev({
+        type: 'step_start',
+        step: 0,
+        name: 'Restart web-server',
+        target: 'production',
+      }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    assert.match(md, /\*\*Run in\*\*: 🎯 window "production"/);
+  });
+
+  it('records an operator override of the target as a step note', () => {
+    const md = run([
+      ev({
+        type: 'user_input',
+        action: 'target_override',
+        step: 0,
+        target: 'production',
+        pane: 'ops:staging.0',
+        window: 'staging',
+      }),
+    ]);
+    assert.match(
+      md,
+      /⚠️ Pasted into ops:staging\.0 \(window "staging"\), not the step's target window "production" — operator override/,
+    );
+  });
+
+  it('records [u] — cleared, or Ctrl+U that did not clear', () => {
+    const md = run([
+      ev({
+        type: 'user_input',
+        action: 'paste_cleared',
+        step: 0,
+        session: 'tmux pane ops:staging.0',
+        command: 'echo one',
+        cleared: true,
+      }),
+      ev({
+        type: 'user_input',
+        action: 'paste_cleared',
+        step: 0,
+        session: 'tmux pane ops:staging.0',
+        command: 'echo two',
+        cleared: false,
+      }),
+    ]);
+    assert.match(
+      md,
+      /🧹 Cleared an un-run paste from tmux pane ops:staging\.0 \(never run\): echo one/,
+    );
+    assert.match(
+      md,
+      /⚠️ Ctrl\+U sent to tmux pane ops:staging\.0, but the un-run paste stayed on its input line: echo two/,
+    );
+  });
+
+  it('rollback entries show their target, an override and a clear', () => {
+    const md = render([
+      ev({ type: 'session_start', op: 'op.yaml' }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({
+        type: 'rollback_start',
+        step: 0,
+        triggered_by: 'alice',
+        context: 'rollback',
+      }),
+      ev({
+        type: 'command_displayed',
+        step: 0,
+        session: 'default',
+        command: 'kubectl rollout undo deploy/web-server',
+        context: 'rollback',
+        target: 'production',
+      }),
+      ev({
+        type: 'user_input',
+        action: 'target_override',
+        step: 0,
+        target: 'production',
+        pane: 'ops:staging.0',
+        context: 'rollback',
+      }),
+      ev({
+        type: 'user_input',
+        action: 'paste_cleared',
+        step: 0,
+        cleared: true,
+        command: 'x',
+        context: 'rollback',
+      }),
+      ev({ type: 'rollback_step', index: 0, outcome: 'executed' }),
+      ev({ type: 'session_end', status: 'completed' }),
+    ]);
+    assert.match(
+      md,
+      /run in window "production", ⚠️ pasted into ops:staging\.0, outside the target, un-run paste cleared/,
+    );
+  });
+
+  it('old logs without a target render as before', () => {
+    const md = run([
+      ev({
+        type: 'command_displayed',
+        step: 0,
+        session: 'default',
+        command: 'echo ok',
+      }),
+    ]);
+    assert.ok(!md.includes('Run in'));
+  });
+});

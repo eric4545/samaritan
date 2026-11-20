@@ -67,6 +67,13 @@ import {
 } from '../../lib/pane-enter-guard';
 import { renderPaneRow, resolvePanePick } from '../../lib/pane-picker';
 import {
+  checkPaneTarget,
+  type TargetCheck,
+  targetMismatchMessage,
+  targetStatusLine,
+} from '../../lib/pane-target';
+import {
+  checkClearSafe,
   type PendingPaste,
   pastePreview,
   unrunPaste,
@@ -164,6 +171,7 @@ const COMPLETION_KEYS: ReadonlySet<string> = new Set(['r', 'g']);
 const ROLLBACK_ACTION_KEYS: ReadonlySet<string> = new Set([
   'p',
   'y',
+  'u',
   'c',
   'v',
   's',
@@ -1006,6 +1014,7 @@ class OperationRunner {
       't',
       'p',
       'y',
+      'u',
       'b',
       'j',
       's',
@@ -1229,8 +1238,145 @@ class OperationRunner {
         `${indent}⚠️  ${stale.backend.describeTarget(stale.sessionName)} still has an earlier paste on its input line, not run: ${pastePreview(stale.command)}`,
       );
       console.log(
-        `${indent}   Run it or clear it there (Ctrl+U), then [p] again. Nothing pasted.`,
+        stale.backend.clearInputLine
+          ? `${indent}   [u] clears it (or run it there), then [p] again. Nothing pasted.`
+          : `${indent}   Run it or clear it there (Ctrl+U), then [p] again. Nothing pasted.`,
       );
+      return true;
+    };
+
+    // `[u]` — clear the un-run [p] paste from the pane's input line with ONE
+    // Ctrl+U, sent only while checkClearSafe proves the pane still holds it
+    // at the prompt it was pasted at. Audited (`paste_cleared`, with whether
+    // the text is gone afterwards). True when the input line is clear.
+    const clearUnrunPaste = async (
+      step: number,
+      context?: string,
+      indent = '    ',
+    ): Promise<boolean> => {
+      const stale = unrunPaste(lastPaste);
+      if (!stale) {
+        console.log(
+          `${indent}ℹ️  No un-run paste on the pane's input line — nothing to clear.`,
+        );
+        return false;
+      }
+      const { backend, sessionName } = stale;
+      const where = backend.describeTarget(sessionName);
+      if (!backend.clearInputLine || !backend.paneState) {
+        console.log(
+          `${indent}⚠️  Cannot clear ${where} from here — press Ctrl+U in the pane.`,
+        );
+        return false;
+      }
+      const now = backend.paneState(sessionName);
+      const reason = checkClearSafe(stale, now);
+      if (reason || !now) {
+        console.log(
+          `${indent}🛑 Ctrl+U NOT sent: ${reason ?? 'the pane state could not be read'}. Clear it in the pane yourself.`,
+        );
+        return false;
+      }
+      if (!backend.clearInputLine(sessionName, now.paneId)) {
+        console.log(
+          `${indent}🛑 Ctrl+U NOT sent: tmux did not accept the key. Clear it in the pane yourself.`,
+        );
+        return false;
+      }
+      // The shell redraws its prompt: give it a moment before re-reading.
+      let still = true;
+      for (let t = 0; t < 10 && still; t++) {
+        await sleep(100);
+        still = !!unrunPaste(stale);
+      }
+      logger.emit({
+        type: 'user_input',
+        action: 'paste_cleared',
+        step,
+        session: where,
+        command: stale.command,
+        pasted_at: stale.step,
+        cleared: !still,
+        actor: state.context.operator,
+        ...(context ? { context } : {}),
+      });
+      if (still) {
+        console.log(
+          `${indent}⚠️  Sent Ctrl+U to ${where}, but the paste is still on its input line — clear the rest there.`,
+        );
+        return false;
+      }
+      lastPaste = undefined;
+      // [y] must never press Enter for text that is gone.
+      armedEnter = undefined;
+      // A forward step's own paste: the step starts over from this clean
+      // prompt. The pane printed the paste's echo and the redraw, which is
+      // not output of anything run — [v], [e] and the stray-Enter guard read
+      // from here on (as they read from the paste point after [p]).
+      if (!stale.context && !context && stale.step === step) {
+        captureRef.pasteAnchor = undefined;
+        captureRef.stepOffset = await waitForPaneQuiet(backend, sessionName);
+      }
+      console.log(
+        `${indent}🧹 Cleared the un-run paste from ${where}: ${pastePreview(stale.command)}`,
+      );
+      return true;
+    };
+
+    // Step `target:` — before pasting, check the attached pane is in the
+    // window the command belongs in. A mismatch (or an unreadable window
+    // name) asks; `y` is logged (`target_override`) and not asked again for
+    // the same place + pane. True = go ahead and paste.
+    const targetOverrides = new Set<string>();
+    const checkTargetOf = (
+      backend: CaptureBackend,
+      sessionName: string,
+      target: string | undefined,
+    ): TargetCheck =>
+      checkPaneTarget(
+        target,
+        !!backend.paneIdentity,
+        backend.paneIdentity?.(sessionName),
+      );
+    const confirmPasteTarget = async (
+      backend: CaptureBackend,
+      sessionName: string,
+      target: string | undefined,
+      where: string,
+      step: number,
+      context?: string,
+      indent = '    ',
+    ): Promise<boolean> => {
+      const check = checkTargetOf(backend, sessionName, target);
+      if (check.status === 'none' || check.status === 'match') return true;
+      const paneName =
+        check.status === 'mismatch'
+          ? check.pane.displayName
+          : backend.describeTarget(sessionName);
+      const key = `${where}|${paneName}`;
+      if (targetOverrides.has(key)) return true;
+      console.log(`${indent}${targetMismatchMessage(check)}`);
+      if (
+        !(await confirmKey(
+          `${indent}Paste into it anyway? [y / n=cancel — [t] attaches another pane]: `,
+        ))
+      ) {
+        console.log(`${indent}↩  Nothing pasted.`);
+        return false;
+      }
+      targetOverrides.add(key);
+      logger.emit({
+        type: 'user_input',
+        action: 'target_override',
+        step,
+        target,
+        pane: paneName,
+        ...(check.status === 'mismatch'
+          ? { window: check.pane.windowName }
+          : {}),
+        actor: state.context.operator,
+        ...(context ? { context } : {}),
+      });
       return true;
     };
 
@@ -1805,19 +1951,24 @@ class OperationRunner {
     // Resolve ${VAR} in a rollback tree (command/instruction, recursively) so
     // what is sent, pasted, shown and logged is what actually runs — never a
     // literal `${REGION}`. `ownerVars` are the owning step's variables.
+    // A rollback entry without its own `target:` runs where its owner does
+    // (the step it undoes, or the parent rollback entry).
     const resolveRollbackTree = (
       rbSteps: RollbackStep[],
       ownerVars?: Record<string, any>,
+      ownerTarget?: string,
     ): RollbackStep[] =>
       rbSteps.map((rb) => {
         const scope = { ...ownerVars, ...rb.variables };
+        const target = rb.target ? tryResolve(rb.target, scope) : ownerTarget;
         return {
           ...rb,
           name: tryResolve(rb.name, scope),
           command: tryResolve(rb.command, scope),
           instruction: tryResolve(rb.instruction, scope),
+          ...(target ? { target } : {}),
           sub_steps: rb.sub_steps
-            ? resolveRollbackTree(rb.sub_steps, scope)
+            ? resolveRollbackTree(rb.sub_steps, scope, target)
             : undefined,
         };
       });
@@ -1837,8 +1988,9 @@ class OperationRunner {
       stepIndex: number,
       context: 'rollback' | 'global' | 'nearest',
       ownerVars?: Record<string, any>,
+      ownerTarget?: string,
     ): Promise<RollbackStatus> => {
-      const resolved = resolveRollbackTree(rbSteps, ownerVars);
+      const resolved = resolveRollbackTree(rbSteps, ownerVars, ownerTarget);
       if (autoSendsRollback() && controller) {
         console.log(`    🔄 Sending rollback to tmux...`);
         await controller.runRollbackSteps(
@@ -1905,6 +2057,16 @@ class OperationRunner {
         );
         if (rb.instruction) console.log(`    ${rb.instruction}`);
         if (cmd) console.log(renderCodeBlock(cmd));
+        const rbTargetLine =
+          cmd && rb.target
+            ? targetStatusLine(
+                rb.target,
+                canCapture && backend
+                  ? checkTargetOf(backend, sessionName, rb.target)
+                  : { status: 'none' },
+              )
+            : undefined;
+        if (rbTargetLine) console.log(`    ${rbTargetLine}`);
         if (rbExpect)
           console.log(`    Expected: ${renderExpectDescription(rbExpect)}`);
         logger.emit({
@@ -1914,6 +2076,7 @@ class OperationRunner {
           command: cmd ?? rb.instruction,
           context,
           ...(rb.name ? { name: rb.name } : {}),
+          ...(rb.target ? { target: rb.target } : {}),
           ...(cmd ? {} : { instruction: true }),
         });
 
@@ -1925,6 +2088,9 @@ class OperationRunner {
               ...(isArmedAt(rbWhere) ? [{ key: 'y', label: 'run it' }] : []),
               { key: '↵', label: cmd ? 'done — I ran it' : 'done' },
               ...(canPaste ? [{ key: 'p', label: 'paste into pane' }] : []),
+              ...(lastPaste && unrunPaste(lastPaste)
+                ? [{ key: 'u', label: 'clear paste' }]
+                : []),
               ...(cmd ? [{ key: 'c', label: 'copy' }] : []),
               ...(rbExpect && canCapture
                 ? [{ key: 'v', label: 'verify' }]
@@ -1936,8 +2102,23 @@ class OperationRunner {
           let choice = (await readActionKey(ROLLBACK_ACTION_KEYS))
             .trim()
             .toLowerCase();
+          if (choice === 'u') {
+            await clearUnrunPaste(stepIndex, context);
+            continue;
+          }
           if (choice === 'p' && canPaste && cmd && backend?.pasteCommand) {
             if (blockedByUnrunPaste()) continue;
+            if (
+              !(await confirmPasteTarget(
+                backend,
+                sessionName,
+                rb.target,
+                rbWhere,
+                stepIndex,
+                context,
+              ))
+            )
+              continue;
             const beforePaste = backend.paneState?.(sessionName);
             backend.pasteCommand(sessionName, cmd);
             lastPaste = {
@@ -1946,6 +2127,8 @@ class OperationRunner {
               command: cmd,
               step: stepIndex,
               context,
+              paneId: beforePaste?.paneId,
+              shell: beforePaste?.currentCommand,
             };
             logger.emit({
               type: 'user_input',
@@ -2082,7 +2265,13 @@ class OperationRunner {
 
       if (envRollback.length > 0) {
         console.log('    🔄 Initiating rollback...');
-        await runRollback(envRollback, i, 'rollback', step.variables);
+        await runRollback(
+          envRollback,
+          i,
+          'rollback',
+          step.variables,
+          tryResolve(step.target, step.variables),
+        );
         return;
       }
 
@@ -2114,7 +2303,13 @@ class OperationRunner {
         .trim()
         .toLowerCase();
       if (ans === 'y' || ans === 'yes') {
-        await runRollback(nearest.rollback, i, 'nearest', sourceStep.variables);
+        await runRollback(
+          nearest.rollback,
+          i,
+          'nearest',
+          sourceStep.variables,
+          tryResolve(sourceStep.target, sourceStep.variables),
+        );
         return;
       }
       console.log('    ↩  Skipped.');
@@ -3115,6 +3310,8 @@ class OperationRunner {
           ? tryResolve(`bash ${step.script}`, step.variables)
           : undefined;
         const runnableCommand = resolvedCommand ?? scriptRunHint;
+        // `target:` — the tmux window this step's command belongs in.
+        const stepTarget = tryResolve(step.target, step.variables);
         const resolvedInstruction = tryResolve(
           step.instruction,
           step.variables,
@@ -3147,6 +3344,8 @@ class OperationRunner {
           name: step.name,
           pic: step.pic,
           reviewer: step.reviewer,
+          // The window the command belongs in: report.md shows it per step.
+          ...(stepTarget && runnableCommand ? { target: stepTarget } : {}),
         });
 
         console.log(`\n${DIVIDER}`);
@@ -3378,6 +3577,19 @@ class OperationRunner {
               });
             }
           }
+          // Where the command must run, and whether the attached pane is
+          // there (sidecar) — before the operator pastes or types anything.
+          if (runnableCommand && stepTarget) {
+            const sn = step.session ?? 'default';
+            const backend = captureRef.backend;
+            const line = targetStatusLine(
+              stepTarget,
+              mode === 'sidecar' && backend?.hasTarget(sn)
+                ? checkTargetOf(backend, sn, stepTarget)
+                : { status: 'none' },
+            );
+            if (line) console.log(`    ${line}`);
+          }
 
           // Baseline the capture offset at the start of each step.
           // Uses captureRef so [t] can swap the backend and this closure stays fresh.
@@ -3462,6 +3674,16 @@ class OperationRunner {
               return false;
             }
             if (blockedByUnrunPaste()) return false;
+            if (
+              !(await confirmPasteTarget(
+                backend,
+                sessionName,
+                stepTarget,
+                `step:${i}`,
+                i,
+              ))
+            )
+              return false;
             const beforePaste = backend.paneState?.(sessionName);
             // Anchor [v] to this paste: only output after it counts.
             recordPasteAnchor(backend, sessionName, beforePaste);
@@ -3471,6 +3693,8 @@ class OperationRunner {
               sessionName,
               command: runnableCommand,
               step: i,
+              paneId: beforePaste?.paneId,
+              shell: beforePaste?.currentCommand,
             };
             // Recorded as a user_input breadcrumb (not command_sent): sidecar
             // never executes, so folding it into the step's command list would
@@ -3590,7 +3814,7 @@ class OperationRunner {
           const earlierPaste = unrunPaste(lastPaste);
           if (earlierPaste && earlierPaste.step !== i) {
             console.log(
-              `\n    ⚠️  ${earlierPaste.backend.describeTarget(earlierPaste.sessionName)} still has the paste from "${steps[earlierPaste.step]?.step.name ?? ref(earlierPaste.step)}" on its input line, not run: ${pastePreview(earlierPaste.command)}`,
+              `\n    ⚠️  ${earlierPaste.backend.describeTarget(earlierPaste.sessionName)} still has the paste from "${steps[earlierPaste.step]?.step.name ?? ref(earlierPaste.step)}" on its input line, not run: ${pastePreview(earlierPaste.command)}${earlierPaste.backend.clearInputLine ? ' — [u] clears it' : ''}`,
             );
           }
           const stepConfirm = normalizeConfirm(
@@ -3622,6 +3846,8 @@ class OperationRunner {
               hasExpect: !!step.expect,
               paneAttached: !!captureRef.backend?.hasTarget(sessionName),
               canRun: canRerun(),
+              unrunPaste:
+                mode === 'sidecar' && !!lastPaste && !!unrunPaste(lastPaste),
               hasEvidence: evidenceForStep.length > 0,
               evidenceMissing: needsEvidenceGate(i, step),
               canGoBack: i > 0,
@@ -3753,6 +3979,18 @@ class OperationRunner {
               console.log(
                 `    🔗 Attached capture to: ${newCapture.describeTarget(sessionName)}`,
               );
+              if (runnableCommand && stepTarget) {
+                const line = targetStatusLine(
+                  stepTarget,
+                  checkTargetOf(newCapture, sessionName, stepTarget),
+                );
+                if (line) console.log(`    ${line}`);
+              }
+              continue;
+            }
+            if (mode === 'sidecar' && inputChoice === 'u') {
+              // [u] — Ctrl+U for the un-run [p] paste (see clearUnrunPaste).
+              await clearUnrunPaste(i);
               continue;
             }
             if (

@@ -1,4 +1,5 @@
 import type { CaptureBackend } from './capture-backend';
+import type { PaneState } from './pane-enter-guard';
 import { normalizePasteText } from './tmux-session';
 
 /**
@@ -20,6 +21,10 @@ export interface PendingPaste {
   step: number;
   /** Rollback context (`step` / `global`) when pasted from a rollback. */
   context?: string;
+  /** Stable `#{pane_id}` the paste went to, when the pane state was readable. */
+  paneId?: string;
+  /** Foreground program at paste time (the shell, or `ssh` over a hop). */
+  shell?: string;
 }
 
 /**
@@ -56,4 +61,36 @@ export function unrunPaste(
 export function pastePreview(command: string, max = 60): string {
   const flat = normalizePasteText(command).replace(/\s*\n\s*/g, ' ⏎ ');
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/**
+ * Guard for the sidecar `[u]` action: press Ctrl+U in the pane to clear an
+ * un-run `[p]` paste from the shell's input line. Returns the reason to
+ * refuse, or `undefined` when the pane provably still holds THAT paste at the
+ * prompt it was pasted at.
+ *
+ * Ctrl+U is only harmless at a shell prompt: in copy-mode it scrolls, with
+ * synchronize-panes it reaches every pane in the window, and in another
+ * foreground program (an editor, a pager) it means something else. So: same
+ * live pane, accepting input, not in a mode, not synchronized, the same
+ * foreground program as at paste time, and the pasted text still at the
+ * cursor.
+ */
+export function checkClearSafe(
+  paste: PendingPaste,
+  now: PaneState | undefined,
+): string | undefined {
+  if (!now) return 'the pane is gone or tmux is not reachable';
+  if (paste.paneId && now.paneId !== paste.paneId)
+    return `the attached pane is now ${now.paneId}; the command was pasted into ${paste.paneId}`;
+  if (now.dead) return 'the pane is dead';
+  if (now.inMode) return 'the pane is in copy/view mode — leave it (q) first';
+  if (now.synchronized)
+    return 'synchronize-panes is on — Ctrl+U would reach every pane in the window';
+  if (now.inputOff) return 'the pane has input disabled (select-pane -d)';
+  if (paste.shell && now.currentCommand !== paste.shell)
+    return `the pane now runs ${now.currentCommand || 'another program'}, not ${paste.shell} where the command was pasted`;
+  if (!pasteStillOnInputLine(now.cursorLine, paste.command))
+    return 'the pasted command is no longer at the cursor (run, edited or cleared already)';
+  return undefined;
 }

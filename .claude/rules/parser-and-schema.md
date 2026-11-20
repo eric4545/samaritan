@@ -12,7 +12,15 @@ paths:
 
 `StepContent` is the shared base for both `Step` and `RollbackStep`, holding all
 "what to do / who does it" fields: `command`, `script`, `instruction`, `timeout`,
-`description`, `evidence`, `options`, `session`, `pic`, `reviewer`, `expect`.
+`description`, `evidence`, `options`, `session`, `target`, `pic`, `reviewer`,
+`expect`, `confirm`.
+
+**`parseStep` builds a NORMAL step from an allowlist** (the returned object
+literal in `src/operations/parser.ts`), unlike the rollback spread
+pass-through. A new `StepContent` field must be added there too, or it
+validates, works on rollback steps, and is silently DROPPED on normal steps
+(`target:` was, until the render-parity test caught it). Steps are not
+`additionalProperties: false`, so the schema does not catch an unknown key.
 **Never** add a content/execution field directly to `Step` or `RollbackStep` —
 add it to `StepContent` so both types benefit automatically.
 

@@ -139,6 +139,10 @@
     "valid": true,
     "errors": 0
   },
+  "examples/sidecar-pane-target.yaml": {
+    "valid": true,
+    "errors": 0
+  },
   "examples/sidecar-poll-status.yaml": {
     "valid": true,
     "errors": 0

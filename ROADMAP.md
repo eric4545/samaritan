@@ -141,8 +141,8 @@ in this roadmap:
 - [x] `[b]` re-run one earlier step and come back (later steps keep their status)
 - [x] Un-run `[p]` paste guard: the next `[p]` is refused and `↵` asks while a paste is still on the pane's input line
 - [x] `confirm:` gate: an out-of-band check the operator asserts (who, when, result), shown as CONFIRMED in `report.md`
-- [ ] Per-step pane target (`target:` or a window name) with `[p]` warn/refuse on mismatch with the attached pane
-- [ ] Audited "clear the pending input line" action (today a stale paste blocks `[p]` and must be cleared in the pane with Ctrl+U)
+- [x] Per-step pane target (`target:` names the tmux window; `[p]`/`[!]`/re-run ask before pasting into an attached pane in another window, an override is logged and shown in `report.md`)
+- [x] Audited "clear the pending input line" action (`[u]`: one guarded Ctrl+U for an un-run paste, logged `paste_cleared`)
 - [x] Optional auto-advance on verify PASS (`run.advance_on_pass: true` in the operation; off by default)
 - [x] `[!]` paste + run in one key (same guarded Enter as `[p]` then `[y]`)
 - [ ] Artifact provenance checks (record an S3 ETag/sha at upload, assert it is unchanged before use, show both in `report`)
@@ -155,7 +155,7 @@ operator can optionally `[p]` paste it into the attached pane (no Enter) and run
 it themselves, or press `[y]` to have samaritan press Enter there (one guarded key
 per command — the pane must still hold the unrun paste). See `docs/running.md` for full details on supported actions
 (`[n]` note, `[e]` evidence, `[x]` remove evidence, `[v]` verify, `[t]` attach pane,
-`[p]` send to pane, `[b]` back to a previous step).
+`[p]` send to pane, `[u]` clear an un-run paste, `[b]` back to a previous step).
 
 ### 2.4 Session Management — ✅ IMPLEMENTED (v1.1)
 - [x] Session state persistence (`~/.samaritan/sessions/<id>.json`)

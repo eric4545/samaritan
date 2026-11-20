@@ -140,13 +140,14 @@ How `[r]` / `[g]` deliver rollback commands depends on the run mode:
 | `manual` with no tmux | **Operator-driven**, without `[p]`/`[v]` |
 | non-sidecar with spawn-own `sessions:` | samaritan sends each command to its tmux session (with Enter) and waits for the prompt |
 
-Operator-driven rollback walks the entries one at a time — `↩ Rollback 1/3: <name>`, then the instruction and the `${VAR}`-resolved command:
+Operator-driven rollback walks the entries one at a time — `↩ Rollback 1/3: <name>`, then the instruction and the `${VAR}`-resolved command. An entry with a `target:` (its own, or the step's it undoes) prints where it runs, and `p` asks before pasting into a pane in another window, as for a [forward step](./running.md#pane-target-target-paste-only-into-the-right-window):
 
 | Key | Action |
 |---|---|
 | `↵` | done — I ran it |
 | `p` | paste into the attached pane (bracketed paste, **no Enter** — same as the forward `[p]`, including its refusal while an earlier paste is still un-run on the pane's input line) |
 | `y` | after `p`: samaritan presses Enter in the pane, only while the pane still holds that paste unrun (same guard as the forward [`[y]`](./running.md)), then waits for it to finish and verifies the entry's `expect` |
+| `u` | clear an un-run paste from the pane's input line (one guarded Ctrl+U, same as the forward [`[u]`](./running.md)) |
 | `c` | copy the command |
 | `v` | verify the entry's `expect` against the pane output since it was shown |
 | `s` | skip this entry |

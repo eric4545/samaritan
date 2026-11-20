@@ -247,3 +247,26 @@ describe('unavailableKeyMessage — a known key never falls through to done', ()
     }
   });
 });
+
+describe('[u] clear paste', () => {
+  it('shows [u] in the bar only while an earlier paste is un-run (sidecar)', () => {
+    assert.ok(!keys(stepActionHints(ctx()).primary).includes('u'));
+    const withPaste = keys(stepActionHints(ctx({ unrunPaste: true })).primary);
+    assert.ok(withPaste.includes('u'));
+    // Right after [p] in the flow order.
+    assert.strictEqual(withPaste.indexOf('u'), withPaste.indexOf('p') + 1);
+    assert.ok(
+      !keys(
+        stepActionHints(ctx({ sidecar: false, unrunPaste: true })).primary,
+      ).includes('u'),
+    );
+  });
+
+  it('says why [u] does nothing outside sidecar', () => {
+    assert.match(
+      unavailableKeyMessage('u', ctx({ sidecar: false })) ?? '',
+      /sidecar mode only/,
+    );
+    assert.strictEqual(unavailableKeyMessage('u', ctx()), undefined);
+  });
+});

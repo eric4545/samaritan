@@ -38,6 +38,13 @@ export function readEvents(jsonlPath: string): SessionEvent[] {
   return events;
 }
 
+/** `{ target }` when a `step_start` / rollback `command_displayed` names a window. */
+function targetOf(event: SessionEvent): { target?: string } {
+  return typeof event.target === 'string' && event.target
+    ? { target: event.target }
+    : {};
+}
+
 /** The manual's step number a `step_start`/`step_skip` event carries, if any. */
 function stepLabelOf(event: SessionEvent): string | undefined {
   return typeof event.label === 'string' && event.label
@@ -64,16 +71,22 @@ export function foldEvents(events: SessionEvent[]): {
     switch (event.type) {
       case 'step_start': {
         const index = event.step as number;
+        // A re-entered step (resume, [b]) starts a fresh record — commands,
+        // verification and status are the final attempt's — but KEEPS the
+        // notes: a target override, a cleared or un-run paste, or an
+        // operator [n] note made before an abort is audit history.
+        const earlierNotes = stepsByIndex.get(index)?.notes ?? [];
         currentStep = {
           index,
           label: stepLabelOf(event),
           name: event.name as string,
           pic: event.pic as string | undefined,
           reviewer: event.reviewer as string | undefined,
+          ...targetOf(event),
           status: 'pending',
           started_at: event.ts,
           commands: [],
-          notes: [],
+          notes: [...earlierNotes],
           evidence: [],
         };
         stepsByIndex.set(index, currentStep);
@@ -107,6 +120,7 @@ export function foldEvents(events: SessionEvent[]): {
             name: event.name as string | undefined,
             instruction:
               (event.instruction as boolean | undefined) || undefined,
+            ...targetOf(event),
           });
         } else if (currentStep) {
           currentStep.commands.push({
@@ -176,6 +190,10 @@ export function foldEvents(events: SessionEvent[]): {
           const last = currentRollback?.commands.at(-1);
           if (last && event.action === 'send_to_pane') last.pasted = true;
           if (last && event.action === 'enter_sent') last.enterSent = true;
+          if (last && event.action === 'target_override')
+            last.targetOverride = event.pane as string | undefined;
+          if (last && event.action === 'paste_cleared' && event.cleared)
+            last.pasteCleared = true;
           if (last && isConfirmAction(event.action)) {
             last.confirmation = foldConfirmation(last.confirmation, event);
           }
@@ -208,6 +226,19 @@ export function foldEvents(events: SessionEvent[]): {
             // the pane's input line (#115).
             currentStep.notes.push(
               `⚠️ Marked done while the pasted command was not run: ${event.command as string}`,
+            );
+          } else if (action === 'target_override') {
+            // [p] pasted into a pane outside the step's `target:` window,
+            // after the operator answered y.
+            currentStep.notes.push(
+              `⚠️ Pasted into ${event.pane as string}${event.window ? ` (window "${event.window as string}")` : ''}, not the step's target window "${event.target as string}" — operator override`,
+            );
+          } else if (action === 'paste_cleared') {
+            // [u] — Ctrl+U for an un-run [p] paste.
+            currentStep.notes.push(
+              event.cleared
+                ? `🧹 Cleared an un-run paste from ${event.session as string} (never run): ${event.command as string}`
+                : `⚠️ Ctrl+U sent to ${event.session as string}, but the un-run paste stayed on its input line: ${event.command as string}`,
             );
           } else if (action === 'done_without_run') {
             // ↵ confirmed though nothing was pasted or ran in the attached

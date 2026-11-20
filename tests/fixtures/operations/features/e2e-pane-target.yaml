@@ -1,0 +1,23 @@
+name: E2E Pane Target
+version: 1.0.0
+description: >-
+  Fixture for the per-step pane target and the [u] clear key. Step 1 belongs
+  in the window named by APP_WINDOW; the run attaches a pane in another window
+  first, so [p] must ask before pasting there. Step 2 has no target: its paste
+  is cleared with [u] instead of being run.
+
+environments:
+  - name: staging
+    description: Staging environment
+    variables:
+      APP_WINDOW: pt-app
+
+steps:
+  - name: Restart web-server
+    type: manual
+    target: ${APP_WINDOW}
+    command: echo PT_ONE
+
+  - name: Check web-server
+    type: manual
+    command: echo PT_TWO

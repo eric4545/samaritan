@@ -119,3 +119,19 @@ describe('Environment Diff', () => {
     });
   });
 });
+
+// `target:` names a tmux window that usually differs per environment
+// (`${WEB_WINDOW}`): diff shows each environment's resolved window.
+describe('Environment Diff — step target', () => {
+  it('reports the resolved target window per environment', async () => {
+    const { parseOperation } = await import('../../src/operations/parser');
+    const operation = await parseOperation('examples/sidecar-pane-target.yaml');
+    const report = diffEnvironments(operation, 'staging', 'production');
+    const migrate = report.entries.find(
+      (e) => e.name === 'Migrate database schema',
+    );
+    assert.deepStrictEqual(migrate?.fieldDiffs, [
+      { field: 'target', valueA: 'db-staging', valueB: 'db-production' },
+    ]);
+  });
+});

@@ -70,7 +70,7 @@ Applies to all formats. With the flag off, rendering is unchanged.
 ## Step content fields (shared by steps AND rollback steps — `StepContent`)
 
 `command`, `script`, `instruction`, `timeout`, `description`, `evidence`,
-`options`, `session`, `pic`, `reviewer`, `expect`.
+`options`, `session`, `target`, `pic`, `reviewer`, `expect`, `confirm`.
 
 > Rule: never author execution/content fields outside this set on a step;
 > they live on `StepContent` so steps and rollback steps both get them.
@@ -79,6 +79,17 @@ Applies to all formats. With the flag off, rendering is unchanged.
 manual formats — for steps, sub-steps, and rollback steps — as `⏱ Timeout: Ns`
 and `🖥 Session: <name>`.
 
+`target` — the tmux **window** the command belongs in: `window` (any session)
+or `session:window`; `${VAR}` and `variants.<env>` work (window names usually
+differ per environment). Renders as `🎯 Run in: <target>` in every format
+(`> Run in:` in the `--env` manual, resolved with `--resolve-vars`) and shows
+per environment in `samaritan diff`. In a sidecar run, `[p]` / `[!]` / the
+failed-verify re-run check the ATTACHED pane's live window name first and ask
+`Paste into it anyway?` when it differs (or cannot be read); `y` is logged
+`target_override` and noted on the step in `report.md`. A rollback entry
+without its own `target` runs where its step ran. Not checked for spawned
+`sessions:` windows (those are picked by `session:`). Blank or non-string is a
+schema error. Example: `examples/sidecar-pane-target.yaml`.
 ## Step-only structural fields
 
 `name`, `type`, `id`, `phase` (`preflight`/`flight`/`postflight`), `if`,
@@ -354,5 +365,6 @@ Example: `examples/builtin-variables.yaml`.
 - `examples/deployment-with-templates.yaml` — templates
 - `examples/multi-env-deployment.yaml` — environment matrix
 - `examples/sidecar-deployment.yaml` — interactive `run` (sidecar)
+- `examples/sidecar-pane-target.yaml` — per-step `target:` window, `[u]` clear paste
 - `examples/expect-retry.yaml` — retryable verification
 - `examples/mock-run-expect.yaml` — `run --mock`

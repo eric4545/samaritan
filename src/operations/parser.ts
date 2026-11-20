@@ -1175,6 +1175,7 @@ async function parseStep(
     variables: stepData.variables,
     evidence: parseEvidence(stepData),
     session: stepData.session,
+    target: stepData.target,
     expect: extractExpect(stepData),
     confirm: stepData.confirm,
     capture: stepData.capture,

@@ -53,6 +53,7 @@ const CONTENT_FIELDS: ReadonlyArray<keyof Step & string> = [
   'pic',
   'reviewer',
   'timeout',
+  'target',
 ];
 
 const EVIDENCE_FIELDS: ReadonlyArray<'required' | 'types'> = [

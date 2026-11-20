@@ -570,6 +570,10 @@ function renderRollbackCellMarkdown(
     const sep = cellContent ? '<br>' : '';
     cellContent += `${sep}🖥 <em>Session: ${rb.session}</em>`;
   }
+  if (rb.target) {
+    const sep = cellContent ? '<br>' : '';
+    cellContent += `${sep}🎯 <em>Run in: ${rb.target}</em>`;
+  }
 
   // Environment-specific evidence results
   if (rb.evidence) {
@@ -743,6 +747,9 @@ function generateStepRow(
   // Add execution session
   if (step.session) {
     stepCell += `<br>🖥 <em>Session: ${step.session}</em>`;
+  }
+  if (step.target) {
+    stepCell += `<br>🎯 <em>Run in: ${step.target}</em>`;
   }
 
   // Add conditional expression if present
@@ -1070,6 +1077,9 @@ function generateSubStepRow(
   // Add execution session
   if (step.session) {
     stepCell += `<br>🖥 <em>Session: ${step.session}</em>`;
+  }
+  if (step.target) {
+    stepCell += `<br>🎯 <em>Run in: ${step.target}</em>`;
   }
 
   // Add conditional expression if present (for sub-steps)
@@ -1920,6 +1930,11 @@ export function generateSingleEnvManual(
       lines.push('');
     }
 
+    if (effectiveStep.target) {
+      lines.push(`> Run in: ${resolveText(effectiveStep.target)}`);
+      lines.push('');
+    }
+
     if (effectiveStep.if) {
       lines.push(`> Condition: ${effectiveStep.if}`);
       lines.push('');
@@ -2151,6 +2166,12 @@ export function generateSingleEnvManual(
     }
     if (rb.session) {
       lines.push(`> Session: ${rb.session}`);
+      lines.push('');
+    }
+    if (rb.target) {
+      lines.push(
+        `> Run in: ${resolve ? resolveCmd(rb.target, stepVariables) : rb.target}`,
+      );
       lines.push('');
     }
 

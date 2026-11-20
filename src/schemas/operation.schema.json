@@ -399,6 +399,9 @@
                 "type": "string",
                 "description": "Named tmux session to use for this step (execution engine)"
               },
+              "target": {
+                "$ref": "#/definitions/paneTarget"
+              },
               "capture": {
                 "type": "object",
                 "description": "Extract named values from command output for use in later steps",
@@ -541,6 +544,7 @@
                     "continue_on_error": { "type": "boolean" },
                     "pic": { "type": "string" },
                     "reviewer": { "type": "string" },
+                    "target": { "$ref": "#/definitions/paneTarget" },
                     "confirm": { "$ref": "#/definitions/confirm" },
                     "ticket": {
                       "$ref": "#/properties/steps/items/oneOf/1/properties/ticket"
@@ -668,6 +672,12 @@
     }
   },
   "definitions": {
+    "paneTarget": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "description": "The tmux window this step's command must run in: `window` (any session) or `session:window`, e.g. `production` or `ops:production`. `${VAR}` resolves per environment. In sidecar mode `[p]`, `[!]` and the re-run of a failed verify check the attached pane's window first and ask before pasting anywhere else; the manuals show it as `Run in`. Not checked for windows samaritan spawns from `sessions:` (those are picked by `session:`)."
+    },
     "confirm": {
       "description": "A gate the operator satisfies outside the attached pane (a dashboard, a browser check, another operator's terminal). `run` asks the question before the step can be marked done and records who confirmed, when, and the result they typed; the report shows it as CONFIRMED. A plain string is the question with an optional result.",
       "oneOf": [
@@ -807,6 +817,9 @@
         "session": {
           "type": "string",
           "description": "Session to run rollback in (defaults to step session)"
+        },
+        "target": {
+          "$ref": "#/definitions/paneTarget"
         },
         "pic": {
           "type": "string",

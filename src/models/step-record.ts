@@ -79,6 +79,8 @@ export interface StepRecord {
   phase?: string;
   pic?: string;
   reviewer?: string;
+  /** The step's resolved `target:` — the tmux window its command belongs in. */
+  target?: string;
   /**
    * Who actually executed this step. Set when merging several operators'
    * partial runs of the same operation (`report merge`) so each step is
@@ -116,6 +118,12 @@ export interface RollbackCommandRecord {
   pasted?: boolean;
   /** Enter pressed in the pane by samaritan (`[y]`, after a guarded `[p]`). */
   enterSent?: boolean;
+  /** The entry's `target:` (its own, or the step's it undoes). */
+  target?: string;
+  /** Pasted into a pane outside `target` after the operator said `y`. */
+  targetOverride?: string;
+  /** An un-run paste was cleared with `[u]` while on this entry. */
+  pasteCleared?: boolean;
   /** The operator's answer: ran it (`executed`), `skipped`, or `aborted`. */
   outcome?: 'executed' | 'skipped' | 'aborted';
   /** Result of `[v]` against this entry's `expect`, when verified. */

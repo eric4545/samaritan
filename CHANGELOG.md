@@ -7,6 +7,30 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Per-step pane target (`target:`): paste only into the right tmux
+  window.** A sidecar run attaches one pane, so a step meant for the
+  `production` shell could be pasted into the `staging` one with no warning.
+  A step (or rollback entry) can now name the window its command belongs in:
+  `target: web-production`, or `session:window`; `${VAR}` and `variants.<env>`
+  work. In a sidecar run each step prints `🎯 Run in window "…" — attached
+  pane … ✓` or a ⚠️ line, and `[p]`, `[!]` and the re-run of a failed verify
+  ask `Paste into it anyway?` before pasting into a pane in another window
+  (`n` pastes nothing, `[t]` attaches the right pane; `y` is logged and noted
+  on the step in `report.md`). A rollback entry without its own `target:`
+  runs where its step ran. The manuals print `Run in: <target>` in every
+  format and `samaritan diff` lists it per environment. Panes spawned from
+  `sessions:` are not checked (they are picked by `session:`). Before, an
+  authored `target:` validated and was silently dropped. See
+  `docs/running.md` and `examples/sidecar-pane-target.yaml`.
+- **`[u]` clears an un-run paste from the pane's input line.** An un-run
+  `[p]` paste blocked the next `[p]` until the operator switched to the pane
+  and pressed Ctrl+U, and the report never said the paste was dropped. `[u]`
+  (step bar and rollback bar, shown while a paste is un-run) presses Ctrl+U
+  once in that pane, only while it is the same pane at the same shell prompt
+  with the paste still at the cursor (not in copy-mode, not
+  `synchronize-panes`). It then checks the line is clear, and the report
+  records `🧹 Cleared an un-run paste … (never run)`.
+
 - **Pick a step by its `id`, and find it by typing part of it.** The `[b]`
   back, `[j]` jump and completion-screen rollback pickers list each step's
   `id` in its own column (`2.1  scale-down  Scale down old  (completed)`) and
@@ -181,6 +205,13 @@ All notable changes to this project are documented here. This project follows
   put them back in their natural order.
 
 ### Fixed
+
+- **A step's notes survive `resume`.** When `resume` (or `[b]`) re-entered a
+  step, the report rebuilt that step from the new attempt only, so a note
+  written before the abort disappeared: an operator `[n]` note, a ⚠️ un-run
+  paste, or a paste outside the step's target window. Notes are now kept
+  across re-entries; commands, verification and status still show the final
+  attempt.
 
 - **Clipboard screenshots on macOS: copy, then ↵.** A Mac terminal sends
   nothing at all for `⌘V` when the clipboard holds a screenshot or a copied

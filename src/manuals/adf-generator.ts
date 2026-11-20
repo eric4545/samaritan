@@ -193,6 +193,9 @@ function buildRollbackCellNodes(
   if (rb.session) {
     cellContent.push(paragraph(text(`🖥 Session: ${rb.session}`)));
   }
+  if (rb.target) {
+    cellContent.push(paragraph(text(`🎯 Run in: ${rb.target}`)));
+  }
 
   // Environment-specific evidence results (parity with the markdown/Confluence
   // rollback renderers, which already embed rb.evidence).
@@ -826,6 +829,9 @@ function createStepsTable(
     if (step.session) {
       stepCellContent.push(paragraph(text(`🖥 Session: ${step.session}`)));
     }
+    if (step.target) {
+      stepCellContent.push(paragraph(text(`🎯 Run in: ${step.target}`)));
+    }
 
     // Conditional expression
     if (step.if) {
@@ -1143,6 +1149,9 @@ function addSubStepRows(
 
     if (subStep.session) {
       subStepCellContent.push(paragraph(text(`🖥 Session: ${subStep.session}`)));
+    }
+    if (subStep.target) {
+      subStepCellContent.push(paragraph(text(`🎯 Run in: ${subStep.target}`)));
     }
 
     if (subStep.if) {

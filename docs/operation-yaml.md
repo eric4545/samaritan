@@ -294,6 +294,27 @@ steps:
     command: kubectl apply -f deployment.yaml
 ```
 
+## Pane target (`target`)
+
+`target` names the tmux **window** a step's command belongs in: `window`, or
+`session:window` to pin the tmux session too. `${VAR}` resolves per
+environment and `variants.<env>` can override it. Steps, sub-steps and
+rollback steps accept it; a rollback entry without its own `target` runs where
+its step ran. Manuals render it as `🎯 Run in: <target>` (`> Run in:` in the
+single-environment manual, resolved with `--resolve-vars`).
+
+```yaml
+steps:
+  - name: Restart web-server
+    type: automatic
+    target: ${WEB_WINDOW}     # web-staging / web-production per environment
+    command: kubectl rollout restart deploy/web-server
+```
+
+In a sidecar run, `[p]`, `[!]` and the re-run of a failed verify ask before
+pasting into an attached pane in another window. See
+[Running → Pane target](./running.md#pane-target-target-paste-only-into-the-right-window).
+
 ## Step Dependencies (`needs`)
 
 Model dependencies between steps, like GitHub Actions `jobs.<id>.needs`. A

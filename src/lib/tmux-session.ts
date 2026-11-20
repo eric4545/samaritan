@@ -17,6 +17,7 @@ import type {
   PaneOwner,
 } from './capture-backend';
 import type { PaneState } from './pane-enter-guard';
+import type { PaneIdentity } from './pane-target';
 
 export function isLocalSession(config: SessionConfig | undefined): boolean {
   return !config?.host;
@@ -228,6 +229,20 @@ export function sendEnterTo(paneId: string): boolean {
 }
 
 /**
+ * Press Ctrl+U in exactly this pane (by stable `%id`): the `[u]` action that
+ * clears an un-run `[p]` paste from the shell's input line (readline
+ * `unix-line-discard` takes a whole multi-line bracketed paste in bash; the
+ * caller re-reads the cursor line to see what remains). True when tmux took it.
+ */
+export function clearInputLineIn(paneId: string): boolean {
+  try {
+    return spawnSync('tmux', ['send-keys', '-t', paneId, 'C-u']).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Validate that a tmux target string (e.g. "mysession:0.0" or "%12") refers to
  * an existing pane. Returns true when the target resolves, false otherwise.
  * Never throws — a bad target simply returns false.
@@ -393,6 +408,22 @@ export function paneNameOf(target: string): string | undefined {
   return listTmuxPanes().find((p) => p.id === id)?.name;
 }
 
+/**
+ * The live session + window name of one pane, for the step `target:` check
+ * (`pane-target.ts`). Undefined when the pane is gone.
+ */
+export function readPaneIdentity(target: string): PaneIdentity | undefined {
+  const out = paneFormat(target, PANE_NAME_FORMAT);
+  if (out === undefined) return undefined;
+  const parts = parsePaneNameParts(out.split(PANE_FIELD_SEP));
+  if (!parts.session) return undefined;
+  return {
+    session: parts.session,
+    windowName: parts.windowName,
+    displayName: paneDisplayName(parts),
+  };
+}
+
 export class TmuxSession implements CaptureBackend {
   private sessionId: string;
   private tmuxName: string;
@@ -452,6 +483,11 @@ export class TmuxSession implements CaptureBackend {
   /** Press Enter in the given pane id (the guard has already checked it). */
   sendEnter(_sessionName: string, paneId: string): boolean {
     return sendEnterTo(paneId);
+  }
+
+  /** Ctrl+U in the given pane id (the `[u]` guard has already checked it). */
+  clearInputLine(_sessionName: string, paneId: string): boolean {
+    return clearInputLineIn(paneId);
   }
 
   hasTarget(sessionName: string): boolean {
@@ -811,6 +847,20 @@ export class TmuxPaneCapture implements CaptureBackend {
   /** Press Enter in the given pane id (the guard has already checked it). */
   sendEnter(_sessionName: string, paneId: string): boolean {
     return sendEnterTo(paneId);
+  }
+
+  /** Ctrl+U in the given pane id (the `[u]` guard has already checked it). */
+  clearInputLine(_sessionName: string, paneId: string): boolean {
+    return clearInputLineIn(paneId);
+  }
+
+  /**
+   * The attached pane's live session + window name, for the step `target:`
+   * check. Only an operator-attached pane is checked: spawned `sessions:`
+   * windows are picked by the step's `session:`.
+   */
+  paneIdentity(_sessionName: string): PaneIdentity | undefined {
+    return readPaneIdentity(this.pane());
   }
 
   /** Scrollback + screen of the attached pane, plus its first row's absolute line. */

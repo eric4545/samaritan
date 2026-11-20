@@ -22,7 +22,7 @@ collection is NOT implemented. (Check `ROADMAP.md`.)
 
 The forward step bar (sidecar + manual) is COMPACT: `stepActionHints()` in
 `src/lib/step-actions.ts` (pure, unit-tested) splits keys into `primary`
-(`y` armed · `↵` · `p` · `v` · `e` only while required evidence is missing ·
+(`y` armed · `↵` · `p` · `u` only while a paste is un-run · `v` · `e` only while required evidence is missing ·
 `t` only while no pane attached · `s` · `r` · `?`) and `more` (printed by `?`: `c n e x`, `t` attach another pane, `b j g
 abort`). The bar only decides HINTS — every key keeps working unshown, never
 gate a handler on the hint list. `sidecarFlowLegend(ctx)` prints a one-time
@@ -42,7 +42,8 @@ one `?` per piped run (readline gotcha drops the lines after it).
   FRESH `list-panes`, a number picks by pane id, a closed pane re-lists, `r`
   refreshes; names from `paneDisplayName`: `session:windowName.pane` only when
   `#{automatic-rename}` is 0, else positional), `[p]` send to pane (when step has a command + pane attached),
-  `[y]` run it — Enter for that paste, guarded (see "`[y]` run it" below).
+  `[y]` run it — Enter for that paste, guarded (see "`[y]` run it" below),
+  `[u]` clear an un-run paste — guarded Ctrl+U (see "Pane target + `[u]`").
 - `[b]` back (not on first step), `[j]` jump forward (not on last step),
   `[r]` per-step rollback, `[g]` global rollback (when `operation.rollback`
   exists), `q`/`quit`/`Ctrl+C` abort. See "Rollback delivery" below.
@@ -102,10 +103,10 @@ Pastes the `${VAR}`-resolved command via a tmux paste **buffer** with
 via `pasteBufferTo()` / `CaptureBackend.pasteCommand()`) and **never** appends
 Enter — the operator reviews and runs it (or presses `[y]`, below). The `-p` (bracketed paste) is
 load-bearing: without it tmux injects embedded newlines as literal Enter, so a
-multi-line command executes line-by-line instead of landing atomically. This and
-`sendEnter?` (`[y]`) are the ONLY write paths in the otherwise read-only
-`CaptureBackend` (both optional; `TmuxSession` and `TmuxPaneCapture` implement
-them). Emits a `user_input`/`action:'send_to_pane'` breadcrumb — deliberately NOT
+multi-line command executes line-by-line instead of landing atomically. This,
+`sendEnter?` (`[y]`) and `clearInputLine?` (`[u]`, Ctrl+U) are the ONLY write
+paths in the otherwise read-only `CaptureBackend` (all optional; `TmuxSession`
+and `TmuxPaneCapture` implement them). Emits a `user_input`/`action:'send_to_pane'` breadcrumb — deliberately NOT
 `command_sent` (which `foldEvents` would fold into a misleading duplicate
 "Command sent" row; sidecar never executes). Smoke-test in real tmux: the
 command lands WITHOUT a trailing newline.
@@ -184,13 +185,52 @@ forward AND rollback `[p]`) + `unrunPaste()` (`src/lib/paste-guard.ts`): the
 paste is un-run while `backend.promptLine()` (cursor line) still ends with the
 command's last line (`pasteStillOnInputLine`; a wrapped long line matches by a
 ≥16-char tail; an unreadable cursor line never blocks). Then:
-`blockedByUnrunPaste()` refuses `[p]` (`Nothing pasted.`), never sends keys to
-clear it (paste stays the ONLY write); `confirmDoneWithUnrunPaste(step,
+`blockedByUnrunPaste()` refuses `[p]` (`Nothing pasted.`) and points at `[u]`;
+it never clears on its own (only the operator's `[u]` sends Ctrl+U); `confirmDoneWithUnrunPaste(step,
 context)` asks `Mark done anyway?` on `↵` for THAT step's/rollback entry's own
 paste (`y` → `user_input`/`paste_not_run`, folded to a ⚠️ step note); step
 start warns about an earlier step's un-run paste. Deliberately NOT cleared on
 step change: the pane text is still there. e2e: "un-run [p] paste"
 (`e2e-paste-guard.yaml`); unit: `tests/lib/paste-guard.test.ts`.
+
+### Pane target (`target:`) + `[u]` clear paste
+
+`StepContent.target` names the tmux WINDOW a command belongs in (`window` or
+`session:window`; `src/lib/pane-target.ts`, pure: `parsePaneTarget` splits on
+the FIRST `:`, `checkPaneTarget` → `none`/`match`/`mismatch`/`unknown`,
+`targetStatusLine`, `targetMismatchMessage`). Names come LIVE from
+`CaptureBackend.paneIdentity?` = `readPaneIdentity()` (`display-message` of
+`PANE_NAME_FORMAT` via `paneFormat`), implemented ONLY by `TmuxPaneCapture`:
+no method → `none` (spawned `sessions:` windows are routed by `session:`);
+method but `undefined` → `unknown` → ask, never paste blind.
+`confirmPasteTarget(backend, sessionName, target, where, step, context?)` runs
+after `blockedByUnrunPaste` in `pasteStepCommand` (so `[p]`, `[!]` and the
+failed-verify re-run) and in rollback `p`: mismatch/unknown → `confirmKey`
+`Paste into it anyway?`; `y` → `user_input`/`target_override {target, pane,
+window?, context?}`, remembered in `targetOverrides` per `where|pane`. The step
+prints `targetStatusLine` under the command (sidecar + pane: ✓/⚠️) and again
+after `[t]`. `stepTarget = tryResolve(step.target, step.variables)`; rollback:
+`resolveRollbackTree(..., ownerTarget)` inherits the owner's target (`[r]`,
+nearest), `buildGlobalRollback.withProvenance` stamps the step's target on
+folded `[g]` entries. Report: `step_start.target` → `StepRecord.target` →
+`**Run in**:` (manual-type steps emit no `command_displayed`, so it is NOT on
+the command event); rollback `command_displayed.target` → entry note;
+`target_override` → ⚠️ step note / `targetOverride` on the rollback entry.
+
+`[u]` (`clearUnrunPaste(step, context?)`, forward + rollback bars, `u` in
+`IMMEDIATE_ACTION_CHARS` + `ROLLBACK_ACTION_KEYS`): `checkClearSafe(paste,
+paneState)` (pure, `paste-guard.ts`: same `paneId` as recorded in
+`PendingPaste` at paste time, not dead/in mode/synchronized/input off, same
+`shell` = `pane_current_command` at paste, paste still at the cursor) → ONE
+`send-keys -t <%id> C-u` (`clearInputLineIn`) → poll `unrunPaste` up to 1s →
+`user_input`/`paste_cleared {command, pasted_at, cleared}`. Cleared → forget
+`lastPaste` and `armedEnter`; when it was THIS forward step's own paste, clear
+`pasteAnchor` AND re-baseline `stepOffset` (`waitForPaneQuiet`): the paste echo
++ redraw is pipe output, so without it the stray-Enter guard saw "output" and
+`↵` completed a step where nothing ran (caught by the e2e). Bash's Ctrl+U
+(`unix-line-discard`) clears a whole multi-line bracketed paste (real-tmux
+unit test); other shells may leave lines → the `still` message, never a second
+key. e2e "step target: [p] asks …" (`e2e-pane-target.yaml`).
 
 ### Unavailable keys + stray-Enter guard
 
@@ -643,7 +683,11 @@ selected); `renderReport` prints them as `- Operation:` / `- Environment:` /
 report sees ONLY events, never the `Operation`: a new axis or selection must
 be emitted here or the report cannot show it. Events are folded into records by
 `src/lib/session-log.ts` (`foldEvents`/`buildStepRecords`/`readEvents` — single
-source of truth for the persisted `step_log` and the report). When adding a
+source of truth for the persisted `step_log` and the report). A `step_start`
+for an index already seen (resume, `[b]`) builds a fresh record (final-state
+commands/verification/status) but CARRIES OVER its `notes` — a
+`target_override` made before an abort vanished from the resumed report in a
+real tmux walk. When adding a
 `StepRecord` field, update the `foldEvents` case that populates it AND the
 `renderStep` block that displays it. **Report sanitization:** every
 command/output/evidence body goes through `cleanTerminalOutput()` then
