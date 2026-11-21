@@ -627,6 +627,50 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
+    'resume keeps the note and evidence recorded on the step before the stop in report.md',
+    { skip, timeout: 150_000 },
+    async () => {
+      const ws = workspace('e2e-resume-sent.yaml');
+      const d = TmuxDriver.create({ split: true });
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging --attach ${d.work}`));
+        await d.waitFor('? more', { timeoutMs: 40_000 });
+        d.key('n');
+        await d.waitFor('Note', { timeoutMs: 10_000 });
+        await sleep(300);
+        d.type('note before the stop');
+        await d.waitFor('Note recorded', { timeoutMs: 10_000 });
+        d.key('e');
+        await d.waitFor('Evidence >', { timeoutMs: 10_000 });
+        await sleep(300);
+        d.type('evidence before the stop');
+        await d.waitFor(/Description/i, { timeoutMs: 10_000 });
+        await sleep(300);
+        d.enter();
+        await sleep(800);
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 20_000 });
+        const id = aborted.match(RESUME_HINT)?.[1];
+        assert.ok(id);
+
+        d.type(launch(ws.dir, `resume ${id}`));
+        await d.waitFor('This step was started before the run stopped', {
+          timeoutMs: 30_000,
+        });
+        await d.waitFor('? more', { timeoutMs: 10_000 });
+        tmux(['send-keys', '-t', d.main, 'C-c']);
+        await d.waitFor(/(Report:[\s\S]*){2}/, { timeoutMs: 20_000 });
+        const step1 = readReport(ws.dir).split('## Step 1')[1] ?? '';
+        assert.match(step1, /- note before the stop/);
+        assert.match(step1, /evidence before the stop/);
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
     'resume after a [p] paste that was never run: no verify from scrollback, ↵ still asks',
     { skip, timeout: 150_000 },
     async () => {

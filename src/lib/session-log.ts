@@ -59,11 +59,29 @@ export function foldEvents(events: SessionEvent[]): {
 
   let currentStep: StepRecord | null = null;
   let currentRollback: RollbackRecord | null = null;
+  // Which run segment (one per `session_start`: the run, then each resume)
+  // each step record was started in.
+  let segment = 0;
+  const segmentOf = new Map<number, number>();
 
   for (const event of events) {
     switch (event.type) {
+      case 'session_start':
+        segment += 1;
+        break;
+
       case 'step_start': {
         const index = event.step as number;
+        // `resume` re-starts the step the run stopped on. What was recorded
+        // on it before the stop (notes, evidence, commands, verify) is part
+        // of the same attempt: carry it over instead of dropping it from the
+        // report. Only across a resume: a step re-started in the same run
+        // ([b] back) or one that had finished is a re-run and starts over.
+        const previous = stepsByIndex.get(index);
+        const resumed =
+          previous?.status === 'pending' &&
+          (segmentOf.get(index) ?? segment) < segment;
+        segmentOf.set(index, segment);
         currentStep = {
           index,
           label: stepLabelOf(event),
@@ -72,9 +90,15 @@ export function foldEvents(events: SessionEvent[]): {
           reviewer: event.reviewer as string | undefined,
           status: 'pending',
           started_at: event.ts,
-          commands: [],
-          notes: [],
-          evidence: [],
+          commands: resumed ? previous.commands : [],
+          notes: resumed ? previous.notes : [],
+          evidence: resumed ? previous.evidence : [],
+          ...(resumed && previous.verification
+            ? { verification: previous.verification }
+            : {}),
+          ...(resumed && previous.confirmation
+            ? { confirmation: previous.confirmation }
+            : {}),
         };
         stepsByIndex.set(index, currentStep);
         break;

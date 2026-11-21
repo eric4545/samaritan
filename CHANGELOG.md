@@ -182,6 +182,12 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **A resumed step keeps what was recorded on it before the stop.** Notes,
+  evidence, commands and the verify result captured on a step before the run
+  stopped vanished from `report.md` once `resume` started that step again
+  (the evidence files stayed on disk). They are now kept and the resumed
+  attempt adds to them. A step re-run with `[b]` in the same run still starts
+  over.
 - **`resume` no longer resumes blind.** Found with small repros of a stopped
   run:
   - Editing the operation between the stop and the resume (a step removed or
