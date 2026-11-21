@@ -1,0 +1,24 @@
+name: E2E Resume After Send
+version: 1.0.0
+description: >-
+  Fixture for the real-tmux "resume after the command was sent" e2e test. The
+  first command takes a few seconds, so the run can be stopped while it is
+  still running; its expect token is unique, so a scrollback PASS is
+  unambiguous.
+
+environments:
+  - name: staging
+    description: Staging environment
+
+steps:
+  - name: Scale web-server
+    type: automatic
+    command: sleep 3; echo "web-server scaled E2E_SCALED_OK"
+    expect:
+      contains: E2E_SCALED_OK
+
+  - name: Check health
+    type: automatic
+    command: echo "health E2E_HEALTH_OK"
+    expect:
+      contains: E2E_HEALTH_OK

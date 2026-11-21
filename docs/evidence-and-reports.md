@@ -281,4 +281,4 @@ samaritan report merge <alice-session-id> <bob-session-id> --output merged-repor
 
 Add `--format html` for one self-contained file (see [One file to share](#one-file-to-share-html)).
 
-The sessions must be runs of the same operation file, environment and [group](./groups.md). Steps are merged by position, so sessions of two groups or two environments are refused.
+The sessions must be runs of the same operation file, environment and [group](./groups.md). Steps are merged by position, so sessions of two groups or two environments are refused, and so are runs of two versions of the file whose steps are not at the same positions (a step added or removed between the runs).

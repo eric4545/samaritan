@@ -33,6 +33,7 @@ samaritan generate manual path/to/op.yaml -f adf --output manual.json
 # Drive it interactively (default mode = sidecar)
 samaritan run path/to/op.yaml
 samaritan resume <session-id>   # or a unique leading part: resume 3f2a9c1e
+                                # refuses an edited runbook whose steps moved; recaps the step it stopped on
 samaritan sessions          # list resumable sessions (prints the short id)
 ```
 

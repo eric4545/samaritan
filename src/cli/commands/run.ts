@@ -79,6 +79,16 @@ import {
   renderReport,
 } from '../../lib/report-generator';
 import {
+  type InterruptedStepRecap,
+  interruptedStepRecap,
+  type RecordedStep,
+  type RunbookMismatch,
+  recapLines,
+  recapNote,
+  recordedStatusOf,
+  runbookMismatches,
+} from '../../lib/resume-state';
+import {
   filterRollbackByEnv,
   findNearestRollbackSource,
 } from '../../lib/rollback';
@@ -89,6 +99,7 @@ import {
 } from '../../lib/session-log';
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import {
+  candidateRunLogPaths,
   getRunEvidenceDir,
   getRunReportPath,
   getSessionEvidenceDir,
@@ -288,6 +299,44 @@ function resolveFromStep(
     process.exit(1);
   }
   return pick.index;
+}
+
+/** A run's `events.jsonl` (either location), or `[]` when there is none. */
+function readRunEvents(operationFile: string, sessionId: string) {
+  const path = candidateRunLogPaths(operationFile, sessionId).find((p) =>
+    existsSync(p),
+  );
+  return path ? readEvents(path) : [];
+}
+
+/** The flat step list as a run shows it, recorded on `session_start`. */
+function recordedStepsOf(flatSteps: FlatStep[]): RecordedStep[] {
+  return flatSteps.map((f) => ({ label: f.label, name: f.step.name }));
+}
+
+/** Why `resume` refuses a runbook edited under a run, and what to do. */
+function runbookChangedMessage(
+  mismatches: RunbookMismatch[],
+  operationFile: string,
+  environment: string,
+  group: string | undefined,
+  resumeStepName: string | undefined,
+): string {
+  const rows = mismatches.map(
+    (m) =>
+      `    ${(m.label ?? String(m.index + 1)).padEnd(6)} ${m.recorded}  →  ${m.now ?? '(no step here now)'}`,
+  );
+  return [
+    'The runbook changed since this run started: steps it already recorded are no longer at the same position.',
+    'Resuming would mark the wrong steps done or skip one that never ran.',
+    '',
+    '    Step   Recorded  →  Now',
+    ...rows,
+    '',
+    'To continue safely, either:',
+    '  • restore the file as it was when the run started (e.g. git stash), then resume, or',
+    `  • start a new run at the step you need: samaritan run ${operationFile} --env ${environment}${group ? ` --group ${group}` : ''} --from-step "${resumeStepName ?? '<step>'}"`,
+  ].join('\n');
 }
 
 /** True when a step has at least one displayable content field of its own. */
@@ -809,6 +858,35 @@ class OperationRunner {
       session.environment,
       context.variables,
     );
+
+    // The run so far, from its event log. Its step indices only mean
+    // something against the step list it was recorded for: refuse to resume
+    // when the runbook was edited so that a recorded step, or the step to
+    // resume at, now sits at another position (a real run skipped a step
+    // that never ran). Checked before anything is attached or spawned.
+    const priorEvents = readRunEvents(session.operation_file, session.id);
+    const startIndex =
+      options.fromStep !== undefined
+        ? resolveFromStep(options.fromStep, flatSteps)
+        : session.current_step_index;
+    const mismatches = runbookMismatches(
+      priorEvents,
+      recordedStepsOf(flatSteps),
+      startIndex,
+    );
+    if (mismatches.length > 0) {
+      throw new Error(
+        runbookChangedMessage(
+          mismatches,
+          session.operation_file,
+          session.environment,
+          session.group,
+          mismatches.find((m) => m.index === startIndex)?.recorded ??
+            flatSteps[startIndex]?.step.name,
+        ),
+      );
+    }
+
     const executor = new OperationExecutor(execOperation, context);
     sessionManager.associateExecutor(session.id, executor);
 
@@ -871,14 +949,17 @@ class OperationRunner {
       }
     }
 
-    const startIndex =
-      options.fromStep !== undefined
-        ? resolveFromStep(options.fromStep, flatSteps)
-        : session.current_step_index;
     console.log(
       `\n▶️  Resuming at ${stepRef(toPositioned(flatSteps), startIndex)}\n`,
     );
-    executor.resumeFromIndex(startIndex);
+    // Each earlier step keeps the status the run recorded (a skipped step
+    // stays skipped, so `needs` still gates on it); env-filtered steps are
+    // skipped, as in an uninterrupted run.
+    const recordedStatus = recordedStatusOf(priorEvents);
+    const recap = interruptedStepRecap(priorEvents, startIndex);
+    executor.resumeFromIndex(startIndex, (k) =>
+      flatSteps[k]?.filteredByEnv ? 'skipped' : recordedStatus(k),
+    );
 
     await this.runInteractiveStepLoop(
       executor,
@@ -893,6 +974,7 @@ class OperationRunner {
       resumeFocusPic,
       options.skipOthers !== false,
       session.environment,
+      recap ? { recap } : undefined,
     );
     executor.finalizeOperation();
     // Capture backend first (never kills the operator's pane), then spawn-own.
@@ -962,6 +1044,8 @@ class OperationRunner {
     focusPic: string | undefined,
     skipOthers: boolean,
     targetEnv: string,
+    /** `resume` only: the step the run stopped on, and what was done on it. */
+    resumed?: { recap: InterruptedStepRecap },
   ): Promise<string> {
     const rl = createReadlineInterface({
       input: process.stdin,
@@ -1220,6 +1304,10 @@ class OperationRunner {
     let lastPaste: PendingPaste | undefined;
     // The p → y → ↵ legend prints once per run (sidecarFlowLegend).
     let flowLegendShown = false;
+    // `resume`: the interrupted step's recap prints once, not on [b] back.
+    let resumedRecapShown = false;
+    // `resume`: the scrollback check of the interrupted step runs once.
+    let resumedVerifyDone = false;
 
     /** Refuse a new [p] while an earlier paste is still un-run. */
     const blockedByUnrunPaste = (indent = '    '): boolean => {
@@ -1401,6 +1489,10 @@ class OperationRunner {
       operation: operation.name,
       environment: targetEnv,
       ...(operation.group ? { group: operation.group } : {}),
+      // The flat step list this run walks. Events address steps by index
+      // only: `resume` and `report merge` compare against it to refuse a
+      // runbook whose steps moved under the recorded ones.
+      steps: recordedStepsOf(flatSteps),
     });
 
     if (tmuxSession && operation.sessions) {
@@ -3185,6 +3277,29 @@ class OperationRunner {
             `    Ticket   : ${Array.isArray(step.ticket) ? step.ticket.join(', ') : step.ticket}`,
           );
 
+        // `resume` picked this step up again after the run stopped on it:
+        // say what was done on it before (a command sent from samaritan may
+        // already have run), once, and record it on the step for report.md.
+        if (resumed && resumed.recap.index === i && !resumedRecapShown) {
+          resumedRecapShown = true;
+          console.log('');
+          for (const line of recapLines(resumed.recap)) {
+            console.log(`    ${line}`);
+          }
+          logger.emit({
+            type: 'user_input',
+            action: 'resumed_after_abort',
+            step: i,
+            actor: state.context.operator,
+            notes: recapNote(resumed.recap),
+            pasted: resumed.recap.pastedAt !== undefined,
+            enter_sent: resumed.recap.enterSentAt !== undefined,
+            ...(resumed.recap.verify
+              ? { verified: resumed.recap.verify.pass }
+              : {}),
+          });
+        }
+
         // Parent steps (those with sub_steps) are section headers — show any
         // instruction as context then auto-advance; the sub_steps follow.
         if (step.sub_steps && step.sub_steps.length > 0) {
@@ -3553,8 +3668,12 @@ class OperationRunner {
           // pasted and nothing run since the step started (typically the
           // second Enter after a verify PASS landing on the NEXT step). A
           // command typed by hand produces output, so it never asks.
+          // `resume`: this step's command ran before the run stopped and its
+          // output, still in the pane, passed its expect (see below).
+          let verifiedBeforeStop = false;
           const confirmDoneWithNothingRun = async (): Promise<boolean> => {
             const backend = captureRef.backend;
+            if (verifiedBeforeStop) return true;
             if (
               mode !== 'sidecar' ||
               !runnableCommand ||
@@ -3601,6 +3720,64 @@ class OperationRunner {
           // next pass through the bar acts as ↵ without reading a key, so
           // every completion gate below still applies.
           let advance = false;
+          // `resume` on a step whose command samaritan had sent before the
+          // run stopped: it may have run. Before anyone runs it again, check
+          // the output it left in the pane's scrollback against this step's
+          // expect (the same verify as [v]). A PASS lets ↵ complete the step
+          // without running the command twice; anything else is the normal
+          // step, with the recap above it. Once per resume.
+          if (
+            resumed?.recap.index === i &&
+            !resumedVerifyDone &&
+            (resumed.recap.enterSentAt || resumed.recap.pastedAt) &&
+            step.expect
+          ) {
+            resumedVerifyDone = true;
+            const backend = captureRef.backend;
+            const fromScrollback = (): string | undefined => {
+              const history = captureRef.backend?.captureHistory?.(sessionName);
+              return sliceFromLastCommandEcho(
+                history?.text ?? '',
+                runnableCommand,
+              )?.trimEnd();
+            };
+            // The echo of the command plus at least one more line (its
+            // output, or the prompt it returned to). A lone line is the
+            // command still un-run on the input line.
+            const left = backend?.hasTarget(sessionName)
+              ? fromScrollback()
+              : undefined;
+            if (!backend?.hasTarget(sessionName)) {
+              console.log(
+                '    ℹ️  Attach the pane it ran in ([t]), then [v] checks the output it left there.',
+              );
+            } else if (!left || left.split('\n').length < 2) {
+              console.log(
+                '    ℹ️  No output of it is left in the pane to check. Look at the system before running it again.',
+              );
+            } else {
+              console.log(
+                "    🔍 Checking the output it left in the pane against this step's expect...",
+              );
+              verifyPassedStep = undefined;
+              await verifyManualOutput(
+                step,
+                i,
+                fromScrollback,
+                resolvedExpect,
+                runnableCommand,
+                () => captureRef.backend?.captureScreen?.(sessionName),
+                () => captureRef.backend?.promptLine?.(sessionName),
+              );
+              if (verifyPassedStep === i) {
+                verifiedBeforeStop = true;
+                advance = advanceOnPass;
+                console.log(
+                  '    ↻  It already ran and passed: no need to run it again.',
+                );
+              }
+            }
+          }
           while (true) {
             const evidenceForStep = stepEvidence(i);
             if (stepConfirm && !advance) {

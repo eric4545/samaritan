@@ -173,7 +173,8 @@ directory or example ships with this repo today.
 - Spawned `sessions:` (no `--attach`): one tmux session `samaritan-<id>`, one window per entry named after it; a step's `session:` picks the pane for `[p]`/`[y]`/`[v]`. Panes are addressed by tmux pane id (works with `base-index 1`). The view hint is `tmux attach -t …` outside tmux and, inside tmux, `tmux split-window -h "TMUX= tmux attach -t …"` or `tmux switch-client -t …` (`attachHintLines`)
 - `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning. It wins over `sessions:`: named sessions are not spawned and every step (whatever its `session:`) captures from / pastes into this one pane; `[t]` switches the pane mid-run; `resume` re-attaches it the same way. One samaritan run per pane: tmux allows one `pipe-pane`, so a second run on the same pane takes it over (warned); the first run detects that at its next step/`[v]`, re-attaches, and verifies from the pane scrollback (from the `[p]` paste line when there was one).
 - `--from-step <step>` — start at that step: its number in the manual (`2.7`; also the multi-env manual's `2g`), its `id`, or its name (several matches: error lists them), NOT the flat position (`--from-step 2` is Step 2 even when it is the 32nd step); earlier steps are recorded as **skipped**
-  (distinct from `resume --from-step`, which marks earlier steps completed).
+  (distinct from `resume --from-step`: there, steps it jumps over that have no
+  record count as completed; steps the run recorded keep their status).
 - `--report <dir>` — write an extra copy of the run report (`samaritan-<id>-report.md`).
 - `--report-format <markdown|html>` — format of that `--report` copy (`html` → `samaritan-<id>-report.html`, one self-contained file with screenshot/photo evidence embedded as `data:` URIs). Needs `--report` (error otherwise). The always-on `report.md` stays Markdown. Not on `resume` (it has no `--report`): render a resumed run with `report <events.jsonl> --format html`.
 - `--auto-approve` — note: `automatic` context marks steps complete WITHOUT
@@ -276,3 +277,21 @@ characters (`shortSessionId`, unique against ALL saved sessions). A sidecar sess
 saves its attached pane (`--attach`/`[t]`) as the stable pane id (`%3`) in
 `attach_target`; `resume` re-attaches it (warns if the pane is gone), and
 `resume --attach <pane>` overrides it. Samaritan never attaches to its own pane.
+
+**Resume never resumes blind** (`src/lib/resume-state.ts`, from `events.jsonl`):
+- Earlier steps keep the status they ended with (skipped stays skipped, so
+  `needs` still gates; rolled back stays pending), not all "completed".
+- `session_start` records the flat step list (`steps: [{label, name}]`).
+  `resume` refuses (exit 1) when a recorded step, or the step it resumes at,
+  is no longer at the same position (a step added/removed/reordered at or
+  before it), lists them and prints a `run … --from-step "<step>"` to start
+  over. Changes to steps not reached yet, or to commands, are accepted.
+  `report merge` refuses runs of two step lists for the same reason.
+- The step the run stopped on prints a recap (`↻ This step was started
+  before the run stopped`: pasted / Enter sent from samaritan / verify) and
+  records it as a step note (`user_input` `resumed_after_abort`).
+- Sidecar, when samaritan had pasted or sent its command and the step has
+  `expect`: the output left in the re-attached pane's scrollback (last echo
+  of the command) is verified like `[v]`; PASS → `↻ It already ran and
+  passed`, and `↵` completes the step without running it again (no
+  "Mark done anyway?"). FAIL or no output → the normal step.

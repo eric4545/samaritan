@@ -118,4 +118,36 @@ describe('report merge: assertSameRunbook', () => {
       /different environments: a \(staging\), b \(production\)/,
     );
   });
+  it('refuses runs of different versions of the file (steps moved)', () => {
+    // Steps merge by index: a step added to the file between two runs
+    // would pair unrelated steps.
+    const v1 = [
+      { label: '1', name: 'Deploy web-server' },
+      { label: '2', name: 'Check health' },
+    ];
+    const v2 = [
+      { label: '1', name: 'Drain traffic' },
+      { label: '2', name: 'Deploy web-server' },
+      { label: '3', name: 'Check health' },
+    ];
+    assert.throws(
+      () =>
+        assertSameRunbook([
+          { sessionId: 'a', environment: 'staging', stepList: v1 },
+          { sessionId: 'b', environment: 'staging', stepList: v2 },
+        ]),
+      /different versions of the runbook: a \(2 steps\), b \(3 steps\)/,
+    );
+  });
+
+  it('accepts the same step list, and older logs without one', () => {
+    const steps = [{ label: '1', name: 'Deploy web-server' }];
+    assert.doesNotThrow(() =>
+      assertSameRunbook([
+        { sessionId: 'a', environment: 'staging', stepList: steps },
+        { sessionId: 'b', environment: 'staging', stepList: steps },
+        { sessionId: 'c', environment: 'staging' },
+      ]),
+    );
+  });
 });

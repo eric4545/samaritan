@@ -209,6 +209,11 @@ export function foldEvents(events: SessionEvent[]): {
             currentStep.notes.push(
               `⚠️ Marked done while the pasted command was not run: ${event.command as string}`,
             );
+          } else if (action === 'resumed_after_abort') {
+            // `resume` picked this step up again: what had been done on it
+            // before the run stopped (pasted, Enter sent, verified).
+            const notes = event.notes as string | undefined;
+            if (notes) currentStep.notes.push(notes);
           } else if (action === 'done_without_run') {
             // ↵ confirmed though nothing was pasted or ran in the attached
             // pane since the step started (stray-Enter guard).
