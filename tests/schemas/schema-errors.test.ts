@@ -40,11 +40,11 @@ describe('schema errors name the offending field (#118)', () => {
 
   it('keeps a real missing required field next to a deeper error', () => {
     const errors = errorsFor([
-      { name: 'A', command: 'echo a', expect: { contains: 5 } },
+      { type: 'manual', command: 'echo a', expect: { contains: 5 } },
     ]);
     assert.deepStrictEqual(errors, [
-      `steps[0] "A": must have required property 'type'`,
-      'steps[0] "A" → expect.contains: must be string (got number 5)',
+      `steps[0]: must have required property 'name'`,
+      'steps[0].expect.contains: must be string (got number 5)',
     ]);
   });
 
@@ -86,10 +86,17 @@ describe('schema errors name the offending field (#118)', () => {
     );
   });
 
+  it('a step with fields but no name is reported as a step missing its name', () => {
+    // No required key present, but `command` is a step field, not a `uses:`
+    // one: only the step branch's error is shown.
+    assert.deepStrictEqual(errorsFor([{ command: 'echo a' }]), [
+      `steps[0]: must have required property 'name'`,
+    ]);
+  });
+
   it('keeps the oneOf error when no branch can be singled out', () => {
-    // Neither `uses` nor name/type present: nothing to prune against.
-    const errors = errorsFor([{ command: 'echo a' }]);
-    assert.ok(errors.length > 0);
+    // No key any branch declares: nothing to prune against.
+    const errors = errorsFor([{ colour: 'blue' }]);
     assert.ok(errors.some((e) => /uses/.test(e)));
     assert.ok(errors.some((e) => /'name'/.test(e)));
   });

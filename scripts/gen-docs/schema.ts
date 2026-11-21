@@ -98,7 +98,10 @@ function renderType(root: SchemaNode, node: SchemaNode): string {
     return node.enum.map((v: unknown) => `\`${v}\``).join(UNION);
   }
 
-  if (node.oneOf || node.anyOf) {
+  // A union of branches. On a node with its own `properties` (an object
+  // with an `anyOf` constraint, e.g. "`type` unless `uses`") the combinator
+  // is a rule, not a type: fall through to `object`.
+  if ((node.oneOf || node.anyOf) && !node.properties) {
     const branches = node.oneOf ?? node.anyOf;
     return branches
       .map((b: SchemaNode) => renderType(root, b))
@@ -194,7 +197,8 @@ export function renderSchemaReference(): string {
       title: 'Step',
       intro:
         'Entries of `steps:`. A step may instead be `{ uses: <file>, with: {...} }` to expand ' +
-        'the steps of another file inline.',
+        'the steps of another file inline, or a bare command string (`- kubectl get pods`): ' +
+        'a `manual` step named after the command. `type` defaults to `manual`.',
       node: stepBranches[1],
     },
     {

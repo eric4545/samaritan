@@ -7,6 +7,24 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Lint names the fields that do nothing.** `compat/unused-field` (a
+  warning, also shown by `validate`) flags `retry:` on a step (samaritan never
+  re-runs a command: use `expect.retry` to poll), `manual_override`,
+  `manual_instructions` and any `approval` key other than `required`. They
+  stay valid; the schema marks them deprecated. `compat/common-variables`
+  (opt-in, on in `samaritan:strict` and `samaritan:all`) suggests
+  `variables:` instead of `common_variables:`. Three examples that taught
+  step `retry:` and `approval.approvers` now use `expect.retry` and
+  `reviewer:`.
+- **Short forms in the operation YAML.** A step can be just its command
+  (`- kubectl get pods -n web`: a manual step named after the command),
+  `type:` can be left out (`manual`), `when:` can name one environment
+  (`when: production`), and a rollback entry can be just its command. Each
+  parses to exactly its long form, so manuals, `validate`, `lint` (with
+  `line:col`), `run` and reports are unchanged, and every existing file stays
+  valid. See "Short forms" in `docs/operation-yaml.md` and
+  `examples/shorthand-steps.yaml`. Schema errors for a step without a `name`
+  now name that field instead of listing every `oneOf` branch.
 - **Pick a step by its `id`, and find it by typing part of it.** The `[b]`
   back, `[j]` jump and completion-screen rollback pickers list each step's
   `id` in its own column (`2.1  scale-down  Scale down old  (completed)`) and
@@ -182,6 +200,12 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **A resumed step keeps what was recorded on it before the stop.** Notes,
+  evidence, commands and the verify result captured on a step before the run
+  stopped vanished from `report.md` once `resume` started that step again
+  (the evidence files stayed on disk). They are now kept and the resumed
+  attempt adds to them. A step re-run with `[b]` in the same run still starts
+  over.
 - **`resume` no longer resumes blind.** Found with small repros of a stopped
   run:
   - Editing the operation between the stop and the resume (a step removed or

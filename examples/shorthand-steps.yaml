@@ -1,0 +1,44 @@
+name: Restart web-server (short forms)
+version: 1.0.0
+description: |
+  The same runbook you would write with full step maps, using the short forms:
+  a step that is only a command, `type` left out (manual), `when:` naming one
+  environment, and a rollback entry that is only a command. Each parses to
+  exactly its long form.
+
+environments:
+  - name: staging
+    description: Staging cluster
+    variables:
+      REPLICAS: 2
+  - name: production
+    description: Production cluster
+    variables:
+      REPLICAS: 6
+    approval_required: true
+
+variables:
+  NAMESPACE: web
+
+steps:
+  - kubectl get deployment web-server -n ${NAMESPACE}
+
+  - name: Announce the restart
+    when: production
+    instruction: Post in #ops that web-server restarts now.
+    confirm: Announcement posted?
+
+  - name: Restart web-server
+    command: kubectl rollout restart deployment/web-server -n ${NAMESPACE}
+    rollback:
+      - kubectl rollout undo deployment/web-server -n ${NAMESPACE}
+
+  - name: Wait for rollout
+    command: kubectl rollout status deployment/web-server -n ${NAMESPACE} --timeout=300s
+    expect:
+      contains: successfully rolled out
+
+  - name: Health checks
+    sub_steps:
+      - curl -fsS https://web-server.example.com/health
+      - kubectl get pods -n ${NAMESPACE} -l app=web-server

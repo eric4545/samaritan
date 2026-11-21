@@ -23,6 +23,28 @@ add it to `StepContent` so both types benefit automatically.
 `usesGroup` (parser-set: groups steps expanded from one `uses:` block for
 block-aware phase grouping).
 
+## YAML short forms — expanded BEFORE parsing, never after
+
+`src/operations/shorthand.ts` (pure): `expandStepShorthand` (bare command
+string → `{name: first line, type: 'manual', command}`; missing `type` →
+`manual` unless `uses`; `when: 'x'` → `['x']`) runs at the top of
+`resolveStepReferences` (steps, `sub_steps`, `uses:` files) and the
+no-importContext `sub_steps` fallback; `expandRollbackShorthand` (string →
+`{command}`, `when` string → list) at the top of `resolveRollbackReferences`
+and `normalizeRollbackStep`. Downstream code must never see a shorthand: a
+new place that reads raw step entries must expand first. Schema:
+`#/definitions/bareCommand` is `steps.items.oneOf[2]` (the step object MUST
+stay `oneOf[1]`: many `$ref`s point at it) and `rollbackEntry`
+(`rollbackStep | bareCommand`) is the item type of every rollback list. The
+step object requires only `name`, plus `anyOf: [required type, not required
+uses]`, so `{uses, name}` stays a `uses:` entry exactly as before (both
+branches matching = oneOf failure). `pruneOneOfErrors` breaks a tie between
+object branches by how many of the data's keys each declares. gen-docs
+renders a node with `properties` as `object` even when it has an `anyOf`.
+Proof the forms are identical: `tests/operations/shorthand.test.ts`
+(deepStrictEqual of parsed steps/rollback, schema, uses files, lint
+`line:col`).
+
 ## A rollback step IS a normal step — FULL field parity
 
 `RollbackStep extends Omit<Partial<Step>, 'sub_steps'>` with

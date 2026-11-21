@@ -92,6 +92,17 @@ function applicableBranches(branches: any[], data: unknown): number[] {
         ({ b }) => !Array.isArray(b?.required) || hasAnyRequired(b),
       );
     }
+    // Still several (a step with no `name`, the only required key): keep the
+    // branches that declare most of the keys the data has. `{ type, command }`
+    // is a step, not a `uses:` entry. Only narrows the messages shown.
+    if (candidates.length > 1) {
+      const keys = Object.keys(data as object);
+      const known = (b: any) =>
+        keys.filter((k) => b?.properties && k in b.properties).length;
+      const best = Math.max(...candidates.map(({ b }) => known(b)));
+      if (best > 0)
+        candidates = candidates.filter(({ b }) => known(b) === best);
+    }
   }
   return candidates.map(({ i }) => i);
 }

@@ -628,6 +628,13 @@ either location). `resumeSession` order matters: parse → `prepareFlatOperation
   prints `recapLines` once after the heading (`resumedRecapShown`) and emits
   `user_input`/`resumed_after_abort` `{notes, pasted, enter_sent,
   verified?}` → `foldEvents` pushes `notes` onto the step.
+- **Report keeps the interrupted attempt:** `foldEvents` counts run segments
+  (one per `session_start`). A `step_start` whose index already has a
+  `pending` record from an EARLIER segment carries over its `commands`,
+  `notes`, `evidence`, `verification`, `confirmation`; a re-start in the same
+  segment (`[b]`, needs-gate go-back) or of a finished step still replaces it.
+  Before, the resumed step's notes and evidence vanished from `report.md`
+  (seen in a real tmux repro). e2e "resume keeps the note and evidence".
 - **Scrollback verify:** once (`resumedVerifyDone`), when the recap has a
   paste or Enter and the step has `expect`: `sliceFromLastCommandEcho(
   captureHistory())` must be ≥ 2 lines (a lone line is the un-run paste on

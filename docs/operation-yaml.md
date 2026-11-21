@@ -102,6 +102,31 @@ steps:
 
 > **Note:** Steps with `phase: preflight` are recommended for pre-execution validation checks.
 
+### Short forms
+
+Three shorthands cut the repetition. Each one parses to exactly its long form, so manuals, `validate`, `lint`, `run` and reports cannot tell them apart, and every long form keeps working.
+
+| Short | Same as |
+|---|---|
+| `- kubectl get pods -n web` (a step that is only a command) | `- { name: kubectl get pods -n web, type: manual, command: kubectl get pods -n web }` |
+| a step with no `type:` | `type: manual` |
+| `when: production` | `when: [production]` |
+| a rollback entry that is only a command: `rollback: [kubectl rollout undo deployment/web-server]` | `rollback: [{ command: kubectl rollout undo deployment/web-server }]` |
+
+A bare-command step is named after the command's first line. Give it a `name:` (the map form) as soon as the name should say *why*, or when another step `needs` it. The same forms work in `sub_steps:`, in `rollback.steps:` and in files included with `uses:`.
+
+```yaml
+steps:
+  - kubectl get pods -n web                      # manual step, named after the command
+  - name: Scale web-server
+    command: kubectl scale deployment web-server -n web --replicas=${REPLICAS}
+    when: production                             # one environment, no list needed
+    rollback:
+      - kubectl scale deployment web-server -n web --replicas=2
+```
+
+See `examples/shorthand-steps.yaml`.
+
 ### Operation Overview Metadata
 
 Add flexible overview/metadata fields to operations for release coordination and compliance tracking. The `overview` field accepts any custom key-value pairs that render as a 2-column table in generated manuals:
