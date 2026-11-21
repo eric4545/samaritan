@@ -86,6 +86,23 @@ and `🖥 Session: <name>`.
 `template`/`with`, `variables`, `capture`, `retry`, `rollback`,
 `section_heading`, `timeline`, `ticket`, `estimated_duration`, `env`.
 
+### Short forms (each parses to exactly its long form)
+
+- A step that is only a command: `- kubectl get pods -n web` = `{ name:
+  <command's first line>, type: manual, command: <command> }`. Also in
+  `sub_steps:` and in `uses:` files. Give it a `name:` once another step
+  `needs` it or the name should say why.
+- `type` may be left out: it defaults to `manual` (a `uses:` entry stays a
+  `uses:` entry; `uses` + `type` is still rejected).
+- `when: production` = `when: [production]` (steps and rollback steps).
+- A rollback entry that is only a command (`rollback: [kubectl rollout
+  undo …]`, `rollback.steps`, rollback `sub_steps`, or `rollback: <command>`)
+  = `{ command: <command> }`.
+
+Expanded by `src/operations/shorthand.ts` before parsing, so manuals,
+validate, lint (`line:col` still points at the string), run and reports see
+the long form. Example: `examples/shorthand-steps.yaml`.
+
 > Rollback steps accept these too (full parity), except nested `rollback`
 > (use `sub_steps` for multi-part rollbacks). In particular `foreach`/`matrix`
 > AND `uses`/`with` file composition expand on rollback steps at parse time

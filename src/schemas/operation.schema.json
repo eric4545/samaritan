@@ -183,7 +183,7 @@
     },
     "steps": {
       "type": "array",
-      "description": "The ordered steps of the operation. An entry may instead be `{ uses: <file>, with: {...} }` to expand the steps of another file inline.",
+      "description": "The ordered steps of the operation. An entry may instead be `{ uses: <file>, with: {...} }` to expand the steps of another file inline, or a bare command string: a manual step whose name is the command's first line.",
       "minItems": 1,
       "items": {
         "oneOf": [
@@ -211,7 +211,11 @@
           },
           {
             "type": "object",
-            "required": ["name", "type"],
+            "required": ["name"],
+            "anyOf": [
+              { "required": ["type"] },
+              { "not": { "required": ["uses"] } }
+            ],
             "properties": {
               "id": {
                 "type": "string"
@@ -510,13 +514,18 @@
                 "description": "Only include this step for these groups (declared in the top-level `groups:`). Omit to include it for every group."
               },
               "when": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "minItems": 1,
-                "description": "Conditional rendering: only show this step for specified environments"
+                "description": "Conditional rendering: only show this step for specified environments. One environment may be written as a plain name (`when: production`).",
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 1
+                  },
+                  { "type": "string", "minLength": 1 }
+                ]
               },
               "variants": {
                 "type": "object",
@@ -567,10 +576,11 @@
                 "oneOf": [
                   {
                     "type": "array",
-                    "items": { "$ref": "#/definitions/rollbackStep" },
+                    "items": { "$ref": "#/definitions/rollbackEntry" },
                     "description": "Rollback steps (preferred format)"
                   },
-                  { "$ref": "#/definitions/rollbackStep" }
+                  { "$ref": "#/definitions/rollbackStep" },
+                  { "$ref": "#/definitions/bareCommand" }
                 ]
               },
               "retry": {
@@ -611,7 +621,8 @@
             "not": {
               "required": ["command", "script"]
             }
-          }
+          },
+          { "$ref": "#/definitions/bareCommand" }
         ]
       }
     },
@@ -638,7 +649,7 @@
         "steps": {
           "type": "array",
           "description": "Explicit rollback steps, run in the order given",
-          "items": { "$ref": "#/definitions/rollbackStep" }
+          "items": { "$ref": "#/definitions/rollbackEntry" }
         }
       }
     },
@@ -668,6 +679,18 @@
     }
   },
   "definitions": {
+    "bareCommand": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "A step written as just its command: a `manual` step named after the command's first line. `- kubectl get pods` is the same as `- { name: kubectl get pods, type: manual, command: kubectl get pods }`."
+    },
+    "rollbackEntry": {
+      "description": "A rollback step, or its command alone (shorthand for `{ command: <command> }`).",
+      "oneOf": [
+        { "$ref": "#/definitions/rollbackStep" },
+        { "$ref": "#/definitions/bareCommand" }
+      ]
+    },
     "confirm": {
       "description": "A gate the operator satisfies outside the attached pane (a dashboard, a browser check, another operator's terminal). `run` asks the question before the step can be marked done and records who confirmed, when, and the result they typed; the report shows it as CONFIRMED. A plain string is the question with an optional result.",
       "oneOf": [
@@ -884,7 +907,7 @@
         "sub_steps": {
           "type": "array",
           "description": "Nested rollback sub-steps, rendered recursively under this step",
-          "items": { "$ref": "#/definitions/rollbackStep" }
+          "items": { "$ref": "#/definitions/rollbackEntry" }
         },
         "options": {
           "$ref": "#/properties/steps/items/oneOf/1/properties/options"

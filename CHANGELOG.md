@@ -7,6 +7,15 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Short forms in the operation YAML.** A step can be just its command
+  (`- kubectl get pods -n web`: a manual step named after the command),
+  `type:` can be left out (`manual`), `when:` can name one environment
+  (`when: production`), and a rollback entry can be just its command. Each
+  parses to exactly its long form, so manuals, `validate`, `lint` (with
+  `line:col`), `run` and reports are unchanged, and every existing file stays
+  valid. See "Short forms" in `docs/operation-yaml.md` and
+  `examples/shorthand-steps.yaml`. Schema errors for a step without a `name`
+  now name that field instead of listing every `oneOf` branch.
 - **Pick a step by its `id`, and find it by typing part of it.** The `[b]`
   back, `[j]` jump and completion-screen rollback pickers list each step's
   `id` in its own column (`2.1  scale-down  Scale down old  (completed)`) and
