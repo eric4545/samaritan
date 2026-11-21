@@ -309,3 +309,52 @@ describe('family C and style: cases that must not fire', () => {
     ]);
   });
 });
+
+describe('compat/unused-field: only fields nothing reads', () => {
+  const unused = (steps: unknown[]) =>
+    lint(steps).filter((f) => f.ruleId === 'compat/unused-field');
+
+  it('names each unused field once, with what to use instead', () => {
+    const found = unused([
+      s('echo a', {
+        retry: { attempts: 3 },
+        manual_override: true,
+        manual_instructions: 'do it by hand',
+        approval: {
+          required: true,
+          approvers: ['alice'],
+          timeout: '1h',
+          jira: { project: 'OPS' },
+        },
+      }),
+    ]);
+    const messages = found.map((f) => f.message).join('\n');
+    assert.strictEqual(found.length, 6, messages);
+    assert.match(messages, /`approval\.jira` is not read/);
+    assert.match(messages, /`retry:`[^\n]*`expect\.retry`/);
+    assert.match(messages, /`approval\.approvers`[^\n]*`reviewer:`/);
+    assert.match(messages, /`manual_instructions`[^\n]*`instruction:`/);
+  });
+
+  it('stays quiet for fields that are used', () => {
+    assert.deepStrictEqual(
+      unused([
+        s('echo a', {
+          manual_override: false,
+          approval: { required: true },
+          expect: { contains: 'a', retry: { interval: '5s', max: 3 } },
+        }),
+      ]),
+      [],
+    );
+  });
+
+  it('checks rollback steps too', () => {
+    const found = unused([
+      s('echo a', {
+        rollback: [{ command: 'echo undo', retry: { attempts: 2 } }],
+      }),
+    ]);
+    assert.strictEqual(found.length, 1);
+  });
+});

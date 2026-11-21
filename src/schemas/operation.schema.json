@@ -133,7 +133,7 @@
     },
     "common_variables": {
       "type": "object",
-      "description": "Common variables shared across all environments (can be overridden by environment-specific variables)"
+      "description": "The older name of `variables:`: values shared across all environments (an environment's own variables win). Prefer `variables:`; when both set a name, `common_variables` wins. Opt-in lint `compat/common-variables` flags it."
     },
     "env_file": {
       "type": "string",
@@ -360,9 +360,13 @@
                 }
               },
               "manual_override": {
+                "deprecated": true,
+                "description": "DEPRECATED - nothing reads it (lint `compat/unused-field`). Remove it.",
                 "type": "boolean"
               },
               "manual_instructions": {
+                "deprecated": true,
+                "description": "DEPRECATED - not shown anywhere (lint `compat/unused-field`). Put the text in `instruction:`.",
                 "type": "string"
               },
               "ticket": {
@@ -584,6 +588,8 @@
                 ]
               },
               "retry": {
+                "deprecated": true,
+                "description": "DEPRECATED - does nothing: samaritan never re-runs a command (lint `compat/unused-field`). To poll until a check passes, use `expect.retry`.",
                 "type": "object",
                 "properties": {
                   "attempts": {
@@ -602,17 +608,22 @@
               },
               "approval": {
                 "type": "object",
+                "description": "Only `required` is read (validate checks the environment requires approval). Other keys are linted by `compat/unused-field`.",
                 "properties": {
                   "required": {
                     "type": "boolean"
                   },
                   "approvers": {
+                    "deprecated": true,
+                    "description": "DEPRECATED - not shown or enforced. Name the approver in `reviewer:` or the `instruction:`.",
                     "type": "array",
                     "items": {
                       "type": "string"
                     }
                   },
                   "timeout": {
+                    "deprecated": true,
+                    "description": "DEPRECATED - not enforced. Say the deadline in the `instruction:`.",
                     "type": "string"
                   }
                 }
@@ -850,10 +861,10 @@
           "items": { "type": "string" }
         },
         "manual_override": {
-          "type": "boolean"
+          "$ref": "#/properties/steps/items/oneOf/1/properties/manual_override"
         },
         "manual_instructions": {
-          "type": "string"
+          "$ref": "#/properties/steps/items/oneOf/1/properties/manual_instructions"
         },
         "section_heading": {
           "type": "boolean",

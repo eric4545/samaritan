@@ -144,10 +144,6 @@ steps:
       required: true
       types: ["command_output"]
     needs: ["Build and Test Services"]
-    retry:
-      attempts: 3
-      delay: 30
-      backoff: exponential
 
   - name: Database Migration Check
     type: conditional
@@ -160,19 +156,16 @@ steps:
   - name: Request Deployment Approval
     type: approval
     description: Get manager approval for production deployment
-    instruction: Create Jira ticket and get approval from engineering manager
+    instruction: |
+      Create a DEPLOY ticket (type Deployment Request, priority High) and get
+      approval from the engineering manager or the SRE lead within 4 hours.
+    reviewer: engineering-manager
     estimated_duration: 1800
     evidence:
       required: true
       types: ["screenshot"]
     approval:
       required: true
-      approvers: ["engineering-manager", "sre-lead"]
-      jira:
-        project: "DEPLOY"
-        issue_type: "Deployment Request"
-        priority: "High"
-      timeout: "4h"
     needs: ["Database Migration Check"]
 
   - name: Deploy Services to Cluster

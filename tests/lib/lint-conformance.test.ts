@@ -31,6 +31,9 @@ const steps = (list: unknown[], extra?: Record<string, unknown>): Sample => ({
 /** One operation per rule that must make that rule fire. */
 const SAMPLES: Record<string, Sample> = {
   'shell/exit-verbs': cmd('exit 1'),
+  'compat/unused-field': cmd('echo ok', {
+    retry: { attempts: 3, delay: 5 },
+  }),
   'shell/errexit': cmd('set -e'),
   'shell/password-on-cmdline': cmd('mysql -psecret'),
   'shell/env-echo': cmd('env | sort'),
@@ -181,6 +184,17 @@ const SAMPLES: Record<string, Sample> = {
 
 /** Rules whose sample needs a real file (positions, raw YAML). */
 const FILE_SAMPLES: Record<string, string> = {
+  'compat/common-variables': `name: x
+version: 1.0.0
+description: x
+environments: [{ name: staging, description: s }]
+common_variables:
+  APP: web-server
+steps:
+  - name: S
+    type: manual
+    command: echo \${APP}
+`,
   'compat/discarded-verify': `name: x
 version: 1.0.0
 description: x
@@ -323,6 +337,7 @@ describe('opt-in rules (product decision: off by default, on through a preset)',
     'flow/checksum-before-exec': 'warning',
     'flow/cwd-lost': 'warning',
     'flow/aws-local-session': 'warning',
+    'compat/common-variables': 'warning',
   };
 
   it('ships exactly these rules off', () => {

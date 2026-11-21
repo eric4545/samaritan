@@ -20,15 +20,6 @@ common_variables:
     required: true
     types: [screenshot, log]
 
-  # Retry configuration templates
-  retry_standard: &retry_standard
-    max_attempts: 3
-    backoff: exponential
-
-  retry_critical: &retry_critical
-    max_attempts: 5
-    backoff: linear
-
   # Timeout standards
   timeout_short: &timeout_short 60
   timeout_medium: &timeout_medium 300
@@ -114,7 +105,6 @@ steps:
     command: docker build -t web-server:latest .
     timeout: *timeout_medium
     evidence: *evidence_full
-    retry: *retry_standard
 
   - name: Push Docker Image
     type: automatic
@@ -122,7 +112,6 @@ steps:
     command: docker push my-registry/web-server:latest
     timeout: *timeout_medium
     evidence: *evidence_full
-    retry: *retry_critical  # More aggressive retry for critical step
 
   - name: Request Approval
     type: approval
@@ -136,7 +125,6 @@ steps:
     command: npm run migrate -- --host ${DB_HOST}
     timeout: *timeout_long
     evidence: *evidence_full
-    retry: *retry_critical
     rollback:
       instruction: |
         Rollback database migration:
@@ -152,7 +140,6 @@ steps:
     command: kubectl scale deployment web-server --replicas=${REPLICAS}
     timeout: *timeout_medium
     evidence: *evidence_screenshot
-    retry: *retry_standard
 
   - name: Deploy to Kubernetes
     type: automatic
@@ -160,7 +147,6 @@ steps:
     command: kubectl apply -f k8s/deployment.yaml
     timeout: *timeout_medium
     evidence: *evidence_full
-    retry: *retry_standard
     rollback:
       instruction: |
         Rollback to previous deployment:
@@ -194,7 +180,6 @@ steps:
       4. Expected response: {"status": "healthy"}
     timeout: *timeout_short
     evidence: *evidence_full
-    retry: *retry_standard
 
   - name: Smoke Test
     type: manual
@@ -216,24 +201,18 @@ steps:
 #    - Reference multiple times (*evidence_screenshot, *evidence_full)
 #    - Easy to update globally
 #
-# 2. Retry Policy Consistency:
-#    - Standard retry for most steps
-#    - Critical retry for important steps
-#    - Change policy in one place
-#
-# 3. Timeout Standards:
+# 2. Timeout Standards:
 #    - Named timeouts (short/medium/long)
 #    - Self-documenting
 #    - Easy to adjust
 #
-# 4. Environment Variable Sharing:
+# 3. Environment Variable Sharing:
 #    - Base variables defined once (&env_base)
 #    - Merged into each environment (<<: *env_base)
 #    - Environment-specific overrides
 #
-# 5. Maintenance Benefits:
+# 4. Maintenance Benefits:
 #    - Change evidence requirements once
-#    - Update retry policy globally
 #    - Adjust timeouts consistently
 #    - Reduce configuration errors
 #

@@ -83,7 +83,8 @@ and `🖥 Session: <name>`.
 
 `name`, `type`, `id`, `phase` (`preflight`/`flight`/`postflight`), `if`,
 `foreach`, `sub_steps`, `when`, `groups`, `variants`, `approval`, `needs`,
-`template`/`with`, `variables`, `capture`, `retry`, `rollback`,
+`template`/`with`, `variables`, `capture`, `retry` (deprecated: does
+nothing, use `expect.retry`), `rollback`,
 `section_heading`, `timeline`, `ticket`, `estimated_duration`, `env`.
 
 ### Short forms (each parses to exactly its long form)
@@ -98,6 +99,11 @@ and `🖥 Session: <name>`.
 - A rollback entry that is only a command (`rollback: [kubectl rollout
   undo …]`, `rollback.steps`, rollback `sub_steps`, or `rollback: <command>`)
   = `{ command: <command> }`.
+
+Accepted but unused (lint `compat/unused-field`, schema `deprecated`):
+step `retry`, `manual_override`, `manual_instructions`, every `approval` key
+but `required` (use `reviewer:` for the approver). `common_variables:` is the
+older name of `variables:` (opt-in `compat/common-variables`).
 
 Expanded by `src/operations/shorthand.ts` before parsing, so manuals,
 validate, lint (`line:col` still points at the string), run and reports see

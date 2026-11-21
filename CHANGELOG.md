@@ -7,6 +7,15 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Lint names the fields that do nothing.** `compat/unused-field` (a
+  warning, also shown by `validate`) flags `retry:` on a step (samaritan never
+  re-runs a command: use `expect.retry` to poll), `manual_override`,
+  `manual_instructions` and any `approval` key other than `required`. They
+  stay valid; the schema marks them deprecated. `compat/common-variables`
+  (opt-in, on in `samaritan:strict` and `samaritan:all`) suggests
+  `variables:` instead of `common_variables:`. Three examples that taught
+  step `retry:` and `approval.approvers` now use `expect.retry` and
+  `reviewer:`.
 - **Short forms in the operation YAML.** A step can be just its command
   (`- kubectl get pods -n web`: a manual step named after the command),
   `type:` can be left out (`manual`), `when:` can name one environment
