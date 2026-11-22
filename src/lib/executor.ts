@@ -117,6 +117,12 @@ export interface ExecutionEvent {
  */
 export class OperationExecutor {
   private state: OperationExecutionState;
+  /**
+   * Steps that do not apply to this run's environment (`when:`). They stay in
+   * the step list (step numbers and recorded indices are stable) but are not
+   * part of the run: not in `totalSteps`, and passing one is not a skip.
+   */
+  private excluded = new Set<number>();
   private eventHandlers: Map<
     ExecutionEventType,
     Array<(event: ExecutionEvent) => void>
@@ -210,6 +216,33 @@ export class OperationExecutor {
   }
 
   /**
+   * Leave steps that do not apply to this environment out of the run's
+   * counts. Call before starting; `skipStep` on one then only moves past it.
+   */
+  excludeSteps(indices: number[]): void {
+    for (const i of indices) {
+      if (i < 0 || i >= this.state.steps.length) continue;
+      this.excluded.add(i);
+    }
+    this.state.totalSteps = this.state.steps.length - this.excluded.size;
+  }
+
+  /** Lower the counter for a step's status (excluded steps were never counted). */
+  private uncount(index: number): void {
+    if (this.excluded.has(index)) return;
+    const s = this.state.steps[index];
+    if (s.status === 'completed') {
+      this.state.completedSteps = Math.max(0, this.state.completedSteps - 1);
+    } else if (s.status === 'failed') {
+      this.state.failedSteps = Math.max(0, this.state.failedSteps - 1);
+    } else if (s.status === 'skipped') {
+      this.state.skippedSteps = Math.max(0, this.state.skippedSteps - 1);
+    } else if (s.status === 'waiting') {
+      this.state.waitingSteps = Math.max(0, this.state.waitingSteps - 1);
+    }
+  }
+
+  /**
    * Resume interactive execution from a specific step index (cross-process resume).
    * Each preceding step gets the status the run recorded for it
    * (`recordedStatus`, folded from `events.jsonl`): a skipped step stays
@@ -227,6 +260,10 @@ export class OperationExecutor {
       throw new Error(`Cannot resume operation in ${this.state.status} state`);
     }
     for (let i = 0; i < stepIndex && i < this.state.steps.length; i++) {
+      if (this.excluded.has(i)) {
+        this.state.steps[i].status = 'skipped';
+        continue;
+      }
       const status = recordedStatus(i) ?? 'completed';
       this.state.steps[i].status = status;
       if (status === 'completed') this.state.completedSteps++;
@@ -383,7 +420,7 @@ export class OperationExecutor {
     const stepState = this.state.steps[stepIndex];
     if (!stepState) return;
     stepState.status = 'skipped';
-    this.state.skippedSteps++;
+    if (!this.excluded.has(stepIndex)) this.state.skippedSteps++;
     this.state.currentStepIndex = stepIndex + 1;
     this.emitEvent({
       type: 'step_skipped',
@@ -404,17 +441,8 @@ export class OperationExecutor {
   goToStep(stepIndex: number): void {
     if (stepIndex < 0 || stepIndex >= this.state.steps.length) return;
     for (let k = stepIndex; k < this.state.steps.length; k++) {
-      const s = this.state.steps[k];
-      if (s.status === 'completed') {
-        this.state.completedSteps = Math.max(0, this.state.completedSteps - 1);
-      } else if (s.status === 'failed') {
-        this.state.failedSteps = Math.max(0, this.state.failedSteps - 1);
-      } else if (s.status === 'skipped') {
-        this.state.skippedSteps = Math.max(0, this.state.skippedSteps - 1);
-      } else if (s.status === 'waiting') {
-        this.state.waitingSteps = Math.max(0, this.state.waitingSteps - 1);
-      }
-      s.status = 'pending';
+      this.uncount(k);
+      this.state.steps[k].status = 'pending';
     }
     this.state.currentStepIndex = stepIndex;
     this.emitEvent({
@@ -433,17 +461,8 @@ export class OperationExecutor {
    */
   revisitStep(stepIndex: number): void {
     if (stepIndex < 0 || stepIndex >= this.state.steps.length) return;
-    const s = this.state.steps[stepIndex];
-    if (s.status === 'completed') {
-      this.state.completedSteps = Math.max(0, this.state.completedSteps - 1);
-    } else if (s.status === 'failed') {
-      this.state.failedSteps = Math.max(0, this.state.failedSteps - 1);
-    } else if (s.status === 'skipped') {
-      this.state.skippedSteps = Math.max(0, this.state.skippedSteps - 1);
-    } else if (s.status === 'waiting') {
-      this.state.waitingSteps = Math.max(0, this.state.waitingSteps - 1);
-    }
-    s.status = 'pending';
+    this.uncount(stepIndex);
+    this.state.steps[stepIndex].status = 'pending';
     this.state.currentStepIndex = stepIndex;
     this.emitEvent({
       type: 'operation_started',
@@ -483,7 +502,7 @@ export class OperationExecutor {
       const s = this.state.steps[k];
       if (s.status === 'pending') {
         s.status = 'skipped';
-        this.state.skippedSteps++;
+        if (!this.excluded.has(k)) this.state.skippedSteps++;
         this.emitEvent({
           type: 'step_skipped',
           timestamp: new Date(),

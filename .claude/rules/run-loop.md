@@ -263,8 +263,12 @@ resolves rollback `name` too. Tests: `tests/cli/groups.test.ts` "run / resume".
 dotted `10.2`, `10.2.1` — the numbering of `generate manual --env`, since a run
 always targets one env (NOT the multi-env `10b`/`10b1` letters).
 `describeStepPosition` renders `[Step 10.2 · 34/46]` (`34/46` is progress
-only; nothing takes the flat position as input) plus `Section :` (parent) and
-`Next : … (N remaining)` (env-filtered steps excluded). Top-level detection for
+over the steps this run VISITS — env-filtered steps excluded from both
+numbers; nothing takes the flat position as input) plus `Section :` (parent)
+and `Next : … (N remaining)` (env-filtered steps excluded). The executor
+excludes them from its counts too (`excludeSteps`; `skipStep`/`jumpToStep`/
+`goToStep`/`revisitStep`/`resumeFromIndex` never count an excluded step), see
+`feature-surface.md`. Top-level detection for
 the `needs` dep graph is still `/^\d+$/` on the label.
 
 ## `[b]` back / `[j]` jump / `--from-step`

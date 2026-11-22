@@ -200,6 +200,14 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **A step `when:` leaves out no longer counts in the run.** On a staging run
+  of a file with a production-only step, every count included that step:
+  `report.md` said `Steps completed: 2/3` for a finished run (and a Ctrl+C
+  after the last step stayed `cancelled`), `sessions` showed 33% after one
+  of two steps, the heading read `1/3`, and the banner `Steps: 3`. They now
+  count only this environment's steps (`2/2`, 50%, `1/2`, `Steps: 2 (1 only
+  for other environments)`). `sessions` also showed a finished run one step
+  past its last (`Step: 3` for 2 steps); it now says `Step: all done`.
 - **A resumed step keeps what was recorded on it before the stop.** Notes,
   evidence, commands and the verify result captured on a step before the run
   stopped vanished from `report.md` once `resume` started that step again

@@ -37,7 +37,7 @@ export const sessionsCommand = new Command('sessions')
         `   Operation: ${s.operation_id}  Env: ${s.environment}${s.group ? `  Group: ${s.group}` : ''}  Mode: ${s.mode ?? '-'}`,
       );
       console.log(
-        `   Status: ${s.status}  Step: ${s.current_step_label ?? s.current_step_index + 1}  Progress: ${s.completion_percentage ?? 0}%`,
+        `   Status: ${s.status}  Step: ${stepColumn(s)}  Progress: ${s.completion_percentage ?? 0}%`,
       );
       console.log(`   Updated: ${s.updated_at.toISOString()}`);
       if (RESUMABLE_STATUSES.has(s.status)) {
@@ -48,3 +48,17 @@ export const sessionsCommand = new Command('sessions')
       console.log('');
     }
   });
+
+/**
+ * Where the session is, as the manual numbers it. A completed run has moved
+ * past its last step: its saved index names a step that does not exist (a
+ * 2-step run listed `Step: 3`).
+ */
+export function stepColumn(s: {
+  status: string;
+  current_step_label?: string;
+  current_step_index: number;
+}): string {
+  if (s.status === 'completed') return 'all done';
+  return s.current_step_label ?? String(s.current_step_index + 1);
+}

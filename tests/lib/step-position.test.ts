@@ -40,6 +40,24 @@ describe('describeStepPosition', () => {
     );
   });
 
+  it('progress counts only the steps this run visits (not `when:`-filtered)', () => {
+    // A production-only step 2 on a staging run: the heading read 1/3 and
+    // 3/3 although the run visits two steps.
+    const steps: PositionedStep[] = [
+      { label: '1', name: 'a' },
+      { label: '2', name: 'prod only', filteredByEnv: true },
+      { label: '3', name: 'c' },
+    ];
+    assert.strictEqual(
+      describeStepPosition(steps, 0).heading,
+      '[Step 1 · 1/2]',
+    );
+    assert.strictEqual(
+      describeStepPosition(steps, 2).heading,
+      '[Step 3 · 2/2]',
+    );
+  });
+
   it('names the parent section of a sub-step', () => {
     assert.strictEqual(describeStepPosition(STEPS, 3).parent, 'Step 2: deploy');
     assert.strictEqual(

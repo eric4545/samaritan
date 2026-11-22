@@ -395,6 +395,7 @@ Every `samaritan run` also creates a resumable **session state** file at `~/.sam
 
 ```bash
 # List resumable sessions (running / paused / failed)
+# (a finished session shows `Step: all done`)
 samaritan sessions
 
 # Include completed and cancelled sessions

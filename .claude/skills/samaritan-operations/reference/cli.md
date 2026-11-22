@@ -270,7 +270,7 @@ or in non-sidecar `automatic` runs.
 Each `run`/`resume` writes a black box beside the operation at
 `<op-dir>/.samaritan-runs/<id>/`:
 - `events.jsonl` — append-only event stream
-- `report.md` — always-on (always Markdown; HTML via `run --report-format html` or `report --format html`) per-step verification ledger + approval trail; terminal-escape noise is cleaned from captured output and operator-local path prefixes (home `→ ~`, run dir, operation dir) are stripped so it's safe to share. Counts only genuinely completed steps (`Steps completed: N/total`); an aborted/cancelled run flags where it stopped — an `Aborted at step N: <name>` summary line plus a `🛑 (aborted here — in progress)` marker on the in-progress step's heading
+- `report.md` — always-on (always Markdown; HTML via `run --report-format html` or `report --format html`) per-step verification ledger + approval trail; terminal-escape noise is cleaned from captured output and operator-local path prefixes (home `→ ~`, run dir, operation dir) are stripped so it's safe to share. Counts only genuinely completed steps (`Steps completed: N/total`, where total leaves out steps whose `when:` names other environments); an aborted/cancelled run flags where it stopped — an `Aborted at step N: <name>` summary line plus a `🛑 (aborted here — in progress)` marker on the in-progress step's heading
 
 `.samaritan-runs/` is gitignored (force-add to commit a run). Sessions also
 persist to `~/.samaritan/sessions/<id>.json` for `resume`, which takes the
