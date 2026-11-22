@@ -123,6 +123,15 @@ describe('operation YAML reference generator', () => {
       '';
     assert.match(row('environments'), /object\[\]/);
     assert.match(row('steps'), /\(object &#124; string\)\[\]/);
+    // `type` is optional since the short forms: the reference says so.
+    const stepType = output
+      .split('## Step\n')[1]
+      ?.split('\n')
+      .find((line) => line.startsWith('| `type`'));
+    assert.match(
+      stepType ?? '',
+      /\| no \| `"manual"` \| How the step is driven/,
+    );
   });
 
   it('encodes pipes without mangling backslashes', () => {

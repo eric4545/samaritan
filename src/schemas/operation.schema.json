@@ -226,7 +226,9 @@
               },
               "type": {
                 "type": "string",
-                "enum": ["automatic", "manual", "approval", "conditional"]
+                "enum": ["automatic", "manual", "approval", "conditional"],
+                "default": "manual",
+                "description": "How the step is driven. Optional: a step without `type` is `manual`."
               },
               "phase": {
                 "type": "string",
