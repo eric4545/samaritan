@@ -7,6 +7,12 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Lint names top-level keys that do nothing.** `tags`, `matrix`,
+  `reporting` and `last_executed` are parsed and then used by no manual, run
+  or report. `compat/unused-field` now names them with what to use instead
+  (a step `foreach: { matrix: … }` for per-region steps). They stay valid.
+  `examples/complex-deployment.yaml` advertised a multi-region `matrix:` and
+  Confluence/Slack `reporting:` that never did anything; both are gone.
 - **Every field in the YAML reference says what it does.** 40 rows had no
   description (environment fields, every `expect` check, step `id`,
   `command`, `needs`, …); each now states its actual effect, including what

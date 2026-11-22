@@ -165,6 +165,32 @@ function unknownTopLevelKeys(file: string): string[] {
   }
 }
 
+/**
+ * Top-level keys the parser stores on the operation and nothing reads, with
+ * what to use instead. In file order.
+ */
+const UNUSED_TOP_LEVEL: Record<string, string> = {
+  tags: '`tags`: not used by any manual, run or report. Remove it, or keep notes under an `x-` key.',
+  matrix:
+    '`matrix`: not used. To repeat steps per region or environment, use a step `foreach: { matrix: … }`.',
+  reporting:
+    '`reporting`: not used. Confluence, Slack and email integrations are not implemented (see ROADMAP.md); `samaritan run` writes report.md.',
+  last_executed:
+    '`last_executed`: not used and not updated by a run. Remove it.',
+};
+
+function unusedTopLevelKeys(file: string): Array<[string, string]> {
+  try {
+    const raw = yaml.load(readFileSync(file, 'utf8'));
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+    return Object.keys(raw).flatMap((k) =>
+      UNUSED_TOP_LEVEL[k] ? [[k, UNUSED_TOP_LEVEL[k]] as [string, string]] : [],
+    );
+  } catch {
+    return [];
+  }
+}
+
 /** Whether the operation file sets `key` at its top level (raw YAML). */
 function hasTopLevelKey(file: string, key: string): boolean {
   try {
@@ -506,15 +532,21 @@ export const EXISTING_RULES: OperationRule[] = [
     defaultSeverity: 'warning',
     inValidate: 'warning',
     description:
-      'A step field the parser accepts but nothing reads (`retry`, `env`, `manual_override`, `manual_instructions`, any `approval` key but `required`).',
-    check: (ctx) =>
-      ctx.all.flatMap((info) =>
+      'A field the parser accepts but nothing reads: step `retry`, `env`, `manual_override`, `manual_instructions`, any `approval` key but `required`; top-level `tags`, `matrix`, `reporting`, `last_executed`.',
+    check: (ctx) => [
+      ...ctx.all.flatMap((info) =>
         unusedFields(info.step).map(([field, message]) => ({
           message: `step "${info.stepName}": ${message}`,
           step: info.step,
           field,
         })),
       ),
+      ...unusedTopLevelKeys(ctx.operationFile).map(([key, message]) => ({
+        message,
+        path: [],
+        field: key,
+      })),
+    ],
   },
   {
     kind: 'operation',

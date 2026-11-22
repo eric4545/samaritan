@@ -368,6 +368,35 @@ describe('compat/unused-field: only fields nothing reads', () => {
   });
 });
 
+describe('compat/unused-field: top-level keys the parser stores but nothing uses', () => {
+  it('names tags, matrix, reporting and last_executed, at the key', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { parseOperation } = await import('../../src/operations/parser');
+    const file = join(
+      mkdtempSync(join(tmpdir(), 'samaritan-root-')),
+      'op.yaml',
+    );
+    writeFileSync(
+      file,
+      'name: x\nversion: 1.0.0\ndescription: x\nenvironments: [{ name: staging, description: s }]\nsteps: [echo ok]\ntags: [web]\nmatrix:\n  region: [us-east-1]\nreporting:\n  slack: { channel: "#ops" }\nlast_executed: "2026-01-01T00:00:00Z"\nid: deploy-web\n',
+    );
+    const found = lintOperation(await parseOperation(file), {
+      operationFile: file,
+      config: ALL,
+    }).filter((f) => f.ruleId === 'compat/unused-field');
+    assert.deepStrictEqual(
+      found.map((f) => [f.location?.line, f.message.split(':')[0]]),
+      [
+        [6, '`tags`'],
+        [7, '`matrix`'],
+        [9, '`reporting`'],
+        [11, '`last_executed`'],
+      ],
+    );
+    assert.match(found[1].message, /foreach/);
+  });
+});
+
 describe('schema/unknown-key: top-level keys samaritan does not read', () => {
   const lintFile = async (yaml: string) => {
     const { mkdtempSync, writeFileSync } = await import('node:fs');

@@ -73,7 +73,9 @@ a block that only holds YAML anchors or notes (`x-anchors:`).
 nothing: `retry:` on a step (samaritan never re-runs a command; to poll until a
 check passes, use `expect.retry`), `manual_override`, `manual_instructions`,
 and every `approval` key other than `required` (`approvers`, `timeout`, …;
-name the approver in `reviewer:`). Your file stays valid; the warning says
+name the approver in `reviewer:`), plus the top-level `tags`, `matrix`,
+`reporting` and `last_executed`, which the parser stores and nothing uses (to
+repeat steps per region, use a step `foreach: { matrix: … }`). Your file stays valid; the warning says
 what to write instead. `compat/common-variables` (off unless you use
 `samaritan:strict` or `samaritan:all`) suggests renaming `common_variables:` to
 `variables:`, the same thing under one name.

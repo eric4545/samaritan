@@ -57,7 +57,8 @@ directory or example ships with this repo today.
   nothing: `schema/unknown-key` (a top-level key samaritan does not read,
   with a did-you-mean; `x-…` keys allowed; warning, shown by `validate`),
   `compat/unused-field` (step `retry`, `manual_override`,
-  `manual_instructions`, `approval` keys but `required`; warning, shown by
+  `manual_instructions`, `approval` keys but `required`, and the top-level
+  `tags`/`matrix`/`reporting`/`last_executed`; warning, shown by
   `validate`) and opt-in `compat/common-variables` (strict/all).
 - Exit `0` = no error-severity findings, `1` = errors or more warnings than
   `--max-warnings <n>`, `2` = a file or its config could not be read.
