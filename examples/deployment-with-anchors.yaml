@@ -9,8 +9,11 @@ category: deployment
 # ============================================================================
 # REUSABLE CONFIGURATION ANCHORS
 # ============================================================================
+# `x-anchors` is a key samaritan does not read: it only holds the anchors.
+# Do not define them under `variables:`/`common_variables:`, or every block
+# below becomes a variable and shows up in the manual's environment table.
 
-common_variables:
+x-anchors:
   # Evidence configuration templates
   evidence_screenshot_only: &evidence_screenshot
     required: true
