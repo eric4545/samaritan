@@ -217,6 +217,9 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **`expect: { not_empty: false }` is no check.** It used to check the same
+  as `true` (the output had to be non-empty), while the manual described no
+  check for it.
 - **`sessions.<name>.env` is set in the pane.** It was ignored: a
   `KUBECONFIG` from the YAML was empty in the spawned pane, so `kubectl` ran
   against whatever context the shell had. samaritan now exports each entry

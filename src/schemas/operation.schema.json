@@ -978,7 +978,7 @@
           "type": "string"
         },
         "not_empty": {
-          "description": "The output, trimmed, is not empty. Note: `false` checks the same as `true`.",
+          "description": "`true`: the output, trimmed, is not empty. `false` is no check.",
           "type": "boolean"
         },
         "any_line_contains": {

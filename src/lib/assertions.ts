@@ -337,7 +337,8 @@ function buildChecks(output: string, expect: ExpectConfig): AssertResult[] {
     });
   }
 
-  if (expect.not_empty !== undefined) {
+  // `not_empty: false` is no check (it used to check the same as `true`).
+  if (expect.not_empty === true) {
     checks.push({
       pass: trimmed.length > 0,
       actual: trimmed,
