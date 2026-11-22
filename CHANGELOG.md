@@ -217,6 +217,15 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **Every example is lint-clean.** 14 examples and three shared files had
+  findings: changes with no check (`expect` added from what the command
+  prints), changes with no rollback (a real rollback, or an instruction where
+  the previous value is not in the file), undefined variables, evidence
+  without types and `needs` on sub-steps that were ignored. Where no rollback
+  makes sense (a sent email, a pod restart, a create-if-missing namespace)
+  the finding is suppressed with the reason. A shared template passed a
+  registry password on the command line; it now reads a file at run time. A
+  test keeps every example lint-clean.
 - **Lint no longer counts `kubectl … --dry-run` as a change.** `kubectl
   create configmap … --dry-run=client -o yaml | kubectl apply -f -` was
   reported as an unverified, un-rolled-back `kubectl create`; the finding now

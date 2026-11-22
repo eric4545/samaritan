@@ -24,6 +24,8 @@ steps:
   - name: Deploy Application
     type: automatic
     command: kubectl apply -f deployment.yaml -n ${NAMESPACE}
+    rollback:
+      - command: kubectl rollout undo deployment/web-server -n ${NAMESPACE}
     # The expect rules below are what `--mock` replays against evidence.results.
     # `any_line_matches` / `no_line_matches` are the regex siblings of the
     # literal `any_line_contains` / `no_line_contains` (default Node regex:

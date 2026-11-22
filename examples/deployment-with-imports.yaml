@@ -87,6 +87,10 @@ steps:
     evidence:
       required: true
       types: ["command_output"]
+    rollback:
+      - instruction: |
+          Re-apply the previous `app-config` (from git), then restart the
+          deployment so pods read it.
 
   # Expand all Kubernetes steps inline — pass env vars explicitly
   - uses: ./common/kubernetes-steps.yaml

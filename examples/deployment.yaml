@@ -9,6 +9,7 @@ environments:
     description: preprod
     variables:
       REPLICAS: 2
+      PREVIOUS_REPLICAS: 1
       DB_HOST: preprod-db.example.com
     targets:
       - cluster-dev-us-east-1
@@ -17,6 +18,7 @@ environments:
     description: Live production environment.
     variables:
       REPLICAS: 5
+      PREVIOUS_REPLICAS: 3
       DB_HOST: prod-db.example.com
     approval_required: true
     targets:
@@ -46,6 +48,13 @@ steps:
     type: automatic
     description: Push the image to the container registry.
     command: docker push my-registry/web-server:latest
+    expect:
+      contains: 'digest:'
+    rollback:
+      - name: Point latest back at the previous image
+        command: |
+          docker tag my-registry/web-server:previous my-registry/web-server:latest
+          docker push my-registry/web-server:latest
 
   - name: Request Approval
     type: approval
@@ -56,6 +65,8 @@ steps:
     type: automatic
     description: Scale the Kubernetes deployment to the specified replica count.
     command: kubectl scale deployment web-server --replicas=${REPLICAS}
+    rollback:
+      - command: kubectl scale deployment web-server --replicas=${PREVIOUS_REPLICAS}
 
   - name: Check replica count
     type: automatic
@@ -78,3 +89,7 @@ steps:
     type: automatic
     description: Apply the Kubernetes deployment manifest.
     command: kubectl apply -f k8s/deployment.yaml
+    expect:
+      any_line_matches: 'deployment\.apps/web-server (created|configured|unchanged)'
+    rollback:
+      - command: kubectl rollout undo deployment/web-server

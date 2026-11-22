@@ -36,7 +36,10 @@ steps:
     description: Send a deployment notification to the on-call engineer
     instruction: |
       Send a notification email to the on-call engineer:
+    # samaritan-lint-disable-next-line flow/no-rollback-on-mutate -- a sent email cannot be unsent
     command: aws sesv2 send-email --no-cli-pager --destination ToAddresses=${ONCALL_EMAIL} --region ${REGION}
+    expect:
+      contains: MessageId
     pic: ops-team@example.com
 
   - name: Verify Deployment Health

@@ -18,6 +18,8 @@ steps:
     evidence:
       required: true
       types: [command_output]
+    rollback:
+      - command: kubectl rollout undo deployment/${SERVICE_NAME} --namespace ${NAMESPACE}
 
   - name: Wait for Rollout
     type: automatic

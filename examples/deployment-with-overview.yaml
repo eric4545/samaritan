@@ -122,6 +122,8 @@ steps:
     command: |
       kubectl set image deployment/web-app web-app=registry.example.com/web-app:2.5.0
       kubectl rollout status deployment/web-app --timeout=10m
+    expect:
+      contains: successfully rolled out
     rollback:
       command: |
         kubectl rollout undo deployment/web-app
