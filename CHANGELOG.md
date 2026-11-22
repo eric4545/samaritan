@@ -7,6 +7,13 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **A misspelled top-level key is reported.** `rolback:` or `variabels:`
+  passed `validate` and was silently ignored, losing the rollback plan or the
+  variables. `schema/unknown-key` (a warning, also in `validate`) names it and
+  the key you probably meant. `x-…` keys stay allowed for YAML anchors. It
+  found `examples/deployment-with-overview.yaml`, whose `postflight:` steps
+  and `global_rollback:` plan never reached the manual or the run: they are
+  now `phase: postflight` steps and a `rollback:` plan.
 - **Lint names the fields that do nothing.** `compat/unused-field` (a
   warning, also shown by `validate`) flags `retry:` on a step (samaritan never
   re-runs a command: use `expect.retry` to poll), `manual_override`,

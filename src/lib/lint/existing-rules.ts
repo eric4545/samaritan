@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import yaml from 'js-yaml';
 import type { Operation, Step } from '../../models/operation';
+import { OPERATION_TOP_LEVEL_KEYS } from '../../validation/schema-validator';
 import { BUILTIN_VARIABLE_NAMES } from '../builtin-variables';
 import {
   findDiscardedVerifyKeysInFile,
@@ -22,6 +23,7 @@ import {
 } from '../shell-lint';
 import { validateStepDeps } from '../step-deps';
 import { duplicateStepIds, formatDuplicateStepId } from '../step-walk';
+import { editDistance } from './classify';
 import type { RuleSetting } from './config';
 import {
   expectStrings,
@@ -141,6 +143,19 @@ function unusedFields(step: {
     ]);
   }
   return found;
+}
+
+/** Top-level keys of the operation file that nothing reads (`x-…` allowed). */
+function unknownTopLevelKeys(file: string): string[] {
+  try {
+    const raw = yaml.load(readFileSync(file, 'utf8'));
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+    return Object.keys(raw).filter(
+      (k) => !k.startsWith('x-') && !OPERATION_TOP_LEVEL_KEYS.includes(k),
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** Whether the operation file sets `key` at its top level (raw YAML). */
@@ -493,6 +508,28 @@ export const EXISTING_RULES: OperationRule[] = [
           field,
         })),
       ),
+  },
+  {
+    kind: 'operation',
+    id: 'schema/unknown-key',
+    tier: 1,
+    defaultSeverity: 'warning',
+    inValidate: 'warning',
+    description:
+      'A top-level key samaritan does not read (a typo such as `rolback:` silently drops the rollback plan). `x-` keys are allowed.',
+    check: (ctx) =>
+      unknownTopLevelKeys(ctx.operationFile).map((key) => {
+        const near = OPERATION_TOP_LEVEL_KEYS.find(
+          (k) => editDistance(k, key) <= 2,
+        );
+        return {
+          message: near
+            ? `unknown top-level key \`${key}\` (did you mean \`${near}\`?): samaritan ignores it`
+            : `unknown top-level key \`${key}\`: samaritan ignores it. Prefix it with \`x-\` if it only holds YAML anchors or notes.`,
+          path: [],
+          field: key,
+        };
+      }),
   },
   {
     kind: 'operation',

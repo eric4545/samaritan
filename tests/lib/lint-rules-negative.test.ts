@@ -358,3 +358,74 @@ describe('compat/unused-field: only fields nothing reads', () => {
     assert.strictEqual(found.length, 1);
   });
 });
+
+describe('schema/unknown-key: top-level keys samaritan does not read', () => {
+  const lintFile = async (yaml: string) => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { parseOperation } = await import('../../src/operations/parser');
+    const file = join(mkdtempSync(join(tmpdir(), 'samaritan-key-')), 'op.yaml');
+    writeFileSync(file, yaml);
+    return lintOperation(await parseOperation(file), {
+      operationFile: file,
+      config: ALL,
+    }).filter((f) => f.ruleId === 'schema/unknown-key');
+  };
+  const HEAD =
+    'name: x\nversion: 1.0.0\ndescription: x\nenvironments: [{ name: staging, description: s }]\nsteps: [echo ok]\n';
+
+  it('names a typo and the key it probably meant', async () => {
+    const found = await lintFile(
+      `${HEAD}variabels:\n  APP: web\nrolback:\n  steps: [echo undo]\n`,
+    );
+    assert.deepStrictEqual(
+      found.map((f) => f.message),
+      [
+        'unknown top-level key `variabels` (did you mean `variables`?): samaritan ignores it',
+        'unknown top-level key `rolback` (did you mean `rollback`?): samaritan ignores it',
+      ],
+    );
+    assert.strictEqual(found[0].location?.line, 6);
+  });
+
+  it('a key unlike any known one gets no suggestion', async () => {
+    const found = await lintFile(`${HEAD}owner_team: sre\n`);
+    assert.deepStrictEqual(
+      found.map((f) => f.message),
+      [
+        'unknown top-level key `owner_team`: samaritan ignores it. Prefix it with `x-` if it only holds YAML anchors or notes.',
+      ],
+    );
+  });
+
+  it('knows every top-level key the parser reads', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { OPERATION_TOP_LEVEL_KEYS } = await import(
+      '../../src/validation/schema-validator'
+    );
+    const parser = readFileSync('src/operations/parser.ts', 'utf8');
+    const read = new Set(
+      [...parser.matchAll(/rawOperation\.([a-z_]+)/g)].map((m) => m[1]),
+    );
+    assert.deepStrictEqual(
+      [...read].filter((k) => !OPERATION_TOP_LEVEL_KEYS.includes(k)),
+      [],
+      'a key the parser reads would be reported as unknown',
+    );
+  });
+
+  it('parser-read keys outside the schema are not reported', async () => {
+    assert.deepStrictEqual(
+      await lintFile(`${HEAD}id: deploy-web\ntags: [web]\nemergency: false\n`),
+      [],
+    );
+  });
+
+  it('stays quiet for known keys and `x-` keys', async () => {
+    assert.deepStrictEqual(
+      await lintFile(
+        `${HEAD}variables: { A: 1 }\nx-anchors:\n  base: &base { a: 1 }\n`,
+      ),
+      [],
+    );
+  });
+});

@@ -55,13 +55,19 @@ checks `validate` already did, now under rule ids. The full list, generated from
 | `expect` vs the command | The check against the output the command declares | `expect/json-shape`, `expect/contains-vs-matches`, `expect/multiline-contains` |
 | The instruction prose | Each step's `instruction` text, line by line | `instruction/vague-decision` |
 | Existing checks | What `validate` reported before `lint` existed | `expect/invalid-regex`, `deps/cycle`, `steps/duplicate-id`, `vars/undefined` |
-| Fields that do nothing | Keys the parser accepts but nothing reads | `compat/unused-field`, `compat/discarded-verify`, `compat/common-variables` (opt-in) |
+| Fields that do nothing | Keys the parser accepts but nothing reads | `schema/unknown-key`, `compat/unused-field`, `compat/discarded-verify`, `compat/common-variables` (opt-in) |
 
 Rules read the steps, sub-steps, each step's `variants.<env>` (its command
 and its rollback list, reported as `<step> [variants.<env>]`), each step's
 `rollback` and the operation's `rollback.steps`. A `script:` file runs in a child shell, so `exit` or
 `set -e` there is normal error handling: scripts go to shellcheck
 (`validate --lint`, or the `shell/shellcheck` rule), not to the command rules.
+
+`schema/unknown-key` warns about a top-level key samaritan does not read:
+a typo such as `rolback:` or `variabels:` used to pass `validate` and silently
+drop the rollback plan or the variables. It suggests the key you probably
+meant (`did you mean \`rollback\`?`). Keys starting with `x-` are allowed, for
+a block that only holds YAML anchors or notes (`x-anchors:`).
 
 `compat/unused-field` warns about step fields that are accepted but change
 nothing: `retry:` on a step (samaritan never re-runs a command; to poll until a

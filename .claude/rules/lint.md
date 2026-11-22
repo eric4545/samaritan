@@ -49,3 +49,12 @@ must never run code, and the checker stays a small deterministic kernel.
 Refactors must keep `samaritan lint --format json` identical over
 `examples/` and `tests/fixtures/operations/` with `extends: [samaritan:all]`
 (compare before/after; the tool-profile refactor was checked this way).
+
+## Top-level keys (`schema/unknown-key`)
+
+Known = the schema's `properties` + `PARSER_ONLY_TOP_LEVEL_KEYS`
+(`src/validation/schema-validator.ts`: keys the parser reads that the schema
+never listed, e.g. `id`, `tags`). A test greps `rawOperation.<key>` in the
+parser, so a new key read there must be added to the schema or that list.
+`x-…` keys are allowed (anchor holders). A path hit can name a key with
+`field` (`path: []`, `field: key`), so `line:col` points at the key itself.

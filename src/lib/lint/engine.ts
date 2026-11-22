@@ -278,7 +278,7 @@ export function lintOperation(
     if (source) {
       return index.locate(source.file, source.path, hit.field, hit.commandLine);
     }
-    if (hit.path) return index.locate(opFile, hit.path);
+    if (hit.path) return index.locate(opFile, hit.path, hit.field);
     return undefined;
   };
 
