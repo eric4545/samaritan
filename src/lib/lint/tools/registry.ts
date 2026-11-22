@@ -39,6 +39,7 @@ function mergeProfiles(a: ToolProfile, b: ToolProfile): ToolProfile {
     spec: mergeSpec(a.spec, b.spec),
     verbDepth: b.verbDepth ?? a.verbDepth,
     mutating: [...(a.mutating ?? []), ...(b.mutating ?? [])],
+    dryRun: [...(a.dryRun ?? []), ...(b.dryRun ?? [])],
     backup: [...(a.backup ?? []), ...(b.backup ?? [])],
     deletesData: [...(a.deletesData ?? []), ...(b.deletesData ?? [])],
     resourceOptions: unique([
@@ -106,7 +107,11 @@ export class ToolRegistry {
     this.byBinary.get(executable)?.spec;
 
   isMutating(cmd: NormalizedCommand): boolean {
-    return anyVerbMatches(this.profile(cmd.executable)?.mutating, cmd);
+    const profile = this.profile(cmd.executable);
+    return (
+      anyVerbMatches(profile?.mutating, cmd) &&
+      !anyVerbMatches(profile?.dryRun, cmd)
+    );
   }
 
   isBackup(cmd: NormalizedCommand): boolean {

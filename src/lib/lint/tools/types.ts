@@ -58,6 +58,11 @@ export interface ToolProfile {
   verbDepth?: number;
   /** Invocations that change state. */
   mutating?: Verb[];
+  /**
+   * Invocations that only preview a change (`kubectl … --dry-run=client`):
+   * never mutating, whatever `mutating` says.
+   */
+  dryRun?: Verb[];
   /** Invocations that take a backup or snapshot. */
   backup?: Verb[];
   /** Invocations that delete data a backup should precede. */

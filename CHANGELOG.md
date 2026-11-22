@@ -217,6 +217,11 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **Lint no longer counts `kubectl … --dry-run` as a change.** `kubectl
+  create configmap … --dry-run=client -o yaml | kubectl apply -f -` was
+  reported as an unverified, un-rolled-back `kubectl create`; the finding now
+  names the `kubectl apply` that changes state. Team tool profiles can
+  declare their own preview options with `dry_run:`.
 - **`expect: { not_empty: false }` is no check.** It used to check the same
   as `true` (the output had to be non-empty), while the manual described no
   check for it.

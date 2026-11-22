@@ -109,6 +109,7 @@ const TOOL = {
     combine_short: { type: 'boolean' },
     verb_depth: { type: 'integer', minimum: 1 },
     mutating: VERB_LIST,
+    dry_run: VERB_LIST,
     backup: VERB_LIST,
     deletes_data: VERB_LIST,
     resource_options: OPTION_LIST,
@@ -183,6 +184,7 @@ interface RawTool {
   combine_short?: boolean;
   verb_depth?: number;
   mutating?: (string | RawVerb)[];
+  dry_run?: (string | RawVerb)[];
   backup?: (string | RawVerb)[];
   deletes_data?: (string | RawVerb)[];
   resource_options?: string[];
@@ -234,6 +236,7 @@ export function toolProfile(raw: RawTool, label = 'lint'): ToolProfile {
     },
     verbDepth: raw.verb_depth,
     mutating: verbs(raw.mutating),
+    dryRun: verbs(raw.dry_run),
     backup: verbs(raw.backup),
     deletesData: verbs(raw.deletes_data),
     resourceOptions: raw.resource_options,

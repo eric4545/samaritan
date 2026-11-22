@@ -320,6 +320,7 @@ matched by `--app`), `web-ctl` is a known program, and `banned:` /
 | `value_options` / `boolean_options` / `long_options_take_value` / `combine_short` | How options parse. |
 | `verb_depth` | How many words name the action in messages (default 1). |
 | `mutating` / `backup` / `deletes_data` | Verbs, see below. |
+| `dry_run` | Verbs (usually an option, `{ option: --plan }`) that make a mutating invocation a preview: lint then does not count it as a change. Built in for `kubectl --dry-run` (any value but `none`). |
 | `resource_options` / `resource_operand` | Options (they take a value) or the operand index that name a resource. |
 | `output_options` | Option whose value is the output format (`expect/json-shape`). |
 
