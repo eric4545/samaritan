@@ -923,4 +923,63 @@ describe('bootstrapSessions — real tmux', () => {
       }
     },
   );
+
+  it(
+    'sets each session\'s `env` in its pane (it was ignored)',
+    { skip: !hasTmux, timeout: 60_000 },
+    async () => {
+      // `sessions.<name>.env` was never applied: KUBECONFIG from the YAML
+      // was empty in the pane, so kubectl used whatever context it had.
+      const socketDir = mkdtempSync(join(tmpdir(), 'sam-tmux-'));
+      const saved = { dir: process.env.TMUX_TMPDIR, tmux: process.env.TMUX };
+      process.env.TMUX_TMPDIR = socketDir;
+      delete process.env.TMUX;
+      const id = `env-${process.pid}-${Date.now()}`;
+      let session: TmuxSession | undefined;
+      try {
+        spawnSync('tmux', ['new-session', '-d', '-s', 'keepalive']);
+        session = await bootstrapSessions(id, {
+          web: {
+            env: {
+              KUBECONFIG: '/home/deploy/.kube/staging-config',
+              QUOTED: "it's $HOME `id`",
+            },
+          },
+        });
+        const pane = session.getPaneMap().get('web') as string;
+        spawnSync('tmux', [
+          'send-keys',
+          '-t',
+          pane,
+          'echo "[$KUBECONFIG] [$QUOTED]"',
+          'Enter',
+        ]);
+        await new Promise((r) => setTimeout(r, 800));
+        const screen = spawnSync('tmux', ['capture-pane', '-p', '-t', pane], {
+          encoding: 'utf8',
+        }).stdout;
+        // Literal values: no expansion, no command substitution.
+        assert.match(
+          screen,
+          /^\[\/home\/deploy\/\.kube\/staging-config\] \[it's \$HOME `id`\]$/m,
+        );
+      } finally {
+        session?.teardown();
+        spawnSync('tmux', ['kill-server'], { stdio: 'ignore' });
+        if (saved.dir === undefined) delete process.env.TMUX_TMPDIR;
+        else process.env.TMUX_TMPDIR = saved.dir;
+        if (saved.tmux !== undefined) process.env.TMUX = saved.tmux;
+        rmSync(socketDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('refuses an env name that is not a shell variable name', async () => {
+    await assert.rejects(
+      bootstrapSessions(`bad-${Date.now()}`, {
+        web: { env: { 'BAD-NAME': 'x' } },
+      }),
+      /env name "BAD-NAME" in session "web" is not a shell variable name/,
+    );
+  });
 });

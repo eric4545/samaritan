@@ -207,6 +207,12 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **`sessions.<name>.env` is set in the pane.** It was ignored: a
+  `KUBECONFIG` from the YAML was empty in the spawned pane, so `kubectl` ran
+  against whatever context the shell had. samaritan now exports each entry
+  in the pane after connecting (literal, single-quoted values; an invalid
+  name stops the bootstrap). With `--attach` nothing is spawned, and the run
+  says which variables it did not set.
 - **A step `when:` leaves out no longer counts in the run.** On a staging run
   of a file with a production-only step, every count included that step:
   `report.md` said `Steps completed: 2/3` for a finished run (and a Ctrl+C

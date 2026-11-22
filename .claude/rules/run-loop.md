@@ -550,7 +550,12 @@ key is the YAML name, only the window name (`-n`) and pipe file are
 sanitized. (3) The prompt wait only knew `$`: a root `#`, zsh `%` or `❯`
 prompt waited the full 10 s PER session (`BOOTSTRAP_PROMPT_PATTERN`, for the
 bootstrap wait only; `waitForPrompt`'s default is unchanged because `>` at a
-line end is common in command output). (4) The hint `tmux attach -t …` is
+line end is common in command output). (5) `env` was never applied:
+`bootstrapSessions` now validates every name (`SHELL_VAR_NAME`) before any
+pane opens, and after the connect + prompt wait types one `envExportLine`
+per entry (leading space, single-quoted literal, `send-keys -l` then
+Enter), then waits for the prompt again; `attachSidecarPane` names the env
+it did NOT set. Real-tmux unit test + e2e `greeting=hi`. (4) The hint `tmux attach -t …` is
 refused inside tmux; `attachHintLines(name, insideTmux)` prints the nested
 split / `switch-client` forms there (`run` and `resume`). The real-tmux unit
 test runs on a private server (`TMUX_TMPDIR`) so it can set `base-index`.

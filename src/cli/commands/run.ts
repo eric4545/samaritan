@@ -4454,6 +4454,18 @@ function attachSidecarPane(
     console.log(
       `   ℹ️  sessions: (${names.join(', ')}) are not spawned with an attached pane — every step's [v]/[p] uses this pane. Press [t] to switch panes for a step.`,
     );
+    // Their `env` is only set in panes samaritan spawns: say so, by name,
+    // so nobody runs kubectl here believing KUBECONFIG came from the YAML.
+    const envNames = [
+      ...new Set(
+        Object.values(sessions ?? {}).flatMap((c) => Object.keys(c?.env ?? {})),
+      ),
+    ];
+    if (envNames.length > 0) {
+      console.log(
+        `   ⚠️  Their env is NOT set in this pane: ${envNames.join(', ')}. Export it here yourself if the steps need it.`,
+      );
+    }
   }
   if (previousOwner) console.warn(paneTakeoverWarning(previousOwner));
   console.log('');

@@ -363,7 +363,8 @@ describe('sidecar e2e (real tmux)', () => {
         // against the command output — the echoed command is stripped — so the
         // command must actually execute before [v].
         d.enter(spawned);
-        await d.waitFor(/^built v1 E2E_BUILD_OK$/m, {
+        // `greeting=hi`: the session's env was set in the spawned pane.
+        await d.waitFor(/^built v1 E2E_BUILD_OK greeting=hi$/m, {
           pane: spawned,
           timeoutMs: 15_000,
         });
@@ -730,7 +731,13 @@ describe('sidecar e2e (real tmux)', () => {
             timeoutMs: 40_000,
           },
         );
-        await d.waitFor('echo "built v1 E2E_BUILD_OK"', { timeoutMs: 15_000 });
+        // The session's env is not applied to an attached pane: said so.
+        await d.waitFor('Their env is NOT set in this pane: GREETING', {
+          timeoutMs: 15_000,
+        });
+        await d.waitFor('echo "built v1 E2E_BUILD_OK greeting=$GREETING"', {
+          timeoutMs: 15_000,
+        });
         assert.deepStrictEqual(spawned(), [], 'run --attach spawns nothing');
         d.type('abort');
         const aborted = await d.waitFor(RESUME_HINT, { timeoutMs: 15_000 });

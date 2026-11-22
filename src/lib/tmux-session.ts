@@ -891,6 +891,16 @@ export async function bootstrapSessions(
   promptPattern?: string,
 ): Promise<TmuxSession> {
   const tmuxName = `samaritan-${sessionId}`;
+  // A bad `env` name fails before any pane is opened.
+  for (const [name, config] of Object.entries(sessions)) {
+    for (const key of Object.keys(config?.env ?? {})) {
+      if (!SHELL_VAR_NAME.test(key)) {
+        throw new Error(
+          `env name "${key}" in session "${name}" is not a shell variable name`,
+        );
+      }
+    }
+  }
   const tmuxSession = new TmuxSession(sessionId, tmuxName);
 
   const sessionNames = Object.keys(sessions);
@@ -940,9 +950,43 @@ export async function bootstrapSessions(
       10_000,
       promptPattern ?? BOOTSTRAP_PROMPT_PATTERN,
     );
+
+    // The session's `env`, set in the pane's shell (after `ssh`, so on the
+    // host the steps run on). It used to be ignored: a `KUBECONFIG` from the
+    // YAML was empty in the pane and kubectl used whatever context it had.
+    const env = Object.entries(config.env ?? {});
+    if (env.length > 0) {
+      for (const [key, value] of env) {
+        spawnSync('tmux', [
+          'send-keys',
+          '-t',
+          paneId,
+          '-l',
+          envExportLine(key, String(value)),
+        ]);
+        spawnSync('tmux', ['send-keys', '-t', paneId, 'Enter']);
+      }
+      await tmuxSession.waitForPrompt(
+        name,
+        10_000,
+        promptPattern ?? BOOTSTRAP_PROMPT_PATTERN,
+      );
+    }
   }
 
   return tmuxSession;
+}
+
+const SHELL_VAR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * ` export NAME='value'`: the value single-quoted, so it is set literally
+ * (no `$` expansion, no command substitution); a `'` inside is closed,
+ * escaped and reopened. The leading space keeps the line out of shell
+ * history where `HISTCONTROL` ignores space-prefixed lines.
+ */
+export function envExportLine(name: string, value: string): string {
+  return ` export ${name}='${value.replace(/'/g, `'\\''`)}'`;
 }
 
 /**
