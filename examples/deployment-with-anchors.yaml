@@ -45,6 +45,7 @@ environments:
     variables:
       <<: *env_base  # Merge base environment variables
       REPLICAS: 2
+      PREVIOUS_REPLICAS: 1
       DB_HOST: preprod-db.example.com
       REDIS_HOST: preprod-redis.example.com
       DOMAIN: preprod.example.com
@@ -57,6 +58,7 @@ environments:
     variables:
       <<: *env_base  # Merge base environment variables
       REPLICAS: 5
+      PREVIOUS_REPLICAS: 3
       DB_HOST: prod-db.example.com
       REDIS_HOST: prod-redis.example.com
       DOMAIN: example.com
@@ -115,6 +117,11 @@ steps:
     command: docker push my-registry/web-server:latest
     timeout: *timeout_medium
     evidence: *evidence_full
+    rollback:
+      - name: Point latest back at the previous image
+        command: |
+          docker tag my-registry/web-server:previous my-registry/web-server:latest
+          docker push my-registry/web-server:latest
 
   - name: Request Approval
     type: approval
@@ -143,6 +150,9 @@ steps:
     command: kubectl scale deployment web-server --replicas=${REPLICAS}
     timeout: *timeout_medium
     evidence: *evidence_screenshot
+    rollback:
+      - name: Scale back to the previous replica count
+        command: kubectl scale deployment web-server --replicas=${PREVIOUS_REPLICAS}
 
   - name: Deploy to Kubernetes
     type: automatic
