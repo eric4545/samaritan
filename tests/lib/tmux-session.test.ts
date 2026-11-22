@@ -925,7 +925,7 @@ describe('bootstrapSessions — real tmux', () => {
   );
 
   it(
-    'sets each session\'s `env` in its pane (it was ignored)',
+    "sets each session's `env` in its pane (it was ignored)",
     { skip: !hasTmux, timeout: 60_000 },
     async () => {
       // `sessions.<name>.env` was never applied: KUBECONFIG from the YAML
