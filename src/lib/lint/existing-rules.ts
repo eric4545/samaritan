@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import yaml from 'js-yaml';
 import type { Operation, Step } from '../../models/operation';
 import { BUILTIN_VARIABLE_NAMES } from '../builtin-variables';
 import {
@@ -101,6 +103,56 @@ const depsRule = (
   );
 
 /** `steps[2].rollback[0]` → ['steps', 2, 'rollback', 0]. */
+/** Step fields that are parsed and then read by nothing, with the fix. */
+function unusedFields(step: {
+  retry?: unknown;
+  manual_override?: unknown;
+  manual_instructions?: unknown;
+  approval?: object;
+}): Array<[field: string, message: string]> {
+  const found: Array<[string, string]> = [];
+  if (step.retry !== undefined) {
+    found.push([
+      'retry',
+      '`retry:` on a step does nothing: samaritan never re-runs a command. To poll until a check passes, use `expect.retry`.',
+    ]);
+  }
+  if (step.manual_override === true) {
+    found.push([
+      'manual_override',
+      '`manual_override` does nothing: no manual or run reads it. Remove it.',
+    ]);
+  }
+  if (step.manual_instructions !== undefined) {
+    found.push([
+      'manual_instructions',
+      '`manual_instructions` is not shown anywhere. Put the text in `instruction:`.',
+    ]);
+  }
+  for (const key of Object.keys(step.approval ?? {})) {
+    if (key === 'required') continue;
+    found.push([
+      'approval',
+      key === 'approvers'
+        ? '`approval.approvers` is not shown or enforced. Name the approver in `reviewer:` or the `instruction:`.'
+        : key === 'timeout'
+          ? '`approval.timeout` is not enforced. Remove it, or say the deadline in the `instruction:`.'
+          : `\`approval.${key}\` is not read: only \`approval.required\` is. Remove it, or say it in the \`instruction:\`.`,
+    ]);
+  }
+  return found;
+}
+
+/** Whether the operation file sets `key` at its top level (raw YAML). */
+function hasTopLevelKey(file: string, key: string): boolean {
+  try {
+    const raw = yaml.load(readFileSync(file, 'utf8'));
+    return !!raw && typeof raw === 'object' && key in raw;
+  } catch {
+    return false;
+  }
+}
+
 function parsePath(text: string): (string | number)[] {
   return [...text.matchAll(/([A-Za-z_]+)|\[(\d+)\]/g)].map((m) =>
     m[2] !== undefined ? Number(m[2]) : m[1],
@@ -425,4 +477,41 @@ export const EXISTING_RULES: OperationRule[] = [
     },
     { inValidate: 'warning' },
   ),
+  {
+    kind: 'operation',
+    id: 'compat/unused-field',
+    tier: 2,
+    defaultSeverity: 'warning',
+    inValidate: 'warning',
+    description:
+      'A step field the parser accepts but nothing reads (`retry`, `manual_override`, `manual_instructions`, any `approval` key but `required`).',
+    check: (ctx) =>
+      ctx.all.flatMap((info) =>
+        unusedFields(info.step).map(([field, message]) => ({
+          message: `step "${info.stepName}": ${message}`,
+          step: info.step,
+          field,
+        })),
+      ),
+  },
+  {
+    kind: 'operation',
+    id: 'compat/common-variables',
+    tier: 3,
+    defaultSeverity: 'off',
+    strictSeverity: 'warning',
+    presetSeverity: 'warning',
+    description:
+      'Top-level `common_variables:`, the older name of `variables:`.',
+    check: (ctx) =>
+      hasTopLevelKey(ctx.operationFile, 'common_variables')
+        ? [
+            {
+              message:
+                '`common_variables:` is the older name of `variables:`. Rename it to `variables:` (when both set a name, `common_variables` wins).',
+              path: ['common_variables'],
+            },
+          ]
+        : [],
+  },
 ];

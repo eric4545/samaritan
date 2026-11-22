@@ -30,6 +30,7 @@ import {
   validateOperationSchemaStrict,
 } from '../validation/schema-validator';
 import { EnvironmentLoader } from './environment-loader';
+import { expandRollbackShorthand, expandStepShorthand } from './shorthand';
 import { copyStepSource, setStepSource } from './step-source';
 
 interface ImportContext {
@@ -811,7 +812,9 @@ async function resolveStepReferences(
   const resolvedSteps: Step[] = [];
 
   for (let i = 0; i < steps.length; i++) {
-    const stepData = steps[i];
+    // A bare command, a step without `type:` or a one-name `when:` becomes
+    // its long form here, before anything else reads it.
+    const stepData = expandStepShorthand(steps[i]);
 
     // A step for another group is dropped before anything is expanded, so a
     // `uses:` file meant for that group is never loaded.
@@ -931,7 +934,8 @@ function extractExpect(stepData: any): any {
 // they reached the renderers. The schema (#/definitions/rollbackStep,
 // additionalProperties:false) remains the gate on what is authorable, so the
 // spread cannot smuggle in junk. `verify` is folded into `expect` and dropped.
-function normalizeRollbackStep(r: any): RollbackStep {
+function normalizeRollbackStep(entry: any): RollbackStep {
+  const r = expandRollbackShorthand(entry);
   const { verify: _verify, ...rest } = r ?? {};
   return {
     ...rest,
@@ -1017,12 +1021,11 @@ async function resolveRollbackReferences(
 ): Promise<RollbackStep[]> {
   const resolved: RollbackStep[] = [];
   for (let i = 0; i < rollbackData.length; i++) {
-    if (
-      !inSelectedGroup(rollbackData[i], `rollback.steps[${i}]`, importContext)
-    )
-      continue;
+    // A bare command string is `{ command }`; `when: <env>` a one-name list.
+    const raw = expandRollbackShorthand(rollbackData[i]);
+    if (!inSelectedGroup(raw, `rollback.steps[${i}]`, importContext)) continue;
     const entry = pruneRollbackSubSteps(
-      rollbackData[i],
+      raw,
       `rollback.steps[${i}]`,
       importContext,
     );
@@ -1111,7 +1114,7 @@ async function parseStep(
       // Fallback for cases without import context (shouldn't happen in normal flow)
       subSteps = await Promise.all(
         stepData.sub_steps.map((subStep: any, index: number) =>
-          parseStep(subStep, index),
+          parseStep(expandStepShorthand(subStep), index),
         ),
       );
     }

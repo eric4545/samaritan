@@ -18,6 +18,89 @@ function ev(partial: Partial<SessionEvent> & { type: string }): SessionEvent {
   } as SessionEvent;
 }
 
+describe('foldEvents: a step resumed after the run stopped on it', () => {
+  // The record of the interrupted attempt: a note, evidence, a command and
+  // a verify, then the run stops (session_end) and is resumed.
+  const beforeStop = [
+    ev({ type: 'session_start' }),
+    ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+    ev({
+      type: 'user_input',
+      action: 'note',
+      step: 0,
+      notes: 'pre-stop note',
+    }),
+    ev({
+      type: 'evidence_captured',
+      evidence_id: 'e1',
+      evidence_type: 'text',
+      content: 'pre-stop evidence',
+    }),
+    ev({ type: 'command_displayed', session: 'default', command: 'echo a' }),
+    ev({ type: 'assert_result', pass: true, checks: [], output: 'a' }),
+    ev({ type: 'session_end', status: 'cancelled' }),
+  ];
+
+  it('keeps what was recorded on it before the stop', () => {
+    const { steps } = foldEvents([
+      ...beforeStop,
+      ev({ type: 'session_start' }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({
+        type: 'user_input',
+        action: 'note',
+        step: 0,
+        notes: 'after resume',
+      }),
+      ev({ type: 'step_complete', step: 0 }),
+    ]);
+    assert.strictEqual(steps.length, 1);
+    assert.strictEqual(steps[0].status, 'completed');
+    assert.deepStrictEqual(steps[0].notes, ['pre-stop note', 'after resume']);
+    assert.deepStrictEqual(
+      steps[0].evidence.map((e) => e.content),
+      ['pre-stop evidence'],
+    );
+    assert.strictEqual(steps[0].commands[0]?.command, 'echo a');
+    assert.strictEqual(steps[0].verification?.pass, true);
+  });
+
+  it('[x] after the resume still removes evidence recorded before it', () => {
+    const { steps } = foldEvents([
+      ...beforeStop,
+      ev({ type: 'session_start' }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({ type: 'evidence_removed', evidence_id: 'e1' }),
+    ]);
+    assert.deepStrictEqual(steps[0].evidence, []);
+  });
+
+  it('a step that FINISHED before the stop starts over when run again', () => {
+    // Completed, stopped later, resumed and re-run with [b]: a re-run.
+    const { steps } = foldEvents([
+      ev({ type: 'session_start' }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({ type: 'user_input', action: 'note', step: 0, notes: 'first run' }),
+      ev({ type: 'step_complete', step: 0 }),
+      ev({ type: 'session_end', status: 'cancelled' }),
+      ev({ type: 'session_start' }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+    ]);
+    assert.deepStrictEqual(steps[0].notes, []);
+    assert.strictEqual(steps[0].status, 'pending');
+  });
+
+  it('[b] back to an unfinished step in the same run still starts over', () => {
+    const { steps } = foldEvents([
+      ev({ type: 'session_start' }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+      ev({ type: 'user_input', action: 'note', step: 0, notes: 'attempt 1' }),
+      ev({ type: 'step_start', step: 0, name: 'Deploy' }),
+    ]);
+    assert.deepStrictEqual(steps[0].notes, []);
+  });
+});
+
 describe('foldEvents', () => {
   it('records ↵ over an un-run paste as a step note (#115)', () => {
     const { steps } = foldEvents([

@@ -29,7 +29,18 @@ async function assertSourcesResolve(file: string): Promise<number> {
     }
     const node = docs.get(source.file)?.getIn(source.path) as
       | { get(key: string): unknown }
+      | string
       | undefined;
+    // A step written as a bare command is a plain string at its path.
+    if (typeof node === 'string') {
+      assert.strictEqual(
+        node,
+        step.command,
+        `${formatSourcePath(source.path)}`,
+      );
+      checked++;
+      continue;
+    }
     assert.ok(
       node && typeof node.get === 'function',
       `${source.file}: nothing at ${formatSourcePath(source.path)}`,
@@ -67,6 +78,7 @@ describe('parser: per-step source (file + YAML path)', () => {
     'examples/foreach-variable-values.yaml',
     'examples/global-rollback-aggregated.yaml',
     'examples/deployment-with-groups.yaml',
+    'examples/shorthand-steps.yaml',
   ]) {
     it(`resolves every step of ${file}`, async () => {
       assert.ok((await assertSourcesResolve(file)) > 0);

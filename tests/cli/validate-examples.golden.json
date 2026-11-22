@@ -135,6 +135,10 @@
     "valid": true,
     "errors": 0
   },
+  "examples/shorthand-steps.yaml": {
+    "valid": true,
+    "errors": 0
+  },
   "examples/sidecar-deployment.yaml": {
     "valid": true,
     "errors": 0

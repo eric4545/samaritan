@@ -122,7 +122,7 @@ describe('operation YAML reference generator', () => {
       output.split('\n').find((line) => line.startsWith(`| \`${field}\``)) ??
       '';
     assert.match(row('environments'), /object\[\]/);
-    assert.match(row('steps'), /object\[\]/);
+    assert.match(row('steps'), /\(object &#124; string\)\[\]/);
   });
 
   it('encodes pipes without mangling backslashes', () => {

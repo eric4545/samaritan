@@ -83,8 +83,31 @@ and `🖥 Session: <name>`.
 
 `name`, `type`, `id`, `phase` (`preflight`/`flight`/`postflight`), `if`,
 `foreach`, `sub_steps`, `when`, `groups`, `variants`, `approval`, `needs`,
-`template`/`with`, `variables`, `capture`, `retry`, `rollback`,
+`template`/`with`, `variables`, `capture`, `retry` (deprecated: does
+nothing, use `expect.retry`), `rollback`,
 `section_heading`, `timeline`, `ticket`, `estimated_duration`, `env`.
+
+### Short forms (each parses to exactly its long form)
+
+- A step that is only a command: `- kubectl get pods -n web` = `{ name:
+  <command's first line>, type: manual, command: <command> }`. Also in
+  `sub_steps:` and in `uses:` files. Give it a `name:` once another step
+  `needs` it or the name should say why.
+- `type` may be left out: it defaults to `manual` (a `uses:` entry stays a
+  `uses:` entry; `uses` + `type` is still rejected).
+- `when: production` = `when: [production]` (steps and rollback steps).
+- A rollback entry that is only a command (`rollback: [kubectl rollout
+  undo …]`, `rollback.steps`, rollback `sub_steps`, or `rollback: <command>`)
+  = `{ command: <command> }`.
+
+Accepted but unused (lint `compat/unused-field`, schema `deprecated`):
+step `retry`, `manual_override`, `manual_instructions`, every `approval` key
+but `required` (use `reviewer:` for the approver). `common_variables:` is the
+older name of `variables:` (opt-in `compat/common-variables`).
+
+Expanded by `src/operations/shorthand.ts` before parsing, so manuals,
+validate, lint (`line:col` still points at the string), run and reports see
+the long form. Example: `examples/shorthand-steps.yaml`.
 
 > Rollback steps accept these too (full parity), except nested `rollback`
 > (use `sub_steps` for multi-part rollbacks). In particular `foreach`/`matrix`

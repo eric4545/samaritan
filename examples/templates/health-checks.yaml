@@ -7,10 +7,13 @@
   command: curl -f ${ENDPOINT}/health
   description: Verify API endpoint is responding
   timeout: ${TIMEOUT}
-  retry:
-    attempts: ${RETRIES}
-    delay: 5
-    backoff: exponential
+  # Poll: re-check the output up to ${RETRIES} times, 5s apart, until it
+  # passes (the API may still be starting).
+  expect:
+    not_empty: true
+    retry:
+      interval: 5s
+      max: ${RETRIES}
   evidence:
     required: true
     types: [command_output]
@@ -29,7 +32,4 @@
   command: curl -f ${ENDPOINT}/metrics
   description: Verify metrics are being collected
   timeout: ${TIMEOUT}
-  retry:
-    attempts: ${RETRIES}
-    delay: 3
   continue_on_error: true

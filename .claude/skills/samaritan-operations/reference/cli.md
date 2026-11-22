@@ -53,7 +53,10 @@ directory or example ships with this repo today.
   error under strict/all; team phrases in `lint.vague_phrases`), and the
   existing validate checks under ids (`expect/*`, `deps/*`,
   `steps/duplicate-id`, `vars/*`, `evidence/*`, `rollback/empty`, `style/*`,
-  `compat/discarded-verify`, `shell/shellcheck`).
+  `compat/discarded-verify`, `shell/shellcheck`), plus fields that do
+  nothing: `compat/unused-field` (step `retry`, `manual_override`,
+  `manual_instructions`, `approval` keys but `required`; warning, shown by
+  `validate`) and opt-in `compat/common-variables` (strict/all).
 - Exit `0` = no error-severity findings, `1` = errors or more warnings than
   `--max-warnings <n>`, `2` = a file or its config could not be read.
   `--format json` (stable: `files[].findings[] = {ruleId, severity, tier,
