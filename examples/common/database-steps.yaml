@@ -12,8 +12,9 @@ steps:
     evidence:
       required: true
       types: ["command_output"]
-    env:
-      PGPASSWORD: "${DB_PASSWORD}"
+    instruction: |
+      Set `PGPASSWORD` in the pane first, from your secret store. It is not
+      in this file: samaritan pastes commands, it never runs them.
     
   - name: database-restore
     type: automatic  
@@ -31,8 +32,9 @@ steps:
     evidence:
       required: true
       types: ["command_output"]
-    env:
-      PGPASSWORD: "${DB_PASSWORD}"
+    instruction: |
+      Set `PGPASSWORD` in the pane first, from your secret store. It is not
+      in this file: samaritan pastes commands, it never runs them.
       
   - name: database-migrate
     type: automatic
@@ -56,5 +58,6 @@ steps:
     evidence:
       required: true
       types: ["command_output"]
-    env:
-      PGPASSWORD: "${DB_PASSWORD}"
+    instruction: |
+      Set `PGPASSWORD` in the pane first, from your secret store. It is not
+      in this file: samaritan pastes commands, it never runs them.

@@ -349,6 +349,15 @@ describe('compat/unused-field: only fields nothing reads', () => {
     );
   });
 
+  it('names a step `env` (never passed to the command)', () => {
+    const found = unused([s('pg_dump app', { env: { PGPASSWORD: 'x' } })]);
+    assert.strictEqual(found.length, 1);
+    assert.match(
+      found[0].message,
+      /`env` on a step is not passed to the command/,
+    );
+  });
+
   it('checks rollback steps too', () => {
     const found = unused([
       s('echo a', {

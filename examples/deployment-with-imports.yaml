@@ -14,7 +14,6 @@ environments:
       DB_HOST: staging-db.example.com
       DB_USER: app_user
       DB_NAME: app_database
-      DB_PASSWORD: staging_password
       REDIS_HOST: staging-redis.example.com
       API_ENDPOINT: https://api-staging.example.com
       FRONTEND_URL: https://staging.example.com
@@ -37,7 +36,6 @@ environments:
       DB_HOST: prod-db.example.com
       DB_USER: app_user
       DB_NAME: app_database
-      DB_PASSWORD: prod_password
       REDIS_HOST: prod-redis.example.com
       API_ENDPOINT: https://api.example.com
       FRONTEND_URL: https://example.com
@@ -71,7 +69,6 @@ steps:
       DB_HOST: ${DB_HOST}
       DB_USER: ${DB_USER}
       DB_NAME: ${DB_NAME}
-      DB_PASSWORD: ${DB_PASSWORD}
       BACKUP_FILE: ${BACKUP_FILE}
       APP_DIR: ${APP_DIR}
 

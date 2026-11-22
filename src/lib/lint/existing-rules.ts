@@ -108,6 +108,7 @@ const depsRule = (
 /** Step fields that are parsed and then read by nothing, with the fix. */
 function unusedFields(step: {
   retry?: unknown;
+  env?: Record<string, unknown>;
   manual_override?: unknown;
   manual_instructions?: unknown;
   approval?: object;
@@ -117,6 +118,12 @@ function unusedFields(step: {
     found.push([
       'retry',
       '`retry:` on a step does nothing: samaritan never re-runs a command. To poll until a check passes, use `expect.retry`.',
+    ]);
+  }
+  if (step.env !== undefined && Object.keys(step.env).length > 0) {
+    found.push([
+      'env',
+      '`env` on a step is not passed to the command (samaritan never runs it) and is not shown anywhere. Say it in the `instruction:`, or set it in `sessions.<name>.env`.',
     ]);
   }
   if (step.manual_override === true) {
@@ -499,7 +506,7 @@ export const EXISTING_RULES: OperationRule[] = [
     defaultSeverity: 'warning',
     inValidate: 'warning',
     description:
-      'A step field the parser accepts but nothing reads (`retry`, `manual_override`, `manual_instructions`, any `approval` key but `required`).',
+      'A step field the parser accepts but nothing reads (`retry`, `env`, `manual_override`, `manual_instructions`, any `approval` key but `required`).',
     check: (ctx) =>
       ctx.all.flatMap((info) =>
         unusedFields(info.step).map(([field, message]) => ({

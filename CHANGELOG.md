@@ -7,6 +7,16 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Every field in the YAML reference says what it does.** 40 rows had no
+  description (environment fields, every `expect` check, step `id`,
+  `command`, `needs`, …); each now states its actual effect, including what
+  is only displayed (`targets`, `restrictions`) and what is not enforced
+  (`approval_required` warns, `continue_on_error` applies only to
+  `--auto-approve`). A test fails the build on an undescribed field.
+  `compat/unused-field` also names a step's `env:`: it was never passed to
+  the command or shown. `examples/common/database-steps.yaml` relied on it
+  for `PGPASSWORD` (with a password stored in `deployment-with-imports.yaml`);
+  it now tells the operator to set it from a secret store.
 - **A misspelled top-level key is reported.** `rolback:` or `variabels:`
   passed `validate` and was silently ignored, losing the rollback plan or the
   variables. `schema/unknown-key` (a warning, also in `validate`) names it and

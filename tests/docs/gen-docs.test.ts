@@ -134,6 +134,16 @@ describe('operation YAML reference generator', () => {
     );
   });
 
+  it('describes every field (no empty Description cell)', () => {
+    // 40 rows had none: environment fields, every expect check, step `id`,
+    // `command`, `needs`… A new field must say what it does.
+    const empty = output
+      .split('\n')
+      .filter((line) => line.startsWith('| `'))
+      .filter((line) => line.split('|')[5]?.trim() === '');
+    assert.deepStrictEqual(empty, []);
+  });
+
   it('encodes pipes without mangling backslashes', () => {
     // CodeQL flagged the previous `\|` escaping as incomplete: escaping the pipe
     // with a backslash is only sound if backslashes are escaped too. Escaping
