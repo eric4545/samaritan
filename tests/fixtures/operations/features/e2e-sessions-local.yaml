@@ -23,6 +23,7 @@ steps:
   - name: Echo tag
     type: automatic
     session: work
-    command: echo "built ${TAG} E2E_BUILD_OK"
+    # $GREETING comes from the session's env: set in the spawned pane only.
+    command: echo "built ${TAG} E2E_BUILD_OK greeting=$GREETING"
     expect:
       contains: E2E_BUILD_OK

@@ -4,7 +4,9 @@ common_variables:
   DOCKER_REGISTRY_SECRET: ""
   DOCKER_REGISTRY: ""
   DOCKER_USERNAME: ""
-  DOCKER_PASSWORD: ""
+  # A file holding the registry password: read when the command runs, so the
+  # password is never in the manual or in a pasted command.
+  DOCKER_PASSWORD_FILE: ""
 
 steps:
   - name: docker-build-and-push
@@ -24,6 +26,10 @@ steps:
     evidence:
       required: true
       types: ["command_output"]
+    rollback:
+      - instruction: |
+          Point `latest` back at the previous version:
+          `docker tag ${IMAGE_NAME}:<previous> ${IMAGE_NAME}:latest && docker push ${IMAGE_NAME}:latest`
     
   - name: k8s-deploy
     type: automatic
@@ -74,10 +80,15 @@ steps:
     evidence:
       required: true
       types: ["command_output"]
+    rollback:
+      - instruction: |
+          Scale back to the replica count shown before this step:
+          `kubectl scale deployment/${DEPLOYMENT_NAME} --replicas=<previous> --context ${CLUSTER} -n ${NAMESPACE}`
     
   - name: k8s-create-namespace
     type: automatic
     description: Create namespace if it doesn't exist
+    # samaritan-lint-disable-next-line flow/no-rollback-on-mutate -- create-if-missing is idempotent; deleting the namespace would delete its workloads
     command: |
       kubectl create namespace ${NAMESPACE} \
         --context ${CLUSTER} \
@@ -101,7 +112,7 @@ steps:
         kubectl create secret docker-registry ${DOCKER_REGISTRY_SECRET} \
           --docker-server=${DOCKER_REGISTRY} \
           --docker-username=${DOCKER_USERNAME} \
-          --docker-password=${DOCKER_PASSWORD} \
+          --docker-password="$(cat "${DOCKER_PASSWORD_FILE}")" \
           --context ${CLUSTER} -n ${NAMESPACE} \
           --dry-run=client -o yaml | kubectl apply -f -
       fi
@@ -109,3 +120,5 @@ steps:
     evidence:
       required: true
       types: ["command_output"]
+    rollback:
+      - instruction: Re-apply the previous secret versions from your secret store.

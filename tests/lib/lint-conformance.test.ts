@@ -184,6 +184,17 @@ const SAMPLES: Record<string, Sample> = {
 
 /** Rules whose sample needs a real file (positions, raw YAML). */
 const FILE_SAMPLES: Record<string, string> = {
+  'schema/unknown-key': `name: x
+version: 1.0.0
+description: x
+environments: [{ name: staging, description: s }]
+rolback:
+  steps: [echo undo]
+steps:
+  - name: S
+    type: manual
+    command: echo ok
+`,
   'compat/common-variables': `name: x
 version: 1.0.0
 description: x

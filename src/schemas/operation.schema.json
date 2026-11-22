@@ -67,24 +67,30 @@
                 "description": "Inherit environment definition from manifest"
               },
               "description": {
+                "description": "Shown next to the environment in the manuals and at the start of a run.",
                 "type": "string"
               },
               "variables": {
+                "description": "Values for `${VAR}` in this environment. They win over the top-level `variables:`.",
                 "type": "object"
               },
               "targets": {
+                "description": "Hosts or clusters this environment covers. Listed in the manual's environment table; nothing connects to them.",
                 "type": "array",
                 "items": {
                   "type": "string"
                 }
               },
               "approval_required": {
+                "description": "Shown in the manuals. `run` prints a warning at the start, and `validate --strict` warns when a production environment does not set it. Nothing blocks the run.",
                 "type": "boolean"
               },
               "validation_required": {
+                "description": "Shown in `generate docs` and at the start of a run. `validate --strict` warns when a production environment does not set it. Nothing is enforced.",
                 "type": "boolean"
               },
               "restrictions": {
+                "description": "Free-text access notes, listed by `generate docs`. Not enforced.",
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -218,6 +224,7 @@
             ],
             "properties": {
               "id": {
+                "description": "A stable name for the step: `needs` can refer to it, and the `[b]`/`[j]` pickers and `--from-step` accept it. Must be unique.",
                 "type": "string"
               },
               "name": {
@@ -226,7 +233,9 @@
               },
               "type": {
                 "type": "string",
-                "enum": ["automatic", "manual", "approval", "conditional"]
+                "enum": ["automatic", "manual", "approval", "conditional"],
+                "default": "manual",
+                "description": "How the step is driven. Optional: a step without `type` is `manual`."
               },
               "phase": {
                 "type": "string",
@@ -234,9 +243,11 @@
                 "description": "Execution phase of the step"
               },
               "description": {
+                "description": "One line shown under the step heading in the manuals and in a run.",
                 "type": "string"
               },
               "command": {
+                "description": "The shell command, `${VAR}` resolved per environment. Shown in the manuals and pasted by `[p]` in a run. samaritan never runs it itself.",
                 "type": "string"
               },
               "script": {
@@ -244,6 +255,7 @@
                 "description": "Path to an external shell script (relative to operation file). Content is read and embedded in generated manuals."
               },
               "instruction": {
+                "description": "What the operator does, as Markdown. Shown in the manuals and in a run.",
                 "type": "string"
               },
               "if": {
@@ -259,6 +271,8 @@
                 "minimum": 0
               },
               "env": {
+                "deprecated": true,
+                "description": "DEPRECATED - not passed to the command (samaritan never runs it) and not shown anywhere (lint `compat/unused-field`). Say it in the `instruction:`, or set it in `sessions.<name>.env`.",
                 "type": "object"
               },
               "uses": {
@@ -345,15 +359,18 @@
                 }
               },
               "continue_on_error": {
+                "description": "Shown in `generate docs`. Used only by `run --auto-approve`, which marks steps complete without running them; the interactive run ignores it.",
                 "type": "boolean"
               },
               "needs": {
+                "description": "Steps this one depends on, by name or `id` (top-level steps only). A run warns before starting a step whose needs are not completed, and the global rollback undoes in reverse dependency order.",
                 "type": "array",
                 "items": {
                   "type": "string"
                 }
               },
               "sub_steps": {
+                "description": "Nested steps. The parent becomes a section heading; each sub-step is numbered under it (`2.1`, `2.2`).",
                 "type": "array",
                 "items": {
                   "$ref": "#/properties/steps/items"
@@ -601,6 +618,7 @@
                     "minimum": 0
                   },
                   "backoff": {
+                    "description": "DEPRECATED with `retry`: not used.",
                     "type": "string",
                     "enum": ["linear", "exponential"]
                   }
@@ -608,9 +626,10 @@
               },
               "approval": {
                 "type": "object",
-                "description": "Only `required` is read (validate checks the environment requires approval). Other keys are linted by `compat/unused-field`.",
+                "description": "Only `required` is read (by `validate`). Other keys are linted by `compat/unused-field`.",
                 "properties": {
                   "required": {
+                    "description": "Read only by `validate`, which warns when an `emergency: true` operation sets it. The approval prompt in a run comes from `type: approval`, not from this.",
                     "type": "boolean"
                   },
                   "approvers": {
@@ -785,12 +804,15 @@
       "description": "A rollback step IS a normal step (structurally). It accepts the full step field surface — `name`/`type` are optional, `sub_steps` nest rollbackSteps, and `foreach`/`matrix` expand at parse time just like a normal step. Kept at full parity with the normal-step definition by the guardrail test tests/schemas/rollback-parity.test.ts.",
       "properties": {
         "id": {
+          "description": "A stable name for the rollback step.",
           "type": "string"
         },
         "name": {
+          "description": "Shown as the rollback step's title; optional.",
           "type": "string"
         },
         "type": {
+          "description": "Optional; any value. Rollback steps are offered to the operator the same way whatever it says.",
           "type": "string"
         },
         "phase": {
@@ -803,9 +825,11 @@
           "description": "Condition for conditional steps"
         },
         "description": {
+          "description": "One line shown with the rollback step.",
           "type": "string"
         },
         "command": {
+          "description": "The rollback command, `${VAR}` resolved. Shown and pasted by `[p]`; samaritan never runs it itself.",
           "type": "string"
         },
         "script": {
@@ -813,6 +837,7 @@
           "description": "Path to an external shell script whose content is embedded in the manual"
         },
         "instruction": {
+          "description": "What the operator does, as Markdown; for rollback steps without a command.",
           "type": "string"
         },
         "timeout": {
@@ -824,6 +849,7 @@
           "minimum": 0
         },
         "env": {
+          "description": "DEPRECATED - not passed to the command and not shown (lint `compat/unused-field`).",
           "type": "object"
         },
         "uses": {
@@ -854,9 +880,11 @@
           "$ref": "#/definitions/confirm"
         },
         "continue_on_error": {
+          "description": "Not used by the interactive run.",
           "type": "boolean"
         },
         "needs": {
+          "description": "Accepted for parity with a step; not used for rollback steps.",
           "type": "array",
           "items": { "type": "string" }
         },
@@ -933,23 +961,74 @@
       "type": "object",
       "description": "Rule-based assertion config for verify output",
       "properties": {
-        "contains": { "type": "string" },
-        "not_contains": { "type": "string" },
-        "equals": { "type": "string" },
-        "matches": { "type": "string" },
-        "not_empty": { "type": "boolean" },
-        "any_line_contains": { "type": "string" },
-        "no_line_contains": { "type": "string" },
-        "all_lines_match": { "type": "string" },
-        "any_line_matches": { "type": "string" },
-        "no_line_matches": { "type": "string" },
-        "line_count": { "type": "number", "minimum": 0 },
-        "line_count_gte": { "type": "number", "minimum": 0 },
-        "numeric_gte": { "type": "number" },
-        "numeric_lte": { "type": "number" },
-        "jsonpath": { "type": "string" },
-        "equals_captured": { "type": "string" },
+        "contains": {
+          "description": "The output contains this text.",
+          "type": "string"
+        },
+        "not_contains": {
+          "description": "The output does not contain this text.",
+          "type": "string"
+        },
+        "equals": {
+          "description": "The output, trimmed, is exactly this. With `jsonpath`, the value at that path is.",
+          "type": "string"
+        },
+        "matches": {
+          "description": "The output matches this regular expression anywhere (JavaScript syntax, no flags).",
+          "type": "string"
+        },
+        "not_empty": {
+          "description": "`true`: the output, trimmed, is not empty. `false` is no check.",
+          "type": "boolean"
+        },
+        "any_line_contains": {
+          "description": "At least one non-empty line contains this text.",
+          "type": "string"
+        },
+        "no_line_contains": {
+          "description": "No non-empty line contains this text.",
+          "type": "string"
+        },
+        "all_lines_match": {
+          "description": "Every non-empty line matches this regular expression.",
+          "type": "string"
+        },
+        "any_line_matches": {
+          "description": "At least one non-empty line matches this regular expression.",
+          "type": "string"
+        },
+        "no_line_matches": {
+          "description": "No non-empty line matches this regular expression.",
+          "type": "string"
+        },
+        "line_count": {
+          "description": "The output has exactly this many non-empty lines.",
+          "type": "number",
+          "minimum": 0
+        },
+        "line_count_gte": {
+          "description": "The output has at least this many non-empty lines.",
+          "type": "number",
+          "minimum": 0
+        },
+        "numeric_gte": {
+          "description": "The first number in the output is at least this.",
+          "type": "number"
+        },
+        "numeric_lte": {
+          "description": "The first number in the output is at most this.",
+          "type": "number"
+        },
+        "jsonpath": {
+          "description": "The output parses as JSON and has a value at this path (`$.items[0].status`). With `equals`, that value must equal it.",
+          "type": "string"
+        },
+        "equals_captured": {
+          "description": "The output, trimmed, equals the value an earlier step captured under this name (`capture:`).",
+          "type": "string"
+        },
         "retry": {
+          "description": "Poll: when the check fails, wait `interval`, capture again and re-check, up to `max` times.",
           "type": "object",
           "required": ["interval", "max"],
           "properties": {

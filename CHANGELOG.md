@@ -7,6 +7,29 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- **Lint names top-level keys that do nothing.** `tags`, `matrix`,
+  `reporting` and `last_executed` are parsed and then used by no manual, run
+  or report. `compat/unused-field` now names them with what to use instead
+  (a step `foreach: { matrix: … }` for per-region steps). They stay valid.
+  `examples/complex-deployment.yaml` advertised a multi-region `matrix:` and
+  Confluence/Slack `reporting:` that never did anything; both are gone.
+- **Every field in the YAML reference says what it does.** 40 rows had no
+  description (environment fields, every `expect` check, step `id`,
+  `command`, `needs`, …); each now states its actual effect, including what
+  is only displayed (`targets`, `restrictions`) and what is not enforced
+  (`approval_required` warns, `continue_on_error` applies only to
+  `--auto-approve`). A test fails the build on an undescribed field.
+  `compat/unused-field` also names a step's `env:`: it was never passed to
+  the command or shown. `examples/common/database-steps.yaml` relied on it
+  for `PGPASSWORD` (with a password stored in `deployment-with-imports.yaml`);
+  it now tells the operator to set it from a secret store.
+- **A misspelled top-level key is reported.** `rolback:` or `variabels:`
+  passed `validate` and was silently ignored, losing the rollback plan or the
+  variables. `schema/unknown-key` (a warning, also in `validate`) names it and
+  the key you probably meant. `x-…` keys stay allowed for YAML anchors. It
+  found `examples/deployment-with-overview.yaml`, whose `postflight:` steps
+  and `global_rollback:` plan never reached the manual or the run: they are
+  now `phase: postflight` steps and a `rollback:` plan.
 - **Lint names the fields that do nothing.** `compat/unused-field` (a
   warning, also shown by `validate`) flags `retry:` on a step (samaritan never
   re-runs a command: use `expect.retry` to poll), `manual_override`,
@@ -200,6 +223,37 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- **Every example is lint-clean.** 14 examples and three shared files had
+  findings: changes with no check (`expect` added from what the command
+  prints), changes with no rollback (a real rollback, or an instruction where
+  the previous value is not in the file), undefined variables, evidence
+  without types and `needs` on sub-steps that were ignored. Where no rollback
+  makes sense (a sent email, a pod restart, a create-if-missing namespace)
+  the finding is suppressed with the reason. A shared template passed a
+  registry password on the command line; it now reads a file at run time. A
+  test keeps every example lint-clean.
+- **Lint no longer counts `kubectl … --dry-run` as a change.** `kubectl
+  create configmap … --dry-run=client -o yaml | kubectl apply -f -` was
+  reported as an unverified, un-rolled-back `kubectl create`; the finding now
+  names the `kubectl apply` that changes state. Team tool profiles can
+  declare their own preview options with `dry_run:`.
+- **`expect: { not_empty: false }` is no check.** It used to check the same
+  as `true` (the output had to be non-empty), while the manual described no
+  check for it.
+- **`sessions.<name>.env` is set in the pane.** It was ignored: a
+  `KUBECONFIG` from the YAML was empty in the spawned pane, so `kubectl` ran
+  against whatever context the shell had. samaritan now exports each entry
+  in the pane after connecting (literal, single-quoted values; an invalid
+  name stops the bootstrap). With `--attach` nothing is spawned, and the run
+  says which variables it did not set.
+- **A step `when:` leaves out no longer counts in the run.** On a staging run
+  of a file with a production-only step, every count included that step:
+  `report.md` said `Steps completed: 2/3` for a finished run (and a Ctrl+C
+  after the last step stayed `cancelled`), `sessions` showed 33% after one
+  of two steps, the heading read `1/3`, and the banner `Steps: 3`. They now
+  count only this environment's steps (`2/2`, 50%, `1/2`, `Steps: 2 (1 only
+  for other environments)`). `sessions` also showed a finished run one step
+  past its last (`Step: 3` for 2 steps); it now says `Step: all done`.
 - **A resumed step keeps what was recorded on it before the stop.** Notes,
   evidence, commands and the verify result captured on a step before the run
   stopped vanished from `report.md` once `resume` started that step again

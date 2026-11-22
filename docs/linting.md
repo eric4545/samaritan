@@ -55,7 +55,7 @@ checks `validate` already did, now under rule ids. The full list, generated from
 | `expect` vs the command | The check against the output the command declares | `expect/json-shape`, `expect/contains-vs-matches`, `expect/multiline-contains` |
 | The instruction prose | Each step's `instruction` text, line by line | `instruction/vague-decision` |
 | Existing checks | What `validate` reported before `lint` existed | `expect/invalid-regex`, `deps/cycle`, `steps/duplicate-id`, `vars/undefined` |
-| Fields that do nothing | Keys the parser accepts but nothing reads | `compat/unused-field`, `compat/discarded-verify`, `compat/common-variables` (opt-in) |
+| Fields that do nothing | Keys the parser accepts but nothing reads | `schema/unknown-key`, `compat/unused-field`, `compat/discarded-verify`, `compat/common-variables` (opt-in) |
 
 Rules read the steps, sub-steps, each step's `variants.<env>` (its command
 and its rollback list, reported as `<step> [variants.<env>]`), each step's
@@ -63,11 +63,19 @@ and its rollback list, reported as `<step> [variants.<env>]`), each step's
 `set -e` there is normal error handling: scripts go to shellcheck
 (`validate --lint`, or the `shell/shellcheck` rule), not to the command rules.
 
+`schema/unknown-key` warns about a top-level key samaritan does not read:
+a typo such as `rolback:` or `variabels:` used to pass `validate` and silently
+drop the rollback plan or the variables. It suggests the key you probably
+meant (`did you mean \`rollback\`?`). Keys starting with `x-` are allowed, for
+a block that only holds YAML anchors or notes (`x-anchors:`).
+
 `compat/unused-field` warns about step fields that are accepted but change
 nothing: `retry:` on a step (samaritan never re-runs a command; to poll until a
 check passes, use `expect.retry`), `manual_override`, `manual_instructions`,
 and every `approval` key other than `required` (`approvers`, `timeout`, …;
-name the approver in `reviewer:`). Your file stays valid; the warning says
+name the approver in `reviewer:`), plus the top-level `tags`, `matrix`,
+`reporting` and `last_executed`, which the parser stores and nothing uses (to
+repeat steps per region, use a step `foreach: { matrix: … }`). Your file stays valid; the warning says
 what to write instead. `compat/common-variables` (off unless you use
 `samaritan:strict` or `samaritan:all`) suggests renaming `common_variables:` to
 `variables:`, the same thing under one name.
@@ -314,6 +322,7 @@ matched by `--app`), `web-ctl` is a known program, and `banned:` /
 | `value_options` / `boolean_options` / `long_options_take_value` / `combine_short` | How options parse. |
 | `verb_depth` | How many words name the action in messages (default 1). |
 | `mutating` / `backup` / `deletes_data` | Verbs, see below. |
+| `dry_run` | Verbs (usually an option, `{ option: --plan }`) that make a mutating invocation a preview: lint then does not count it as a change. Built in for `kubectl --dry-run` (any value but `none`). |
 | `resource_options` / `resource_operand` | Options (they take a value) or the operand index that name a resource. |
 | `output_options` | Option whose value is the output format (`expect/json-shape`). |
 

@@ -16,6 +16,9 @@ with:
   health_check_timeout: 300
   rollback_enabled: true
 
+variables:
+  VERSION: 2.1.0
+
 environments:
   - name: staging
     description: Pre-production staging environment
@@ -26,6 +29,9 @@ environments:
       DB_HOST: staging-postgres.example.com
       REDIS_HOST: staging-redis.example.com
       API_ENDPOINT: https://api-staging.example.com
+      FRONTEND_URL: web-staging.example.com
+      MONITORING_API: https://monitoring-staging.example.com/api
+      ENVIRONMENT: staging
       LOG_LEVEL: debug
     targets:
       - us-east-1-staging
@@ -42,6 +48,9 @@ environments:
       DB_HOST: prod-postgres.example.com
       REDIS_HOST: prod-redis.example.com
       API_ENDPOINT: https://api.example.com
+      FRONTEND_URL: www.example.com
+      MONITORING_API: https://monitoring.example.com/api
+      ENVIRONMENT: production
       LOG_LEVEL: info
     targets:
       - us-east-1-prod
@@ -97,12 +106,12 @@ steps:
         timeout: 300
         evidence:
           required: true
+          types: [command_output]
 
       - name: Test Backend API
         type: automatic
         command: docker run --rm backend-api:${VERSION} npm test
         timeout: 180
-        needs: ["Build Backend API"]
 
       - name: Build Frontend Web
         type: automatic
@@ -110,12 +119,12 @@ steps:
         timeout: 300
         evidence:
           required: true
+          types: [command_output]
 
       - name: Test Frontend Web
         type: automatic
         command: docker run --rm frontend-web:${VERSION} npm test
         timeout: 120
-        needs: ["Build Frontend Web"]
 
       - name: Build Background Worker
         type: automatic
@@ -123,12 +132,12 @@ steps:
         timeout: 180
         evidence:
           required: true
+          types: [command_output]
 
       - name: Test Background Worker
         type: automatic
         command: docker run --rm worker:${VERSION} python -m pytest
         timeout: 240
-        needs: ["Build Background Worker"]
 
   - name: Push Images to Registry
     type: automatic
@@ -247,35 +256,9 @@ rollback:
         3. Check error logs for any issues
         4. Notify team in #deployments Slack channel
 
-# Matrix configuration for multi-region deployment
-matrix:
-  region: ["us-east-1", "eu-west-1", "ap-southeast-1"]
-  include:
-    - environment: "staging"
-      region: "us-east-1"
-    - environment: "staging"  
-      region: "eu-west-1"
-  exclude:
-    - environment: "staging"
-      region: "ap-southeast-1"
-
-# Reporting configuration
-reporting:
-  confluence:
-    space: "SRE"
-    parent_page: "Deployment Reports"
-    template: "deployment-report-template"
-  notifications:
-    slack:
-      channel: "#deployments"
-      on_success: "✅ Deployment completed successfully!"
-      on_failure: "❌ Deployment failed - investigating"
-    email:
-      recipients: ["sre-team@example.com", "engineering-manager@example.com"]
-  evidence:
-    retention_days: 90
-    auto_archive: true
-    include_sensitive: false
+# Multi-region: repeat steps per region with a step `foreach: { matrix: … }`
+# (see examples/multi-region-deployment.yaml). Reports: every run writes
+# report.md beside this file; Confluence/Slack publishing is on the ROADMAP.
 
 metadata:
   created_at: "2024-01-15T10:00:00Z"

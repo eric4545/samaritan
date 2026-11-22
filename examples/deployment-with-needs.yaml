@@ -37,12 +37,21 @@ steps:
     type: manual
     needs: [build]
     command: docker push ${REGISTRY}/app:latest
+    expect:
+      contains: 'digest:'
+    rollback:
+      - name: Point latest back at the previous image
+        command: |
+          docker tag ${REGISTRY}/app:previous ${REGISTRY}/app:latest
+          docker push ${REGISTRY}/app:latest
 
   - name: Deploy
     id: deploy
     type: manual
     needs: [push]
     command: kubectl set image deployment/app app=${REGISTRY}/app:latest
+    expect:
+      contains: image updated
     rollback:
       - command: kubectl rollout undo deployment/app
 

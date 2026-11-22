@@ -395,6 +395,7 @@ Every `samaritan run` also creates a resumable **session state** file at `~/.sam
 
 ```bash
 # List resumable sessions (running / paused / failed)
+# (a finished session shows `Step: all done`)
 samaritan sessions
 
 # Include completed and cancelled sessions
@@ -469,6 +470,8 @@ sessions:
     host: monitoring.example.com
     user: sre-readonly         # read-only verification host
 ```
+
+**`env`.** When samaritan spawns the sessions, it sets each session's `env` in that pane's shell, after the `ssh` connect, so on the host the steps run on: one ` export NAME='value'` line per entry. Values are literal (single-quoted: no `$` expansion, no command substitution), and the leading space keeps the line out of shell history where `HISTCONTROL` ignores space-prefixed lines. The line is still visible in the pane, so keep secrets out of `env`. With `--attach` nothing is spawned and nothing is set: samaritan names the variables it did not set (`⚠️ Their env is NOT set in this pane: KUBECONFIG`), so export them yourself. (Before, `env` was ignored everywhere: `KUBECONFIG` was empty in the pane.)
 
 **Variable names.** `${VAR}` in a session name is resolved against common variables, so sessions can be
 derived from, say, a ticket id instead of hardcoding. Quote keys that start with `${`:

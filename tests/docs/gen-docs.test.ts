@@ -123,6 +123,25 @@ describe('operation YAML reference generator', () => {
       '';
     assert.match(row('environments'), /object\[\]/);
     assert.match(row('steps'), /\(object &#124; string\)\[\]/);
+    // `type` is optional since the short forms: the reference says so.
+    const stepType = output
+      .split('## Step\n')[1]
+      ?.split('\n')
+      .find((line) => line.startsWith('| `type`'));
+    assert.match(
+      stepType ?? '',
+      /\| no \| `"manual"` \| How the step is driven/,
+    );
+  });
+
+  it('describes every field (no empty Description cell)', () => {
+    // 40 rows had none: environment fields, every expect check, step `id`,
+    // `command`, `needs`… A new field must say what it does.
+    const empty = output
+      .split('\n')
+      .filter((line) => line.startsWith('| `'))
+      .filter((line) => line.split('|')[5]?.trim() === '');
+    assert.deepStrictEqual(empty, []);
   });
 
   it('encodes pipes without mangling backslashes', () => {

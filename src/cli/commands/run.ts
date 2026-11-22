@@ -301,6 +301,11 @@ function resolveFromStep(
   return pick.index;
 }
 
+/** Flat indices of the steps whose `when:` leaves them out of this run. */
+function envFilteredIndices(flatSteps: FlatStep[]): number[] {
+  return flatSteps.flatMap((f, i) => (f.filteredByEnv ? [i] : []));
+}
+
 /** A run's `events.jsonl` (either location), or `[]` when there is none. */
 function readRunEvents(operationFile: string, sessionId: string) {
   const path = candidateRunLogPaths(operationFile, sessionId).find((p) =>
@@ -563,6 +568,7 @@ class OperationRunner {
       environment,
       context,
       executionMode,
+      envFilteredIndices(flatSteps).length,
     );
 
     if (focusPic) {
@@ -585,6 +591,8 @@ class OperationRunner {
     console.log(`📋 Session: ${session.id}\n`);
 
     const executor = new OperationExecutor(execOperation, context);
+    // Steps for another environment are not part of this run's counts.
+    executor.excludeSteps(envFilteredIndices(flatSteps));
     sessionManager.associateExecutor(session.id, executor);
 
     this.setupEventHandlers(executor, options);
@@ -888,6 +896,7 @@ class OperationRunner {
     }
 
     const executor = new OperationExecutor(execOperation, context);
+    executor.excludeSteps(envFilteredIndices(flatSteps));
     sessionManager.associateExecutor(session.id, executor);
 
     this.setupEventHandlers(executor, { verbose: options.verbose });
@@ -954,12 +963,9 @@ class OperationRunner {
     );
     // Each earlier step keeps the status the run recorded (a skipped step
     // stays skipped, so `needs` still gates on it); env-filtered steps are
-    // skipped, as in an uninterrupted run.
-    const recordedStatus = recordedStatusOf(priorEvents);
+    // excluded from the counts, as in an uninterrupted run.
     const recap = interruptedStepRecap(priorEvents, startIndex);
-    executor.resumeFromIndex(startIndex, (k) =>
-      flatSteps[k]?.filteredByEnv ? 'skipped' : recordedStatus(k),
-    );
+    executor.resumeFromIndex(startIndex, recordedStatusOf(priorEvents));
 
     await this.runInteractiveStepLoop(
       executor,
@@ -4295,6 +4301,8 @@ class OperationRunner {
     environment: any,
     context: any,
     mode: ExecutionMode,
+    /** Steps left out because their `when:` names other environments. */
+    notForThisEnv = 0,
   ): void {
     console.log(`\n📋 Operation Summary:`);
     console.log(`   Name: ${operation.name} v${operation.version}`);
@@ -4304,7 +4312,9 @@ class OperationRunner {
     console.log(
       `   Environment: ${environment.name} (${environment.description})`,
     );
-    console.log(`   Steps: ${operation.steps.length}`);
+    console.log(
+      `   Steps: ${operation.steps.length - notForThisEnv}${notForThisEnv > 0 ? ` (${notForThisEnv} only for other environments)` : ''}`,
+    );
     console.log(`   Execution mode: ${mode}`);
     console.log(`   Dry run: ${context.dryRun ? 'Yes' : 'No'}`);
 
@@ -4444,6 +4454,18 @@ function attachSidecarPane(
     console.log(
       `   ℹ️  sessions: (${names.join(', ')}) are not spawned with an attached pane — every step's [v]/[p] uses this pane. Press [t] to switch panes for a step.`,
     );
+    // Their `env` is only set in panes samaritan spawns: say so, by name,
+    // so nobody runs kubectl here believing KUBECONFIG came from the YAML.
+    const envNames = [
+      ...new Set(
+        Object.values(sessions ?? {}).flatMap((c) => Object.keys(c?.env ?? {})),
+      ),
+    ];
+    if (envNames.length > 0) {
+      console.log(
+        `   ⚠️  Their env is NOT set in this pane: ${envNames.join(', ')}. Export it here yourself if the steps need it.`,
+      );
+    }
   }
   if (previousOwner) console.warn(paneTakeoverWarning(previousOwner));
   console.log('');

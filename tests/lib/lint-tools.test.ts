@@ -83,6 +83,37 @@ describe('tool registry', () => {
     );
   });
 
+  it('a dry run is not a change (kubectl --dry-run)', () => {
+    // `kubectl create configmap … --dry-run=client -o yaml | kubectl apply`
+    // was reported as an unrolled-back `kubectl create`.
+    const tools = BUILTIN_TOOLS;
+    assert.ok(
+      !tools.isMutating(
+        cmd('kubectl create configmap app --dry-run=client -o yaml', tools),
+      ),
+    );
+    assert.ok(
+      !tools.isMutating(cmd('kubectl apply -f x.yaml --dry-run=server', tools)),
+    );
+    assert.ok(
+      tools.isMutating(cmd('kubectl apply -f x.yaml --dry-run=none', tools)),
+    );
+    assert.ok(tools.isMutating(cmd('kubectl apply -f x.yaml', tools)));
+  });
+
+  it('a team profile can declare its own dry-run option', () => {
+    const tools = BUILTIN_TOOLS.with([
+      toolProfile({
+        binaries: ['deployctl'],
+        mutating: ['release'],
+        dry_run: [{ option: '--plan' }],
+        boolean_options: ['--plan'],
+      }),
+    ]);
+    assert.ok(tools.isMutating(cmd('deployctl release web', tools)));
+    assert.ok(!tools.isMutating(cmd('deployctl release web --plan', tools)));
+  });
+
   it('reads output formats from profiles', () => {
     assert.strictEqual(
       BUILTIN_TOOLS.outputFormat(cmd('kubectl get pod -o json')),

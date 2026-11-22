@@ -11,13 +11,18 @@ environments:
     from: k8s-cluster
     variables:
       IMAGE_TAG: staging-latest
+      PREVIOUS_REPLICAS: 1
       DEBUG_ENABLED: true
 
   - name: production
     from: k8s-cluster
     variables:
       IMAGE_TAG: v${VERSION}
+      PREVIOUS_REPLICAS: 3
       DEBUG_ENABLED: false
+
+variables:
+  REGISTRY: registry.example.com/web
 
 steps:
   - name: Check Image Exists
@@ -33,12 +38,17 @@ steps:
     timeout: 300
     evidence:
       required: true
+      types: [command_output]
+    rollback:
+      - command: kubectl rollout undo deployment/webapp --namespace ${NAMESPACE}
 
   - name: Scale Deployment
     type: automatic
     phase: flight
     command: kubectl scale deployment webapp --replicas=${REPLICAS} --namespace ${NAMESPACE}
     timeout: 120
+    rollback:
+      - command: kubectl scale deployment webapp --replicas=${PREVIOUS_REPLICAS} --namespace ${NAMESPACE}
 
   - name: Verify Health
     type: manual

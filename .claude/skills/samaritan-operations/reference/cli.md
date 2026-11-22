@@ -54,8 +54,11 @@ directory or example ships with this repo today.
   existing validate checks under ids (`expect/*`, `deps/*`,
   `steps/duplicate-id`, `vars/*`, `evidence/*`, `rollback/empty`, `style/*`,
   `compat/discarded-verify`, `shell/shellcheck`), plus fields that do
-  nothing: `compat/unused-field` (step `retry`, `manual_override`,
-  `manual_instructions`, `approval` keys but `required`; warning, shown by
+  nothing: `schema/unknown-key` (a top-level key samaritan does not read,
+  with a did-you-mean; `x-…` keys allowed; warning, shown by `validate`),
+  `compat/unused-field` (step `retry`, `manual_override`,
+  `manual_instructions`, `approval` keys but `required`, and the top-level
+  `tags`/`matrix`/`reporting`/`last_executed`; warning, shown by
   `validate`) and opt-in `compat/common-variables` (strict/all).
 - Exit `0` = no error-severity findings, `1` = errors or more warnings than
   `--max-warnings <n>`, `2` = a file or its config could not be read.
@@ -97,7 +100,8 @@ directory or example ships with this repo today.
   `samaritan:recommended` = the defaults. The list is locked in
   `tests/lib/lint-conformance.test.ts`.
 - Tool profiles (`src/lib/lint/tools/`): per-program data (option spec,
-  `mutating` / `backup` / `deletes_data` verbs, `resource_options`,
+  `mutating` / `backup` / `deletes_data` verbs, `dry_run` (invocations that only
+  preview, e.g. kubectl `--dry-run` built in), `resource_options`,
   `output_options`). Teams add/extend with `lint.tools` (`binaries`,
   `value_options`, `verb_depth`, …); verbs: words vs operands, `*` in a word,
   `a|b`, lone `*` = a word, `''` = any; or `{verb, option, matches,
@@ -173,7 +177,7 @@ directory or example ships with this repo today.
   unreadable evidence `file` skips the step (reason names the file).
   `--fail-on-skipped` (CI gate) also exits 1 when any step was skipped or
   nothing was evaluated; `--min-evaluated <n>` exits 1 below `n` evaluated.
-- Spawned `sessions:` (no `--attach`): one tmux session `samaritan-<id>`, one window per entry named after it; a step's `session:` picks the pane for `[p]`/`[y]`/`[v]`. Panes are addressed by tmux pane id (works with `base-index 1`). The view hint is `tmux attach -t …` outside tmux and, inside tmux, `tmux split-window -h "TMUX= tmux attach -t …"` or `tmux switch-client -t …` (`attachHintLines`)
+- Spawned `sessions:` (no `--attach`): one tmux session `samaritan-<id>`, one window per entry named after it; a step's `session:` picks the pane for `[p]`/`[y]`/`[v]`. Each session's `env` is exported in its pane after the `ssh` connect (` export NAME='value'`, literal, single-quoted; an invalid name stops the bootstrap); with `--attach` it is not set and samaritan says which names it skipped. Panes are addressed by tmux pane id (works with `base-index 1`). The view hint is `tmux attach -t …` outside tmux and, inside tmux, `tmux split-window -h "TMUX= tmux attach -t …"` or `tmux switch-client -t …` (`attachHintLines`)
 - `--attach <tmux-target>` — attach to an existing tmux pane instead of spawning. It wins over `sessions:`: named sessions are not spawned and every step (whatever its `session:`) captures from / pastes into this one pane; `[t]` switches the pane mid-run; `resume` re-attaches it the same way. One samaritan run per pane: tmux allows one `pipe-pane`, so a second run on the same pane takes it over (warned); the first run detects that at its next step/`[v]`, re-attaches, and verifies from the pane scrollback (from the `[p]` paste line when there was one).
 - `--from-step <step>` — start at that step: its number in the manual (`2.7`; also the multi-env manual's `2g`), its `id`, or its name (several matches: error lists them), NOT the flat position (`--from-step 2` is Step 2 even when it is the 32nd step); earlier steps are recorded as **skipped**
   (distinct from `resume --from-step`: there, steps it jumps over that have no
@@ -270,7 +274,7 @@ or in non-sidecar `automatic` runs.
 Each `run`/`resume` writes a black box beside the operation at
 `<op-dir>/.samaritan-runs/<id>/`:
 - `events.jsonl` — append-only event stream
-- `report.md` — always-on (always Markdown; HTML via `run --report-format html` or `report --format html`) per-step verification ledger + approval trail; terminal-escape noise is cleaned from captured output and operator-local path prefixes (home `→ ~`, run dir, operation dir) are stripped so it's safe to share. Counts only genuinely completed steps (`Steps completed: N/total`); an aborted/cancelled run flags where it stopped — an `Aborted at step N: <name>` summary line plus a `🛑 (aborted here — in progress)` marker on the in-progress step's heading
+- `report.md` — always-on (always Markdown; HTML via `run --report-format html` or `report --format html`) per-step verification ledger + approval trail; terminal-escape noise is cleaned from captured output and operator-local path prefixes (home `→ ~`, run dir, operation dir) are stripped so it's safe to share. Counts only genuinely completed steps (`Steps completed: N/total`, where total leaves out steps whose `when:` names other environments); an aborted/cancelled run flags where it stopped — an `Aborted at step N: <name>` summary line plus a `🛑 (aborted here — in progress)` marker on the in-progress step's heading
 
 `.samaritan-runs/` is gitignored (force-add to commit a run). Sessions also
 persist to `~/.samaritan/sessions/<id>.json` for `resume`, which takes the

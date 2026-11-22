@@ -43,7 +43,13 @@ export function describeStepPosition(
   index: number,
 ): StepPosition {
   const current = steps[index];
-  const heading = `[Step ${current.label} · ${index + 1}/${steps.length}]`;
+  // Progress over the steps this run visits: a step `when:` leaves out for
+  // this environment is never shown, so it is not counted either.
+  const visited = steps.filter((s) => !s.filteredByEnv);
+  const position = steps
+    .slice(0, index + 1)
+    .filter((s) => !s.filteredByEnv).length;
+  const heading = `[Step ${current.label} · ${position}/${visited.length}]`;
 
   const parentLabel = parentLabelOf(current.label);
   const parentStep =

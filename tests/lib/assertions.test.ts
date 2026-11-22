@@ -63,6 +63,18 @@ describe('assertOutput (issue #12)', () => {
     assert.strictEqual(r.pass, true);
   });
 
+  it('not_empty: false is no check (it used to check the same as true)', () => {
+    assert.strictEqual(assertOutput('', { not_empty: false }).pass, true);
+    const detailed = assertOutputDetailed('', {
+      not_empty: false,
+      contains: '',
+    });
+    assert.deepStrictEqual(
+      detailed.checks.map((c) => c.type),
+      ['contains'],
+    );
+  });
+
   it('not_empty - fails on empty output', () => {
     const r = assertOutput('   ', { not_empty: true });
     assert.strictEqual(r.pass, false);

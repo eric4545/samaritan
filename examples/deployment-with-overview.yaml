@@ -122,6 +122,8 @@ steps:
     command: |
       kubectl set image deployment/web-app web-app=registry.example.com/web-app:2.5.0
       kubectl rollout status deployment/web-app --timeout=10m
+    expect:
+      contains: successfully rolled out
     rollback:
       command: |
         kubectl rollout undo deployment/web-app
@@ -166,9 +168,9 @@ steps:
     pic: ops-team@example.com
     timeline: "2025-01-15 10:15"
 
-postflight:
   - name: Monitor Error Rates
     type: manual
+    phase: postflight
     description: Monitor application error rates for 15 minutes
     instruction: |
       Check monitoring dashboards:
@@ -185,6 +187,7 @@ postflight:
 
   - name: Send Release Notification
     type: manual
+    phase: postflight
     description: Notify stakeholders of successful deployment
     instruction: |
       Post to Slack channel #releases:
@@ -195,13 +198,13 @@ postflight:
     pic: release-manager@example.com
     timeline: "2025-01-15 10:45"
 
-global_rollback:
-  description: |
-    Emergency rollback procedure if critical issues are discovered post-deployment.
-    This should only be executed if the application is experiencing severe problems.
+rollback:
+  conditions:
+    - Emergency rollback if critical issues are discovered post-deployment.
+    - Only when the application is experiencing severe problems.
   steps:
-    - Immediately notify #incident-response Slack channel
-    - Roll back Kubernetes deployment to previous version
-    - Roll back database migrations using rollback scripts
-    - Monitor error rates to confirm rollback success
-    - Document rollback reason in JIRA-1234
+    - instruction: Immediately notify the #incident-response Slack channel
+    - instruction: Roll back the Kubernetes deployment to the previous version
+    - instruction: Roll back database migrations using the rollback scripts
+    - instruction: Monitor error rates to confirm the rollback succeeded
+    - instruction: Document the rollback reason in JIRA-1234

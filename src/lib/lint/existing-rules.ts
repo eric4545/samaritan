@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import yaml from 'js-yaml';
 import type { Operation, Step } from '../../models/operation';
+import { OPERATION_TOP_LEVEL_KEYS } from '../../validation/schema-validator';
 import { BUILTIN_VARIABLE_NAMES } from '../builtin-variables';
 import {
   findDiscardedVerifyKeysInFile,
@@ -22,6 +23,7 @@ import {
 } from '../shell-lint';
 import { validateStepDeps } from '../step-deps';
 import { duplicateStepIds, formatDuplicateStepId } from '../step-walk';
+import { editDistance } from './classify';
 import type { RuleSetting } from './config';
 import {
   expectStrings,
@@ -106,6 +108,7 @@ const depsRule = (
 /** Step fields that are parsed and then read by nothing, with the fix. */
 function unusedFields(step: {
   retry?: unknown;
+  env?: Record<string, unknown>;
   manual_override?: unknown;
   manual_instructions?: unknown;
   approval?: object;
@@ -115,6 +118,12 @@ function unusedFields(step: {
     found.push([
       'retry',
       '`retry:` on a step does nothing: samaritan never re-runs a command. To poll until a check passes, use `expect.retry`.',
+    ]);
+  }
+  if (step.env !== undefined && Object.keys(step.env).length > 0) {
+    found.push([
+      'env',
+      '`env` on a step is not passed to the command (samaritan never runs it) and is not shown anywhere. Say it in the `instruction:`, or set it in `sessions.<name>.env`.',
     ]);
   }
   if (step.manual_override === true) {
@@ -141,6 +150,45 @@ function unusedFields(step: {
     ]);
   }
   return found;
+}
+
+/** Top-level keys of the operation file that nothing reads (`x-…` allowed). */
+function unknownTopLevelKeys(file: string): string[] {
+  try {
+    const raw = yaml.load(readFileSync(file, 'utf8'));
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+    return Object.keys(raw).filter(
+      (k) => !k.startsWith('x-') && !OPERATION_TOP_LEVEL_KEYS.includes(k),
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Top-level keys the parser stores on the operation and nothing reads, with
+ * what to use instead. In file order.
+ */
+const UNUSED_TOP_LEVEL: Record<string, string> = {
+  tags: '`tags`: not used by any manual, run or report. Remove it, or keep notes under an `x-` key.',
+  matrix:
+    '`matrix`: not used. To repeat steps per region or environment, use a step `foreach: { matrix: … }`.',
+  reporting:
+    '`reporting`: not used. Confluence, Slack and email integrations are not implemented (see ROADMAP.md); `samaritan run` writes report.md.',
+  last_executed:
+    '`last_executed`: not used and not updated by a run. Remove it.',
+};
+
+function unusedTopLevelKeys(file: string): Array<[string, string]> {
+  try {
+    const raw = yaml.load(readFileSync(file, 'utf8'));
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+    return Object.keys(raw).flatMap((k) =>
+      UNUSED_TOP_LEVEL[k] ? [[k, UNUSED_TOP_LEVEL[k]] as [string, string]] : [],
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** Whether the operation file sets `key` at its top level (raw YAML). */
@@ -484,15 +532,43 @@ export const EXISTING_RULES: OperationRule[] = [
     defaultSeverity: 'warning',
     inValidate: 'warning',
     description:
-      'A step field the parser accepts but nothing reads (`retry`, `manual_override`, `manual_instructions`, any `approval` key but `required`).',
-    check: (ctx) =>
-      ctx.all.flatMap((info) =>
+      'A field the parser accepts but nothing reads: step `retry`, `env`, `manual_override`, `manual_instructions`, any `approval` key but `required`; top-level `tags`, `matrix`, `reporting`, `last_executed`.',
+    check: (ctx) => [
+      ...ctx.all.flatMap((info) =>
         unusedFields(info.step).map(([field, message]) => ({
           message: `step "${info.stepName}": ${message}`,
           step: info.step,
           field,
         })),
       ),
+      ...unusedTopLevelKeys(ctx.operationFile).map(([key, message]) => ({
+        message,
+        path: [],
+        field: key,
+      })),
+    ],
+  },
+  {
+    kind: 'operation',
+    id: 'schema/unknown-key',
+    tier: 1,
+    defaultSeverity: 'warning',
+    inValidate: 'warning',
+    description:
+      'A top-level key samaritan does not read (a typo such as `rolback:` silently drops the rollback plan). `x-` keys are allowed.',
+    check: (ctx) =>
+      unknownTopLevelKeys(ctx.operationFile).map((key) => {
+        const near = OPERATION_TOP_LEVEL_KEYS.find(
+          (k) => editDistance(k, key) <= 2,
+        );
+        return {
+          message: near
+            ? `unknown top-level key \`${key}\` (did you mean \`${near}\`?): samaritan ignores it`
+            : `unknown top-level key \`${key}\`: samaritan ignores it. Prefix it with \`x-\` if it only holds YAML anchors or notes.`,
+          path: [],
+          field: key,
+        };
+      }),
   },
   {
     kind: 'operation',

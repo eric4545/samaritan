@@ -47,6 +47,9 @@ export const KUBECTL: ToolProfile = {
     'apply|create|delete|patch|replace|edit|scale|annotate|label|taint|cordon|uncordon|drain|set|expose|autoscale',
     'rollout restart|undo|pause|resume',
   ],
+  // `--dry-run=client|server` (and the old bare `--dry-run`) changes nothing;
+  // `--dry-run=none` is a real run.
+  dryRun: [{ option: '--dry-run', matches: '^(?!none$)' }],
   deletesData: [
     'delete pvc|pv|persistentvolumeclaim|persistentvolumeclaims|persistentvolume|persistentvolumes|statefulset|statefulsets|sts',
   ],

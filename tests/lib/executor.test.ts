@@ -564,6 +564,82 @@ describe('Bug fixes — review findings', () => {
   });
 });
 
+describe('excludeSteps (steps not for this environment)', () => {
+  const op: Operation = {
+    id: 'exclude-op',
+    name: 'Exclude Op',
+    version: '1.0.0',
+    description: 'Four steps, one for another environment',
+    environments: [],
+    variables: {},
+    steps: [
+      { name: 'Step A', type: 'manual' },
+      { name: 'Prod only', type: 'manual' },
+      { name: 'Step C', type: 'manual' },
+      { name: 'Step D', type: 'manual' },
+    ],
+    metadata: {
+      created_at: new Date(),
+      updated_at: new Date(),
+      execution_count: 0,
+    },
+  };
+  const newExecutor = () => {
+    const ex = createExecutor(
+      op,
+      ExecutorUtils.createContext('exclude-op', 'staging', {}, 'tester'),
+    );
+    ex.excludeSteps([1]);
+    return ex;
+  };
+
+  it('leaves them out of the total, and passing one is not a skip', () => {
+    const ex = newExecutor();
+    assert.strictEqual(ex.getState().totalSteps, 3);
+    ex.startInteractive();
+    ex.skipStep(1);
+    const state = ex.getState();
+    assert.strictEqual(state.skippedSteps, 0);
+    assert.strictEqual(state.steps[1].status, 'skipped');
+    assert.strictEqual(state.currentStepIndex, 2);
+  });
+
+  it('an operator skip still counts', () => {
+    const ex = newExecutor();
+    ex.startInteractive();
+    ex.skipStep(0);
+    assert.strictEqual(ex.getState().skippedSteps, 1);
+  });
+
+  it('goToStep and revisitStep never under-count real skips', () => {
+    const ex = newExecutor();
+    ex.startInteractive();
+    ex.skipStep(0); // operator skip: counted
+    ex.skipStep(1); // excluded: not counted
+    ex.goToStep(1);
+    assert.strictEqual(ex.getState().skippedSteps, 1);
+    ex.skipStep(1);
+    ex.revisitStep(1);
+    assert.strictEqual(ex.getState().skippedSteps, 1);
+  });
+
+  it('a [j] jump over one does not count it as skipped', () => {
+    const ex = newExecutor();
+    ex.startInteractive();
+    ex.jumpToStep(3); // over A (counted) and Prod only (excluded) and C
+    assert.strictEqual(ex.getState().skippedSteps, 2);
+  });
+
+  it('resumeFromIndex does not count them as done or skipped', () => {
+    const ex = newExecutor();
+    ex.resumeFromIndex(3, (i) => (i === 0 ? 'completed' : undefined));
+    const state = ex.getState();
+    assert.strictEqual(state.completedSteps, 2); // A recorded, C no record
+    assert.strictEqual(state.skippedSteps, 0);
+    assert.strictEqual(state.steps[1].status, 'skipped');
+  });
+});
+
 describe('goToStep (back-to-previous-step navigation)', () => {
   const threeStepOperation: Operation = {
     id: 'goto-op',

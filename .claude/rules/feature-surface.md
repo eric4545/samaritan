@@ -50,7 +50,14 @@ A test for rows 5 to 8 ships in the same commit (CLAUDE.md rule 1):
 `tests/cli/groups.test.ts` ("run / resume") is the pattern: run, then assert
 on `report.md`, `events.jsonl`, `sessions` and `report merge`.
 
-## Known gaps (do not assume these work)
+## Steps `when:` leaves out are not part of the run
 
-- A step filtered out by `when:` still counts in the report's
-  `Steps completed: N/M` total.
+A step whose `when:` names other environments stays in the flat step list
+(step numbers and recorded indices are stable) but is excluded everywhere a
+run COUNTS: `executor.excludeSteps(envFilteredIndices(flatSteps))` right after
+the executor is built in `run` and `resume`, so `totalSteps`,
+`session_start.total_steps`, the report's `Steps completed: N/M` (and its
+cancelled → completed promotion), `sessions` progress, the start banner
+(`Steps: 2 (1 only for other environments)`) and the heading's `1/2` all
+count only this environment's steps. A new counter must do the same.
+Tests: `tests/cli/when-filtered-run.test.ts`, executor `excludeSteps`.

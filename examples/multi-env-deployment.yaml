@@ -32,6 +32,10 @@ steps:
     type: manual
     instruction: Apply the deployment manifest to the target cluster.
     command: kubectl apply -f deployment.yaml --context=${CLUSTER} --replicas=${REPLICAS}
+    expect:
+      any_line_matches: '(created|configured|unchanged)$'
+    rollback:
+      - command: kubectl rollout undo deployment/web-server --context=${CLUSTER}
     pic: ops-team@example.com
     variants:
       production:

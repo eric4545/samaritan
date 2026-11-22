@@ -101,7 +101,7 @@ nothing, use `expect.retry`), `rollback`,
   = `{ command: <command> }`.
 
 Accepted but unused (lint `compat/unused-field`, schema `deprecated`):
-step `retry`, `manual_override`, `manual_instructions`, every `approval` key
+step `retry`, step `env` (never passed to the command; use `sessions.<name>.env`), `manual_override`, `manual_instructions`, every `approval` key
 but `required` (use `reviewer:` for the approver). `common_variables:` is the
 older name of `variables:` (opt-in `compat/common-variables`).
 

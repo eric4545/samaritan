@@ -60,6 +60,8 @@ steps:
             type: automatic
             description: Configure application load balancer
             command: kubectl apply -f k8s/load-balancer-${NAMESPACE}.yaml
+            expect:
+              any_line_matches: '(created|configured|unchanged)$'
             sub_steps:
               - name: Configure SSL Certificates
                 type: automatic
@@ -87,6 +89,8 @@ steps:
             type: automatic
             description: Deploy primary database instance
             command: helm install postgres bitnami/postgresql --namespace ${NAMESPACE} --set replication.enabled=true --set replication.replicas=${DB_REPLICAS}
+            expect:
+              contains: 'STATUS: deployed'
             sub_steps:
               - name: Initialize Database Schema
                 type: automatic
@@ -127,6 +131,8 @@ steps:
             type: automatic
             description: Deploy Redis for session management
             command: helm install redis bitnami/redis --namespace ${NAMESPACE} --set cluster.enabled=true
+            expect:
+              contains: 'STATUS: deployed'
             sub_steps:
               - name: Configure Redis Cluster
                 type: automatic
@@ -150,10 +156,14 @@ steps:
             type: automatic
             description: Deploy main API service
             command: kubectl apply -f k8s/backend-deployment.yaml -n ${NAMESPACE}
+            expect:
+              any_line_matches: '(created|configured|unchanged)$'
             sub_steps:
               - name: Scale Backend Replicas
                 type: automatic
                 command: kubectl scale deployment/backend --replicas=${APP_REPLICAS} -n ${NAMESPACE}
+                expect:
+                  contains: scaled
 
               - name: Wait for Backend Pods
                 type: automatic
@@ -195,6 +205,8 @@ steps:
             type: automatic
             description: Deploy web frontend
             command: kubectl apply -f k8s/frontend-deployment.yaml -n ${NAMESPACE}
+            expect:
+              any_line_matches: '(created|configured|unchanged)$'
             sub_steps:
               - name: Update Frontend Configuration
                 type: automatic
@@ -204,6 +216,8 @@ steps:
                     --from-literal=API_URL=https://${DOMAIN}/api \
                     -n ${NAMESPACE} \
                     --dry-run=client -o yaml | kubectl apply -f -
+                expect:
+                  any_line_matches: 'configmap/frontend-config (created|configured|unchanged)'
 
               - name: Wait for Frontend Pods
                 type: automatic

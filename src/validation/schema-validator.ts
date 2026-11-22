@@ -9,6 +9,29 @@ import addFormats from 'ajv-formats';
 const schemaPath = join(__dirname, '../schemas/operation.schema.json');
 const operationSchema = JSON.parse(readFileSync(schemaPath, 'utf8'));
 
+/**
+ * Top-level keys the parser reads although the schema does not define them
+ * (kept so existing files stay valid). `tests/lib/lint-rules-negative.test.ts`
+ * checks this list against the parser's `rawOperation.<key>` reads.
+ */
+export const PARSER_ONLY_TOP_LEVEL_KEYS: readonly string[] = [
+  'id',
+  'tags',
+  'emergency',
+  'template',
+  'matrix',
+  'reporting',
+  'git_branch',
+  'git_hash',
+  'last_executed',
+];
+
+/** Every top-level key samaritan reads (lint `schema/unknown-key`). */
+export const OPERATION_TOP_LEVEL_KEYS: readonly string[] = [
+  ...Object.keys(operationSchema.properties),
+  ...PARSER_ONLY_TOP_LEVEL_KEYS,
+];
+
 // Setup AJV
 const ajv = new Ajv({
   allErrors: true,

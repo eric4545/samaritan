@@ -52,6 +52,8 @@ steps:
   - name: Deploy ${APP}
     type: manual
     command: kubectl apply -f ${APP}.yaml -n ${NAMESPACE} --replicas=${REPLICAS}
+    expect:
+      any_line_matches: '(created|configured|unchanged)$'
     rollback:
       - name: Roll back ${APP}
         command: kubectl rollout undo deployment/${APP} -n ${NAMESPACE}

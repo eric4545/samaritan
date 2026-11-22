@@ -1,6 +1,6 @@
 # Examples
 
-Worked operations. Every file under `examples/` is validated in CI, so these are copy-ready starting points.
+Worked operations. Every file under `examples/` is validated and lint-clean in CI (`samaritan lint` reports nothing, also inside the files they include), so these are copy-ready starting points.
 
 ## Simple Database Backup
 

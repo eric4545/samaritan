@@ -50,6 +50,8 @@ steps:
     type: automatic
     phase: flight
     command: kubectl scale deployment/web-canary --replicas=3 -n ${NAMESPACE}
+    expect:
+      contains: scaled
     # Several entries on ONE step keep their authored order in the global
     # plan (scale down, THEN confirm it) — only the steps are reversed.
     rollback:
