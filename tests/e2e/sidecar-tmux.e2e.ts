@@ -447,6 +447,68 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
+    "spawn-own sessions: [r] pastes a rollback entry into its step's session",
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-rollback-session.yaml');
+      const d = TmuxDriver.create();
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging`));
+        await d.waitFor('Bootstrapping tmux sessions', { timeoutMs: 40_000 });
+        await d.waitFor('deploy E2E_RBS_DEPLOY', { timeoutMs: 20_000 });
+        const spawned = TmuxDriver.listSessions().find((s) =>
+          s.startsWith('samaritan-'),
+        );
+        assert.ok(spawned, 'bootstrap must spawn a samaritan-* session');
+        const appPane = `${spawned}:app`;
+
+        // The rollback entry sets no `session:`; it inherits `app` from its
+        // step. Before, the sidecar rollback bar offered no [p] at all.
+        d.key('r');
+        await d.waitFor('Rollback 1/1', { timeoutMs: 15_000 });
+        await d.waitFor('p paste into pane', { timeoutMs: 15_000 });
+        d.key('p');
+        await d.waitFor('undo E2E_RBS_UNDO', {
+          pane: appPane,
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          !d.capture(`${spawned}:first`).includes('E2E_RBS_UNDO'),
+          'nothing is pasted into the first session',
+        );
+        d.enter(appPane);
+        await d.waitFor(/^undo E2E_RBS_UNDO$/m, {
+          pane: appPane,
+          timeoutMs: 15_000,
+        });
+        d.enter(); // ↵ done — I ran it
+        await d.waitFor('Rollback complete', { timeoutMs: 15_000 });
+        // The only step was rolled back: the run ends and writes its log.
+        await d.waitFor('Execution Summary', { timeoutMs: 15_000 });
+
+        const events = readFileSync(
+          findFile(ws.dir, 'events.jsonl') as string,
+          'utf8',
+        )
+          .trim()
+          .split('\n')
+          .map((l) => JSON.parse(l));
+        const shown = events.find(
+          (e) =>
+            e.type === 'command_displayed' &&
+            e.context === 'rollback' &&
+            e.command === 'echo "undo E2E_RBS_UNDO"',
+        );
+        // A rollback entry records the pane it was shown for (before: `default`).
+        assert.match(String(shown?.session), /:app\.0$/, JSON.stringify(shown));
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
     'abort → resume: a paused session resumes at the same step under real tmux',
     { skip, timeout: 120_000 },
     async () => {

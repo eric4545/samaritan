@@ -45,9 +45,11 @@ export interface StepInfo {
   /** Ancestors (outermost first) for sub-steps. */
   ancestors: AnyStep[];
   /**
-   * Forward steps and their variants: the session the step runs in when it
-   * sets none — its nearest ancestor's `session:` (`inheritSubStepSessions`).
-   * Undefined for rollback steps and top-level steps. Read it via `sessionOf`.
+   * The session the step runs in when it sets none (`withInheritedSessions`):
+   * a sub-step's nearest ancestor's `session:`; a step-level rollback entry's
+   * owner step's (then its nearest rollback ancestor's); a variant's base
+   * step's. Undefined for top-level steps and the operation-level plan's top
+   * entries. Read it via `sessionOf`.
    */
   inheritedSession?: string;
   /**

@@ -133,10 +133,22 @@ function buildStepInfos(
     ancestors: AnyStep[],
     owner?: Step,
     onlyEnv?: string,
+    /** The owner step's session, then the nearest rollback ancestor's. */
+    inheritedSession?: string,
   ) => {
     for (const step of steps ?? []) {
-      rollbacks.push({ ...make(step, ancestors, true, -1, owner), onlyEnv });
-      visitRollback(step.sub_steps, [...ancestors, step], owner, onlyEnv);
+      rollbacks.push({
+        ...make(step, ancestors, true, -1, owner),
+        onlyEnv,
+        inheritedSession,
+      });
+      visitRollback(
+        step.sub_steps,
+        [...ancestors, step],
+        owner,
+        onlyEnv,
+        step.session ?? inheritedSession,
+      );
     }
   };
   /** A variant's rollback list is raw YAML: give its entries their paths. */
@@ -194,7 +206,7 @@ function buildStepInfos(
           'rollback',
         ]);
       }
-      visitRollback(variantRollback, [], step, env);
+      visitRollback(variantRollback, [], step, env, sessionOf(base));
     }
   };
   const visit = (
@@ -209,13 +221,13 @@ function buildStepInfos(
       };
       forward.push(info);
       visitVariants(info, ancestors);
-      // Same rule as the run loop and the manuals (`inheritSubStepSessions`).
+      // Same rule as the run loop and the manuals (`withInheritedSessions`).
       visit(
         step.sub_steps,
         [...ancestors, step],
         step.session ?? inheritedSession,
       );
-      visitRollback(step.rollback, [], step);
+      visitRollback(step.rollback, [], step, undefined, sessionOf(info));
     }
   };
   visit(operation.steps, []);

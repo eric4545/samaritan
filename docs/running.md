@@ -555,9 +555,12 @@ The run loop (`Session :` line, `[p]`/`[y]`/`[v]`, `events.jsonl`,
 rules (`flow/aws-local-session`, `flow/sts-before-mutate`, `flow/cwd-lost`) all
 apply this rule. A top-level step without `session:` has no spawned pane of
 its own (attach one with `[t]`). To send one sub-step to a different pane, give
-it its own `session:` that names a declared entry (e.g. `local: {}`). Rollback
-steps do not inherit. See
-`examples/substep-sessions.yaml`.
+it its own `session:` that names a declared entry (e.g. `local: {}`). A
+step's `rollback` entries follow the same rule: see
+[Rollback sessions](./rollback.md#rollback-sessions). See
+`examples/substep-sessions.yaml`. To review which steps now run in an
+inherited session, turn on the opt-in lint rule `compat/inherited-session`
+once.
 
 ## Complete a step on a verify PASS (`run.advance_on_pass`)
 

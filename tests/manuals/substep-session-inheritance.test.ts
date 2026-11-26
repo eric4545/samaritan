@@ -81,4 +81,34 @@ describe('sub-step session inheritance in manuals', () => {
     generateADFString(op);
     assert.strictEqual(op.steps[0].sub_steps?.[0].session, undefined);
   });
+
+  it('rollback entries show the session they inherit, in every format', async () => {
+    // Fixture: step `session: ops` with two rollback entries (one sets
+    // `session: local`); the operation-level plan has a `session: db` entry
+    // whose sub-step sets none. Markdown multi-env renders step rollbacks
+    // twice (inline and under Rollback Procedures).
+    const op = await parseFixture('rollbackSessionInherit');
+    const outputs: [string, string, number, number][] = [
+      ['md', generateManual(op), 3, 2],
+      ['md --env', generateSingleEnvManual(op, 'staging'), 2, 1],
+      ['adf', generateADFString(op), 2, 1],
+      ['adf --env', generateADFString(op, undefined, 'staging'), 2, 1],
+      ['confluence', generateConfluenceContent(op), 2, 1],
+      [
+        'confluence --env',
+        generateConfluenceContent(op, false, false, 'staging'),
+        2,
+        1,
+      ],
+    ];
+    for (const [format, text, ops, local] of outputs) {
+      assert.strictEqual(count(text, 'Session: ops'), ops, `${format}: ops`);
+      assert.strictEqual(
+        count(text, 'Session: local'),
+        local,
+        `${format}: local`,
+      );
+      assert.strictEqual(count(text, 'Session: db'), 2, `${format}: db`);
+    }
+  });
 });

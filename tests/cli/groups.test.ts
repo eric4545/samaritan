@@ -276,6 +276,39 @@ steps:
       assert.match(result.out, /Choose one with --group <name>/);
     });
 
+    it('run --group --dry-run plans only that group, with its variables', () => {
+      const web = runCli([
+        'run',
+        fixture,
+        '--env',
+        'staging',
+        '--group',
+        'web-server',
+        '--dry-run',
+      ]);
+      assert.equal(web.status, 0, web.out);
+      assert.match(web.out, /Step 2 {2}Deploy web-server /);
+      assert.match(web.out, /Would execute: kubectl apply -f web-server\.yaml/);
+      assert.match(web.out, /Purge the CDN/);
+      assert.doesNotMatch(web.out, /api-gateway/);
+      // The validate checks run against the group's projection too.
+      assert.match(web.out, /samaritan validate --env staging/);
+      assert.doesNotMatch(web.out, /unresolved:/);
+
+      const api = runCli([
+        'run',
+        fixture,
+        '--env',
+        'staging',
+        '--group',
+        'api-gateway',
+        '--dry-run',
+      ]);
+      assert.equal(api.status, 0, api.out);
+      assert.match(api.out, /Step 2 {2}Deploy api-gateway /);
+      assert.doesNotMatch(api.out, /Purge the CDN/);
+    });
+
     it('run --group walks only that group and resume keeps the group', () => {
       const run = runCli(
         ['run', fixture, '--env', 'staging', '--group', 'api-gateway'],

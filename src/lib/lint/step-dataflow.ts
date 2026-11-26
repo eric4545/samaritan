@@ -1,4 +1,5 @@
 import type { CaptureRule, Step } from '../../models/operation';
+import { stepDisplayName } from '../step-walk';
 import { baseName, describeCommand, isBackup, mentionsAny } from './classify';
 import { hasOption, type NormalizedCommand } from './command-model';
 import {
@@ -834,6 +835,41 @@ const awsLocalSession: OperationRule = {
   },
 };
 
+const inheritedSession: OperationRule = {
+  kind: 'operation',
+  id: 'compat/inherited-session',
+  tier: 3,
+  defaultSeverity: 'off',
+  presetSeverity: 'warning',
+  description:
+    'A step with a command and no `session:` that now runs in a session it inherits (a sub-step from its nearest ancestor, a rollback entry from the step it undoes). Before sessions were inherited it ran in the default pane. An opt-in migration check: turn it on once to review every such step.',
+  check(ctx) {
+    const hits: RuleHit[] = [];
+    for (const info of ctx.all) {
+      if (info.onlyEnv !== undefined || info.step.session !== undefined) {
+        continue;
+      }
+      const session = info.inheritedSession;
+      if (session === undefined || !(info.text || info.step.script)) continue;
+      const declaring = [...info.ancestors]
+        .reverse()
+        .find((a) => a.session !== undefined);
+      const from = declaring
+        ? `step "${stepDisplayName(declaring)}"`
+        : info.owner
+          ? `step "${stepDisplayName(info.owner)}", the step it rolls back`
+          : 'an ancestor';
+      hits.push(
+        hit(
+          info,
+          `runs in session \`${session}\`, inherited from ${from}; before sessions were inherited it ran in the default pane. Check \`${session}\` is right, then write \`session: ${session}\` on it (or keep it inherited and turn this rule off)`,
+        ),
+      );
+    }
+    return hits;
+  },
+};
+
 export const FLOW_RULES: OperationRule[] = [
   forwardVar,
   unproducedCapture,
@@ -850,4 +886,5 @@ export const FLOW_RULES: OperationRule[] = [
   checksumBeforeExec,
   cwdLost,
   awsLocalSession,
+  inheritedSession,
 ];

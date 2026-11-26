@@ -279,6 +279,38 @@ describe('sub-steps inherit the session of their nearest ancestor', () => {
     );
   });
 
+  it('compat/inherited-session: names sub-steps and rollback entries that inherit', () => {
+    const findings = lint(
+      [
+        {
+          ...parent([s('uptime', { name: 'Inherits' })]),
+          rollback: [{ command: 'echo undo' }],
+        },
+      ],
+      remote,
+    ).filter((f) => f.ruleId === 'compat/inherited-session');
+    assert.deepStrictEqual(
+      findings.map((f) => f.message.split(':')[0]),
+      ['step "Inherits"', 'step "(rollback)"'],
+    );
+    assert.match(findings[0].message, /inherited from step "Setup"/);
+    assert.match(findings[1].message, /the step it rolls back/);
+  });
+
+  it('compat/inherited-session: silent for explicit, top-level and command-less steps', () => {
+    silent(
+      'compat/inherited-session',
+      [
+        s('uptime', { name: 'Top' }),
+        parent([
+          s('date -u', { session: 'local' }),
+          { name: 'Note', type: 'manual', instruction: 'Tell the team.' },
+        ]),
+      ],
+      remote,
+    );
+  });
+
   it('flow/cwd-lost: the cd ran in the session the sub-step inherits', () => {
     silent(
       'flow/cwd-lost',

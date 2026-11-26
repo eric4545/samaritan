@@ -246,6 +246,32 @@ describe('run command: dry-run semantics', () => {
     }
   });
 
+  it('dry-run leaves no saved session behind (sessions --all does not list it)', () => {
+    const home = mkdtempSync(join(tmpdir(), 'samaritan-dryrun-home-'));
+    try {
+      const env = { ...process.env, HOME: home };
+      const fixture = fixturePath('deploymentTest');
+      const run = spawnSync(
+        CLI,
+        [INDEX, 'run', fixture, '--env', 'staging', '--dry-run'],
+        { encoding: 'utf8', env, timeout: 15_000 },
+      );
+      assert.strictEqual(run.status, 0);
+      assert.match(run.stdout, /dry run: not saved/);
+      const list = spawnSync(CLI, [INDEX, 'sessions', '--all'], {
+        encoding: 'utf8',
+        env,
+        timeout: 15_000,
+      });
+      assert.ok(
+        !/completed/.test(list.stdout),
+        `a dry run must not be listed as a completed run:\n${list.stdout}`,
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it('dry-run exits 1 when validate finds an error', () => {
     const dir = mkdtempSync(join(tmpdir(), 'samaritan-dryrun-'));
     try {

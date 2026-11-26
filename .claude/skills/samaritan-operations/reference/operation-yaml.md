@@ -84,7 +84,11 @@ sets one (its own `session:` wins) — in the run loop, every manual and lint
 (`src/lib/session-inheritance.ts`, lint `StepInfo.inheritedSession`). Declare
 it once on the parent. To send one sub-step elsewhere, give it a `session:`
 naming a declared entry (`local: {}`); `variants.<env>` cannot set `session`.
-Rollback steps do not inherit. Example: `examples/substep-sessions.yaml`.
+A step's `rollback` entries (and `variants.<env>.rollback`) inherit the step's
+session, their sub-steps the rollback parent's; in the operation-level
+`rollback.steps` only sub-steps inherit. Opt-in lint
+`compat/inherited-session` lists every step this moves. Example:
+`examples/substep-sessions.yaml`.
 
 ## Step-only structural fields
 

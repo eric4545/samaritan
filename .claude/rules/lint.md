@@ -54,9 +54,12 @@ Refactors must keep `samaritan lint --format json` identical over
 
 Rules read the session a step runs in with `sessionOf(info)`
 (`rule-types.ts`): `info.step.session ?? info.inheritedSession`. The engine
-sets `inheritedSession` while walking forward steps (nearest ancestor's
-`session:`; a variant gets its base step's) — the same rule as the run loop
-(`inheritSubStepSessions`). Never read `info.step.session` for routing.
+sets `inheritedSession` while walking (a sub-step: nearest ancestor's
+`session:`; a variant: its base step's; a step-level rollback entry: its
+owner's, then its nearest rollback ancestor's) — the same rule as the run
+loop and manuals (`withInheritedSessions`). Never read `info.step.session`
+for routing. `compat/inherited-session` (opt-in) reports every step with a
+command that uses an inherited session: the migration list.
 `flow/session-undeclared` stays on the explicit field (`fieldIn`): an
 inherited name was already checked on the ancestor.
 

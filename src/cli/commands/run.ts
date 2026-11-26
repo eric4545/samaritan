@@ -97,7 +97,7 @@ import {
   filterRollbackByEnv,
   findNearestRollbackSource,
 } from '../../lib/rollback';
-import { inheritSubStepSessions } from '../../lib/session-inheritance';
+import { withInheritedSessions } from '../../lib/session-inheritance';
 import {
   buildStepRecords,
   foldEvents,
@@ -106,6 +106,7 @@ import {
 import { SessionUtils, sessionManager } from '../../lib/session-manager';
 import {
   candidateRunLogPaths,
+  deletePersistedSession,
   getRunEvidenceDir,
   getRunReportPath,
   getSessionEvidenceDir,
@@ -595,7 +596,11 @@ class OperationRunner {
       );
     }
 
-    console.log(`📋 Session: ${session.id}\n`);
+    console.log(
+      options.dryRun
+        ? `📋 Session: ${session.id} (dry run: not saved, cannot be resumed)\n`
+        : `📋 Session: ${session.id}\n`,
+    );
 
     const executor = new OperationExecutor(execOperation, context);
     // Steps for another environment are not part of this run's counts.
@@ -796,12 +801,16 @@ class OperationRunner {
       console.error(`\n❌ Operation failed: ${error.message}`);
 
       const currentSession = sessionManager.getSession(session.id);
-      if (currentSession) {
+      if (currentSession && !options.dryRun) {
         console.log(`\n🔄 Resume from where you left off:`);
         console.log(`   samaritan resume ${session.id}`);
       }
 
       throw error;
+    } finally {
+      // A dry run ran nothing: keep it out of `sessions` (it was listed as a
+      // completed run) and out of `resume`.
+      if (options.dryRun) deletePersistedSession(session.id);
     }
   }
 
@@ -1074,26 +1083,25 @@ class OperationRunner {
     // a step NAME can be resolved up front: the heading, `Next :`, the [b]/[j]
     // picker, `step_start` and so report.md all show `Deploy web-server`, not
     // `Deploy ${APP}`. The authored name is kept for `needs` matching.
-    // A sub-step with no `session:` runs in its nearest ancestor's session
-    // (`inheritSubStepSessions`), so `[p]`, the heading and the events name
-    // the pane the manual and lint name.
-    const flatSteps = flattenAndMarkForEnv(
-      inheritSubStepSessions(operation.steps),
-      targetEnv,
-    ).map((flat) => {
-      const name = substituteVariables(
-        flat.step.name,
-        vars,
-        flat.step.variables,
-      );
-      return name === flat.step.name
-        ? flat
-        : {
-            ...flat,
-            authoredName: flat.step.name,
-            step: { ...flat.step, name },
-          };
-    });
+    // `operation` comes from `parseOperationFile`, which already applied
+    // `withInheritedSessions`: a sub-step's or rollback entry's `session` is
+    // the one `[p]` uses, the manual shows and lint checks.
+    const flatSteps = flattenAndMarkForEnv(operation.steps, targetEnv).map(
+      (flat) => {
+        const name = substituteVariables(
+          flat.step.name,
+          vars,
+          flat.step.variables,
+        );
+        return name === flat.step.name
+          ? flat
+          : {
+              ...flat,
+              authoredName: flat.step.name,
+              step: { ...flat.step, name },
+            };
+      },
+    );
     return {
       flatSteps,
       execOperation: { ...operation, steps: flatSteps.map((f) => f.step) },
@@ -4338,7 +4346,9 @@ class OperationRunner {
     if (!existsSync(filePath)) {
       throw new Error(`Operation file not found: ${filePath}`);
     }
-    return await parseOperationForGroup(filePath, group);
+    // Sessions are inherited once, here, for everything a run reads: the
+    // flat steps, `[r]`, `[g]` (plan + aggregated step rollbacks) and resume.
+    return withInheritedSessions(await parseOperationForGroup(filePath, group));
   }
 
   private parseVariables(variableStrings: string[]): Record<string, any> {
@@ -4572,7 +4582,10 @@ const runCommand = new Command('run')
     'Run one group of an operation that defines groups',
   )
   .option('--auto-approve', 'Auto-approve all manual steps and approvals')
-  .option('--dry-run', 'Preview full operation plan without executing')
+  .option(
+    '--dry-run',
+    "Run and send nothing: print each step's resolved command and session, then the `validate --env` findings (lint included) and what was not checked. Exit 1 only on a validate error",
+  )
   .option(
     '--mock',
     'Replay each step expect against its evidence.results output (no tmux); non-zero exit on failure',

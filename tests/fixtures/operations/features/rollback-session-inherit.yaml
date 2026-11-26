@@ -1,0 +1,36 @@
+name: Rollback Session Inheritance
+version: 1.0.0
+description: >-
+  A step's rollback entries run in that step's session unless they set their
+  own; in the operation-level plan, sub-steps inherit from their rollback parent.
+
+sessions:
+  ops: {}
+  local: {}
+  db: {}
+
+environments:
+  - name: staging
+    description: Staging
+
+steps:
+  - name: Deploy web-server
+    type: automatic
+    session: ops
+    command: kubectl apply -f web-server.yaml
+    expect:
+      contains: configured
+    rollback:
+      - name: Undo the deploy
+        command: kubectl rollout undo deployment/web-server
+      - name: Note the rollback locally
+        session: local
+        command: date -u
+
+rollback:
+  steps:
+    - name: Restore the database
+      session: db
+      sub_steps:
+        - name: Load the snapshot
+          command: pg_restore -d app snapshot.dump

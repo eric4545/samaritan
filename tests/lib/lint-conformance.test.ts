@@ -120,6 +120,17 @@ const SAMPLES: Record<string, Sample> = {
     [{ name: 'S', type: 'manual', command: 'aws s3 ls' }],
     { sessions: { ops: { host: 'bastion.example.com' } } },
   ),
+  'compat/inherited-session': steps(
+    [
+      {
+        name: 'P',
+        type: 'manual',
+        session: 'ops',
+        sub_steps: [{ name: 'S', type: 'manual', command: 'uptime' }],
+      },
+    ],
+    { sessions: { ops: {} } },
+  ),
   'expect/contains-vs-matches': cmd('x', { expect: { contains: 'Running.*' } }),
   'expect/json-shape': cmd('kubectl get pod web -o json', {
     expect: { contains: '"phase": "Running"' },
@@ -349,6 +360,7 @@ describe('opt-in rules (product decision: off by default, on through a preset)',
     'flow/cwd-lost': 'warning',
     'flow/aws-local-session': 'warning',
     'compat/common-variables': 'warning',
+    'compat/inherited-session': 'warning',
   };
 
   it('ships exactly these rules off', () => {
