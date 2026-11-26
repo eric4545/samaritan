@@ -41,6 +41,8 @@ function fixturePath(name: string): string {
     whenEnvFilter: 'tests/fixtures/operations/features/when-env-filter.yaml',
     runVariants: 'tests/fixtures/operations/features/run-variants.yaml',
     rerunStep: 'tests/fixtures/operations/features/rerun-step.yaml',
+    substepSessionInherit:
+      'tests/fixtures/operations/features/substep-session-inherit.yaml',
   };
   return resolve(map[name]);
 }
@@ -159,6 +161,143 @@ describe('run command: dry-run semantics', () => {
       !combined.includes('samaritan resume'),
       'dry-run must not suggest "samaritan resume"',
     );
+  });
+
+  it('dry-run prints what each step would execute, variables resolved', () => {
+    const fixture = fixturePath('deploymentTest');
+    const result = runCli(['run', fixture, '--env', 'staging', '--dry-run']);
+    assert.strictEqual(result.status, 0);
+    assert.match(result.stdout, /\[dry-run\] Would execute: /);
+    const plan = result.stdout.slice(result.stdout.indexOf('📝 Plan'));
+    const executeLines = plan
+      .split('\n')
+      .filter((l) => l.includes('[dry-run] Would execute:'));
+    assert.ok(executeLines.length > 0, 'at least one command is shown');
+    for (const line of executeLines) {
+      if (line.includes('${'))
+        assert.ok(
+          plan.includes('unresolved:'),
+          `a \${VAR} left in a command is flagged: ${line}`,
+        );
+    }
+  });
+
+  it('dry-run never claims the operation completed', () => {
+    const fixture = fixturePath('deploymentTest');
+    const result = runCli(['run', fixture, '--env', 'staging', '--dry-run']);
+    assert.ok(!result.stdout.includes('Operation completed successfully'));
+    assert.ok(!result.stdout.includes('not yet implemented'));
+  });
+
+  it('dry-run: a sub-step shows the session it inherits from its parent', () => {
+    const fixture = fixturePath('substepSessionInherit');
+    const result = runCli(['run', fixture, '--env', 'staging', '--dry-run']);
+    assert.strictEqual(result.status, 0);
+    assert.match(
+      result.stdout,
+      /Step 1\.1 {2}Check identity {2}\[automatic\] · session ops/,
+    );
+    assert.match(
+      result.stdout,
+      /Step 1\.2 {2}Record local time .*· session local/,
+    );
+    assert.match(result.stdout, /Step 1\.3\.1 {2}List buckets .*· session ops/);
+  });
+
+  it('dry-run reports what validate finds and what it did not check', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-dryrun-'));
+    try {
+      const file = join(dir, 'defects.yaml');
+      writeFileSync(
+        file,
+        [
+          'name: Dry Run Defects',
+          'version: 1.0.0',
+          'description: Defects a dry run must not hide.',
+          'environments:',
+          '  - name: staging',
+          '    description: Staging',
+          '    variables:',
+          '      NAMESPACE: staging',
+          'steps:',
+          '  - name: Restart',
+          '    type: automatic',
+          '    command: kubectl rollout restart deploy/${APP_NAME} -n ${NAMESPACE}',
+          '    expect:',
+          '      matches: "^restarted$x"',
+          '',
+        ].join('\n'),
+      );
+      const result = runCli(['run', file, '--env', 'staging', '--dry-run']);
+      assert.strictEqual(result.status, 0, 'warnings do not fail, as validate');
+      const out = result.stdout;
+      assert.ok(
+        out.includes(
+          '[dry-run] Would execute: kubectl rollout restart deploy/${APP_NAME} -n staging',
+        ),
+      );
+      assert.ok(out.includes('unresolved: ${APP_NAME}'));
+      assert.match(out, /APP_NAME/);
+      assert.match(out, /"\$x" is compared literally/);
+      assert.ok(out.includes('What this dry run checked'));
+      assert.match(out, /Not checked: that any command succeeds/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('dry-run leaves no saved session behind (sessions --all does not list it)', () => {
+    const home = mkdtempSync(join(tmpdir(), 'samaritan-dryrun-home-'));
+    try {
+      const env = { ...process.env, HOME: home };
+      const fixture = fixturePath('deploymentTest');
+      const run = spawnSync(
+        CLI,
+        [INDEX, 'run', fixture, '--env', 'staging', '--dry-run'],
+        { encoding: 'utf8', env, timeout: 15_000 },
+      );
+      assert.strictEqual(run.status, 0);
+      assert.match(run.stdout, /dry run: not saved/);
+      const list = spawnSync(CLI, [INDEX, 'sessions', '--all'], {
+        encoding: 'utf8',
+        env,
+        timeout: 15_000,
+      });
+      assert.ok(
+        !/completed/.test(list.stdout),
+        `a dry run must not be listed as a completed run:\n${list.stdout}`,
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('dry-run exits 1 when validate finds an error', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'samaritan-dryrun-'));
+    try {
+      const file = join(dir, 'dup-ids.yaml');
+      writeFileSync(
+        file,
+        [
+          'name: Duplicate Ids',
+          'version: 1.0.0',
+          'description: Two steps share an id.',
+          'environments:',
+          '  - name: staging',
+          '    description: Staging',
+          'steps:',
+          '  - { name: One, id: check, type: automatic, command: echo one }',
+          '  - { name: Two, id: check, type: automatic, command: echo two }',
+          '',
+        ].join('\n'),
+      );
+      const result = runCli(['run', file, '--env', 'staging', '--dry-run']);
+      assert.strictEqual(result.status, 1);
+      assert.match(result.stdout, /❌ Errors:/);
+      assert.match(result.stdout, /1 error\(s\)/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('generate manual guidance does not show <operation.yaml> placeholder', () => {

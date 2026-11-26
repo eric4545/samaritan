@@ -32,6 +32,7 @@ import {
 import { indexToLetters } from '../lib/letter-sequence';
 import { groupByPhase } from '../lib/phase-grouping';
 import { hasRollbackContent } from '../lib/rollback';
+import { withInheritedSessions } from '../lib/session-inheritance';
 import {
   mergeStepVariant,
   resolveDisplayText,
@@ -244,12 +245,14 @@ function buildRollbackCellNodes(
  * Convert Operation to Atlassian Document Format (ADF)
  */
 export function generateADF(
-  operation: Operation,
+  authored: Operation,
   metadata?: GenerationMetadata,
   targetEnvironment?: string,
   resolveVariables?: boolean,
   operationDir?: string,
 ): object {
+  // A sub-step with no `session:` shows its nearest ancestor's.
+  const operation = withInheritedSessions(authored);
   // Filter environments if specified
   let environments = operation.environments;
   if (targetEnvironment) {

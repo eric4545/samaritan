@@ -15,6 +15,7 @@ import type {
   StepInfo,
   Tier,
 } from './rule-types';
+import { sessionOf } from './rule-types';
 import { INVALID_DIRECTIVE_RULE, RULE_IDS, RULES } from './rules';
 import { SourceIndex, type SourceLocation, suppresses } from './source-index';
 import { BUILTIN_TOOLS, type ToolRegistry } from './tools/registry';
@@ -132,10 +133,22 @@ function buildStepInfos(
     ancestors: AnyStep[],
     owner?: Step,
     onlyEnv?: string,
+    /** The owner step's session, then the nearest rollback ancestor's. */
+    inheritedSession?: string,
   ) => {
     for (const step of steps ?? []) {
-      rollbacks.push({ ...make(step, ancestors, true, -1, owner), onlyEnv });
-      visitRollback(step.sub_steps, [...ancestors, step], owner, onlyEnv);
+      rollbacks.push({
+        ...make(step, ancestors, true, -1, owner),
+        onlyEnv,
+        inheritedSession,
+      });
+      visitRollback(
+        step.sub_steps,
+        [...ancestors, step],
+        owner,
+        onlyEnv,
+        step.session ?? inheritedSession,
+      );
     }
   };
   /** A variant's rollback list is raw YAML: give its entries their paths. */
@@ -179,6 +192,8 @@ function buildStepInfos(
         step: own,
         onlyEnv: env,
         base,
+        // A variant without `session:` runs where its base step runs.
+        inheritedSession: sessionOf(base),
       });
       const variantRollback = Array.isArray(variant?.rollback)
         ? (variant.rollback as AnyStep[])
@@ -191,16 +206,28 @@ function buildStepInfos(
           'rollback',
         ]);
       }
-      visitRollback(variantRollback, [], step, env);
+      visitRollback(variantRollback, [], step, env, sessionOf(base));
     }
   };
-  const visit = (steps: Step[] | undefined, ancestors: Step[]) => {
+  const visit = (
+    steps: Step[] | undefined,
+    ancestors: Step[],
+    inheritedSession?: string,
+  ) => {
     for (const step of steps ?? []) {
-      const info = make(step, ancestors, false, forward.length);
+      const info = {
+        ...make(step, ancestors, false, forward.length),
+        inheritedSession,
+      };
       forward.push(info);
       visitVariants(info, ancestors);
-      visit(step.sub_steps, [...ancestors, step]);
-      visitRollback(step.rollback, [], step);
+      // Same rule as the run loop and the manuals (`withInheritedSessions`).
+      visit(
+        step.sub_steps,
+        [...ancestors, step],
+        step.session ?? inheritedSession,
+      );
+      visitRollback(step.rollback, [], step, undefined, sessionOf(info));
     }
   };
   visit(operation.steps, []);

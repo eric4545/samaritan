@@ -1,0 +1,42 @@
+name: Sub-step Session Inheritance
+version: 1.0.0
+description: >-
+  A parent step declares its session once; sub-steps inherit it unless they
+  set their own, and a parent's variants.<env>.session is inherited in that env.
+
+sessions:
+  ops:
+    host: bastion.example.com
+    user: deploy
+  local: {}
+
+environments:
+  - name: staging
+    description: Staging
+  - name: production
+    description: Production
+
+steps:
+  - name: Check access
+    type: manual
+    session: ops
+    sub_steps:
+      - name: Check identity
+        type: automatic
+        command: aws sts get-caller-identity --no-cli-pager --region us-east-1
+        expect:
+          contains: Account
+      - name: Record local time
+        type: automatic
+        session: local
+        command: date -u
+        expect:
+          contains: UTC
+      - name: Inspect storage
+        type: manual
+        sub_steps:
+          - name: List buckets
+            type: automatic
+            command: aws s3 ls --no-cli-pager --region us-east-1
+            expect:
+              contains: example-bucket

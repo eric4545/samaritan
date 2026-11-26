@@ -246,6 +246,40 @@ same overrides `generate manual --env` renders. Never read the authored
 `operation.steps` in the loop — use `executor.getState().steps` / `flatSteps`.
 Regression: `run-variants.yaml` + `run command: step variants.<env>`.
 
+## Sessions are inherited once, in `parseOperationFile`
+
+`parseOperationFile` (run, resume, `--mock`) returns
+`withInheritedSessions(op)` (`src/lib/session-inheritance.ts`): a sub-step
+without `session:` gets its nearest ancestor's, a step's `rollback` entries
+(and `variants.<env>.rollback`) the step's, rollback sub-steps their rollback
+parent's, and `rollback.steps` sub-steps theirs (its own always wins). So
+every `step.session ?? 'default'` / `rb.session ?? 'default'` in run.ts and
+tui.ts sees it — `Session :` line, `[p]`/`[y]`/`[v]` pane, `[r]`/`[g]` entry
+pane, `command_displayed`/`send_to_pane` events, report.
+The manual generators call `withInheritedSessions` at each entry and lint
+reads `sessionOf(info)` (`StepInfo.inheritedSession`): keep all three on the
+one helper. Before, a sub-step under `session: app` resolved to `default`:
+in a spawned sidecar run no pane is registered under that name, so `[p]`/`[v]`
+were not offered (`t attach pane` was); the non-sidecar tmux send falls back
+to the spawned session's active pane. Rollback entries had the same gap in
+sidecar `[r]`/`[g]` (no `p` offered), while `tui.ts` fell back to the owner.
+e2e: "a sub-step runs in the session its parent declares"
+(`e2e-substep-session.yaml`), "[r] pastes a rollback entry into its step's
+session" (`e2e-rollback-session.yaml`). A rollback entry's
+`command_displayed.session` is the pane description (`tmux pane …:app.0`).
+
+## `--dry-run` prints the plan and the validate findings
+
+Non-interactive branch: `buildDryRunPlan(flatSteps, resolvedVars)` +
+`dryRunCoverageLines` (`src/lib/dry-run-plan.ts`, pure) print each step's
+resolved command / session / unresolved vars, then `reportDryRunChecks` runs
+`OperationValidator.validateFile(file, {env, group, quiet})` and prints its
+errors and warnings. `process.exitCode = 1` on a validate error (never
+`process.exit`). The `🎉 Operation completed successfully!` handler is not
+registered for a dry run, and the saved session file is deleted in a
+`finally` (`deletePersistedSession`): `sessions --all` listed a dry run as
+completed 100%. Tests: `tests/cli/run.test.ts` "dry-run semantics".
+
 ## Step names are resolved once, in `prepareFlatOperation`
 
 A run has one environment (and one group), so `prepareFlatOperation(operation,

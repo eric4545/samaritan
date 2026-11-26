@@ -234,6 +234,95 @@ describe('family B: cases that must not fire', () => {
   });
 });
 
+describe('sub-steps inherit the session of their nearest ancestor', () => {
+  const remote = {
+    sessions: { ops: { host: 'bastion.example.com' }, local: {} },
+  };
+  const parent = (sub_steps: unknown[]) => ({
+    name: 'Setup',
+    type: 'manual',
+    session: 'ops',
+    sub_steps,
+  });
+
+  it('flow/aws-local-session: an aws sub-step under a remote parent', () => {
+    silent(
+      'flow/aws-local-session',
+      [parent([s('aws sts get-caller-identity')])],
+      remote,
+    );
+    // ...also two levels down.
+    silent(
+      'flow/aws-local-session',
+      [parent([{ name: 'G', type: 'manual', sub_steps: [s('aws s3 ls')] }])],
+      remote,
+    );
+  });
+
+  it('flow/aws-local-session: an explicit local session on the sub-step still fires', () => {
+    assert.ok(
+      fired(
+        'flow/aws-local-session',
+        lint([parent([s('aws s3 ls', { session: 'local' })])], remote),
+      ),
+    );
+  });
+
+  it('flow/sts-before-mutate: the check ran in the session the sub-step inherits', () => {
+    silent(
+      'flow/sts-before-mutate',
+      [
+        s('aws sts get-caller-identity', { name: 'Who', session: 'ops' }),
+        parent([s('aws s3 rm s3://example-bucket/old.txt')]),
+      ],
+      remote,
+    );
+  });
+
+  it('compat/inherited-session: names sub-steps and rollback entries that inherit', () => {
+    const findings = lint(
+      [
+        {
+          ...parent([s('uptime', { name: 'Inherits' })]),
+          rollback: [{ command: 'echo undo' }],
+        },
+      ],
+      remote,
+    ).filter((f) => f.ruleId === 'compat/inherited-session');
+    assert.deepStrictEqual(
+      findings.map((f) => f.message.split(':')[0]),
+      ['step "Inherits"', 'step "(rollback)"'],
+    );
+    assert.match(findings[0].message, /inherited from step "Setup"/);
+    assert.match(findings[1].message, /the step it rolls back/);
+  });
+
+  it('compat/inherited-session: silent for explicit, top-level and command-less steps', () => {
+    silent(
+      'compat/inherited-session',
+      [
+        s('uptime', { name: 'Top' }),
+        parent([
+          s('date -u', { session: 'local' }),
+          { name: 'Note', type: 'manual', instruction: 'Tell the team.' },
+        ]),
+      ],
+      remote,
+    );
+  });
+
+  it('flow/cwd-lost: the cd ran in the session the sub-step inherits', () => {
+    silent(
+      'flow/cwd-lost',
+      [
+        s('cd /srv/app', { name: 'Go', session: 'ops' }),
+        parent([s('./deploy.sh')]),
+      ],
+      remote,
+    );
+  });
+});
+
 describe('family C and style: cases that must not fire', () => {
   it('expect/contains-vs-matches: literal brackets and real regexes', () => {
     silent('expect/contains-vs-matches', [

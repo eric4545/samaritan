@@ -45,6 +45,14 @@ export interface StepInfo {
   /** Ancestors (outermost first) for sub-steps. */
   ancestors: AnyStep[];
   /**
+   * The session the step runs in when it sets none (`withInheritedSessions`):
+   * a sub-step's nearest ancestor's `session:`; a step-level rollback entry's
+   * owner step's (then its nearest rollback ancestor's); a variant's base
+   * step's. Undefined for top-level steps and the operation-level plan's top
+   * entries. Read it via `sessionOf`.
+   */
+  inheritedSession?: string;
+  /**
    * A `variants.<env>` entry: `step` holds only what the variant sets (plus
    * the name, `variables` and `when`), and it applies in `onlyEnv` alone.
    */
@@ -65,6 +73,14 @@ export function runsIn(info: StepInfo, env: string): boolean {
     const when = (s as { when?: string[] }).when;
     return !when || when.length === 0 || when.includes(env);
   });
+}
+
+/**
+ * The session a step runs in: its own `session:`, else the one it inherits
+ * from its nearest ancestor. Undefined means the run's default pane.
+ */
+export function sessionOf(info: StepInfo): string | undefined {
+  return info.step.session ?? info.inheritedSession;
 }
 
 /**

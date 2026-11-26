@@ -1,0 +1,62 @@
+# Sub-step Session Inheritance Example
+#
+# Declare a step's `session:` once on the parent: every sub-step without a
+# `session:` of its own runs in it (the nearest ancestor that sets one wins).
+# A sub-step that sets `session:` itself keeps it — that is how one command of
+# the group runs elsewhere (here: the operator's local pane).
+#
+# The run loop (`[p]`, `[y]`, `[v]`, the `Session :` line, events and
+# report.md), every manual format and the lint rules use this same rule.
+#
+# Usage:
+#   samaritan run examples/substep-sessions.yaml --env staging --dry-run
+#   samaritan generate manual examples/substep-sessions.yaml --env staging
+
+name: Sub-step Session Inheritance Example
+version: 1.0.0
+description: >-
+  Cluster checks grouped under one parent step that runs on the bastion; one
+  sub-step records the local time on the operator's machine instead.
+
+sessions:
+  # Remote pane: samaritan runs `ssh deploy@bastion.example.com` in it.
+  bastion:
+    host: bastion.example.com
+    user: deploy
+  # Local pane: the operator's own shell.
+  local: {}
+
+environments:
+  - name: staging
+    description: Staging cluster
+    variables:
+      NAMESPACE: web-staging
+  - name: production
+    description: Production cluster
+    variables:
+      NAMESPACE: web-production
+
+steps:
+  - name: Pre-flight checks on the bastion
+    type: manual
+    phase: preflight
+    session: bastion          # declared once, inherited by the sub-steps below
+    sub_steps:
+      - name: Confirm the cluster context
+        type: automatic
+        command: kubectl config current-context
+        expect:
+          contains: ${NAMESPACE}
+
+      - name: Check the web-server pods
+        type: automatic
+        command: kubectl get pods -n ${NAMESPACE} -l app=web-server
+        expect:
+          contains: Running
+
+      - name: Record the start time locally
+        type: automatic
+        session: local        # explicit: wins over the inherited `bastion`
+        command: date -u +%Y-%m-%dT%H:%M:%SZ
+        expect:
+          matches: '^\d{4}-\d{2}-\d{2}T'

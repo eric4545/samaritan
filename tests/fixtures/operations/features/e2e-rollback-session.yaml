@@ -1,0 +1,25 @@
+name: E2E Rollback Session
+version: 1.0.0
+description: >-
+  Fixture for the real-tmux e2e of rollback session inheritance. Two local
+  sessions are spawned; the step runs in the second, and its rollback entry
+  (no session of its own) must be pasted into that pane, not the first one.
+
+sessions:
+  first: {}
+  app: {}
+
+environments:
+  - name: staging
+    description: Staging environment
+
+steps:
+  - name: Deploy in app pane
+    type: automatic
+    session: app
+    command: echo "deploy E2E_RBS_DEPLOY"
+    expect:
+      contains: E2E_RBS_DEPLOY
+    rollback:
+      - name: Undo in app pane
+        command: echo "undo E2E_RBS_UNDO"

@@ -27,6 +27,7 @@ import {
   filterRollbackStepsForEnvironment,
   hasRollbackContent,
 } from '../lib/rollback';
+import { withInheritedSessions } from '../lib/session-inheritance';
 import {
   mergeStepVariant,
   resolveDisplayText,
@@ -1376,6 +1377,8 @@ export function generateManualWithMetadata(
     workingOperation = augmented.operation;
     orphanedKeys = augmented.orphanedKeys;
   }
+  // A sub-step with no `session:` shows its nearest ancestor's.
+  workingOperation = withInheritedSessions(workingOperation);
 
   // Filter environments if specified
   let environments = workingOperation.environments;
@@ -1470,10 +1473,12 @@ function generateOverviewSection(overview: Record<string, any>): string {
  * Core manual content generation (without frontmatter)
  */
 function generateManualContent(
-  operation: Operation,
+  authored: Operation,
   resolveVariables: boolean = false,
   operationDir?: string,
 ): string {
+  // A sub-step with no `session:` shows its nearest ancestor's.
+  const operation = withInheritedSessions(authored);
   // When aggregate_step_rollbacks is on, per-step rollbacks are centralized in
   // the bottom Rollback Plan; inline blocks collapse to jump-links and the
   // duplicate Rollback Procedures section is dropped.
@@ -1846,6 +1851,8 @@ export function generateSingleEnvManual(
     workingOperation = augmented.operation;
     orphanedKeys = augmented.orphanedKeys;
   }
+  // A sub-step with no `session:` shows its nearest ancestor's.
+  workingOperation = withInheritedSessions(workingOperation);
 
   const env = workingOperation.environments.find((e) => e.name === targetEnv);
   const envVars = env?.variables ?? {};

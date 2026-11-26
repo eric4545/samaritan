@@ -1,4 +1,5 @@
 import type { CaptureRule, Step } from '../../models/operation';
+import { stepDisplayName } from '../step-walk';
 import { baseName, describeCommand, isBackup, mentionsAny } from './classify';
 import { hasOption, type NormalizedCommand } from './command-model';
 import {
@@ -12,6 +13,7 @@ import {
   type RuleHit,
   runsIn,
   type StepInfo,
+  sessionOf,
   stepAt,
   templateRefs,
 } from './rule-types';
@@ -365,10 +367,10 @@ const stsBeforeMutate: OperationRule = {
         reported.has(info.step)
       )
         return;
-      const session = info.step.session ?? '(default)';
+      const session = sessionOf(info) ?? '(default)';
       const anywhere = all.slice(0, k).filter((e) => isStsCheck(e.cmd));
       const checks = anywhere.filter(
-        (e) => (e.info.step.session ?? '(default)') === session,
+        (e) => (sessionOf(e.info) ?? '(default)') === session,
       );
       if (anywhere.length > 0 && checks.length === 0) {
         reported.add(info.step);
@@ -376,7 +378,7 @@ const stsBeforeMutate: OperationRule = {
           commandHit(
             info,
             cmd,
-            `the identity check in step "${anywhere[0].info.stepName}" ran in session \`${anywhere[0].info.step.session ?? '(default)'}\`, not \`${session}\` where this state-changing aws command runs`,
+            `the identity check in step "${anywhere[0].info.stepName}" ran in session \`${sessionOf(anywhere[0].info) ?? '(default)'}\`, not \`${session}\` where this state-changing aws command runs`,
           ),
         );
         return;
@@ -770,7 +772,7 @@ const cwdLost: OperationRule = {
     const cdIn = new Map<string, StepInfo>();
     const hits: RuleHit[] = [];
     for (const info of ctx.forward) {
-      const session = info.step.session ?? '(default)';
+      const session = sessionOf(info) ?? '(default)';
       for (const cmd of info.commands) {
         if (cmd.context === 'top' && cmd.executable === 'cd') {
           cdIn.set(session, info);
@@ -815,7 +817,7 @@ const awsLocalSession: OperationRule = {
     for (const info of ctx.all) {
       const aws = info.commands.find((c) => c.executable === 'aws');
       if (!aws) continue;
-      const session = info.step.session;
+      const session = sessionOf(info);
       const ok =
         allowed.length > 0
           ? session !== undefined && allowed.includes(session)
@@ -826,6 +828,41 @@ const awsLocalSession: OperationRule = {
           info,
           aws,
           `\`aws\` runs in ${session ? `session \`${session}\`` : 'the default (local) session'}; expected ${allowed.length > 0 ? allowed.join(' or ') : `a remote session (${remote.join(', ')})`}`,
+        ),
+      );
+    }
+    return hits;
+  },
+};
+
+const inheritedSession: OperationRule = {
+  kind: 'operation',
+  id: 'compat/inherited-session',
+  tier: 3,
+  defaultSeverity: 'off',
+  presetSeverity: 'warning',
+  description:
+    'A step with a command and no `session:` that now runs in a session it inherits (a sub-step from its nearest ancestor, a rollback entry from the step it undoes). Before sessions were inherited it ran in the default pane. An opt-in migration check: turn it on once to review every such step.',
+  check(ctx) {
+    const hits: RuleHit[] = [];
+    for (const info of ctx.all) {
+      if (info.onlyEnv !== undefined || info.step.session !== undefined) {
+        continue;
+      }
+      const session = info.inheritedSession;
+      if (session === undefined || !(info.text || info.step.script)) continue;
+      const declaring = [...info.ancestors]
+        .reverse()
+        .find((a) => a.session !== undefined);
+      const from = declaring
+        ? `step "${stepDisplayName(declaring)}"`
+        : info.owner
+          ? `step "${stepDisplayName(info.owner)}", the step it rolls back`
+          : 'an ancestor';
+      hits.push(
+        hit(
+          info,
+          `runs in session \`${session}\`, inherited from ${from}; before sessions were inherited it ran in the default pane. Check \`${session}\` is right, then write \`session: ${session}\` on it (or keep it inherited and turn this rule off)`,
         ),
       );
     }
@@ -849,4 +886,5 @@ export const FLOW_RULES: OperationRule[] = [
   checksumBeforeExec,
   cwdLost,
   awsLocalSession,
+  inheritedSession,
 ];

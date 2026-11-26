@@ -287,6 +287,18 @@ which would bury the exact findings under review tripwires. `extends:
 pick some. `--list-rules` shows each rule's level by default, under
 `samaritan:strict` and under `samaritan:all`.
 
+The session rules (`flow/aws-local-session`, `flow/sts-before-mutate`,
+`flow/cwd-lost`) take a step's session the way a run does: its own
+`session:`, else the one it inherits (a sub-step from its nearest ancestor, a
+rollback entry from the step it rolls back). An `aws` sub-step under a parent
+with `session: bastion` is in `bastion`, not in the default pane.
+
+`compat/inherited-session` (opt-in) lists every step with a command that sets
+no `session:` and now runs in an inherited one. Before sessions were
+inherited, those steps ran in the default pane: turn the rule on once after
+upgrading, check each session it names, then write `session:` on the step or
+turn the rule off again.
+
 ### Teaching lint about a tool (`tools`)
 
 Everything lint knows about a program is a **tool profile**: how its options

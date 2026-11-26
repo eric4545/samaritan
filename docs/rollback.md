@@ -130,6 +130,29 @@ The full recovery therefore reads top-to-bottom as one Rollback Plan, and each s
 
 During `samaritan run`, every step prompt offers **`[g]` global rollback**: it previews the consolidated recovery (explicit plan steps + the **completed** steps' rollbacks, reversed), asks for confirmation (a single `y`), runs it as described in [Running a rollback](#running-a-rollback), then aborts the operation — a full rollback ends forward progress, and the session is resumable. See `examples/global-rollback-aggregated.yaml`.
 
+## Rollback sessions
+
+A rollback entry without `session:` runs in the session of the step it rolls
+back; a rollback entry's sub-steps inherit from their rollback parent; a
+`session:` on the entry itself always wins. In the operation-level
+`rollback.steps` plan, top entries have no step to inherit from (they use the
+run's default pane) and only their sub-steps inherit. This applies to `[r]`,
+`[g]` (the plan and the aggregated step rollbacks), the manuals and lint:
+
+```yaml
+steps:
+  - name: Deploy
+    session: execution
+    command: kubectl apply -f deployment.yaml
+    rollback:
+      - command: kubectl rollout undo deployment/web   # runs in execution
+      - command: date -u                                # runs in local
+        session: local
+```
+
+Before, the sidecar `[r]`/`[g]` treated such an entry as having no session:
+no `p` paste was offered in a spawned run.
+
 ## Running a rollback
 
 How `[r]` / `[g]` deliver rollback commands depends on the run mode:

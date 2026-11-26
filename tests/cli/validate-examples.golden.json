@@ -151,6 +151,10 @@
     "valid": true,
     "errors": 0
   },
+  "examples/substep-sessions.yaml": {
+    "valid": true,
+    "errors": 0
+  },
   "examples/top-level-variables.yaml": {
     "valid": true,
     "errors": 0

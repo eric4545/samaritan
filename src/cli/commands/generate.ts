@@ -11,6 +11,7 @@ import { buildEffectiveRollback } from '../../lib/global-rollback';
 import { indexToLetters } from '../../lib/letter-sequence';
 import { groupByPhase } from '../../lib/phase-grouping';
 import { hasRollbackContent } from '../../lib/rollback';
+import { withInheritedSessions } from '../../lib/session-inheritance';
 import {
   mergeStepVariant,
   resolveDisplayText,
@@ -1011,12 +1012,14 @@ function collectAllStepsWithTimelineForConfluence(steps: any[]): any[] {
 
 // Export as standalone function for testing
 export function generateConfluenceContent(
-  operation: any,
+  authored: any,
   resolveVars: boolean = false,
   includeGantt: boolean = false,
   targetEnvironment?: string,
   operationDir?: string,
 ): string {
+  // A sub-step with no `session:` shows its nearest ancestor's.
+  const operation = withInheritedSessions(authored);
   // Filter environments if specified
   let environments = operation.environments;
   if (targetEnvironment) {
