@@ -246,6 +246,32 @@ same overrides `generate manual --env` renders. Never read the authored
 `operation.steps` in the loop — use `executor.getState().steps` / `flatSteps`.
 Regression: `run-variants.yaml` + `run command: step variants.<env>`.
 
+## Sub-step sessions are inherited once, in `prepareFlatOperation`
+
+`prepareFlatOperation` runs `inheritSubStepSessions(operation.steps)`
+(`src/lib/session-inheritance.ts`) before `flattenAndMarkForEnv`: a sub-step
+without `session:` gets its nearest ancestor's (its own wins), so every
+`step.session ?? 'default'` in run.ts/tui.ts sees it — `Session :` line,
+`[p]`/`[y]`/`[v]` pane, `command_displayed`/`send_to_pane` events, report.
+The manual generators call `withInheritedSessions` at each entry and lint
+reads `sessionOf(info)` (`StepInfo.inheritedSession`): keep all three on the
+one helper. Before, a sub-step under `session: app` resolved to `default`:
+in a spawned sidecar run no pane is registered under that name, so `[p]`/`[v]`
+were not offered (`t attach pane` was); the non-sidecar tmux send falls back
+to the spawned session's active pane. Rollback paths (`rb.session ?? 'default'`)
+do not inherit. e2e: "a sub-step runs in the session its parent declares"
+(`e2e-substep-session.yaml`).
+
+## `--dry-run` prints the plan and the validate findings
+
+Non-interactive branch: `buildDryRunPlan(flatSteps, resolvedVars)` +
+`dryRunCoverageLines` (`src/lib/dry-run-plan.ts`, pure) print each step's
+resolved command / session / unresolved vars, then `reportDryRunChecks` runs
+`OperationValidator.validateFile(file, {env, group, quiet})` and prints its
+errors and warnings. `process.exitCode = 1` on a validate error (never
+`process.exit`). The `🎉 Operation completed successfully!` handler is not
+registered for a dry run. Tests: `tests/cli/run.test.ts` "dry-run semantics".
+
 ## Step names are resolved once, in `prepareFlatOperation`
 
 A run has one environment (and one group), so `prepareFlatOperation(operation,

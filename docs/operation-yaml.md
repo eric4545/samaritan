@@ -319,6 +319,10 @@ steps:
     command: kubectl apply -f deployment.yaml
 ```
 
+A sub-step without `session:` runs in, and is shown with, the session of its
+nearest ancestor that sets one; its own `session:` wins. See
+[Running](./running.md#named-sessions).
+
 ## Step Dependencies (`needs`)
 
 Model dependencies between steps, like GitHub Actions `jobs.<id>.needs`. A

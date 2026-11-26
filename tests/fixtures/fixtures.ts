@@ -45,6 +45,8 @@ export const FIXTURES = {
   // ===== Feature-Specific Tests =====
   // Foreach & Matrix
   foreachLoop: 'tests/fixtures/operations/features/foreach-loop.yaml',
+  substepSessionInherit:
+    'tests/fixtures/operations/features/substep-session-inherit.yaml',
   matrixForeach: 'tests/fixtures/operations/features/matrix-foreach.yaml',
   matrixWithFilters:
     'tests/fixtures/operations/features/matrix-with-filters.yaml',

@@ -168,6 +168,27 @@ All notable changes to this project are documented here. This project follows
 
 ### Changed
 
+- **Behaviour change: a sub-step runs in its parent's session.** A sub-step
+  without `session:` now runs in the session of its nearest ancestor that
+  sets one (its own `session:` still wins). Before, it fell back to the run's
+  default pane while the parent named another: in a spawned sidecar run the
+  sub-step had no pane (`[p]`/`[v]` not offered), the manual showed no session
+  for those sub-steps, and `flow/aws-local-session` / `flow/sts-before-mutate`
+  / `flow/cwd-lost` warned about the very style that should work (declare the
+  session once on the parent). The run loop, every manual format and lint
+  now share one rule (`src/lib/session-inheritance.ts`). A procedure that
+  relied on a sub-step falling back to the default pane must now give it a
+  `session:` naming a declared entry (for example `local: {}`). Rollback steps
+  are unchanged. See `examples/substep-sessions.yaml`.
+- **`run --dry-run` shows what it would do and what it checked.** It printed
+  only `Steps: N` and `🎉 Operation completed successfully!`, and exited 0 on
+  a file with an undefined variable or a broken regex. It now prints every
+  step's command with variables resolved (`[dry-run] Would execute: …`), its
+  session and any unresolved `${NAME}`; runs the checks of
+  `validate --env <env>` (lint rules included) and lists the findings; and
+  ends with what it did and did not check. It exits 1 when `validate` reports
+  an error (warnings keep exit 0), and no longer says the operation completed.
+
 - **One step number everywhere in a run: the manual's.** The `[b]` back and
   `[j]` jump pickers list each step once, under the number the heading and
   `generate manual --env` show (`1.2.1  Deploy database  (completed)`), with

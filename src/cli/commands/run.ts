@@ -36,6 +36,11 @@ import {
   normalizeConfirm,
   type ResolvedConfirm,
 } from '../../lib/confirm';
+import {
+  buildDryRunPlan,
+  type DryRunPlan,
+  dryRunCoverageLines,
+} from '../../lib/dry-run-plan';
 import { createEventLogger } from '../../lib/event-logger';
 import {
   classifyEvidenceInput,
@@ -92,6 +97,7 @@ import {
   filterRollbackByEnv,
   findNearestRollbackSource,
 } from '../../lib/rollback';
+import { inheritSubStepSessions } from '../../lib/session-inheritance';
 import {
   buildStepRecords,
   foldEvents,
@@ -163,6 +169,7 @@ import type {
   Step,
 } from '../../models/operation';
 import { parseOperationForGroup } from '../../operations/parser';
+import { OperationValidator } from './validate';
 
 /** What an operator-driven rollback achieved (recorded on `rollback_complete`). */
 type RollbackStatus = 'completed' | 'partial' | 'not_executed';
@@ -597,6 +604,7 @@ class OperationRunner {
 
     this.setupEventHandlers(executor, options);
 
+    let dryRunPlan: DryRunPlan | undefined;
     try {
       const isInteractiveMode = !context.autoMode && !options.dryRun;
 
@@ -712,6 +720,14 @@ class OperationRunner {
           captureBackend.teardown();
         }
         tmuxSession?.teardown();
+      } else if (options.dryRun) {
+        // Dry run: say what each step would do, with the run's variables.
+        // Nothing is run or sent to a pane.
+        dryRunPlan = buildDryRunPlan(flatSteps, resolvedVars);
+        console.log('▶️  Dry run: no command is run or sent to a pane.\n');
+        console.log(`📝 Plan for '${targetEnv}':`);
+        for (const line of dryRunPlan.lines) console.log(line);
+        await executor.execute();
       } else {
         console.log('▶️  Starting operation execution...\n');
         console.log(
@@ -730,6 +746,12 @@ class OperationRunner {
           console.log('\n✅ Dry-run preview complete — all steps traversed.');
           console.log(
             `   Steps: ${finalState.totalSteps}  Skipped: ${finalState.skippedSteps}`,
+          );
+          await this.reportDryRunChecks(
+            absFile,
+            targetEnv,
+            options.group,
+            dryRunPlan,
           );
         } else {
           // Kept although an interactive run also prints the 🎉 line from
@@ -1000,6 +1022,43 @@ class OperationRunner {
     }
   }
 
+  /**
+   * After a dry run: the checks `validate --env` runs (lint rules included),
+   * then a statement of what the dry run did and did not check. An error
+   * sets exit code 1; warnings do not (as in `validate`).
+   */
+  private async reportDryRunChecks(
+    absFile: string,
+    targetEnv: string,
+    group: string | undefined,
+    plan: DryRunPlan | undefined,
+  ): Promise<void> {
+    const check = await new OperationValidator().validateFile(absFile, {
+      env: targetEnv,
+      group,
+      quiet: true,
+    });
+    if (check.errors.length > 0) {
+      console.log('\n❌ Errors:');
+      for (const error of check.errors) console.log(`   ${error}`);
+    }
+    if (check.warnings.length > 0) {
+      console.log('\n⚠️  Warnings:');
+      for (const warning of check.warnings) console.log(`   ${warning}`);
+    }
+    console.log('');
+    for (const line of dryRunCoverageLines({
+      environment: targetEnv,
+      steps: plan?.steps ?? 0,
+      errors: check.errors.length,
+      warnings: check.warnings.length,
+      unresolved: plan?.unresolved.length ?? 0,
+    })) {
+      console.log(line);
+    }
+    if (check.errors.length > 0) process.exitCode = 1;
+  }
+
   private prepareFlatOperation(
     operation: Operation,
     targetEnv: string,
@@ -1015,22 +1074,26 @@ class OperationRunner {
     // a step NAME can be resolved up front: the heading, `Next :`, the [b]/[j]
     // picker, `step_start` and so report.md all show `Deploy web-server`, not
     // `Deploy ${APP}`. The authored name is kept for `needs` matching.
-    const flatSteps = flattenAndMarkForEnv(operation.steps, targetEnv).map(
-      (flat) => {
-        const name = substituteVariables(
-          flat.step.name,
-          vars,
-          flat.step.variables,
-        );
-        return name === flat.step.name
-          ? flat
-          : {
-              ...flat,
-              authoredName: flat.step.name,
-              step: { ...flat.step, name },
-            };
-      },
-    );
+    // A sub-step with no `session:` runs in its nearest ancestor's session
+    // (`inheritSubStepSessions`), so `[p]`, the heading and the events name
+    // the pane the manual and lint name.
+    const flatSteps = flattenAndMarkForEnv(
+      inheritSubStepSessions(operation.steps),
+      targetEnv,
+    ).map((flat) => {
+      const name = substituteVariables(
+        flat.step.name,
+        vars,
+        flat.step.variables,
+      );
+      return name === flat.step.name
+        ? flat
+        : {
+            ...flat,
+            authoredName: flat.step.name,
+            step: { ...flat.step, name },
+          };
+    });
     return {
       flatSteps,
       execOperation: { ...operation, steps: flatSteps.map((f) => f.step) },
@@ -4360,9 +4423,12 @@ class OperationRunner {
     executor.on('operation_paused', () => {
       console.log('\n⏸️  Operation paused');
     });
-    executor.on('operation_completed', () => {
-      console.log('\n🎉 Operation completed successfully!');
-    });
+    // A dry run completes nothing: its own summary says what it did.
+    if (!options.dryRun) {
+      executor.on('operation_completed', () => {
+        console.log('\n🎉 Operation completed successfully!');
+      });
+    }
     executor.on('operation_failed', (event) => {
       console.log(`\n💥 Operation failed: ${event.error}`);
     });

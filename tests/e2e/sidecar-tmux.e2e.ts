@@ -395,6 +395,58 @@ describe('sidecar e2e (real tmux)', () => {
   );
 
   it(
+    'spawn-own sessions: a sub-step runs in the session its parent declares',
+    { skip, timeout: 120_000 },
+    async () => {
+      const ws = workspace('e2e-substep-session.yaml');
+      const d = TmuxDriver.create();
+      try {
+        d.type(launch(ws.dir, `run ${ws.op} --env staging`));
+        await d.waitFor('Bootstrapping tmux sessions', { timeoutMs: 40_000 });
+        await d.waitFor('substep v1 E2E_SUBSTEP_OK', { timeoutMs: 20_000 });
+        const spawned = TmuxDriver.listSessions().find((s) =>
+          s.startsWith('samaritan-'),
+        );
+        assert.ok(spawned, 'bootstrap must spawn a samaritan-* session');
+        const appPane = `${spawned}:app`;
+
+        // The sub-step has no `session:`; it inherits `app` from its parent,
+        // so [p] pastes into the app window (before: the first, active one).
+        d.key('p');
+        await d.waitFor('substep v1 E2E_SUBSTEP_OK', {
+          pane: appPane,
+          timeoutMs: 15_000,
+        });
+        assert.ok(
+          !d.capture(`${spawned}:first`).includes('E2E_SUBSTEP_OK'),
+          'nothing is pasted into the first session',
+        );
+        d.enter(appPane);
+        await d.waitFor(/^substep v1 E2E_SUBSTEP_OK$/m, {
+          pane: appPane,
+          timeoutMs: 15_000,
+        });
+        d.key('v');
+        await d.waitFor('✅ contains: E2E_SUBSTEP_OK', { timeoutMs: 15_000 });
+        d.enter();
+        await d.waitFor('Operation completed successfully', {
+          timeoutMs: 15_000,
+        });
+
+        const report = readReport(ws.dir);
+        assert.match(
+          report,
+          /## Step 1\.1: Echo in app pane\n\n\*\*Time\*\*: [^\n]*\*\*Session\*\*: app /,
+          'report.md names the inherited session',
+        );
+      } finally {
+        d.kill();
+        ws.cleanup();
+      }
+    },
+  );
+
+  it(
     'abort → resume: a paused session resumes at the same step under real tmux',
     { skip, timeout: 120_000 },
     async () => {

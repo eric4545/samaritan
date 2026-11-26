@@ -12,6 +12,7 @@ import {
   type RuleHit,
   runsIn,
   type StepInfo,
+  sessionOf,
   stepAt,
   templateRefs,
 } from './rule-types';
@@ -365,10 +366,10 @@ const stsBeforeMutate: OperationRule = {
         reported.has(info.step)
       )
         return;
-      const session = info.step.session ?? '(default)';
+      const session = sessionOf(info) ?? '(default)';
       const anywhere = all.slice(0, k).filter((e) => isStsCheck(e.cmd));
       const checks = anywhere.filter(
-        (e) => (e.info.step.session ?? '(default)') === session,
+        (e) => (sessionOf(e.info) ?? '(default)') === session,
       );
       if (anywhere.length > 0 && checks.length === 0) {
         reported.add(info.step);
@@ -376,7 +377,7 @@ const stsBeforeMutate: OperationRule = {
           commandHit(
             info,
             cmd,
-            `the identity check in step "${anywhere[0].info.stepName}" ran in session \`${anywhere[0].info.step.session ?? '(default)'}\`, not \`${session}\` where this state-changing aws command runs`,
+            `the identity check in step "${anywhere[0].info.stepName}" ran in session \`${sessionOf(anywhere[0].info) ?? '(default)'}\`, not \`${session}\` where this state-changing aws command runs`,
           ),
         );
         return;
@@ -770,7 +771,7 @@ const cwdLost: OperationRule = {
     const cdIn = new Map<string, StepInfo>();
     const hits: RuleHit[] = [];
     for (const info of ctx.forward) {
-      const session = info.step.session ?? '(default)';
+      const session = sessionOf(info) ?? '(default)';
       for (const cmd of info.commands) {
         if (cmd.context === 'top' && cmd.executable === 'cd') {
           cdIn.set(session, info);
@@ -815,7 +816,7 @@ const awsLocalSession: OperationRule = {
     for (const info of ctx.all) {
       const aws = info.commands.find((c) => c.executable === 'aws');
       if (!aws) continue;
-      const session = info.step.session;
+      const session = sessionOf(info);
       const ok =
         allowed.length > 0
           ? session !== undefined && allowed.includes(session)

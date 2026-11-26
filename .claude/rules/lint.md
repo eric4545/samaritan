@@ -50,6 +50,16 @@ Refactors must keep `samaritan lint --format json` identical over
 `examples/` and `tests/fixtures/operations/` with `extends: [samaritan:all]`
 (compare before/after; the tool-profile refactor was checked this way).
 
+## A step's session: `sessionOf(info)`
+
+Rules read the session a step runs in with `sessionOf(info)`
+(`rule-types.ts`): `info.step.session ?? info.inheritedSession`. The engine
+sets `inheritedSession` while walking forward steps (nearest ancestor's
+`session:`; a variant gets its base step's) — the same rule as the run loop
+(`inheritSubStepSessions`). Never read `info.step.session` for routing.
+`flow/session-undeclared` stays on the explicit field (`fieldIn`): an
+inherited name was already checked on the ancestor.
+
 ## Top-level keys (`schema/unknown-key`)
 
 Known = the schema's `properties` + `PARSER_ONLY_TOP_LEVEL_KEYS`

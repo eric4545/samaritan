@@ -329,6 +329,33 @@ The report shows a confirmed step apart from one that was simply completed:
 
 The gate is asked on the `manual`/sidecar step bar and on an operator-driven rollback entry that declares `confirm:`. It is not asked on `approval` steps (the approval is the assertion) or in a non-sidecar `automatic` run. See `examples/confirm-out-of-band.yaml`.
 
+## Dry run (`--dry-run`): see every command before the real run
+
+`samaritan run <op> --env <env> --dry-run` runs nothing and sends nothing to a
+pane. It prints, per step this environment runs, the command with the run's
+variables resolved (`[dry-run] Would execute: …`), the session it would use,
+and a `⚠️ unresolved: ${NAME}` line for any variable nothing defines. Then it
+runs the checks of `samaritan validate --env <env>` (lint rules included) and
+ends with what it checked and what it did not:
+
+```text
+📝 Plan for 'staging':
+  Step 1  Pre-flight checks on the bastion  [manual] · session bastion
+  Step 1.1  Confirm the cluster context  [automatic] · session bastion
+      [dry-run] Would execute: kubectl config current-context
+  ...
+🔎 What this dry run checked:
+   ✅ YAML and schema, environment 'staging', all 4 step(s) traversed
+   ✅ The checks of `samaritan validate --env staging` (lint rules included): no findings
+   ❌ Not checked: that any command succeeds, `expect` against real output, or that panes and hosts are reachable
+```
+
+The exit code is 1 when `validate` reports an error and 0 otherwise, warnings
+included (as `validate`). Exit 0 means the file parses, the environment exists
+and every step was walked; it says nothing about the commands themselves. A
+typo in an `expect` value cannot be found without output: `--mock` replays
+`expect` against recorded `evidence.results`.
+
 ## Mock run (`--mock`): replay `expect` against captured evidence
 
 `samaritan run <op> --env <env> --mock` validates your verification rules
@@ -504,6 +531,33 @@ steps:
       expect:
         contains: "successfully rolled out"
 ```
+
+### Sub-steps run in their parent's session
+
+A sub-step without `session:` runs in the session of its nearest ancestor that
+sets one; a `session:` on the sub-step itself always wins. Declare the session
+once on the parent:
+
+```yaml
+steps:
+  - name: Pre-flight checks on the bastion
+    session: bastion
+    sub_steps:
+      - name: Check the web-server pods      # runs in bastion
+        command: kubectl get pods -n ${NAMESPACE}
+      - name: Record the start time locally
+        session: local                        # explicit: runs in local
+        command: date -u
+```
+
+The run loop (`Session :` line, `[p]`/`[y]`/`[v]`, `events.jsonl`,
+`report.md`), the manuals (every format, with and without `--env`) and the lint
+rules (`flow/aws-local-session`, `flow/sts-before-mutate`, `flow/cwd-lost`) all
+apply this rule. A top-level step without `session:` has no spawned pane of
+its own (attach one with `[t]`). To send one sub-step to a different pane, give
+it its own `session:` that names a declared entry (e.g. `local: {}`). Rollback
+steps do not inherit. See
+`examples/substep-sessions.yaml`.
 
 ## Complete a step on a verify PASS (`run.advance_on_pass`)
 

@@ -79,6 +79,13 @@ Applies to all formats. With the flag off, rendering is unchanged.
 manual formats — for steps, sub-steps, and rollback steps — as `⏱ Timeout: Ns`
 and `🖥 Session: <name>`.
 
+A sub-step without `session:` inherits the session of its nearest ancestor that
+sets one (its own `session:` wins) — in the run loop, every manual and lint
+(`src/lib/session-inheritance.ts`, lint `StepInfo.inheritedSession`). Declare
+it once on the parent. To send one sub-step elsewhere, give it a `session:`
+naming a declared entry (`local: {}`); `variants.<env>` cannot set `session`.
+Rollback steps do not inherit. Example: `examples/substep-sessions.yaml`.
+
 ## Step-only structural fields
 
 `name`, `type`, `id`, `phase` (`preflight`/`flight`/`postflight`), `if`,

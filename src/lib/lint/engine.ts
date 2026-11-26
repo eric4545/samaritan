@@ -15,6 +15,7 @@ import type {
   StepInfo,
   Tier,
 } from './rule-types';
+import { sessionOf } from './rule-types';
 import { INVALID_DIRECTIVE_RULE, RULE_IDS, RULES } from './rules';
 import { SourceIndex, type SourceLocation, suppresses } from './source-index';
 import { BUILTIN_TOOLS, type ToolRegistry } from './tools/registry';
@@ -179,6 +180,8 @@ function buildStepInfos(
         step: own,
         onlyEnv: env,
         base,
+        // A variant without `session:` runs where its base step runs.
+        inheritedSession: sessionOf(base),
       });
       const variantRollback = Array.isArray(variant?.rollback)
         ? (variant.rollback as AnyStep[])
@@ -194,12 +197,24 @@ function buildStepInfos(
       visitRollback(variantRollback, [], step, env);
     }
   };
-  const visit = (steps: Step[] | undefined, ancestors: Step[]) => {
+  const visit = (
+    steps: Step[] | undefined,
+    ancestors: Step[],
+    inheritedSession?: string,
+  ) => {
     for (const step of steps ?? []) {
-      const info = make(step, ancestors, false, forward.length);
+      const info = {
+        ...make(step, ancestors, false, forward.length),
+        inheritedSession,
+      };
       forward.push(info);
       visitVariants(info, ancestors);
-      visit(step.sub_steps, [...ancestors, step]);
+      // Same rule as the run loop and the manuals (`inheritSubStepSessions`).
+      visit(
+        step.sub_steps,
+        [...ancestors, step],
+        step.session ?? inheritedSession,
+      );
       visitRollback(step.rollback, [], step);
     }
   };
